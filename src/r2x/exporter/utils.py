@@ -343,3 +343,31 @@ def apply_extract_key(d: dict[str, Any], key: str, keys_to_extract: set[str]) ->
 
     extracted_keys = {key: value for key, value in d[key].items() if key in keys_to_extract}
     return {**d, **extracted_keys}
+
+
+def apply_correct_commit(component: dict[str, Any], commit_map: dict[str, dict[str, int]]) -> dict[str, Any]:
+    """Set the value of the key to -1 if the specified key exists but is False.
+
+    Parameters
+    ----------
+    component : dict[str, Any]
+        The input dictionary that may contain nested dictionaries.
+    commit_map : dict[str, dict[str, int]]
+        Nested dictionary mapping the 'Commit' key to its value.
+
+    Returns
+    -------
+    dict[str, Any]
+        The updated dictionary with the modified value of the key 'Commit'
+
+    Examples
+    --------
+    >>> comp = {"name": "Gen01", "Commit": False}
+    >>> commit_map = {"Commit": {"False": -1}}
+    >>> apply_correct_commit(comp, commit_map)
+    {'name': 'Gen01', 'Commit': -1}
+    """
+    for key, value_map in commit_map.items():
+        if key in component and isinstance(component[key], bool) and not component[key]:
+            component[key] = value_map.get("False", component[key])
+    return component

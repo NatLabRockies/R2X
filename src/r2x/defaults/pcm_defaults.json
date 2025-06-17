@@ -155,6 +155,19 @@
     "min_up_time": 24.0,
     "start_cost_per_MW": 129.0
   },
+  "coal-ccs_mod": {
+    "avg_capacity_MW": 302.0,
+    "forced_outage_rate": 4.29,
+    "maintenance_rate": 10.0,
+    "max_capacity_MW": 856.0,
+    "max_ramp_up_percentage": 0.02,
+    "mean_time_to_repair": 55.0,
+    "min_capacity_MW": 50.0,
+    "min_down_time": 12.0,
+    "min_stable_level_percentage": 0.4,
+    "min_up_time": 24.0,
+    "start_cost_per_MW": 129.0
+  },
   "coal-igcc": {
     "avg_capacity_MW": 302.0,
     "forced_outage_rate": 4.29,
@@ -1287,6 +1300,19 @@
     "start_cost_per_MW": 0.0
   },
   "nuclear-nsp": {
+    "avg_capacity_MW": 1239.94,
+    "forced_outage_rate": 4.0,
+    "maintenance_rate": 6.0,
+    "max_capacity_MW": 1403.19,
+    "max_ramp_up_percentage": 0.01,
+    "mean_time_to_repair": 298.0,
+    "min_capacity_MW": 200.0,
+    "min_down_time": 48.0,
+    "min_stable_level_percentage": 1.0,
+    "min_up_time": 48.0,
+    "start_cost_per_MW": 0.0
+  },
+  "nuclear-smr": {
     "avg_capacity_MW": 1239.94,
     "forced_outage_rate": 4.0,
     "maintenance_rate": 6.0,

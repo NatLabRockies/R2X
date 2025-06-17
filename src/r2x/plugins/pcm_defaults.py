@@ -10,9 +10,9 @@ from r2x.models import Generator
 from r2x.api import System
 from r2x.config_scenario import Scenario
 from r2x.parser.handler import BaseParser
-from r2x.units import ActivePower
 from r2x.utils import read_json
 from r2x.plugin_manager import PluginManager
+from r2x.units import get_magnitude
 
 
 @PluginManager.register_cli("system_update", "pcm_defaults")
@@ -141,12 +141,6 @@ def update_system(
             if wecc_data_row.get("max_ramp_up_percentage")
             else None
         )
-        values_to_add["min_rated_capacity"] = (
-            getattr(component, "active_power")
-            * BaseQuantity(wecc_data_row.get("min_stable_level_percentage"), "")
-            if wecc_data_row.get("min_stable_level_percentage")
-            else ActivePower(0, "MW")
-        )
         values_to_add["mean_time_to_repair"] = (
             BaseQuantity(wecc_data_row.get("mean_time_to_repair"), "h")
             if wecc_data_row.get("mean_time_to_repair")
@@ -169,4 +163,13 @@ def update_system(
         valid_fields = {key: value for key, value in values_to_add.items() if key in component.model_fields}
         for key, value in valid_fields.items():
             setattr(component, key, value)
+
+        if hasattr(component, "active_power_limits") and hasattr(component.active_power_limits, "min"):
+            setattr(
+                component.active_power_limits,
+                "min",
+                get_magnitude(getattr(component, "active_power", 0))
+                * wecc_data_row.get("min_stable_level_percentage", 1),
+            )
+
     return system

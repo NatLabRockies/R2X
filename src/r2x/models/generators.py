@@ -286,7 +286,9 @@ class ThermalGen(Generator):
 
     fuel: Annotated[str, Field(description="Fuel category")] | None = None
     operation_cost: ThermalGenerationCost | None = None
-    must_run: Annotated[bool, Field(description="If we need to force the dispatch of the device.")] = False
+    must_run: Annotated[bool | int, Field(description="If we need to force the dispatch of the device.")] = (
+        False
+    )
 
 
 class ThermalStandard(ThermalGen):
