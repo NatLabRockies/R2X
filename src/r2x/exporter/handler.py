@@ -244,14 +244,14 @@ class BaseExporter(ABC):
             filter_func=lambda x: system.has_time_series(
                 x,
                 time_series_type=time_series_type,
-                variable_name=variable_name,
+                name=variable_name,
                 **user_attributes,
             ),
         ):
             for ts_metadata in system.time_series.list_time_series_metadata(
-                component, time_series_type=time_series_type, variable_name=variable_name, **user_attributes
+                component, time_series_type=time_series_type, name=variable_name, **user_attributes
             ):
-                ts_component_name = f"{component.__class__.__name__}_{ts_metadata.variable_name}"
+                ts_component_name = f"{component.__class__.__name__}_{ts_metadata.name}"
                 time_series_headers[ts_component_name].append(component.name)
                 time_series_list[ts_component_name].append(
                     system._time_series_mgr._get_by_metadata(ts_metadata)
