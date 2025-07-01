@@ -38,7 +38,7 @@ dependencies = [
     "tables~=3.10.1",
     "h5py",
     "cvxpy~=1.5.3",
-    "infrasys @ git+https://github.com/NREL/infrasys.git@ps/deterministic",
+    "infrasys @ git+https://github.com/NREL/infrasys@ps/deterministic",
 ]
 
 [project.scripts]
