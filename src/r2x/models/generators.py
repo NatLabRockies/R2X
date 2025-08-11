@@ -44,7 +44,7 @@ class Generator(Device):
         ApparentPower | None,
         Field(
             description=(
-                "Reactive power set point of the unit in MW. For power flow, this is the steady "
+                "Reactive power set point of the unit in MVAr. For power flow, this is the steady "
                 "state operating point of the system."
             ),
         ),
@@ -84,6 +84,7 @@ class Generator(Device):
         ]
         | None
     ) = None
+    ramp_limits: UpDown | None = None
     min_up_time: (
         Annotated[
             Time,
@@ -126,11 +127,11 @@ class Generator(Device):
         Annotated[NonNegativeFloat, Field(description="Cost in $ of shuting down a unit.")] | None
     ) = None
     active_power_limits: Annotated[
-        MinMax | None, Field(description="Maximum output power rating of the unit (MVA).")
-    ] = None
+        MinMax | None, Field(description="Active power limits of the unit (MW).")
+    ] = MinMax(min=0.0, max=1.0)
     reactive_power_limits: Annotated[
-        MinMax | None, Field(description="Maximum output power rating of the unit (MVA).")
-    ] = None
+        MinMax | None, Field(description="Reactive power limits of the unit (MVAr).")
+    ] = MinMax(min=-1.0, max=1.0)
 
     @field_serializer("active_power_limits")
     def serialize_active_power_limits(self, min_max: MinMax | dict | None) -> dict[str, Any] | None:
@@ -176,20 +177,8 @@ class HydroDispatch(HydroGen):
     """Class representing flexible hydro generators."""
 
     operation_cost: HydroGenerationCost | None = None
-    ramp_up: (
-        Annotated[
-            PowerRate,
-            Field(ge=0, description="Ramping rate on the positve direction."),
-        ]
-        | None
-    ) = None
-    ramp_down: (
-        Annotated[
-            PowerRate,
-            Field(ge=0, description="Ramping rate on the negative direction."),
-        ]
-        | None
-    ) = None
+    ramp_limits: UpDown | None = None
+    time_limits: UpDown | None = None
 
 
 class HydroFix(HydroGen):
@@ -233,6 +222,20 @@ class HydroEnergyReservoir(HydroGen):
 class HydroPumpedStorage(HydroGen):
     """Class representing pumped hydro generators."""
 
+    rating_pump: Annotated[
+        ApparentPower | None,
+        Field(ge=0, description="Maximum output power rating of the unit when pumping (MVA)."),
+    ] = ApparentPower(1, "MVA")
+    ramp_limits: UpDown | None = None
+    time_limits: UpDown | None = None
+    ramp_limits_pump: UpDown | None = None
+    time_limits_pump: UpDown | None = None
+    active_power_limits_pump: Annotated[
+        MinMax, Field(description="Active power limits of the unit when pumping (MW).")
+    ] = MinMax(min=0.0, max=1.0)
+    reactive_power_limits_pump: Annotated[
+        MinMax | None, Field(description="Reactive power limits of the unit when pumping (MVAr).")
+    ] = MinMax(min=-1.0, max=1.0)
     operation_cost: HydroGenerationCost | StorageCost | None = None
     storage_duration: (
         Annotated[
@@ -240,42 +243,56 @@ class HydroPumpedStorage(HydroGen):
             Field(description="Storage duration in hours."),
         ]
         | None
-    ) = None
+    ) = Time(10, "h")
     initial_volume: (
         Annotated[Energy, Field(gt=0, description="Initial water volume or percentage.")] | None
     ) = None
+    initial_storage: UpDown = UpDown(up=0.5, down=0.5)
     storage_capacity: Annotated[
         UpDown,
         Field(description="Total water volume or percentage."),
-    ]
-    min_storage_capacity: (
-        Annotated[
-            Energy,
-            Field(description="Minimum water volume or percentage."),
-        ]
-        | None
-    ) = None
-    pump_efficiency: Annotated[Percentage, Field(ge=0, le=1, description="Pumping efficiency.")] | None = None
+    ] = UpDown(up=0.0, down=0.0)
+    storage_target: UpDown = UpDown(up=1, down=0)
+    pump_efficiency: Annotated[Percentage, Field(ge=0, le=1, description="Pumping efficiency.")] = Percentage(
+        85, "%"
+    )
     pump_load: (
         Annotated[
             ActivePower,
             Field(description="Load related to the usage of the pump."),
         ]
         | None
-    ) = None
+    ) = ActivePower(1, "MW")
+    conversion_factor: float = 1.0
+    inflow: float = 0.0
+    outflow: float = 0.0
 
     @classmethod
     def example(cls) -> "HydroPumpedStorage":
         return HydroPumpedStorage(
             name="HydroPumpedStorage",
             active_power=ActivePower(100, "MW"),
+            rating=ApparentPower(100, "MVA"),
+            rating_pump=ApparentPower(100, "MVA"),
             pump_load=ActivePower(100, "MW"),
+            ramp_limits=UpDown(up=0, down=0),
+            time_limits=UpDown(up=0, down=0),
+            ramp_limits_pump=UpDown(up=0, down=0),
+            time_limits_pump=UpDown(up=0, down=0),
+            active_power_limits=MinMax(min=0, max=100),
+            active_power_limits_pump=MinMax(min=0, max=100),
+            reactive_power_limits=MinMax(min=0, max=100),
+            reactive_power_limits_pump=MinMax(min=0, max=100),
             bus=ACBus.example(),
             prime_mover_type=PrimeMoversType.PS,
             storage_duration=Time(10, "h"),
+            initial_storage=UpDown(up=500, down=500),
+            storage_target=UpDown(up=1000, down=0),
             storage_capacity=UpDown(up=100, down=100),
-            min_storage_capacity=Energy(10, "MWh"),
             pump_efficiency=Percentage(85, "%"),
+            conversion_factor=1.0,
+            inflow=0.0,
+            outflow=0.0,
             initial_volume=Energy(500, "MWh"),
             ext={"description": "Pumped hydro unit with 10 hour of duration"},
         )
@@ -306,6 +323,8 @@ class ThermalStandard(ThermalGen):
             bus=ACBus.example(),
             fuel=ThermalFuels.NATURAL_GAS,
             active_power=100.0 * ureg.MW,
+            active_power_limits=MinMax(min=0, max=100),
+            operation_cost=ThermalGenerationCost.example(),
             ext={"Additional data": "Additional value"},
         )
 

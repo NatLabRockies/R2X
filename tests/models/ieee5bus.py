@@ -43,9 +43,9 @@ def ieee5bus() -> System:
     initial_time = datetime(year=2012, month=1, day=1)
     ts = SingleTimeSeries.from_array(
         data=range(0, 8760),
-        initial_time=initial_time,
+        initial_timestamp=initial_time,
         resolution=timedelta(hours=1),
-        variable_name="rated_capacity",
+        name="rated_capacity",
     )
     solar_pv_01 = RenewableDispatch(
         name="SolarPV1",
