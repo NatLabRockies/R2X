@@ -170,6 +170,7 @@ class RenewableNonDispatch(RenewableGen):
 
 class HydroGen(Generator):
     """Hydroelectric generator."""
+    hydro_budget: float | None = None
 
 
 class HydroDispatch(HydroGen):

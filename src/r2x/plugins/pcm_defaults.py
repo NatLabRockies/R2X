@@ -132,16 +132,14 @@ def update_system(
 
         # I do not like this implementation.
         values_to_add["planned_outage_rate"] = (
-            getattr(component, "planned_outage_rate", None)
-            or BaseQuantity(wecc_data_row.get("maintenance_rate"), "%")
+            BaseQuantity(wecc_data_row.get("maintenance_rate"), "%")
             if wecc_data_row.get("maintenance_rate")
-            else None
+            else getattr(component, "planned_outage_rate", None)
         )
         values_to_add["forced_outage_rate"] = (
-            getattr(component, "forced_outage_rate", None)
-            or BaseQuantity(wecc_data_row.get("forced_outage_rate"), "%")
+            BaseQuantity(wecc_data_row.get("forced_outage_rate"), "%")
             if wecc_data_row.get("forced_outage_rate")
-            else None
+            else getattr(component, "forced_outage_rate", None)
         )
         values_to_add["ramp_up"] = (
             getattr(component, "active_power")
@@ -198,5 +196,8 @@ def update_system(
 
         if vom_cost := wecc_data_row.get("vom_cost"):
             component.operation_cost.variable.vom_cost.function_data.proportional_term = vom_cost
+
+        if hydro_budget := wecc_data_row.get('max_energy_day'):
+            component.hydro_budget = hydro_budget
 
     return system
