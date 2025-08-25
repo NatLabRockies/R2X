@@ -219,10 +219,8 @@ class PlexosExporter(BaseExporter):
                 time_series_property["Load"] = "0"
             case RenewableDispatch():
                 time_series_property["Rating"] = "0"
-                time_series_property["Load Subtracter"] = "0"
             case RenewableNonDispatch():
                 time_series_property["Rating"] = "0"
-                time_series_property["Load Subtracter"] = "0"
             case Reserve():
                 match component.reserve_type:
                     case ReserveType.SPINNING:

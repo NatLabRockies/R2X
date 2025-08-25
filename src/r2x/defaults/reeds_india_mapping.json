@@ -128,7 +128,7 @@
     "keep_case": true,
     "optional": false
   },
-  "hydro_cf": {
+  "hydro_cf_seasonal": {
     "column_mapping": {
       "Value": "hydro_cf",
       "i": "tech",
@@ -141,6 +141,13 @@
     "input": true,
     "keep_case": true,
     "optional": false
+  },
+  "hydro_cf_daily": {
+    "description": "Daily capacity factor for hydro technologies.",
+    "fname": "combined_hydro_CUF_2021.csv",
+    "input": true,
+    "keep_case": true,
+    "optional": true
   },
   "ilr": {
     "column_mapping": {

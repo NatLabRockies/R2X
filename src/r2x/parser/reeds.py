@@ -138,8 +138,7 @@ class ReEDSParser(BaseParser):
 
         # Time series construction
         self._construct_load()
-        self._construct_hydro_budgets()
-        self._construct_hydro_rating_profiles()
+        self._construct_hydro_profiles()
         self._construct_cf_time_series()
         self._construct_reserve_provision()
         self._construct_hybrid_systems()
@@ -781,104 +780,82 @@ class ReEDSParser(BaseParser):
             # Add total provision as requirement
             setattr(reserve, "max_requirement", total_provision.sum())
 
-    def _construct_hydro_budgets(self) -> None:
+    def _construct_hydro_profiles(self) -> None:
         """Hydro budgets in ReEDS."""
-        logger.debug("Adding hydro budgets.")
+        # Get user-provided daily hydro CFs
+        hydro_cf_daily = self.get_data("hydro_cf_daily")
+        tech_symbol_map = {
+            "HYDRO-PONDAGE": "r(p)",
+            "HYDRO-ROR": "r",
+            "HYDRO-STORAGE": "s",
+            "NEPAL_STORAGE": "s"
+        }
+
+        # Get seasonal hydro CFs from ReEDS
         month_hrs = read_csv("month_hrs.csv").collect()
         month_hrs = month_hrs.filter(pl.col("model") == self.config.input_model)
         month_map = self.reeds_config.defaults["month_map"]
 
-        hydro_cf = self.get_data("hydro_cf")
-        hydro_cf = hydro_cf.with_columns(
+        hydro_cf_seasonal = self.get_data("hydro_cf_seasonal")
+        hydro_cf_seasonal = hydro_cf_seasonal.with_columns(
             month=pl.col("month").map_elements(lambda row: month_map.get(row, row), return_dtype=pl.String)
         )
         month_hrs = month_hrs.rename({"szn": "season"})
-        hydro_data = pl_left_multi_join(
-            hydro_cf,
+        hydro_cf_seasonal = pl_left_multi_join(
+            hydro_cf_seasonal,
             month_hrs,
         )
         month_of_day = np.array(
             [dt.astype("datetime64[M]").astype(int) % 12 + 1 for dt in self.daily_time_index]
         )
-        initial_time = datetime(self.weather_year, 1, 1)
-        for generator in self.system.get_components(HydroDispatch):
-            # NOTE: Canadian imports need another file for the ratings, but we process it as
-            # HydroEnergyReservoir since it is the way ReEDS model it.
-            if generator.category == "can-imports":
-                continue
+
+        for generator in self.system.get_components(HydroGen):
             tech = generator.ext["reeds_tech"]
             generator_bus = generator.bus
             assert generator_bus
-            region = generator_bus.name
-            hydro_ratings = hydro_data.filter((pl.col("tech") == tech) & (pl.col("region") == region))
 
-            hourly_time_series = np.zeros(len(month_of_day), dtype=float)
-
-            for row in hydro_ratings.iter_rows(named=True):
-                month = row["month"]
-                if isinstance(month, str):
-                    month = int(month.removeprefix("M"))
-
-                month_max_budget = (
-                    generator.active_power * Percentage(row["hydro_cf"], "") * Time(row["hrs"], "h")
+            try:
+                tech_symbol = tech_symbol_map[tech]
+                region = (
+                    generator_bus.name.upper()
+                    .replace('_', ' ')
+                    .replace('JAMMU KASHMIR', 'JAMMU AND KASHMIR')
                 )
-                daily_max_budget = month_max_budget / (row["hrs"] / 24)
-                hourly_time_series[month_of_day == month] = daily_max_budget.magnitude
+                hydro_ratings = hydro_cf_daily[f"{region}_{tech_symbol}_CUF"][:-1]
+                daily_rated_capacity = generator.active_power * Percentage(hydro_ratings, "")
+            except:
+                region = generator_bus.name
+                logger.warning(f"No daily hydro CFs specified for {tech} in {region}.")
+                hydro_ratings = hydro_cf_seasonal.filter(
+                    (pl.col("tech") == tech) & (pl.col("region") == region)
+                )
+                daily_rated_capacity = np.zeros(len(month_of_day), dtype=float)
 
-            ts = SingleTimeSeries.from_array(
-                Energy(hourly_time_series / 1e3, "GWh"),
-                "hydro_budget",
-                initial_time=initial_time,
+                for row in hydro_ratings.iter_rows(named=True):
+                    month = row["month"]
+                    if isinstance(month, str):
+                        month = int(month.removeprefix("M"))
+
+                    daily_rated_capacity[month_of_day == month] = (
+                        generator.active_power * Percentage(row["hydro_cf"], "")
+                    )
+
+            rated_capacity_ts = SingleTimeSeries.from_array(
+                daily_rated_capacity,
+                "max_active_power",
+                initial_time=datetime(self.weather_year, 1, 1),
                 resolution=timedelta(days=1),
             )
-            self.system.add_time_series(ts, generator)
+            self.system.add_time_series(rated_capacity_ts, generator)
 
-        return None
-
-    def _construct_hydro_rating_profiles(self) -> None:
-        logger.debug("Adding hydro rating profiles.")
-        month_hrs = read_csv("month_hrs.csv").collect()
-        month_hrs = month_hrs.filter(pl.col("model") == self.config.input_model).rename({"szn": "season"})
-        month_map = self.reeds_config.defaults["month_map"]
-
-        hydro_cf = self.get_data("hydro_cf")
-        hydro_cf = hydro_cf.with_columns(
-            month=pl.col("month").map_elements(lambda row: month_map.get(row, row), return_dtype=pl.String)
-        )
-        hydro_data = pl_left_multi_join(
-            hydro_cf,
-            month_hrs,
-        )
-        month_of_hour = np.array(
-            [dt.astype("datetime64[M]").astype(int) % 12 + 1 for dt in self.hourly_time_index]
-        )
-        initial_time = datetime(self.weather_year, 1, 1)
-        for generator in self.system.get_components(HydroEnergyReservoir):
-            tech = generator.ext["reeds_tech"]
-            generator_bus = generator.bus
-            assert generator_bus is not None
-            region = generator_bus.name
-            generator.inflow = 0.0
-            generator.initial_storage = generator.initial_energy
-            generator.storage_capacity = Energy(0.0, "MWh")
-            generator.storage_target = Energy(0.0, "MWh")
-
-            hourly_time_series = np.zeros(len(month_of_hour), dtype=float)
-            hydro_ratings = hydro_data.filter((pl.col("tech") == tech) & (pl.col("region") == region))
-            for row in hydro_ratings.iter_rows(named=True):
-                month = row["month"]
-                if isinstance(month, str):
-                    month = int(month.removeprefix("M"))
-                month_indices = month_of_hour == month
-                rating = generator.active_power * Percentage(row["hydro_cf"], "")
-                hourly_time_series[month_indices] = rating.magnitude
-            ts = SingleTimeSeries.from_array(
-                ActivePower(hourly_time_series, "MW"),
-                "max_active_power",
-                initial_time=initial_time,
-                resolution=timedelta(hours=1),
+            max_energy_ts = SingleTimeSeries.from_array(
+                Energy(daily_rated_capacity * 24 / 1e3, "GWh"),
+                "hydro_budget",
+                initial_time=datetime(self.weather_year, 1, 1),
+                resolution=timedelta(days=1),
             )
-            self.system.add_time_series(ts, generator)
+            self.system.add_time_series(max_energy_ts, generator)
+
         return None
 
     def _construct_hybrid_systems(self):

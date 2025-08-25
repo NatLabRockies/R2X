@@ -197,7 +197,4 @@ def update_system(
         if vom_cost := wecc_data_row.get("vom_cost"):
             component.operation_cost.variable.vom_cost.function_data.proportional_term = vom_cost
 
-        if hydro_budget := wecc_data_row.get('max_energy_day'):
-            component.hydro_budget = hydro_budget
-
     return system
