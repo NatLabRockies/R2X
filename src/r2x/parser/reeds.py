@@ -102,12 +102,12 @@ class ReEDSParser(BaseParser):
             f"{self.weather_year}",
             f"{self.weather_year + 1}",
             dtype="datetime64[h]",
-        )[:-24]  # Removing 1 day to match ReEDS convention and converting into a vector
+        )
         self.daily_time_index = np.arange(
             f"{self.weather_year}",
             f"{self.weather_year + 1}",
             dtype="datetime64[D]",
-        )[:-1]  # Removing 1 day to match ReEDS convention and converting into a vector
+        )
 
     def build_system(self) -> System:
         """Create IS system for the ReEDS model."""
@@ -821,7 +821,7 @@ class ReEDSParser(BaseParser):
                     .replace('_', ' ')
                     .replace('JAMMU KASHMIR', 'JAMMU AND KASHMIR')
                 )
-                hydro_ratings = hydro_cf_daily[f"{region}_{tech_symbol}_CUF"][:-1]
+                hydro_ratings = hydro_cf_daily[f"{region}_{tech_symbol}_CUF"]
                 daily_rated_capacity = generator.active_power * Percentage(hydro_ratings, "")
             except:
                 region = generator_bus.name
