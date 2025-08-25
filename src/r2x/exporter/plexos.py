@@ -31,7 +31,7 @@ from r2x.models import (
     Emission,
     EnergyReservoirStorage,
     Generator,
-    HydroDispatch,
+    HydroGen,
     HydroEnergyReservoir,
     HydroPumpedStorage,
     InterruptiblePowerLoad,
@@ -231,7 +231,7 @@ class PlexosExporter(BaseExporter):
                         time_series_property["Min Provision"] = "0"
                     case _:
                         raise NotImplementedError(f"Reserve {component.type} not supported")
-            case HydroDispatch():
+            case HydroGen():
                 variable_name = self.system.get_time_series(component).variable_name
                 if not variable_name:
                     return None

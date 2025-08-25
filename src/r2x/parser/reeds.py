@@ -840,21 +840,23 @@ class ReEDSParser(BaseParser):
                         generator.active_power * Percentage(row["hydro_cf"], "")
                     )
 
-            rated_capacity_ts = SingleTimeSeries.from_array(
-                daily_rated_capacity,
-                "max_active_power",
-                initial_time=datetime(self.weather_year, 1, 1),
-                resolution=timedelta(days=1),
-            )
-            self.system.add_time_series(rated_capacity_ts, generator)
-
-            max_energy_ts = SingleTimeSeries.from_array(
+            ## Only create time series for Max Energy Day (and not Rating),
+            ## as there's currently a bug with handling multiple time series
+            ## for one component.
+            ts = SingleTimeSeries.from_array(
                 Energy(daily_rated_capacity * 24 / 1e3, "GWh"),
                 "hydro_budget",
                 initial_time=datetime(self.weather_year, 1, 1),
                 resolution=timedelta(days=1),
             )
-            self.system.add_time_series(max_energy_ts, generator)
+            self.system.add_time_series(ts, generator)
+            # rated_capacity_ts = SingleTimeSeries.from_array(
+            #     daily_rated_capacity,
+            #     "max_active_power",
+            #     initial_time=datetime(self.weather_year, 1, 1),
+            #     resolution=timedelta(days=1),
+            # )
+            # self.system.add_time_series(rated_capacity_ts, generator)
 
         return None
 
