@@ -1,6 +1,3 @@
-<img src="https://www.nrel.gov/client/img/icon-manufacturing.svg" alt="SWC" align="left" width="192px" height="192px"/>
-<img align="left" width="0" height="192px" hspace="10"/>
-
 ### R2X
 > Model translation parsing tool (ReEDS to X)
 >
@@ -11,9 +8,6 @@
 > [![codecov](https://codecov.io/gh/NREL/r2x/branch/main/graph/badge.svg)](https://codecov.io/gh/NREL/r2x)
 > [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 > [![Documentation](https://github.com/NREL/R2X/actions/workflows/docs-build.yaml/badge.svg?branch=main)](https://nrel.github.io/R2X/)
-<br/>
-<br/>
-<br/>
 
 
 ## Table of contents

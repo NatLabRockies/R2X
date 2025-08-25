@@ -155,26 +155,26 @@ def pjm_2area() -> System:
     system.add_component(wind_01)
 
     # Add renewable profiles
-    initial_time = datetime(year=2024, month=1, day=1)
+    initial_timestamp = datetime(year=2024, month=1, day=1)
     solar_array = pjm_2area_components["solar_ts"]  # Data is hourly resolution
     wind_array = pjm_2area_components["wind_ts"]  # Data is hourly resolution
     solar_ts = SingleTimeSeries.from_array(
         data=solar_array,
-        initial_time=initial_time,
+        initial_timestamp=initial_timestamp,
         resolution=timedelta(hours=1),
-        variable_name="max_active_power",
+        name="max_active_power",
     )
     wind_ts = SingleTimeSeries.from_array(
         data=wind_array,
-        initial_time=initial_time,
+        initial_timestamp=initial_timestamp,
         resolution=timedelta(hours=1),
-        variable_name="rated_capacity",
+        name="rated_capacity",
     )
     #
     system.add_time_series(solar_ts, solar_pv_01)
     system.add_time_series(wind_ts, wind_01)
 
-    initial_time = datetime(year=2024, month=1, day=1)
+    initial_timestamp = datetime(year=2024, month=1, day=1)
     for load in pjm_2area_components["load"]:
         load_component = PowerLoad(
             name=load["BusName"],
@@ -183,9 +183,9 @@ def pjm_2area() -> System:
         )
         ld_ts = SingleTimeSeries.from_array(
             data=load["ts"],
-            initial_time=initial_time,
+            initial_timestamp=initial_timestamp,
             resolution=timedelta(hours=1),
-            variable_name="max_active_power",
+            name="max_active_power",
         )
         system.add_component(load_component)
         system.add_time_series(ld_ts, load_component)

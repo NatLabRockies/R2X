@@ -16,6 +16,7 @@ from r2x.config_models import PlexosConfig, ReEDSConfig
 from r2x.enums import ReserveType
 from r2x.exporter.handler import BaseExporter, get_export_properties, get_export_records
 from r2x.exporter.utils import (
+    apply_correct_commit,
     apply_extract_key,
     apply_flatten_key,
     apply_pint_deconstruction,
@@ -44,9 +45,9 @@ from r2x.models import (
 )
 from r2x.models.branch import Line
 from r2x.models.utils import Constraint
+from r2x.plugin_manager import PluginManager
 from r2x.units import get_magnitude
 from r2x.utils import custom_attrgetter, get_enum_from_string, read_json
-from r2x.plugin_manager import PluginManager
 
 NESTED_ATTRIBUTES = {"ext", "bus", "services"}
 TIME_SERIES_PROPERTIES = ["Min Provision", "Static Risk"]
@@ -110,6 +111,7 @@ class PlexosExporter(BaseExporter):
     def _setup_plexos_configuration(self) -> None:
         self.property_map = self.output_config.defaults["plexos_property_map"]
         self.valid_properties = self.output_config.defaults["valid_properties"]
+        self.commit_map = self.output_config.defaults["commit_map"]
         self.default_units = self.output_config.defaults["default_units"]
         self.reserve_types = self.output_config.defaults["reserve_types"]
 
@@ -167,7 +169,7 @@ class PlexosExporter(BaseExporter):
         config_dict["name"] = self.config.name
         csv_fname = config_dict.get("time_series_fname", "${component_type}_${name}_${weather_year}.csv")
         string_template = string.Template(csv_fname)
-        config_dict["component_type"] = f"{component.__class__.__name__}_{ts_metadata.variable_name}"
+        config_dict["component_type"] = f"{component.__class__.__name__}_{ts_metadata.name}"
         config_dict["weather_year"] = self.weather_year
         csv_fname = string_template.safe_substitute(config_dict)
         csv_fpath = self.ts_directory / csv_fname
@@ -196,19 +198,19 @@ class PlexosExporter(BaseExporter):
                     case _:
                         raise NotImplementedError(f"Reserve {component.type} not supported")
             case HydroDispatch():
-                variable_name = self.system.get_time_series(component).variable_name
-                if not variable_name:
+                name = self.system.get_time_series(component).name
+                if not name:
                     return None
-                property_name = self.property_map.get(variable_name, None)
+                property_name = self.property_map.get(name, None)
                 if property_name:
                     time_series_property[property_name] = "0"
             case HydroEnergyReservoir():
                 time_series_property["Fixed Load"] = "0"
             case ThermalStandard():
-                variable_name = self.system.get_time_series(component).variable_name
-                if not variable_name:
+                name = self.system.get_time_series(component).name
+                if not name:
                     return None
-                property_name = self.property_map.get(variable_name, None)
+                property_name = self.property_map.get(name, None)
                 if property_name:
                     time_series_property[property_name] = "0"
             case _:
@@ -266,6 +268,7 @@ class PlexosExporter(BaseExporter):
                 keys_to_flatten=KEYS_TO_FLATTEN,
             ),
             partial(apply_property_map, property_map=property_map),
+            partial(apply_correct_commit, commit_map=self.commit_map),
             partial(apply_pint_deconstruction, unit_map=self.default_units),
             partial(apply_valid_properties, valid_properties=collection_properties, add_name=True),
         )

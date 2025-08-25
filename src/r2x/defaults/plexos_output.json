@@ -1,5 +1,10 @@
 {
   "VoLL": 1000000.0,
+  "commit_map": {
+    "Commit": {
+      "False": -1
+    }
+  },
   "decomposition_method": 1,
   "default_num_units": 1,
   "default_units": {

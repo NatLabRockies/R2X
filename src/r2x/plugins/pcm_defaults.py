@@ -1,18 +1,17 @@
 """Augment results from CEM with PCM defaults."""
 
 from argparse import ArgumentParser, _ArgumentGroup
+from operator import attrgetter
 
-from infrasys.base_quantity import BaseQuantity
-import pandas as pd
 from loguru import logger
 
-from r2x.models import Generator
 from r2x.api import System
 from r2x.config_scenario import Scenario
+from r2x.models import Generator
 from r2x.parser.handler import BaseParser
-from r2x.units import ActivePower
-from r2x.utils import read_json
 from r2x.plugin_manager import PluginManager
+from r2x.units import get_magnitude
+from r2x.utils import read_json
 
 
 @PluginManager.register_cli("system_update", "pcm_defaults")
@@ -22,11 +21,20 @@ def cli_arguments(parser: ArgumentParser | _ArgumentGroup):
         "--pcm-defaults-fpath",
         help="File containing the defaults",
     )
+    parser.add_argument(
+        "--pcm-defaults-override",
+        action="store_true",
+        help="Override all PCM default properties.",
+    )
 
 
 @PluginManager.register_system_update("pcm_defaults")
 def update_system(
-    config: Scenario, system: System, parser: BaseParser, pcm_defaults_fpath: str | None = None
+    config: Scenario,
+    parser: BaseParser | None,
+    system: System,
+    pcm_defaults_fpath: str | None = None,
+    pcm_defaults_override: bool = False,
 ) -> System:
     """Augment data model using PCM defaults dictionary.
 
@@ -38,135 +46,78 @@ def update_system(
         InfraSys system
     pcm_defaults_path
         Path for json file containing the PCM defaults.
+    pcm_defaults_override: bool. Default False.
+        Flag to override all the PCM related fields with the JSON values.
 
     Returns
     -------
         System
+
+    Notes
+    -----
+    The current implementation of this plugin matches the :class:`Component` category field
     """
-    logger.info("Augmenting generators attributes")
-
+    logger.info("Augmenting generators attributes with PCM defaults.")
     assert config.input_config
-    if pcm_defaults_fpath is None:
-        logger.debug("Using {}", config.input_config.defaults["pcm_defaults_fpath"])
-        pcm_defaults = read_json(config.input_config.defaults["pcm_defaults_fpath"])
-    else:
-        logger.debug("Using custom defaults from {}", pcm_defaults_fpath)
-        pcm_defaults: dict = read_json(pcm_defaults_fpath)
+    pcm_defaults_fpath = pcm_defaults_fpath or config.input_config.defaults["pcm_defaults_fpath"]
+    assert pcm_defaults_fpath
+    logger.debug("Using {}", pcm_defaults_fpath)
+    pcm_defaults: dict = read_json(pcm_defaults_fpath)
 
-    reference_data = (
-        pd.DataFrame.from_dict(pcm_defaults)
-        .transpose()
-        .reset_index()
-        .rename(
-            columns={
-                "index": "tech",
-            }
-        )
-    )
-    reference_data.loc[reference_data.tech.str.startswith("battery"), "mean_time_to_repair"] = (
-        config.input_config.defaults["storage_mean_time_to_repair"]
-    )
-    reference_data.loc[reference_data.tech.str.startswith("hyd"), "mean_time_to_repair"] = (
-        config.input_config.defaults["hydro_mean_time_to_repair"]
-    )
-    reference_data.loc[reference_data.tech.str.startswith("hyd"), "max_ramp_up_percentage"] = (
-        config.input_config.defaults["hydro_ramp_rate"] * 100
-    )
-    reference_data.loc[reference_data.tech.str.endswith("nd"), "min_stable_level_percentage"] = 1
+    needs_multiplication = {"start_cost_per_MW", "ramp_limits"}
 
-    # Rename columns on the file itself and remove this
-    reference_data = reference_data.loc[
-        :,
-        [
-            "tech",
-            "min_stable_level_percentage",
-            "start_cost_per_MW",
-            "max_ramp_up_percentage",
-            "mean_time_to_repair",
-            "min_down_time",
-            "min_up_time",
-            "maintenance_rate",
-            "forced_outage_rate",
-        ],
-    ]
-    dtypes = {
-        "min_stable_level_percentage": "float",
-        "start_cost_per_MW": "float",
-        "max_ramp_up_percentage": "float",
-        "mean_time_to_repair": "float",
-        "min_down_time": "float",
-        "min_up_time": "float",
-        "maintenance_rate": "float",
-        "forced_outage_rate": "float",
-    }
-    reference_data = reference_data.astype(dtypes)
+    # We first override the fields that are required for `needs_multiplication` to work correctly.
+    fields_weight = {"active_power_limits": 1}
 
-    reference_techs = reference_data.tech.unique()
-
+    # NOTE: Matching names provides the order that we do the mapping for. First
+    # we try to find the name of the generator, if not we rely on reeds category
+    # category and finally if we did not find a match the broader category
     for component in system.get_components(Generator):
-        reeds_tech = getattr(component, "ext").get("reeds_tech")
-
-        if reeds_tech not in reference_techs:
+        pcm_values = (
+            pcm_defaults.get(component.name)
+            or pcm_defaults.get(attrgetter("ext.reeds_tech"))
+            or pcm_defaults.get(component.category)
+        )
+        if not pcm_values:
+            msg = "Could not find a matching category for {}. "
+            msg += "Skipping generator from pcm_defaults plugin."
+            logger.debug(msg, component.label)
             continue
 
-        wecc_data_row = (
-            reference_data.loc[reference_data.tech.str.startswith(reeds_tech)]
-            .dropna(axis=1)
-            .to_dict(orient="records")[0]
+        msg = "Applying PCM defaults to {}"
+        logger.debug(msg, component.label)
+        fields_to_replace = (
+            [
+                key
+                for key, value in component.model_dump().items()
+                if value is None
+                if key in pcm_values.keys()
+            ]
+            if not pcm_defaults_override
+            else [key for key in pcm_values.keys() if key in type(component).model_fields]
         )
-        values_to_add = {}
-
-        # I do not like this implementation.
-        values_to_add["planned_outage_rate"] = (
-            getattr(component, "planned_outage_rate", None)
-            or BaseQuantity(wecc_data_row.get("maintenance_rate"), "%")
-            if wecc_data_row.get("maintenance_rate")
-            else None
-        )
-        values_to_add["forced_outage_rate"] = (
-            getattr(component, "forced_outage_rate", None)
-            or BaseQuantity(wecc_data_row.get("forced_outage_rate"), "%")
-            if wecc_data_row.get("forced_outage_rate")
-            else None
-        )
-        values_to_add["ramp_up"] = (
-            getattr(component, "active_power")
-            * BaseQuantity(wecc_data_row.get("max_ramp_up_percentage"), "1/min")
-            if wecc_data_row.get("max_ramp_up_percentage")
-            else None
-        )
-        values_to_add["ramp_down"] = (
-            getattr(component, "active_power")
-            * BaseQuantity(wecc_data_row.get("max_ramp_up_percentage"), "1/min")
-            if wecc_data_row.get("max_ramp_up_percentage")
-            else None
-        )
-        values_to_add["min_rated_capacity"] = (
-            getattr(component, "active_power")
-            * BaseQuantity(wecc_data_row.get("min_stable_level_percentage"), "")
-            if wecc_data_row.get("min_stable_level_percentage")
-            else ActivePower(0, "MW")
-        )
-        values_to_add["mean_time_to_repair"] = (
-            BaseQuantity(wecc_data_row.get("mean_time_to_repair"), "h")
-            if wecc_data_row.get("mean_time_to_repair")
-            else None
-        )
-        values_to_add["min_up_time"] = (
-            BaseQuantity(wecc_data_row.get("min_up_time"), "h") if wecc_data_row.get("min_up_time") else None
-        )
-        values_to_add["min_down_time"] = (
-            BaseQuantity(wecc_data_row.get("min_down_time"), "h")
-            if wecc_data_row.get("min_down_time")
-            else None
-        )
-        values_to_add["startup_cost"] = (
-            getattr(component, "active_power")
-            * BaseQuantity(wecc_data_row.get("start_cost_per_MW"), "usd/MW")
-            if wecc_data_row.get("start_cost_per_MW")
-            else None
-        )
-        valid_fields = {key: value for key, value in values_to_add.items() if key in component.model_fields}
-        for key, value in valid_fields.items():
-            setattr(component, key, value)
+        for field in sorted(
+            fields_to_replace, key=lambda x: fields_weight[x] if x in fields_weight else -999
+        ):
+            value = pcm_values[field]
+            if _check_if_null(value):
+                continue
+            if field in needs_multiplication:
+                value = _multiply_value(get_magnitude(component.base_power or component.active_power), value)
+            # NOTE: We need to move this to the operation cost instead.
+            if field == "start_cost_per_MW":
+                field = "startup_cost"
+            setattr(component, field, value)
     return system
+
+
+def _multiply_value(base, val):
+    if isinstance(val, dict):
+        return {k: base * v for k, v in val.items()}
+    return base * val
+
+
+def _check_if_null(val):
+    if isinstance(val, dict):
+        return all(not v for v in val.values())
+    return val is None

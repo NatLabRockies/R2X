@@ -129,6 +129,7 @@
     "o-g-s": "ThermalStandard",
     "pumped-hydro": "HydroPumpedStorage",
     "pvb": "RenewableDispatch",
+    "smr": "ThermalStandard",
     "upv": "RenewableDispatch",
     "wind-ofs": "RenewableDispatch",
     "wind-ons": "RenewableDispatch"

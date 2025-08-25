@@ -121,10 +121,10 @@ class BaseExporter(ABC):
         for component in self.system.iter_all_components():
             if self.system.has_time_series(component):
                 for ts_metadata in self.system.time_series.list_time_series_metadata(component):
-                    ts_component_name = f"{component.__class__.__name__}_{ts_metadata.variable_name}"
+                    ts_component_name = f"{component.__class__.__name__}_{ts_metadata.name}"
                     try:
                         self.time_series_objects[ts_component_name].append(
-                            self.system.get_time_series(component, variable_name=ts_metadata.variable_name)
+                            self.system.get_time_series(component, name=ts_metadata.name)
                         )
                     except:  # noqa: E722
                         continue
@@ -197,7 +197,7 @@ class BaseExporter(ABC):
         time_series_folder: str = "Data",
         time_series_fname: str | None = None,
         time_series_type: type[SingleTimeSeries] = SingleTimeSeries,
-        variable_name: str | None = None,
+        name: str | None = None,
         **user_attributes: str,
     ):
         """Export time series objects to CSV files.
@@ -244,14 +244,14 @@ class BaseExporter(ABC):
             filter_func=lambda x: system.has_time_series(
                 x,
                 time_series_type=time_series_type,
-                variable_name=variable_name,
+                name=name,
                 **user_attributes,
             ),
         ):
             for ts_metadata in system.time_series.list_time_series_metadata(
-                component, time_series_type=time_series_type, variable_name=variable_name, **user_attributes
+                component, time_series_type=time_series_type, name=name, **user_attributes
             ):
-                ts_component_name = f"{component.__class__.__name__}_{ts_metadata.variable_name}"
+                ts_component_name = f"{component.__class__.__name__}_{ts_metadata.name}"
                 time_series_headers[ts_component_name].append(component.name)
                 time_series_list[ts_component_name].append(
                     system._time_series_mgr._get_by_metadata(ts_metadata)

@@ -64,8 +64,8 @@ def test_create_time_series_pointers(sienna_exporter, tmp_path):
     exporter = sienna_exporter
 
     assert create_timeseries_pointers(
-        config=exporter.config,
-        system=exporter.system,
+        exporter.config,
+        exporter.system,
         output_folder=exporter.config.output_folder,
         reference_year=exporter.year,
     )
