@@ -1,0 +1,9 @@
+[project]
+name = "r2x_{{ cookiecutter.plugin_name }}"
+version = "0.1.0"
+description = "R2X external plugin for {{ cookiecutter.plugin_name }}"
+dependencies = ["r2x"]
+requires-python = ">=3.10"
+
+[project.entry-points."r2x_plugin"]
+{{ cookiecutter.plugin_name }} = "{{ cookiecutter.plugin_name }}.plugin:create_plugin_components"

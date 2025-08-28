@@ -8,7 +8,7 @@ import traceback
 
 from .cli_functions import base_cli
 from .logger import setup_logging
-from .runner import init, run
+from .runner import init, run, create_plugin_template
 from .utils import read_user_dict
 
 
@@ -63,6 +63,19 @@ def cli_commands(cli_args: dict, user_dict: dict | None = None) -> None:
         run(cli_args, user_dict=user_dict)
     elif cli_args["command"] == "init":
         init(cli_args)
+    elif cli_args["command"] == "plugin":
+
+        plugin_name =cli_args.get("plugin_name",None)
+        plugin_path = cli_args.get("plugin_path",None)
+
+        if not plugin_name:
+            msg = "Please provide a plugin name."
+            raise(ValueError(msg))
+        if not plugin_path:
+            msg = "Please provide a plugin path."
+            raise(ValueError(msg))
+
+        create_plugin_template(plugin_name, plugin_path)
     else:
         raise NotImplementedError
     return

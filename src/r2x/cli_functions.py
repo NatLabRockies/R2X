@@ -145,5 +145,13 @@ def base_cli() -> argparse.ArgumentParser:
     run_command.add_argument("--flags", nargs="*", dest="feature_flags", action=Flags, help="Feature flags")
     parser.add_argument("--verbose", "-v", action="count", default=0, help="Run with additional verbosity")
     parser.add_argument("--version", "-V", action="version", version=f"R2X version: {__version__}")
+
+    # plugin commands
+    plugin_command = subparsers.add_parser("plugin", help="Manage Plugins")
+    plugin_subcommands = plugin_command.add_subparsers(dest="subcommand", help="Plugin management subcommands")
+    create_subcommand = plugin_subcommands.add_parser("create",help="Create a new external plugin project")
+    create_subcommand.add_argument("plugin_name", help="Name of the plugin")
+    create_subcommand.add_argument("--plugin-path", default=os.getcwd(), help="Directory to create the plugin")
+
     _ = get_additional_arguments(run_command)
     return parser

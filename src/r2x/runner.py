@@ -212,3 +212,40 @@ def init(cli_args: dict) -> None:
         file_path = package_path / "user_dict.yaml"
         shutil.copy(file_path, Path(path) / "user_dict.yaml")
     return
+
+
+
+def create_plugin_template(plugin_name: str, plugin_path: str) -> None:
+    """Generate a new plugin using the Cookiecutter template.
+
+    Args:
+        plugin_name: Name of the plugin to create (e.g., "myplugin")
+        path: Directory where to create the plugin
+    """
+    try:
+        from cookiecutter.main import cookiecutter
+    except ImportError:
+        raise ImportError("Cookiecutter is not installed. Please install it using 'pip install cookiecutter'.")
+
+    logger.info(f"Creating plugin {plugin_name} in directory {plugin_path}");
+
+    # Path to the template directory
+    template_path = Path(__file__).parent / "templates" / "plugin"
+
+    if not template_path.exists():
+        raise RuntimeError(
+            f"Template directory not found at {template_path}. "
+            "Please ensure the template is installed."
+        )
+
+    # Run Cookiecutter
+    cookiecutter(
+        str(template_path.resolve()),
+        extra_context={"plugin_name": plugin_name},
+        no_input=True,
+        output_dir=plugin_path,
+        overwrite_if_exists=False,
+    )
+
+    plugin_dir = Path(plugin_path) / f"{plugin_name}"
+    print(f"Successfully created plugin at {plugin_dir}")
