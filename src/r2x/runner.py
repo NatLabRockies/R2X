@@ -225,9 +225,9 @@ def create_plugin_template(plugin_name: str, plugin_path: str) -> None:
     try:
         from cookiecutter.main import cookiecutter
     except ImportError:
-        raise ImportError("Cookiecutter is not installed. Please install it using 'pip install cookiecutter'.")
+        raise ImportError("Cookiecutter is not installed. Please install using 'pip install cookiecutter'.")
 
-    logger.info(f"Creating plugin {plugin_name} in directory {plugin_path}");
+    logger.info(f"Creating plugin {plugin_name} in directory {plugin_path}")
 
     # Path to the template directory
     template_path = Path(__file__).parent / "templates" / "plugin"

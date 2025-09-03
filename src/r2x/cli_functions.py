@@ -148,10 +148,10 @@ def base_cli() -> argparse.ArgumentParser:
 
     # plugin commands
     plugin_command = subparsers.add_parser("plugin", help="Manage Plugins")
-    plugin_subcommands = plugin_command.add_subparsers(dest="subcommand", help="Plugin management subcommands")
+    plugin_subcommands = plugin_command.add_subparsers(dest="subcommand", help="Plugin subcommands")
     create_subcommand = plugin_subcommands.add_parser("create",help="Create a new external plugin project")
     create_subcommand.add_argument("plugin_name", help="Name of the plugin")
-    create_subcommand.add_argument("--plugin-path", default=os.getcwd(), help="Directory to create the plugin")
+    create_subcommand.add_argument("--plugin-path", default=os.getcwd(), help="Directory to create plugin")
 
     _ = get_additional_arguments(run_command)
     return parser

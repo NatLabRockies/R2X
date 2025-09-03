@@ -67,10 +67,8 @@ docs = [
 ]
 
 [tool.mypy]
-exclude = [
-    'plugins',
-]
-ignore_missing_imports=true
+exclude = ['plugins', 'src/r2x/templates']
+ignore_missing_imports = true
 
 # mypy gets a false positive due to having pandas
 [[tool.mypy.overrides]]
@@ -106,6 +104,7 @@ exclude = [
     "dist",
     "site-packages",
     "venv",
+    "src/r2x/templates",
 ]
 
 [tool.ruff.lint]
@@ -142,9 +141,7 @@ docstring-code-line-length = "dynamic"
 [tool.pytest.ini_options]
 addopts = "-vvv"
 testpaths = "tests"
-pythonpath = [
-  "src"
-]
+pythonpath = ["src"]
 markers = [
     "exporters: Tests related to exporters",
     "exporter_utils: Tests related to exporters utils",
