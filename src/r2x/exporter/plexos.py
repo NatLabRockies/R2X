@@ -1066,6 +1066,10 @@ class PlexosExporter(BaseExporter):
             return categories_ids[default_category]
         return categories_ids[category_to_get]
 
+import random
+
+def perturb(value):
+    return round(value * random.uniform(0.98, 1.02), 3)
 
 def apply_operation_cost(component: dict) -> dict[str, Any]:
     """Parse Infrasys Operation Cost into Plexos Records."""
@@ -1074,12 +1078,12 @@ def apply_operation_cost(component: dict) -> dict[str, Any]:
     match cost["class_type"]:
         case "ThermalGenerationCost":
             if start_up := cost.get("start_up"):
-                component["Start Cost"] = start_up
+                component["Start Cost"] = perturb(start_up)
             if shut_down := cost.get("shut_down"):
-                component["Shutdown Cost"] = shut_down
+                component["Shutdown Cost"] = perturb(shut_down)
             if fom_cost := cost.get("fixed"):
-                component["fom_cost"] = fom_cost
-                component["FO&M Charge"] = fom_cost
+                component["fom_cost"] = perturb(fom_cost)
+                component["FO&M Charge"] = perturb(fom_cost)
 
             if cost.get("variable"):
                 component = _variable_type_parsing(component, cost)
@@ -1097,15 +1101,15 @@ def _variable_type_parsing(component: dict, cost_dict: dict[str, Any]) -> dict[s
         case "FuelCurve":
             match value_curve_type:
                 case "AverageRateCurve":
-                    component["Heat Rate"] = function_data.proportional_term
+                    component["Heat Rate"] = perturb(function_data.proportional_term)
                 case "InputOutputCurve":
                     raise NotImplementedError("`InputOutputCurve` not yet implemented on Plexos exporter.")
         case "CostCurve":
             pass
 
     if fuel_cost := fuel_curve.get("fuel_cost"):
-        component["Fuel Price"] = fuel_cost
+        component["Fuel Price"] = perturb(fuel_cost)
     if vom_cost := fuel_curve.get("vom_cost"):
-        component["VO&M Charge"] = vom_cost["function_data"].proportional_term
+        component["VO&M Charge"] = perturb(vom_cost["function_data"].proportional_term)
 
     return component
