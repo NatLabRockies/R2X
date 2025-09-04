@@ -1078,9 +1078,9 @@ def apply_operation_cost(component: dict) -> dict[str, Any]:
     match cost["class_type"]:
         case "ThermalGenerationCost":
             if start_up := cost.get("start_up"):
-                component["Start Cost"] = perturb(start_up)
+                component["Start Cost"] = start_up
             if shut_down := cost.get("shut_down"):
-                component["Shutdown Cost"] = perturb(shut_down)
+                component["Shutdown Cost"] = shut_down
             if fom_cost := cost.get("fixed"):
                 component["fom_cost"] = perturb(fom_cost)
                 component["FO&M Charge"] = perturb(fom_cost)
