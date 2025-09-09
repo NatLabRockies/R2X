@@ -1,9 +1,13 @@
+from copy import deepcopy
+
 import h5py
 import numpy as np
 import pandas as pd
 import pytest
 from _pytest.logging import LogCaptureFixture
 from loguru import logger
+
+from r2x.models import HydroGenerationCost
 
 WEATHER_YEARS = 7
 
@@ -73,3 +77,62 @@ def h5_with_index_names_no_datetime(tmp_path):
         f.create_dataset("index_names", data=["year", "datetime"])
         f.create_dataset("data", data=data)
     return fpath
+
+
+@pytest.fixture
+def hydro_energy_reservoir_component():
+    return {
+        "type": "HydroEnergyReservoir",
+        "name": "Reservoir1",
+        "available": True,
+        "inflow": 10.0,
+        "rating": 1.0,
+        "base_power": 20.0,
+        "initial_energy": 5.0,
+        "storage_capacity": 100.0,
+        "min_storage_capacity": 10.0,
+        "storage_target": 80.0,
+        "ramp_limits": {"up": 5.0, "down": 5.0},
+        "time_limits": {"min_up": 1, "min_down": 1},
+        "bus": {"value": "bus-id-1"},
+        "operation_cost": HydroGenerationCost.example().model_dump(round_trip=True, mode="json"),
+    }
+
+
+@pytest.fixture
+def hydro_pumped_storage_component():
+    return {
+        "type": "HydroPumpedStorage",
+        "name": "PumpedStorage1",
+        "available": True,
+        "inflow": 20.0,
+        "outflow": 5.0,
+        "rating": 100.0,
+        "rating_pump": 80.0,
+        "base_power": 50.0,
+        "initial_energy": 500.0,
+        "storage_capacity": {"up": 1000.0, "down": 0.0},
+        "storage_target": {"up": 800.0, "down": 0.0},
+        "initial_storage": {"up": 500.0, "down": 500.0},
+        "pump_efficiency": 0.85,
+        "ramp_limits": {"up": 10.0, "down": 10.0},
+        "time_limits": {"min_up": 1, "min_down": 1},
+        "ramp_limits_pump": {"up": 5.0, "down": 5.0},
+        "time_limits_pump": {"min_up": 1, "min_down": 1},
+        "bus": {"value": "bus-id-2"},
+        "operation_cost": HydroGenerationCost.example().model_dump(round_trip=True, mode="json"),
+        "conversion_factor": 1.0,
+        "initial_volume": 500.0,
+        "pump_load": 100.0,
+    }
+
+
+@pytest.fixture
+def old_system_data(hydro_energy_reservoir_component, hydro_pumped_storage_component):
+    """Return a system data dict containing both HydroEnergyReservoir and HydroPumpedStorage."""
+    return {
+        "components": [
+            deepcopy(hydro_energy_reservoir_component),
+            deepcopy(hydro_pumped_storage_component),
+        ]
+    }
