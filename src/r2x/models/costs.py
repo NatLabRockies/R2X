@@ -97,3 +97,20 @@ class StorageCost(OperationalCost):
     fixed: Annotated[NonNegativeFloat, Field(description=" Fixed cost of operating the storage system")] = 0.0
     shut_down: Annotated[NonNegativeFloat | None, Field(description="Cost to turn the unit off")] = 0.0
     start_up: Annotated[NonNegativeFloat | None, Field(description="Cost to start the unit.")] = 0.0
+
+
+class HydroReservoirCost(OperationalCost):
+    """An operational cost for HydroReservoirs
+
+    It includes fixed cost for level shortage, surplus and spillage.
+    """
+
+    level_shortage_cost: Annotated[
+        float, Field(description=("Cost incurred by the model for being short of the reservoir level target"))
+    ] = 0.0
+    level_surplus_cost: Annotated[
+        float, Field(description=("Cost incurred by the model for surplus of the reservoir"))
+    ] = 0.0
+    spillage_cost: Annotated[
+        float, Field(description=("Cost incurred by the model for spillage of the reservoir"))
+    ] = 0.0
