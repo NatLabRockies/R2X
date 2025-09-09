@@ -60,6 +60,15 @@ class HydroGenerationCost(OperationalCost):
     ] = 0.0
     variable: CostCurve | None = None
 
+    @classmethod
+    def example(cls) -> "HydroGenerationCost":
+        return HydroGenerationCost(
+            fixed=0.0,
+            variable=CostCurve(
+                value_curve=LinearCurve(10), power_units=UnitSystem.NATURAL_UNITS, vom_cost=LinearCurve(5.0)
+            ),
+        )
+
 
 class ThermalGenerationCost(OperationalCost):
     """An operational cost for thermal generators.
