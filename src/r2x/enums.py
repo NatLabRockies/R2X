@@ -111,3 +111,12 @@ class StorageTechs(StrEnum):
     OTHER_CHEM = "OTHER_CHEM"
     OTHER_MECH = "OTHER_MECH"
     OTHER_THERM = "OTHER_THERM"
+
+
+class ReservoirDataType(StrEnum):
+    """Valid data types for reservoir objects."""
+
+    USABLE_VOLUME = "USABLE_VOLUME"
+    TOTAL_VOLUME = "TOTAL_VOLUME"
+    HEAD = "HEAD"
+    ENERGY = "ENERGY"

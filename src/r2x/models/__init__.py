@@ -13,7 +13,13 @@ from .branch import (
     TwoTerminalHVDCLine,
 )
 from .core import ReserveMap, Service, TransmissionInterfaceMap
-from .costs import HydroGenerationCost, RenewableGenerationCost, StorageCost, ThermalGenerationCost
+from .costs import (
+    HydroGenerationCost,
+    HydroReservoirCost,
+    RenewableGenerationCost,
+    StorageCost,
+    ThermalGenerationCost,
+)
 from .generators import (
     EnergyReservoirStorage,
     Generator,
@@ -22,6 +28,8 @@ from .generators import (
     HydroEnergyReservoir,
     HydroGen,
     HydroPumpedStorage,
+    HydroReservoir,
+    HydroTurbine,
     RenewableDispatch,
     RenewableGen,
     RenewableNonDispatch,

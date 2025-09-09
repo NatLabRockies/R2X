@@ -2,14 +2,24 @@
 
 from typing import Annotated, Any
 
+from infrasys.value_curves import ValueCurve
 from pint import Quantity
 from pydantic import Field, NonNegativeFloat, field_serializer
 
-from r2x.enums import PrimeMoversType, StorageTechs, ThermalFuels
+from r2x.enums import PrimeMoversType, ReservoirDataType, StorageTechs, ThermalFuels
 from r2x.models.core import Device
-from r2x.models.costs import HydroGenerationCost, RenewableGenerationCost, StorageCost, ThermalGenerationCost
+from r2x.models.costs import (
+    CostCurve,
+    HydroGenerationCost,
+    HydroReservoirCost,
+    LinearCurve,
+    RenewableGenerationCost,
+    StorageCost,
+    ThermalGenerationCost,
+    UnitSystem,
+)
 from r2x.models.load import PowerLoad
-from r2x.models.named_tuples import InputOutput, MinMax, StartShut, StartTimeLimits, UpDown
+from r2x.models.named_tuples import InputOutput, MinMax, StartShut, StartTimeLimits, TurbinePump, UpDown
 from r2x.models.topology import ACBus
 from r2x.units import (
     ActivePower,
@@ -411,3 +421,56 @@ class HybridSystem(Device):
     renewable_unit: RenewableGen | None = None
     thermal_unit: ThermalGen | None = None
     electric_load: PowerLoad | None = None
+
+
+class HydroReservoir(Device):
+    name: str
+    available: bool
+    storage_level_limits: MinMax
+    initial_level: float
+    spillage_limits: MinMax | None = None
+    inflow: float
+    outflow: float
+    level_targets: float | None = None
+    travel_time: float | None = None
+    intake_elevation: float
+    head_to_volume_factor: ValueCurve = LinearCurve(0.0)
+    operation_cost: HydroReservoirCost = HydroReservoirCost()
+    level_data_type: ReservoirDataType
+
+
+class HydroTurbine(HydroGen):
+    outflow_limits: MinMax | None = None
+    powerhouse_elevation: float
+    ramp_limits: UpDown | None = None
+    time_limits: UpDown | None = None
+    operation_cost: HydroGenerationCost | None = HydroGenerationCost(
+        fixed=0.0,
+        variable=CostCurve(
+            value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS, vom_cost=LinearCurve(0.0)
+        ),
+    )
+    efficiency: float = 1.0
+    conversion_factor: float = 1.0
+    reservoirs: list[HydroReservoir] = Field(default_factory=list)
+
+
+class HydroPumpTurbine(HydroGen):
+    active_power_limits_pump: MinMax
+    outflow_limits: MinMax | None = None
+    head_reservoir: HydroReservoir
+    tail_reservoir: HydroReservoir
+    powerhouse_elevation: float = 0.0
+    time_limits: UpDown | None = None
+    operation_cost: HydroGenerationCost = HydroGenerationCost(
+        fixed=0.0,
+        variable=CostCurve(
+            value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS, vom_cost=LinearCurve(0.0)
+        ),
+    )
+    active_power_pump: float = 0.0
+    efficiency: TurbinePump = TurbinePump(pump=1.0, turbine=1.0)
+    transition_time: TurbinePump = TurbinePump(pump=0.0, turbine=0.0)
+    minimum_time: TurbinePump = TurbinePump(pump=0.0, turbine=0.0)
+    conversion_factor: float = 1.0
+    prime_mover_type: PrimeMoversType = PrimeMoversType.PS

@@ -41,3 +41,8 @@ class StartTimeLimits(InfraSysBaseModel):
     hot: float | Quantity
     warm: float | Quantity
     cold: float | Quantity
+
+
+class TurbinePump(InfraSysBaseModel):
+    turbine: float | Quantity
+    pump: float | Quantity
