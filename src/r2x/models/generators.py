@@ -19,7 +19,7 @@ from r2x.models.costs import (
     UnitSystem,
 )
 from r2x.models.load import PowerLoad
-from r2x.models.named_tuples import InputOutput, MinMax, StartShut, StartTimeLimits, UpDown
+from r2x.models.named_tuples import InputOutput, MinMax, StartShut, StartTimeLimits, TurbinePump, UpDown
 from r2x.models.topology import ACBus
 from r2x.units import (
     ActivePower,
@@ -453,3 +453,24 @@ class HydroTurbine(HydroGen):
     efficiency: float = 1.0
     conversion_factor: float = 1.0
     reservoirs: list[HydroReservoir] = Field(default_factory=list)
+
+
+class HydroPumpTurbine(HydroGen):
+    active_power_limits_pump: MinMax
+    outflow_limits: MinMax | None = None
+    head_reservoir: HydroReservoir
+    tail_reservoir: HydroReservoir
+    powerhouse_elevation: float = 0.0
+    time_limits: UpDown | None = None
+    operation_cost: HydroGenerationCost = HydroGenerationCost(
+        fixed=0.0,
+        variable=CostCurve(
+            value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS, vom_cost=LinearCurve(0.0)
+        ),
+    )
+    active_power_pump: float = 0.0
+    efficiency: TurbinePump = TurbinePump(pump=1.0, turbine=1.0)
+    transition_time: TurbinePump = TurbinePump(pump=0.0, turbine=0.0)
+    minimum_time: TurbinePump = TurbinePump(pump=0.0, turbine=0.0)
+    conversion_factor: float = 1.0
+    prime_mover_type: PrimeMoversType = PrimeMoversType.PS
