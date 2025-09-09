@@ -81,7 +81,7 @@ def upgrade_handler_for_hydro_reservoirs(system_data: dict[str, Any]) -> None:
             "intake_elevation": ext.get("intake_elevation", 0.0),
             "head_to_volume_factor": ext.get("head_to_volume_factor", {"points": []}),
             "operation_cost": HydroReservoirCost().model_dump(round_trip=True),
-            "level_data_type": str(ReservoirDataType.USABLE_VOLUME),  # NOTE: Is this a good default?
+            "level_data_type": str(ReservoirDataType.ENERGY),  # NOTE: Is this a good default?
             "ext": ext,
         }
 
