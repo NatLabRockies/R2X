@@ -96,7 +96,7 @@ class PlexosConfig(BaseModelConfig):
 class SiennaConfig(BaseModelConfig):
     """Sienna specific configuration."""
 
-    model_config = {'protected_namespaces': ()}
+    model_config = {"protected_namespaces": ()}
 
     model_year: int | None = None
 
