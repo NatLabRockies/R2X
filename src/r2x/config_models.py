@@ -74,6 +74,7 @@ class ReEDSConfig(BaseModelConfig):
 
 class PlexosConfig(BaseModelConfig):
     """Plexos specific configuration."""
+    model_config = {"protected_namespaces": ()}
 
     master_file: str | None = None
     model_name: str | None = None
@@ -84,12 +85,18 @@ class PlexosConfig(BaseModelConfig):
     def get_field_mapping(cls) -> dict[type[BaseModel], dict[str, str]]:
         """Return a dict of {target_class: {target_field: source_field}}."""
         return {
+            PlexosConfig: {
+                "model_year": "model_year",
+                "horizon_year": "horizon_year",
+            },
             SiennaConfig: {"model_year": "model_year"},
         }
 
 
 class SiennaConfig(BaseModelConfig):
     """Sienna specific configuration."""
+
+    model_config = {"protected_namespaces": ()}
 
     model_year: int | None = None
 
