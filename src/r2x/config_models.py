@@ -74,6 +74,7 @@ class ReEDSConfig(BaseModelConfig):
 
 class PlexosConfig(BaseModelConfig):
     """Plexos specific configuration."""
+
     model_config = {"protected_namespaces": ()}
 
     master_file: str | None = None
