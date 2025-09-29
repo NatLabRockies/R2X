@@ -79,7 +79,8 @@ def test_single_turbine_single_reservoir(test_hydro_reservoir_system, hydro_turb
     assert hydro_turbine.reservoirs == [hydro_reservoir]
 
     system.remove_component(hydro_reservoir)
-    assert hydro_turbine.reservoirs == []
+    assert hydro_turbine.reservoirs == [hydro_reservoir]
+    assert hydro_reservoir not in system.get_components(HydroReservoir)
 
 
 def test_multiple_turbines_single_reservoir(bus, hydro_reservoir):

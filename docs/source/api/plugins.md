@@ -121,7 +121,7 @@ r2x run --input-model reeds-US --output-model plexos --plugins pcm_defaults emis
 Many plugins accept additional arguments that can be passed through the CLI:
 
 ```console
-r2x -vv run -i <input_run_path> --input-model reeds-US --output-model plexos --plugins break_gens 
+r2x -vv run -i <input_run_path> --input-model reeds-US --output-model plexos --plugins break_gens
 ```
 
 ```console
