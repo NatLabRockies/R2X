@@ -20,15 +20,29 @@
 .. autopydantic_model:: r2x.models.ACBranch
    :inherited-members: Branch
 
-.. autopydantic_model:: r2x.models.MonitoredLine
+.. autopydantic_model:: r2x.models.AreaInterchange
+   :inherited-members: Branch
+
+.. autopydantic_model:: r2x.models.Line
    :inherited-members: ACBranch
 
-.. autopydantic_model:: r2x.models.TModelHVDCLine
-   :inherited-members: DCBranch
+.. autopydantic_model:: r2x.models.MonitoredLine
+   :inherited-members: ACBranch
 
 .. autopydantic_model:: r2x.models.Transformer2W
    :inherited-members: ACBranch
 
+.. autopydantic_model:: r2x.models.TapTransformer
+   :inherited-members: ACBranch
+
+.. autopydantic_model:: r2x.models.PhaseShiftingTransformer
+   :inherited-members: ACBranch
+
+.. autopydantic_model:: r2x.models.TwoTerminalHVDCLine
+   :inherited-members: ACBranch
+
+.. autopydantic_model:: r2x.models.TModelHVDCLine
+   :inherited-members: DCBranch
 ```
 
 ## Load components
@@ -36,7 +50,11 @@
 ```{eval-rst}
 .. autopydantic_model:: r2x.models.PowerLoad
 
+.. autopydantic_model:: r2x.models.StandardLoad
+
 .. autopydantic_model:: r2x.models.InterruptiblePowerLoad
+
+.. autopydantic_model:: r2x.models.FixedAdmittance
 ```
 
 
@@ -55,10 +73,16 @@
 .. autopydantic_model:: r2x.models.ThermalStandard
    :inherited-members: ThermalGen
 
+.. autopydantic_model:: r2x.models.ThermalMultiStart
+   :inherited-members: ThermalGen
+
 .. autopydantic_model:: r2x.models.HydroDispatch
    :inherited-members: HydroGen
 
 .. autopydantic_model:: r2x.models.HydroEnergyReservoir
+   :inherited-members: HydroGen
+
+.. autopydantic_model:: r2x.models.HydroTurbine
    :inherited-members: HydroGen
 ```
 
@@ -75,6 +99,8 @@
 .. autopydantic_model:: r2x.models.HydroPumpedStorage
    :inherited-members: HydroGen
 
+.. autopydantic_model:: r2x.models.HydroPumpTurbine
+   :inherited-members: HydroGen
 ```
 
 ## Hybrid representation

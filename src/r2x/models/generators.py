@@ -342,9 +342,6 @@ class ThermalStandard(ThermalGen):
 class ThermalMultiStart(ThermalGen):
     """Class representing a MultiStart thermal generator."""
 
-    # TODO(jwright2): Enhance #146 Update to include more comprehensive treatment of ThermalMultiStart
-    # start_time_limits and start_types
-
     status: bool = True
     ramp_limits: UpDown | None = None
     time_limits: UpDown | None = None
