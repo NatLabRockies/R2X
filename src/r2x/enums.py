@@ -19,6 +19,7 @@ class ReserveDirection(StrEnum):
 
     UP = "UP"
     DOWN = "DOWN"
+    SYMMETRIC = "SYMMETRIC"
 
 
 class ACBusTypes(StrEnum):

@@ -49,5 +49,5 @@ from .named_tuples import (
     StartTimeLimits,
     UpDown,
 )
-from .services import Reserve, TransmissionInterface, VariableReserve
+from .services import ConstantReserve, Reserve, TransmissionInterface, VariableReserve
 from .topology import ACBus, Arc, Area, Bus, DCBus, LoadZone
