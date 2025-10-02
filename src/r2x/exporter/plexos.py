@@ -793,27 +793,30 @@ class PlexosExporter(BaseExporter):
         """Add generator objects to the database."""
 
         # Add generator objects excluding batteries
-        def exclude_battery(component):
-            return not isinstance(component, EnergyReservoirStorage)
+        def exclude_batteries_and_small_units(component):
+            return (
+                (not isinstance(component, EnergyReservoirStorage))
+                and (component.active_power.magnitude >= 1)
+            )
 
-        self.add_component_category(Generator, class_enum=ClassEnum.Generator, filter_func=exclude_battery)
+        self.add_component_category(Generator, class_enum=ClassEnum.Generator, filter_func=exclude_batteries_and_small_units)
         self.bulk_insert_objects(
             Generator,
             class_enum=ClassEnum.Generator,
             collection_enum=CollectionEnum.Generators,
-            filter_func=exclude_battery,
+            filter_func=exclude_batteries_and_small_units,
         )
         self.insert_component_properties(
             Generator,
             parent_class=ClassEnum.System,
             collection=CollectionEnum.Generators,
-            filter_func=exclude_battery,
+            filter_func=exclude_batteries_and_small_units,
             exclude_fields=[],
         )
 
         # Add generator memberships
         logger.debug("Adding generator memberships")
-        for generator in self.system.get_components(Generator, filter_func=exclude_battery):
+        for generator in self.system.get_components(Generator, filter_func=exclude_batteries_and_small_units):
             self._db_mgr.add_membership(
                 generator.name,
                 generator.bus.name,
@@ -907,12 +910,15 @@ class PlexosExporter(BaseExporter):
 
     def add_storage(self):
         """Add storage objects to the database."""
+        def exclude_small_units(component):
+            return component.active_power.magnitude >= 1
+
         # Add pump storage objects
         self.add_component_category(
-            HydroPumpedStorage, category_attribute="head", class_enum=ClassEnum.Storage
+            HydroPumpedStorage, category_attribute="head", class_enum=ClassEnum.Storage, filter_func=exclude_small_units
         )
         self.add_component_category(
-            HydroPumpedStorage, category_attribute="tail", class_enum=ClassEnum.Storage
+            HydroPumpedStorage, category_attribute="tail", class_enum=ClassEnum.Storage, filter_func=exclude_small_units
         )
         self.bulk_insert_objects(
             HydroPumpedStorage,
@@ -920,6 +926,7 @@ class PlexosExporter(BaseExporter):
             category_attribute="head",
             collection_enum=CollectionEnum.Storages,
             name_prefix="_head",
+            filter_func=exclude_small_units
         )
         self.bulk_insert_objects(
             HydroPumpedStorage,
@@ -927,11 +934,12 @@ class PlexosExporter(BaseExporter):
             category_attribute="tail",
             collection_enum=CollectionEnum.Storages,
             name_prefix="_tail",
+            filter_func=exclude_small_units
         )
 
         head_storage = [
             component.model_dump(exclude_none=True, exclude=NESTED_ATTRIBUTES)
-            for component in self.system.get_components(HydroPumpedStorage)
+            for component in self.system.get_components(HydroPumpedStorage, filter_func=exclude_small_units)
         ]
         for component in head_storage:
             component["name"] += "_head"
@@ -940,10 +948,11 @@ class PlexosExporter(BaseExporter):
             parent_class=ClassEnum.System,
             collection=CollectionEnum.Storages,
             records=head_storage,
+            filter_func=exclude_small_units
         )
         tail_storage = [
             component.model_dump(exclude_none=True, exclude=NESTED_ATTRIBUTES)
-            for component in self.system.get_components(HydroPumpedStorage)
+            for component in self.system.get_components(HydroPumpedStorage, filter_func=exclude_small_units)
         ]
         for component in tail_storage:
             component["name"] += "_tail"
@@ -952,9 +961,10 @@ class PlexosExporter(BaseExporter):
             parent_class=ClassEnum.System,
             collection=CollectionEnum.Storages,
             records=tail_storage,
+            filter_func=exclude_small_units
         )
 
-        for phs in self.system.get_components(HydroPumpedStorage):
+        for phs in self.system.get_components(HydroPumpedStorage, filter_func=exclude_small_units):
             head_name = f"{phs.name}_head"
             tail_name = f"{phs.name}_tail"
             self._db_mgr.add_membership(
