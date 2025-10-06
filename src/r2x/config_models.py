@@ -59,6 +59,8 @@ class ReEDSConfig(BaseModelConfig):
 
     solve_year: list[int] | int | None = None
     weather_year: int | None = None
+    convert_to_per_unit: bool = False  # Enable p.u. conversion
+    base_power: float = 100.0  # Base power in MW for p.u. conversion
 
     @classmethod
     def get_field_mapping(cls) -> dict[type[BaseModel], dict[str, str]]:
@@ -71,9 +73,16 @@ class ReEDSConfig(BaseModelConfig):
             SiennaConfig: {"model_year": "solve_year"},
         }
 
+    def convert_field(self, field_name: str, target_class: type[BaseModel]) -> Any:
+        """Define custom field conversion."""
+        if target_class == SiennaConfig and field_name == "base_power":
+            return self.base_power if self.convert_to_per_unit else 100.0
+        return getattr(self, field_name)
+
 
 class PlexosConfig(BaseModelConfig):
     """Plexos specific configuration."""
+
     model_config = {"protected_namespaces": ()}
 
     master_file: str | None = None

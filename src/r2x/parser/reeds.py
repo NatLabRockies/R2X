@@ -107,6 +107,8 @@ class ReEDSParser(BaseParser):
         self.excluded_categories = self.reeds_config.defaults["excluded_categories"]
         self.weather_year: int = self.reeds_config.weather_year
         self.skip_validation: bool = getattr(self.reeds_config, "skip_validation", False)
+        self.convert_to_per_unit: bool = getattr(self.reeds_config, "convert_to_per_unit", False)
+        self.base_power: float = getattr(self.reeds_config, "base_power", 100.0)
         # Add hourly_time_index
         self.hourly_time_index = np.arange(
             f"{self.weather_year}",
@@ -155,6 +157,44 @@ class ReEDSParser(BaseParser):
         self._construct_hybrid_systems()
 
         return self.system
+
+    def _convert_to_per_unit(self, value: float | Quantity, value_type: str = "power") -> float | Quantity:
+        """Convert natural unit values to per unit.
+
+        Parameters
+        ----------
+        value : float | Quantity
+            Value in natural units (MW, MVA, etc.)
+        value_type : str
+            Type of value being converted ('power', 'rating', etc.)
+
+        Returns
+        -------
+        float | Quantity
+            Value in per unit (magnitude only) or original Quantity if conversion disabled
+        """
+        if not self.convert_to_per_unit or value is None:
+            return value
+
+        if isinstance(value, Quantity):
+            magnitude = value.magnitude
+            units = value.units
+        else:
+            magnitude = value
+            units = None
+
+        # TODO: Need to modify this for a better way to handle it # noqa
+        if value_type in ["power", "capacity", "rating", "power_flow"]:
+            converted_magnitude = magnitude / self.base_power
+        elif value_type in ["energy", "storage_capacity"]:
+            converted_magnitude = magnitude / self.base_power
+        else:
+            converted_magnitude = magnitude
+
+        if isinstance(value, Quantity):
+            return converted_magnitude * units
+        else:
+            return converted_magnitude
 
     def _check_solve_year(self) -> bool:
         solve_years = self.get_data("years")
@@ -244,15 +284,22 @@ class ReEDSParser(BaseParser):
 
             if reverse_row:
                 reverse_row_dict = reverse_row[0]
-                rating_down = -reverse_row_dict["max_active_power"] * ureg.MW
+                reverse_power = self._convert_to_per_unit(reverse_row_dict["max_active_power", "rating"])
+                rating_down = -reverse_power * ureg.MW
                 reverse_lines.add(
                     (reverse_row_dict["kind"], reverse_row_dict["from_bus"], reverse_row_dict["to_bus"])
                 )
             else:
-                rating_down = -branch["max_active_power"] * ureg.MW
+                forward_power = self._convert_to_per_unit(branch["max_active_power"], "rating")
+                rating_down = -forward_power * ureg.MW
 
-            rating_up = branch["max_active_power"] * ureg.MW
+            forward_power = self._convert_to_per_unit(branch["max_active_power"], "rating")
+            rating_up = forward_power * ureg.MW
             losses = branch["losses"] if branch["losses"] else 0
+            active_power_flow = self._convert_to_per_unit(branch.get("active_power_flow", 0.0), "power_flow")
+            reactive_power_flow = self._convert_to_per_unit(
+                branch.get("reactive_power_flow", 0.0), "power_flow"
+            )
             self.system.add_component(
                 self._create_model_instance(
                     MonitoredLine,
@@ -260,8 +307,8 @@ class ReEDSParser(BaseParser):
                     name=branch_name,
                     from_bus=from_bus,
                     to_bus=to_bus,
-                    active_power_flow=0.0,
-                    reactive_power_flow=0.0,
+                    active_power_flow=active_power_flow,
+                    reactive_power_flow=reactive_power_flow,
                     losses=losses * ureg.percent,
                     flow_limits=FromTo_ToFrom(from_to=rating_down, to_from=rating_up),
                     ext=ext,
@@ -447,6 +494,17 @@ class ReEDSParser(BaseParser):
         # Once it is fixed on main we can remove this line over here.
         gen_data = gen_data.filter(pl.col("active_power") > 0)
 
+        # Apply per-unit conversion if needed
+        if self.convert_to_per_unit:
+            logger.debug("Converting generator data to per-unit system.")
+            power_columns = ["active_power", "pump_load", "storage_capacity", "initial_volumne"]
+            for col in power_columns:
+                if col in gen_data.columns:
+                    gen_data = gen_data.with_columns(
+                        lambda x: x / self.base_power if x is not None else x,
+                        return_dtype=pl.Float64,
+                    ).alias(col)
+
         # Check that we mapped all categories
         categories = gen_data["category"].unique()
         for category in categories:
@@ -590,7 +648,13 @@ class ReEDSParser(BaseParser):
 
             # NOTE: If there is a point when ReEDs enforces minimum capacity for a technology here is where we
             # will need to change it.
-            row["active_power_limits"] = MinMax(min=0, max=row["active_power"].magnitude)
+            active_power_converted = self._convert_to_per_unit(row["active_power"], "power")
+            active_power_limit_value = (
+                active_power_converted.magnitude
+                if isinstance(active_power_converted, Quantity)
+                else active_power_converted
+            )
+            row["active_power_limits"] = MinMax(min=0, max=active_power_limit_value)
 
             row["ext"] = {}
             row["ext"] = {
