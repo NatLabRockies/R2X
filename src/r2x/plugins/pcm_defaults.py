@@ -134,9 +134,7 @@ def update_system(
 
             if hasattr(component, "active_power_limits"):
                 setattr(
-                    component.active_power_limits,
-                    "min",
-                    get_magnitude(getattr(component, "active_power", 0))
+                    component.active_power_limits, "min", get_magnitude(getattr(component, "active_power", 0))
                 )
         else:
             values_to_add["ramp_up"] = (
@@ -158,7 +156,7 @@ def update_system(
                     get_magnitude(getattr(component, "active_power", 0))
                     * wecc_data_row.get("min_stable_level_percentage", 1),
                 )
-        
+
         values_to_add["mean_time_to_repair"] = (
             BaseQuantity(wecc_data_row.get("mean_time_to_repair"), "h")
             if wecc_data_row.get("mean_time_to_repair")

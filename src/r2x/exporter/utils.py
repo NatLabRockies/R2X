@@ -372,4 +372,3 @@ def apply_correct_commit(component: dict[str, Any], commit_map: dict[str, dict[s
             component[key] = value_map.get("False", component[key])
 
     return component
-
