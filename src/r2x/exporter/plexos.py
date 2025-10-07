@@ -21,6 +21,7 @@ from r2x.exporter.utils import (
     apply_pint_deconstruction,
     apply_property_map,
     apply_valid_properties,
+    apply_correct_commit,
     get_reserve_type,
     apply_correct_commit,
 )
