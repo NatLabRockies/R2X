@@ -11,7 +11,7 @@ from r2x.units import ureg
 class BaseComponent(Component):
     """Infrasys base component with additional fields for R2X."""
 
-    available: Annotated[bool, Field(description="If the component is available.")] = True
+    available: Annotated[bool, Field(description="If the component is available.")] | int = True
     category: Annotated[str, Field(description="Category that this component belongs to.")] | None = None
     ext: dict = Field(default_factory=dict, description="Additional information of the component.")
 

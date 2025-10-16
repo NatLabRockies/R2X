@@ -170,7 +170,8 @@ def break_generators(  # noqa: C901
             no_splits,
             avg_capacity,
         )
-        for _ in range(no_splits):
+
+        if type(component).__name__ in ["EnergyReservoirStorage"]:
             perturb_factor = random.uniform(0.98, 1.02)
             component_name = component.name + f"_{split_no:02}"
             new_component = system.copy_component(component, name=component_name, attach=True)
@@ -202,6 +203,7 @@ def break_generators(  # noqa: C901
             new_component.ext["original_capacity"] = component.active_power
             new_component.ext["original_name"] = component.name
             new_component.ext["broken"] = True
+            new_component.available = no_splits
 
             for attribute in system.get_supplemental_attributes_with_component(component, Emission):
                 new_attribute = attribute.model_copy()
@@ -215,6 +217,52 @@ def break_generators(  # noqa: C901
                 ts = system.get_time_series(component)
                 system.add_time_series(ts, new_component)
             split_no += 1
+        else:
+            for _ in range(no_splits):
+                perturb_factor = random.uniform(0.98, 1.02)
+                component_name = component.name + f"_{split_no:02}"
+                new_component = system.copy_component(component, name=component_name, attach=True)
+                new_base_power = (
+                    ActivePower(avg_capacity, component.active_power.units)
+                    if isinstance(component.active_power, BaseQuantity)
+                    else avg_capacity * ureg.MW
+                )
+                new_component.active_power = new_base_power
+                proportion = (
+                    avg_capacity / reference_base_power
+                )  # Required to recalculate properties that depend on active_power
+                for property in PROPERTIES_TO_BREAK:
+                    if attr := getattr(new_component, property, None):
+                        new_component.ext[f"{property}_original"] = attr
+                        setattr(new_component, property, attr * proportion)
+                for property in PROPERTIES_TO_PERTURB:
+                    if attr := getattr(new_component, property, None):
+                        new_component.ext[f"{property}_original"] = attr
+                        if isinstance(attr, float):
+                            new_attr = perturb(attr, perturb_factor)
+                        else:
+                            new_attr = perturb(attr.copy(), perturb_factor)
+                        setattr(
+                            new_component,
+                            property,
+                            new_attr
+                        )
+                new_component.ext["original_capacity"] = component.active_power
+                new_component.ext["original_name"] = component.name
+                new_component.ext["broken"] = True
+
+                for attribute in system.get_supplemental_attributes_with_component(component, Emission):
+                    new_attribute = attribute.model_copy()
+                    if "emissions" in PROPERTIES_TO_PERTURB:
+                        new_attribute.rate = perturb(new_attribute.rate, perturb_factor)
+                    system.add_supplemental_attribute(new_component, new_attribute)
+                if system.has_time_series(component):
+                    logger.trace(
+                        "Component {} has time series attached to it. Copying first one", component.label
+                    )
+                    ts = system.get_time_series(component)
+                    system.add_time_series(ts, new_component)
+                split_no += 1
 
         if remainder > capacity_threshold:
             perturb_factor = random.uniform(0.98, 1.02)
