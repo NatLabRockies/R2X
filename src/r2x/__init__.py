@@ -1,3 +1,5 @@
-# from .core import *
-# from .models import ACBus, Generator
-from .__version__ import __data_model_version__, __version__
+"""R2X translations."""
+
+from importlib.metadata import version
+
+__version__ = version("r2x")
