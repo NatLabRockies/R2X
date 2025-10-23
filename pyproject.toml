@@ -53,7 +53,7 @@ dependencies = [
     "r2x-sienna",
     "r2x-plexos",
     "r2x-reeds",
-    "r2x-core",
+    "r2x-core>=0.11",
     "pyyaml",
     "loguru",
 ]
@@ -171,4 +171,3 @@ r2x = [
 [tool.uv.sources]
 r2x-plexos = { git = "git+ssh://git@github.com/NREL/r2x-plexos", rev = "main" }
 r2x-sienna = { git = "git+ssh://git@github.nrel.gov/PCM/r2x-sienna", rev = "main" }
-r2x-core = { path = "../../r2x-core/dev", editable = true }
