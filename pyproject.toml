@@ -53,6 +53,9 @@ dependencies = [
     "r2x-sienna",
     "r2x-plexos",
     "r2x-reeds",
+    "r2x-core",
+    "pyyaml",
+    "loguru",
 ]
 
 [project.urls]
@@ -61,6 +64,10 @@ Documentation = "https://nrel.github.io/r2x/"
 Repository = "https://github.com/NREL/r2x"
 Issues = "https://github.com/NREL/r2x/issues"
 Changelog = "https://nrel.github.io/r2x/CHANGELOG.html"
+
+[project.scripts]
+plexos_to_sienna = "r2x_core.cli:run_modifier"
+validate_plexos = "r2x_core.cli:run_modifier"
 
 [dependency-groups]
 dev = [
@@ -162,6 +169,6 @@ r2x = [
 ]
 
 [tool.uv.sources]
-r2x-plexos = { git = "git+ssh://git@github.com/NREL/r2x-plexos", rev = "pesap/exporter" }
+r2x-plexos = { git = "git+ssh://git@github.com/NREL/r2x-plexos", rev = "main" }
 r2x-sienna = { git = "git+ssh://git@github.nrel.gov/PCM/r2x-sienna", rev = "main" }
-r2x-core = { git = "https://github.com/NREL/r2x-core", rev = "main" }
+r2x-core = { path = "../../r2x-core/dev", editable = true }

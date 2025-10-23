@@ -1,0 +1,29 @@
+{
+  "generator_categories": {
+    "Coal": {
+      "fuel_type": "COAL",
+      "prime_mover": "ST",
+      "sienna_type": "ThermalStandard"
+    },
+    "Gas": {
+      "fuel_type": "NATURAL_GAS",
+      "prime_mover": "CT",
+      "sienna_type": "ThermalStandard"
+    },
+    "Natural Gas": {
+      "fuel_type": "NATURAL_GAS",
+      "prime_mover": "CT",
+      "sienna_type": "ThermalStandard"
+    },
+    "Nuclear": {
+      "fuel_type": "NUCLEAR",
+      "prime_mover": "ST",
+      "sienna_type": "ThermalStandard"
+    },
+    "Oil": {
+      "fuel_type": "DISTILLATE_FUEL_OIL",
+      "prime_mover": "CT",
+      "sienna_type": "ThermalStandard"
+    }
+  }
+}
