@@ -40,6 +40,7 @@
     "REGULATION": 0.01,
     "SPINNING": 0.03
   },
+  "minimum_transmission_capacity": 1,
   "month_map": {
     "apr": "M4",
     "aug": "M8",

@@ -209,6 +209,7 @@ class ReEDSParser(BaseParser):
     def _construct_branches(self):
         logger.info("Creating branch objects.")
         branch_data = self.get_data("tx_cap")
+        branch_data = branch_data.filter(pl.col("max_active_power") > self.reeds_config.defaults["minimum_transmission_capacity"])
         tx_loss = self.get_data("tx_losses")
 
         branch_data = pl_left_multi_join(branch_data, tx_loss)
