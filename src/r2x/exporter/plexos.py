@@ -305,6 +305,11 @@ class PlexosExporter(BaseExporter):
             partial(apply_pint_deconstruction, unit_map=self.default_units),
             partial(apply_valid_properties, valid_properties=collection_properties, add_name=True),
         )
+        
+        if component_type.__name__ == "EnergyReservoirStorage":
+            for i in range(len(export_records)):
+                export_records[i]["End Effects Method"] = 1
+
         self._db_mgr.add_property_from_records(
             export_records,
             parent_class=parent_class,
@@ -915,10 +920,16 @@ class PlexosExporter(BaseExporter):
 
         # Add pump storage objects
         self.add_component_category(
-            HydroPumpedStorage, category_attribute="head", class_enum=ClassEnum.Storage, filter_func=exclude_small_units
+            HydroPumpedStorage,
+            category_attribute="head",
+            class_enum=ClassEnum.Storage,
+            filter_func=exclude_small_units
         )
         self.add_component_category(
-            HydroPumpedStorage, category_attribute="tail", class_enum=ClassEnum.Storage, filter_func=exclude_small_units
+            HydroPumpedStorage,
+            category_attribute="tail",
+            class_enum=ClassEnum.Storage,
+            filter_func=exclude_small_units
         )
         self.bulk_insert_objects(
             HydroPumpedStorage,
