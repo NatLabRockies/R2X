@@ -38,8 +38,6 @@ PROPERTIES_TO_PERTURB = [
     "planned_outage_rate",
     "forced_outage_rate",
     "mean_time_to_repair",
-    "min_up_time",
-    "min_down_time",
     "emissions",
     "startup_cost",
     "shutdown_cost"
