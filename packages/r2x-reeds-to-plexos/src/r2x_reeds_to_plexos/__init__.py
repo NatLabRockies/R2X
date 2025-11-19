@@ -4,6 +4,7 @@ from importlib.metadata import version
 
 from loguru import logger
 
+from . import getters as _getters  # noqa: F401  # ensure getter registration
 from .plugin_config import ReedsToPlexosConfig
 
 __version__ = version("r2x_reeds_to_plexos")

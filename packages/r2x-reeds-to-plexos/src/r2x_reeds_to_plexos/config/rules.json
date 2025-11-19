@@ -1,0 +1,27 @@
+[
+  {
+    "defaults": {
+      "category": "reeds-generator",
+      "forced_outage_rate": 0.0,
+      "fuel_price": 0.0,
+      "heat_rate": 0.0,
+      "min_capacity_factor": 0.0,
+      "vom_charge": 0.0
+    },
+    "field_map": {
+      "category": "technology",
+      "max_capacity": "capacity",
+      "name": "name",
+      "vom_charge": "vom_cost"
+    },
+    "getters": {
+      "forced_outage_rate": "forced_outage_rate_percent",
+      "fuel_price": "fuel_price_per_gj",
+      "heat_rate": "heat_rate_to_gj_per_mwh",
+      "min_capacity_factor": "min_capacity_factor_percent"
+    },
+    "source_type": "ReEDSGenerator",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  }
+]
