@@ -1,0 +1,74 @@
+{
+  "models": [
+    "r2x_sienna.models",
+    "r2x_plexos.models"
+  ],
+  "pm_fuel_tech_map": {
+    "CA_COAL": [
+      "coal-new"
+    ],
+    "CA_NATURALGAS": [
+      "gas-cc"
+    ],
+    "CC_COAL": [
+      "coal-new"
+    ],
+    "CC_NATURALGAS": [
+      "gas-cc"
+    ],
+    "CP_": [
+      "csp"
+    ],
+    "CT_COAL": [
+      "coal-new"
+    ],
+    "CT_NATURALGAS": [
+      "gas-cc"
+    ],
+    "OC_": [
+      "other"
+    ],
+    "PV_": [
+      "upv"
+    ],
+    "ST_": [
+      "gas-cc"
+    ],
+    "ST_BIOMASS": [
+      "biopower"
+    ],
+    "ST_COAL": [
+      "coal-new"
+    ],
+    "ST_GEOTHERMAL": [
+      "geothermal"
+    ],
+    "ST_NATURALGAS": [
+      "gas-cc"
+    ],
+    "ST_NATURALGAS_CCGT": [
+      "gas-cc"
+    ],
+    "ST_NATURALGAS_LM": [
+      "gas-lm"
+    ],
+    "ST_NATURALGAS_OCGT": [
+      "gas-ct"
+    ],
+    "ST_NATURALGAS_ST": [
+      "gas-st"
+    ],
+    "ST_NUCLEAR": [
+      "nuclear"
+    ],
+    "ST_WASTE": [
+      "biopower"
+    ],
+    "WS_": [
+      "wind-ofs"
+    ],
+    "WT_": [
+      "wind-ons"
+    ]
+  }
+}

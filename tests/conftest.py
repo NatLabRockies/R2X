@@ -1,43 +1,25 @@
-"""R2X pytest configuration and fixtures."""
+import os
 
-import pathlib
-import sys
+os.environ["LOGURU_LEVEL"] = "TRACE"
 
 import pytest
-from _pytest.logging import LogCaptureFixture
 from loguru import logger
 
-ROOT = pathlib.Path(__file__).resolve().parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 pytest_plugins = [
-    "fixtures.plexos_systems",
-    "fixtures.sienna_systems",
-    "fixtures.profiles",
+    "tests.fixtures.time_series",
+    "tests.fixtures.systems",
+    "tests.fixtures.rules",
+    "tests.fixtures.context",
+    "tests.fixtures.configs",
+    "tests.fixtures.getters_utils",
+    "tests.fixtures.5_bus_systems",
 ]
 
 
 @pytest.fixture
-def caplog(caplog: LogCaptureFixture):
-    """Configure loguru to work with pytest's caplog.
+def caplog(caplog):
+    from r2x_core.logger import setup_logging
 
-    Parameters
-    ----------
-    caplog : LogCaptureFixture
-        Pytest's log capture fixture
-
-    Yields
-    ------
-    LogCaptureFixture
-        Configured log capture fixture
-    """
-    handler_id = logger.add(
-        caplog.handler,
-        format="{message}",
-        level=0,
-        filter=lambda record: record["level"].no >= caplog.handler.level,
-        enqueue=False,
-    )
+    setup_logging(level="TRACE", module="r2x_sienna_to_plexos", tracing=True)
     yield caplog
-    logger.remove(handler_id)
+    logger.remove()

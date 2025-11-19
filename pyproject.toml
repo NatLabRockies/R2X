@@ -20,14 +20,13 @@ maintainers = [
 description = "Translation Plugins for mainstream models."
 readme = "README.md"
 license = {file = "LICENSE.txt"}
-requires-python = ">=3.11"
+requires-python = ">=3.11, <3.14"
 keywords = [
     "power-systems",
     "energy-modeling",
     "model-translation",
     "reeds",
     "plexos",
-    "switch",
     "sienna",
     "plugin-architecture",
 ]
@@ -50,12 +49,11 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "r2x-sienna-to-plexos",
+    "r2x-plexos-to-sienna",
+    "r2x-reeds-to-plexos",
+    "r2x-core>=0.1.0,<2.0.0",
     "r2x-sienna",
-    "r2x-plexos",
-    "r2x-reeds",
-    "r2x-core>=0.11",
-    "pyyaml",
-    "loguru",
 ]
 
 [project.urls]
@@ -65,10 +63,6 @@ Repository = "https://github.com/NREL/r2x"
 Issues = "https://github.com/NREL/r2x/issues"
 Changelog = "https://nrel.github.io/r2x/CHANGELOG.html"
 
-[project.scripts]
-plexos_to_sienna = "r2x_core.cli:run_modifier"
-validate_plexos = "r2x_core.cli:run_modifier"
-
 [dependency-groups]
 dev = [
     "h5py-stubs>=0.1.2",
@@ -77,15 +71,14 @@ dev = [
     "pytest>=8.4.2",
     "pytest-coverage>=0.0",
     "ruff>=0.13.2",
-    "ty>=0.0.1a23",
 ]
 docs = [
     "autodoc-pydantic",
-    "docstr-coverage>=2.3.2",
-    "furo>=2025.9.25",
+    "docstr-coverage",
+    "furo",
     "ghp-import",
     "myst-parser",
-    "sphinx>=8.0.0",
+    "sphinx",
     "sphinx-copybutton",
     "sphinx-reports",
     "sphinx-tabs",
@@ -94,6 +87,15 @@ docs = [
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+r2x-sienna-to-plexos = { workspace = true }
+r2x-plexos-to-sienna = { workspace = true }
+r2x-reeds-to-plexos = { workspace = true }
+r2x-core = { git = "https://github.com/NREL/r2x-core", branch = "pesap/rules" }
+
+[tool.uv.workspace]
+members = ["packages/*"]
 
 [tool.mypy]
 strict = true
@@ -158,16 +160,3 @@ max-complexity = 10
 omit = [
     "tests/*",
     ]
-
-[tool.setuptools]
-packages = ["r2x"]
-package-dir = {"" = "src"}
-
-[tool.setuptools.package-data]
-r2x = [
-    "translations/plexos_to_sienna/config/*.json",
-]
-
-[tool.uv.sources]
-r2x-plexos = { git = "git+ssh://git@github.com/NREL/r2x-plexos", rev = "main" }
-r2x-sienna = { git = "git+ssh://git@github.nrel.gov/PCM/r2x-sienna", rev = "main" }

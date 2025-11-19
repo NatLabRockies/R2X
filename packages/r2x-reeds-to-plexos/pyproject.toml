@@ -1,0 +1,6 @@
+[project]
+name = "r2x-reeds-to-plexos"
+version = "0.0.0"
+description = "Add your description here"
+requires-python = ">=3.11, <3.14"
+dependencies = ["r2x-reeds", "r2x-plexos"]
