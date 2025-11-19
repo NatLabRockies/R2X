@@ -13,6 +13,7 @@ pytest_plugins = [
     "tests.fixtures.configs",
     "tests.fixtures.getters_utils",
     "tests.fixtures.5_bus_systems",
+    "tests.fixtures.reeds_systems",
 ]
 
 

@@ -18,7 +18,8 @@ from r2x_sienna.models.getters import (
 )
 from r2x_sienna.units import get_magnitude
 
-from r2x_core import Err, Ok, Result, getter
+from r2x_core import Err, Ok, Result
+from r2x_core.getters import getter
 from r2x_sienna_to_plexos.getters_utils import (
     coerce_value,
     compute_heat_rate_data,

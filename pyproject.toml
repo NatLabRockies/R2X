@@ -53,7 +53,6 @@ dependencies = [
     "r2x-plexos-to-sienna",
     "r2x-reeds-to-plexos",
     "r2x-core>=0.1.0,<2.0.0",
-    "r2x-sienna",
 ]
 
 [project.urls]
@@ -92,7 +91,7 @@ build-backend = "uv_build"
 r2x-sienna-to-plexos = { workspace = true }
 r2x-plexos-to-sienna = { workspace = true }
 r2x-reeds-to-plexos = { workspace = true }
-r2x-core = { git = "https://github.com/NREL/r2x-core", branch = "pesap/rules" }
+r2x-core = { path = "../../r2x-core/dev", editable = true }
 
 [tool.uv.workspace]
 members = ["packages/*"]

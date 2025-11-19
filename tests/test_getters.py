@@ -203,8 +203,9 @@ def test_get_power_load_skips_loads_without_max_active_power():
 def test_getter_receives_correct_context_and_component(context_with_buses):
     """Getter functions receive TranslationContext and source component."""
     from r2x_sienna.models import ACBus
-    from r2x_sienna_to_plexos.rule_utils import _build_target_fields
-    from r2x_sienna_to_plexos.translation import Rule
+
+    from r2x_core import Rule
+    from r2x_core.rules_utils import _build_target_fields
 
     received_context = None
     received_component = None
@@ -274,7 +275,7 @@ def test_getter_error_variant():
 
 def test_is_slack_bus_has_decorator():
     """is_slack_bus is registered via @getter decorator."""
-    from r2x_sienna_to_plexos.rule_registry import GETTER_REGISTRY
+    from r2x_core.getters import GETTER_REGISTRY
 
     # Should be able to retrieve it by name from registry
     assert "is_slack_bus" in GETTER_REGISTRY
@@ -284,7 +285,7 @@ def test_is_slack_bus_has_decorator():
 
 def test_get_availability_has_decorator():
     """get_availability is registered via @getter decorator."""
-    from r2x_sienna_to_plexos.rule_registry import GETTER_REGISTRY
+    from r2x_core.getters import GETTER_REGISTRY
 
     assert "get_availability" in GETTER_REGISTRY
     getter_func = GETTER_REGISTRY["get_availability"]
@@ -293,7 +294,7 @@ def test_get_availability_has_decorator():
 
 def test_get_power_load_has_decorator():
     """get_power_load is registered via @getter decorator."""
-    from r2x_sienna_to_plexos.rule_registry import GETTER_REGISTRY
+    from r2x_core.getters import GETTER_REGISTRY
 
     assert "get_power_load" in GETTER_REGISTRY
     getter_func = GETTER_REGISTRY["get_power_load"]

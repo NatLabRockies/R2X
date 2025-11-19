@@ -19,13 +19,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 if TYPE_CHECKING:
-    from r2x_sienna_to_plexos import Rule
+    from r2x_core import Rule
 
 
 @pytest.fixture
 def rule_simple() -> Rule:
     """Single-field transformation rule (ACBus → PLEXOSNode)."""
-    from r2x_sienna_to_plexos import Rule
+    from r2x_core import Rule
 
     return Rule(
         source_type="ACBus",
@@ -43,7 +43,7 @@ def rule_simple() -> Rule:
 @pytest.fixture
 def rule_multifield() -> Rule:
     """Multi-field transformation rule with getter (Generator → PLEXOSGenerator)."""
-    from r2x_sienna_to_plexos import Rule
+    from r2x_core import Rule
 
     def aggregate_load(ctx, component):
         """Aggregate multiple power fields into single total."""
@@ -70,7 +70,7 @@ def rule_multifield() -> Rule:
 @pytest.fixture
 def rule_with_defaults() -> Rule:
     """Rule with default values (Bus → Node)."""
-    from r2x_sienna_to_plexos import Rule
+    from r2x_core import Rule
 
     return Rule(
         source_type="Bus",
@@ -90,7 +90,7 @@ def rule_with_defaults() -> Rule:
 @pytest.fixture
 def rule_with_all_features() -> Rule:
     """Comprehensive rule demonstrating all Rule features."""
-    from r2x_sienna_to_plexos import Rule
+    from r2x_core import Rule
 
     def compute_total_rating(ctx, component):
         from r2x_core import Ok
@@ -131,7 +131,7 @@ def rules_list(rule_simple, rule_multifield, rule_with_defaults) -> list[Rule]:
 @pytest.fixture
 def rule_list_versioned() -> list[Rule]:
     """List of rules with multiple versions for same conversion."""
-    from r2x_sienna_to_plexos import Rule
+    from r2x_core import Rule
 
     rule_v1 = Rule(
         source_type="Bus",
@@ -158,7 +158,7 @@ def rule_list_versioned() -> list[Rule]:
 @pytest.fixture
 def rules_from_config() -> list[Rule]:
     """Load the real transformation rules from the packaged config file."""
-    from r2x_sienna_to_plexos import Rule
+    from r2x_core import Rule
 
     config_dir = files("r2x_sienna_to_plexos.config")
     rules_file = config_dir / "rules.json"

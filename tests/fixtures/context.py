@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 import pytest
 
 if TYPE_CHECKING:
-    from r2x_sienna_to_plexos import TranslationContext
+    from r2x_core import TranslationContext
 
 
 @pytest.fixture
@@ -12,7 +14,7 @@ def context(
     plexos_system_empty,
     config_empty,
     rules_list,
-) -> "TranslationContext":
+) -> TranslationContext:
     """TranslationContext with mock systems and rules.
 
     Creates a complete TranslationContext for use in tests. All rules
@@ -45,7 +47,7 @@ def context(
     List all rules:
     >>> all_rules = context.list_rules()
     """
-    from r2x_sienna_to_plexos.translation import TranslationContext
+    from r2x_core import TranslationContext
 
     return TranslationContext(
         source_system=sienna_system_empty,
@@ -61,9 +63,9 @@ def context_with_versioned_rules(
     plexos_system_empty,
     config_empty,
     rule_list_versioned,
-) -> "TranslationContext":
+) -> TranslationContext:
     """TranslationContext with versioned rules and version config."""
-    from r2x_sienna_to_plexos.translation import TranslationContext
+    from r2x_core import TranslationContext
 
     return TranslationContext(
         source_system=sienna_system_empty,
@@ -79,7 +81,7 @@ def context_with_buses(
     plexos_system_empty,
     config_empty,
     rules_list,
-) -> "TranslationContext":
+) -> TranslationContext:
     """TranslationContext with Sienna system containing ACBus components.
 
     Parameters
@@ -98,7 +100,7 @@ def context_with_buses(
     TranslationContext
         Context ready for converting buses to nodes
     """
-    from r2x_sienna_to_plexos.translation import TranslationContext
+    from r2x_core import TranslationContext
 
     return TranslationContext(
         source_system=sienna_system_with_buses,
@@ -114,7 +116,7 @@ def context_with_bus_and_load(
     plexos_system_empty,
     config_empty,
     rules_list,
-) -> "TranslationContext":
+) -> TranslationContext:
     """TranslationContext with Sienna system containing buses and loads.
 
     Parameters
@@ -133,7 +135,7 @@ def context_with_bus_and_load(
     TranslationContext
         Context ready for converting with load extraction
     """
-    from r2x_sienna_to_plexos.translation import TranslationContext
+    from r2x_core import TranslationContext
 
     return TranslationContext(
         source_system=sienna_system_with_buses_and_power_load,
@@ -149,9 +151,9 @@ def context_with_thermal_generators(
     plexos_system_empty,
     config_empty,
     rules_from_config,
-) -> "TranslationContext":
+) -> TranslationContext:
     """TranslationContext with ThermalStandard components and real rules."""
-    from r2x_sienna_to_plexos.translation import TranslationContext
+    from r2x_core import TranslationContext
 
     return TranslationContext(
         source_system=sienna_system_with_thermal_generators,
