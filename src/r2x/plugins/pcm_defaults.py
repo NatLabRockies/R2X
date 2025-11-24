@@ -73,6 +73,7 @@ def update_system(
                 "start_cost_per_MW",
                 "shutdown_cost_per_MW",
                 "max_ramp_up_percentage",
+                "run_up_rate",
                 "mean_time_to_repair",
                 "min_down_time",
                 "min_up_time",
@@ -88,6 +89,7 @@ def update_system(
             "start_cost_per_MW": "float",
             "shutdown_cost_per_MW": "float",
             "max_ramp_up_percentage": "float",
+            "run_up_rate": "float",
             "mean_time_to_repair": "float",
             "min_down_time": "float",
             "min_up_time": "float",
@@ -151,6 +153,12 @@ def update_system(
             getattr(component, "active_power")
             * BaseQuantity(wecc_data_row.get("max_ramp_up_percentage"), "1/min")
             if wecc_data_row.get("max_ramp_up_percentage")
+            else None
+        )
+        values_to_add["run_up"] = (
+            getattr(component, "active_power")
+            * BaseQuantity(wecc_data_row.get("run_up_rate"), "1/min")
+            if wecc_data_row.get("run_up_rate")
             else None
         )
         values_to_add["min_rated_capacity"] = (

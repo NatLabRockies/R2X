@@ -117,6 +117,7 @@
     "r": "Resistance",
     "ramp_down": "Max Ramp Down",
     "ramp_up": "Max Ramp Up",
+    "run_up": "Run Up Rate",
     "rate": "Production Rate",
     "rating_down": "Min Flow",
     "rating_up": "Max Flow",

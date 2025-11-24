@@ -29,6 +29,7 @@ CAPACITY_THRESHOLD = 5  # MW
 PROPERTIES_TO_BREAK = [
     "ramp_up",
     "ramp_down",
+    "run_up",
     "min_rated_capacity",
     "startup_cost",
     "pump_load",

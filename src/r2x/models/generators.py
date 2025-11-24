@@ -84,6 +84,13 @@ class Generator(Device):
         ]
         | None
     ) = None
+    run_up: (
+        Annotated[
+            PowerRate,
+            Field(description="Ramping rate from cold start to minimum stable level."),
+        ]
+        | None
+    ) = None
     min_up_time: (
         Annotated[
             Time,
