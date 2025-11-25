@@ -2,26 +2,130 @@
   {
     "defaults": {
       "category": "reeds-generator",
-      "forced_outage_rate": 0.0,
       "fuel_price": 0.0,
       "heat_rate": 0.0,
-      "min_capacity_factor": 0.0,
       "vom_charge": 0.0
     },
     "field_map": {
       "category": "technology",
+      "fuel_price": "fuel_price",
+      "heat_rate": "heat_rate",
       "max_capacity": "capacity",
       "name": "name",
       "vom_charge": "vom_cost"
     },
     "getters": {
       "forced_outage_rate": "forced_outage_rate_percent",
-      "fuel_price": "fuel_price_per_gj",
-      "heat_rate": "heat_rate_to_gj_per_mwh",
       "min_capacity_factor": "min_capacity_factor_percent"
     },
     "source_type": "ReEDSGenerator",
     "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "field_map": {
+      "category": "technology",
+      "name": "name"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "technology",
+      "op": "in",
+      "values": [
+        "pumped-hydro",
+        "pumped_storage"
+      ]
+    },
+    "source_type": "ReEDSGenerator",
+    "target_type": "PLEXOSStorage",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "battery"
+    },
+    "field_map": {
+      "category": "category",
+      "max_power": "capacity",
+      "name": "name"
+    },
+    "filter": {
+      "all_of": [
+        {
+          "casefold": true,
+          "field": "category",
+          "on_missing": "exclude",
+          "op": "in",
+          "values": [
+            "battery_1h",
+            "battery_2h",
+            "battery_4h",
+            "battery_6h",
+            "battery_8h",
+            "battery_10h",
+            "battery_12h",
+            "battery_24h"
+          ]
+        }
+      ]
+    },
+    "source_type": "ReEDSGenerator",
+    "target_type": "PLEXOSBattery",
+    "version": 1
+  },
+  {
+    "field_map": {
+      "name": "name"
+    },
+    "source_type": "ReEDSRegion",
+    "target_type": "PLEXOSRegion",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "allow_dump_energy": -1,
+      "allow_unserved_energy": -1,
+      "load_participation_factor": 0
+    },
+    "field_map": {
+      "name": "name"
+    },
+    "source_type": "ReEDSRegion",
+    "target_type": "PLEXOSNode",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "reeds-line"
+    },
+    "field_map": {
+      "name": "name"
+    },
+    "getters": {
+      "max_flow": "line_max_flow",
+      "min_flow": "line_min_flow",
+      "category": "line_category"
+    },
+    "source_type": "ReEDSTransmissionLine",
+    "target_type": "PLEXOSLine",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "duration": 0.0,
+      "min_provision": 0.0,
+      "timeframe": 0.0
+    },
+    "field_map": {
+      "name": "name"
+    },
+    "getters": {
+      "duration": "reserve_duration",
+      "min_provision": "reserve_requirement",
+      "timeframe": "reserve_timeframe"
+    },
+    "source_type": "ReEDSReserve",
+    "target_type": "PLEXOSReserve",
     "version": 1
   }
 ]

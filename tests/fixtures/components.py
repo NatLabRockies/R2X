@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 @pytest.fixture
 def system_with_load_zone(sienna_system_empty: System) -> System:
     """System with LoadZone and Area."""
-    from r2x_sienna.models import Area, LoadZone
+    from r2x_sienna.models import Area
 
     sys = sienna_system_empty
     zone = LoadZone(name="TestZone")
@@ -41,7 +41,6 @@ def system_with_load_zone(sienna_system_empty: System) -> System:
 @pytest.fixture
 def system_with_buses(system_with_zone):
     """System with buses in a zone."""
-    zone = system_with_zone.get_component(LoadZone, "test-zone")
     area = system_with_zone.get_component(Area, "test-area")
 
     # Add multiple buses for network testing
@@ -103,7 +102,6 @@ def system_with_multiband_costs(system_with_zone):
     - Piecewise linear heat rate (3 bands)
     - Load-dependent ramp rates
     """
-    zone = system_with_zone.get_component(LoadZone, "test-zone")
     area = system_with_zone.get_component(Area, "test-area")
 
     # Add bus
@@ -227,7 +225,6 @@ def system_complete(system_with_zone):
     - Storage
     - Reserves
     """
-    zone = system_with_zone.get_component(LoadZone, "test-zone")
     area = system_with_zone.get_component(Area, "test-area")
 
     # Create network with 3 buses

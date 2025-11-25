@@ -11,7 +11,7 @@ from r2x_core import PluginConfig
 
 class ReedsToPlexosConfig(PluginConfig):
     models: tuple[str, ...] = Field(
-        default=("r2x_reeds.models", "r2x_plexos.models"),
+        default=("r2x_reeds.models", "r2x_plexos.models", "r2x_reeds_to_plexos.getters_utils"),
         description="Modules used to resolve ReEDS sources and PLEXOS targets.",
     )
     commit_technologies: Annotated[

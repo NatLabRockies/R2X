@@ -1,21 +1,23 @@
-"""R2X plugin entry point for Sienna to Plexos package."""
+"""R2X plugin entry point for the Sienna to Plexos package."""
 
-from r2x_core.package import Package
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from r2x_core import PluginManifest
 
 
-def register_plugin() -> Package:
-    """Return the Sienna to Plexos plugin package for R2X framework discovery."""
+def register_plugin() -> PluginManifest:
+    """Return the Sienna to Plexos plugin manifest for discovery."""
+    from r2x_core import PluginManifest
 
-    from r2x_core.plugin import BasePlugin, IOType
-    from r2x_sienna_to_plexos.sienna_to_plexos import sienna_to_plexos
-
-    return Package(
-        name="r2x-sienna-to-plexos",
-        plugins=[
-            BasePlugin(
-                name="sienna-to-plexos",
-                obj=sienna_to_plexos,
-                io_type=IOType.BOTH,
-            ),
-        ],
-    )
+    manifest = PluginManifest(package="r2x_sienna_to_plexos")
+    # manifest.add(
+    #     PluginSpec.function(
+    #         name="sienna-to-plexos",
+    #         entry=sienna_to_plexos,
+    #         description="Translate a Sienna system into PLEXOS data using the packaged rule set.",
+    #     )
+    # )
+    return manifest

@@ -52,7 +52,9 @@ dependencies = [
     "r2x-sienna-to-plexos",
     "r2x-plexos-to-sienna",
     "r2x-reeds-to-plexos",
-    "r2x-core>=0.1.0,<2.0.0",
+    "r2x-plexos",
+    "r2x-core",
+    "r2x-sienna",
 ]
 
 [project.urls]
@@ -64,12 +66,12 @@ Changelog = "https://nrel.github.io/r2x/CHANGELOG.html"
 
 [dependency-groups]
 dev = [
-    "h5py-stubs>=0.1.2",
-    "mypy>=1.18.2",
-    "pre-commit>=4.3.0",
-    "pytest>=8.4.2",
-    "pytest-coverage>=0.0",
-    "ruff>=0.13.2",
+    "h5py-stubs>=0.1.2,<1.0.0",
+    "mypy>=1.18.2,<2.0.0",
+    "pre-commit>=4.5.0,<5.0.0",
+    "pytest>=8.3.0,<9.0.0",
+    "pytest-cov>=5.0.0,<6.0.0",
+    "ruff>=0.6.8,<0.7.0",
 ]
 docs = [
     "autodoc-pydantic",
@@ -91,7 +93,8 @@ build-backend = "uv_build"
 r2x-sienna-to-plexos = { workspace = true }
 r2x-plexos-to-sienna = { workspace = true }
 r2x-reeds-to-plexos = { workspace = true }
-r2x-core = { path = "../../r2x-core/dev", editable = true }
+r2x-core = { git = "https://github.com/NREL/r2x-core", branch = "pesap/rules" }
+r2x-sienna = { git = "ssh://git@github.com/NREL-Sienna/r2x-sienna", branch = "pesap/r2x_core_compat" }
 
 [tool.uv.workspace]
 members = ["packages/*"]
@@ -102,12 +105,29 @@ exclude = ["tests/"]
 plugins = [
   "pydantic.mypy"
 ]
+mypy_path = [
+  "packages/r2x-sienna-to-plexos/src",
+  "packages/r2x-reeds-to-plexos/src",
+  "packages/r2x-plexos-to-sienna/src",
+]
+
+[[tool.mypy.overrides]]
+module = "r2x_sienna"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "r2x_sienna.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
 markers = [
     "integration: integration tests requiring real data (deselect with '-m \"not integration\"')",
+]
+addopts = [
+    "--cov=packages",
+    "--cov-report=term-missing",
 ]
 
 [tool.ruff]

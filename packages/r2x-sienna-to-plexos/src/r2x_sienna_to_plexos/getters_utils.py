@@ -7,7 +7,7 @@ transform Sienna cost curves into PLEXOS property values with band support.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from infrasys.cost_curves import CostCurve, FuelCurve
 from infrasys.function_data import LinearFunctionData, PiecewiseLinearData, QuadraticFunctionData, XYCoords
@@ -15,11 +15,10 @@ from infrasys.value_curves import AverageRateCurve, IncrementalCurve, InputOutpu
 from r2x_plexos.models import PLEXOSPropertyValue
 from r2x_sienna.units import get_magnitude
 
-if TYPE_CHECKING:
-    pass
+InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData]
 
 
-def normalize_value_curve(curve: Any) -> InputOutputCurve | None:
+def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:
     """Normalize value curve to InputOutputCurve format.
 
     Converts IncrementalCurve and AverageRateCurve to InputOutputCurve.
@@ -37,7 +36,7 @@ def normalize_value_curve(curve: Any) -> InputOutputCurve | None:
     """
     if isinstance(curve, InputOutputCurve):
         return curve
-    if isinstance(curve, (IncrementalCurve, AverageRateCurve)):
+    if isinstance(curve, IncrementalCurve | AverageRateCurve):
         try:
             return curve.to_input_output()
         except Exception:

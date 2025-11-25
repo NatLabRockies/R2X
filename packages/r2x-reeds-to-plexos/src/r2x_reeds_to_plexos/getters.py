@@ -1,4 +1,4 @@
-"""Getter helpers for ReEDS → PLEXOS translation."""
+"""Getters for ReEDS to Plexos translation."""
 
 from __future__ import annotations
 
@@ -8,11 +8,9 @@ from r2x_core import Ok, Result
 from r2x_core.getters import getter
 
 if TYPE_CHECKING:
-    from r2x_reeds.models.components import ReEDSGenerator
+    from r2x_reeds.models import ReEDSGenerator, ReEDSReserve, ReEDSTransmissionLine
 
-    from r2x_core.translation_rules import TranslationContext
-
-MMBTU_TO_GJ = 1.055056  # Unit conversion factor
+    from r2x_core.context import TranslationContext
 
 
 def _float_or_zero(value: Any | None) -> float:
@@ -38,17 +36,37 @@ def min_capacity_factor_percent(
     return Ok(_float_or_zero(factor) * 100.0)
 
 
-@getter
-def heat_rate_to_gj_per_mwh(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
-    """Convert heat rate from MMBtu/MWh to GJ/MWh."""
-    heat_rate = getattr(component, "heat_rate", None)
-    return Ok(_float_or_zero(heat_rate) * MMBTU_TO_GJ)
-
-
-@getter
-def fuel_price_per_gj(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
-    """Convert fuel price from $/MMBtu to $/GJ."""
-    fuel_price = getattr(component, "fuel_price", None)
-    if fuel_price is None:
+def line_max_flow(_: TranslationContext, component: ReEDSTransmissionLine) -> Result[float, ValueError]:
+    """Return the larger of the forward/backward flow limits."""
+    limits = getattr(component, "max_active_power", None)
+    if limits is None:
         return Ok(0.0)
-    return Ok(float(fuel_price) / MMBTU_TO_GJ)
+    return Ok(float(max(limits.from_to, limits.to_from)))
+
+
+@getter
+def line_min_flow(_: TranslationContext, component: ReEDSTransmissionLine) -> Result[float, ValueError]:
+    """Return the negative of the maximum absolute flow for min_flow."""
+    limits = getattr(component, "max_active_power", None)
+    if limits is None:
+        return Ok(0.0)
+    max_abs = max(abs(limits.from_to), abs(limits.to_from))
+    return Ok(-float(max_abs))
+
+
+@getter
+def reserve_timeframe(_: TranslationContext, component: ReEDSReserve) -> Result[float, ValueError]:
+    """Return the reserve timeframe in seconds."""
+    return Ok(_float_or_zero(getattr(component, "time_frame", None)))
+
+
+@getter
+def reserve_duration(_: TranslationContext, component: ReEDSReserve) -> Result[float, ValueError]:
+    """Return the reserve duration in seconds."""
+    return Ok(_float_or_zero(getattr(component, "duration", None)))
+
+
+@getter
+def reserve_requirement(_: TranslationContext, component: ReEDSReserve) -> Result[float, ValueError]:
+    """Return the reserve requirement in MW."""
+    return Ok(_float_or_zero(getattr(component, "max_requirement", None)))

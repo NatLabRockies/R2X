@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from infrasys.cost_curves import FuelCurve
-from r2x_plexos.models import PLEXOSBattery
 from r2x_sienna.models import PowerLoad
 from r2x_sienna.models.getters import (
     get_max_active_power as sienna_get_max_active_power,
@@ -28,7 +27,6 @@ from r2x_sienna_to_plexos.getters_utils import (
 )
 
 if TYPE_CHECKING:
-    from r2x_plexos.models import PLEXOSBattery
     from r2x_sienna.models import (
         ACBus,
         EnergyReservoirStorage,
@@ -165,7 +163,8 @@ def get_power_load(context: TranslationContext, source_component: Any) -> Result
 @getter
 def get_voltage(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     """Extract AC voltage magnitude from base_voltage Quantity."""
-    return get_magnitude(source_component.base_voltage)
+    value = get_magnitude(source_component.base_voltage)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
@@ -359,33 +358,34 @@ def get_vom_charge(context: TranslationContext, source_component: Any) -> Result
 @getter
 def get_storage_charge_efficiency(
     context: TranslationContext, source_component: EnergyReservoirStorage
-) -> Result[PLEXOSBattery, ValueError]:
-    return Ok(source_component.efficiency.input)
+) -> Result[float, ValueError]:
+    return Ok(float(source_component.efficiency.input))
 
 
 @getter
 def get_storage_discharge_efficiency(
     context: TranslationContext, source_component: EnergyReservoirStorage
-) -> Result[PLEXOSBattery, ValueError]:
-    return Ok(source_component.efficiency.output)
+) -> Result[float, ValueError]:
+    return Ok(float(source_component.efficiency.output))
 
 
 @getter
 def get_storage_cycles(
     context: TranslationContext, source_component: EnergyReservoirStorage
-) -> Result[PLEXOSBattery, ValueError]:
-    return Ok(source_component.cycle_limits)
+) -> Result[float, ValueError]:
+    return Ok(float(source_component.cycle_limits))
 
 
 @getter
 def get_storage_max_power(
     context: TranslationContext, source_component: EnergyReservoirStorage
-) -> Result[PLEXOSBattery, ValueError]:
-    return Ok(source_component.output_active_power_limits.max)
+) -> Result[float, ValueError]:
+    value = get_magnitude(source_component.output_active_power_limits.max)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
-def gest_storage_capacity(
+def get_storage_capacity(
     context: TranslationContext, source_component: EnergyReservoirStorage
-) -> Result[PLEXOSBattery, ValueError]:
-    return Ok(source_component.storage_capacity)
+) -> Result[float, ValueError]:
+    return Ok(float(source_component.storage_capacity))
