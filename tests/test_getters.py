@@ -10,12 +10,11 @@ This module validates that getter functions:
 import pytest
 
 
-def test_is_slack_bus_returns_one_for_slack(context_with_buses):
+def test_is_slack_bus_returns_one_for_slack(context_with_buses) -> None:
     """is_slack_bus returns Ok(1) for SLACK bus type."""
     from r2x_sienna.models import ACBus
     from r2x_sienna_to_plexos.getters import is_slack_bus
 
-    # Get a real bus from the context
     source_bus = context_with_buses.source_system.get_component(ACBus, "bus-1")
 
     result = is_slack_bus(context_with_buses, source_bus)
@@ -27,7 +26,7 @@ def test_is_slack_bus_returns_one_for_slack(context_with_buses):
     assert value in [0, 1]
 
 
-def test_is_slack_bus_returns_result_int_type():
+def test_is_slack_bus_returns_result_int_type() -> None:
     """is_slack_bus returns Result[int, ValueError]."""
     from r2x_sienna.models.enums import ACBusTypes
     from r2x_sienna_to_plexos.getters import is_slack_bus
@@ -46,7 +45,7 @@ def test_is_slack_bus_returns_result_int_type():
     assert value == 1
 
 
-def test_is_slack_bus_returns_zero_for_non_slack():
+def test_is_slack_bus_returns_zero_for_non_slack() -> None:
     """is_slack_bus returns Ok(0) for non-SLACK bus types."""
     from r2x_sienna.models.enums import ACBusTypes
     from r2x_sienna_to_plexos.getters import is_slack_bus
@@ -64,7 +63,7 @@ def test_is_slack_bus_returns_zero_for_non_slack():
     assert value == 0
 
 
-def test_get_availability_returns_result_int_type():
+def test_get_availability_returns_result_int_type() -> None:
     """get_availability returns Result[int, ValueError]."""
     from r2x_sienna_to_plexos.getters import get_availability
 
@@ -82,7 +81,7 @@ def test_get_availability_returns_result_int_type():
     assert value == 5
 
 
-def test_get_availability_defaults_to_one():
+def test_get_availability_defaults_to_one() -> None:
     """get_availability returns Ok(1) when units attribute is missing."""
     from r2x_sienna_to_plexos.getters import get_availability
 
@@ -99,7 +98,7 @@ def test_get_availability_defaults_to_one():
     assert value == 1
 
 
-def test_get_availability_with_real_component(context_with_buses):
+def test_get_availability_with_real_component(context_with_buses) -> None:
     """get_availability works with real Sienna ACBus component."""
     from r2x_sienna.models import ACBus
     from r2x_sienna_to_plexos.getters import get_availability
@@ -114,7 +113,7 @@ def test_get_availability_with_real_component(context_with_buses):
     assert value >= 1
 
 
-def test_get_power_load_returns_result_float_type():
+def test_get_power_load_returns_result_float_type() -> None:
     """get_power_load returns Result[float, ValueError]."""
     from r2x_sienna_to_plexos.getters import get_power_load
 
@@ -136,7 +135,7 @@ def test_get_power_load_returns_result_float_type():
     assert value == 100.5
 
 
-def test_get_power_load_aggregates_multiple_loads():
+def test_get_power_load_aggregates_multiple_loads() -> None:
     """get_power_load sums active power from multiple PowerLoad components."""
     from r2x_sienna_to_plexos.getters import get_power_load
 
@@ -158,7 +157,7 @@ def test_get_power_load_aggregates_multiple_loads():
     assert value == 350.75
 
 
-def test_get_power_load_returns_zero_for_no_loads():
+def test_get_power_load_returns_zero_for_no_loads() -> None:
     """get_power_load returns Ok(0.0) when no PowerLoad components exist."""
     from r2x_sienna_to_plexos.getters import get_power_load
 
@@ -176,7 +175,7 @@ def test_get_power_load_returns_zero_for_no_loads():
     assert value == 0.0
 
 
-def test_get_power_load_skips_loads_without_max_active_power():
+def test_get_power_load_skips_loads_without_max_active_power() -> None:
     """get_power_load skips loads without max_active_power attribute."""
     from r2x_sienna_to_plexos.getters import get_power_load
 
@@ -200,7 +199,7 @@ def test_get_power_load_skips_loads_without_max_active_power():
     assert value == 150.0
 
 
-def test_getter_receives_correct_context_and_component(context_with_buses):
+def test_getter_receives_correct_context_and_component(context_with_buses) -> None:
     """Getter functions receive TranslationContext and source component."""
     from r2x_sienna.models import ACBus
 
@@ -238,7 +237,7 @@ def test_getter_receives_correct_context_and_component(context_with_buses):
     assert received_component is source_bus
 
 
-def test_getter_single_value_not_dict():
+def test_getter_single_value_not_dict() -> None:
     """Getters return single values, not dictionaries."""
 
     from r2x_sienna_to_plexos.getters import is_slack_bus
@@ -258,7 +257,7 @@ def test_getter_single_value_not_dict():
     assert not isinstance(value, dict)
 
 
-def test_getter_error_variant():
+def test_getter_error_variant() -> None:
     """Getters can return Err variant for error handling."""
     from r2x_core import Err
 
@@ -273,7 +272,7 @@ def test_getter_error_variant():
     assert isinstance(error, ValueError)
 
 
-def test_is_slack_bus_has_decorator():
+def test_is_slack_bus_has_decorator() -> None:
     """is_slack_bus is registered via @getter decorator."""
     from r2x_core.getters import GETTER_REGISTRY
 
@@ -283,7 +282,7 @@ def test_is_slack_bus_has_decorator():
     assert callable(getter_func)
 
 
-def test_get_availability_has_decorator():
+def test_get_availability_has_decorator() -> None:
     """get_availability is registered via @getter decorator."""
     from r2x_core.getters import GETTER_REGISTRY
 
@@ -292,7 +291,7 @@ def test_get_availability_has_decorator():
     assert callable(getter_func)
 
 
-def test_get_power_load_has_decorator():
+def test_get_power_load_has_decorator() -> None:
     """get_power_load is registered via @getter decorator."""
     from r2x_core.getters import GETTER_REGISTRY
 
@@ -301,7 +300,7 @@ def test_get_power_load_has_decorator():
     assert callable(getter_func)
 
 
-def test_get_max_capacity_scales_limits(context_with_thermal_generators):
+def test_get_max_capacity_scales_limits(context_with_thermal_generators) -> None:
     """Thermal max capacity getter converts per-unit limits to MW."""
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import get_max_capacity
@@ -314,7 +313,7 @@ def test_get_max_capacity_scales_limits(context_with_thermal_generators):
     assert result.unwrap() == pytest.approx(90.0)
 
 
-def test_get_min_stable_level_scales_limits(context_with_thermal_generators):
+def test_get_min_stable_level_scales_limits(context_with_thermal_generators) -> None:
     """Thermal min stable level getter converts lower bound."""
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import get_min_stable_level
@@ -327,7 +326,7 @@ def test_get_min_stable_level_scales_limits(context_with_thermal_generators):
     assert result.unwrap() == pytest.approx(40.0)
 
 
-def test_get_initial_generation_uses_base_power(context_with_thermal_generators):
+def test_get_initial_generation_uses_base_power(context_with_thermal_generators) -> None:
     """Initial generation getter multiplies per-unit output by base power."""
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import get_initial_generation
@@ -340,7 +339,7 @@ def test_get_initial_generation_uses_base_power(context_with_thermal_generators)
     assert result.unwrap() == pytest.approx(36.0)
 
 
-def test_get_heat_rate_from_fuel_curve(context_with_thermal_generators):
+def test_get_heat_rate_from_fuel_curve(context_with_thermal_generators) -> None:
     """Heat rate getter reads slope from FuelCurve."""
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import get_heat_rate, get_heat_rate_base
@@ -351,7 +350,7 @@ def test_get_heat_rate_from_fuel_curve(context_with_thermal_generators):
     assert get_heat_rate_base(context_with_thermal_generators, source).unwrap() == pytest.approx(0.0)
 
 
-def test_get_fuel_price_from_fuel_curve(context_with_thermal_generators):
+def test_get_fuel_price_from_fuel_curve(context_with_thermal_generators) -> None:
     """Fuel price getter returns FuelCurve fuel_cost."""
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import get_fuel_price
@@ -364,7 +363,7 @@ def test_get_fuel_price_from_fuel_curve(context_with_thermal_generators):
     assert result.unwrap() == pytest.approx(2.4)
 
 
-def test_get_mark_up_from_cost_curve(context_with_thermal_generators):
+def test_get_mark_up_from_cost_curve(context_with_thermal_generators) -> None:
     """Markup getter reads VOM cost when using CostCurve."""
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import get_mark_up
@@ -377,7 +376,7 @@ def test_get_mark_up_from_cost_curve(context_with_thermal_generators):
     assert result.unwrap() == pytest.approx(14.0)
 
 
-def test_get_heat_rate_quadratic_curve_returns_coefficients(context_with_thermal_generators):
+def test_get_heat_rate_quadratic_curve_returns_coefficients(context_with_thermal_generators) -> None:
     """Quadratic fuel curves map to polynomial heat-rate fields."""
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import (
@@ -393,7 +392,7 @@ def test_get_heat_rate_quadratic_curve_returns_coefficients(context_with_thermal
     assert get_heat_rate_incr(context_with_thermal_generators, source).unwrap() == pytest.approx(0.015)
 
 
-def test_get_heat_rate_multiband_returns_property(context_with_thermal_generators):
+def test_get_heat_rate_multiband_returns_property(context_with_thermal_generators) -> None:
     """Piecewise fuel curves emit multi-band load points and heat-rate bands."""
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import get_heat_rate_incr, get_heat_rate_load_point
@@ -409,7 +408,7 @@ def test_get_heat_rate_multiband_returns_property(context_with_thermal_generator
     assert incr_prop.get_bands() == [1, 2]
 
 
-def test_get_mark_up_multiband_property(context_with_thermal_generators):
+def test_get_mark_up_multiband_property(context_with_thermal_generators) -> None:
     """Piecewise cost curves emit multi-band markup properties."""
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import get_mark_up, get_mark_up_point
