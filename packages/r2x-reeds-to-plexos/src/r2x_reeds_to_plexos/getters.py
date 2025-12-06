@@ -340,30 +340,36 @@ def membership_collection_region(_: TranslationContext, __: Any) -> Result[Colle
 def membership_region_child_node(context: TranslationContext, region: Any) -> Result[PLEXOSNode, ValueError]:
     """Find the translated node that matches the region name."""
     region_name = getattr(region, "name", "")
-    match _lookup_target_node(context, region_name):
+    result = _lookup_target_node(context, region_name)
+    match result:
         case Ok(node):
             try:
                 _attach_region_load_time_series(context, region_name, node, region_component=region)
             except Exception as exc:
                 logger.warning("Failed to attach load time series for region %s: %s", region_name, exc)
-            return Ok(node)
-        case Err(err):
-            return Err(err)
+            return result
+        case Err(error):
+            return Err(ValueError(str(error)) if not isinstance(error, ValueError) else error)
+        case _:
+            return Err(ValueError(f"Unexpected result type for region '{region_name}'"))
 
 
 @getter
 def membership_region_parent_node(context: TranslationContext, region: Any) -> Result[PLEXOSNode, ValueError]:
     """Find the translated node for membership parent links."""
     region_name = getattr(region, "name", "")
-    match _lookup_target_node(context, region_name):
+    result = _lookup_target_node(context, region_name)
+    match result:
         case Ok(node):
             try:
                 _attach_region_load_time_series(context, region_name, node, region_component=region)
             except Exception as exc:
                 logger.warning("Failed to attach load time series for region %s: %s", region_name, exc)
-            return Ok(node)
-        case Err(err):
-            return Err(err)
+            return result
+        case Err(error):
+            return Err(ValueError(str(error)) if not isinstance(error, ValueError) else error)
+        case _:
+            return Err(ValueError(f"Unexpected result type for region '{region_name}'"))
 
 
 @getter

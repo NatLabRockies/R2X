@@ -15,7 +15,7 @@ from r2x_sienna.models.getters import (
 from r2x_sienna.models.getters import (
     get_value as sienna_get_value,
 )
-from r2x_sienna.units import get_magnitude
+from r2x_sienna.units import get_magnitude  # type: ignore[import-untyped]
 
 from r2x_core import Err, Ok, Result
 from r2x_core.getters import getter

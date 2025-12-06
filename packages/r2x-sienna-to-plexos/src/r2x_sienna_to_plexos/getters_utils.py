@@ -13,7 +13,7 @@ from infrasys.cost_curves import CostCurve, FuelCurve
 from infrasys.function_data import LinearFunctionData, PiecewiseLinearData, QuadraticFunctionData, XYCoords
 from infrasys.value_curves import AverageRateCurve, IncrementalCurve, InputOutputCurve
 from r2x_plexos.models import PLEXOSPropertyValue
-from r2x_sienna.units import get_magnitude
+from r2x_sienna.units import get_magnitude  # type: ignore[import-untyped]
 
 InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData]
 
