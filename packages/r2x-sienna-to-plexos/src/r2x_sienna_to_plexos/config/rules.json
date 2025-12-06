@@ -1,13 +1,15 @@
 [
   {
     "defaults": {
+      "category": "node",
       "load": 0.0,
       "units": 0.0
     },
     "field_map": {
       "name": "name",
       "units": "available",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "ac_voltage_magnitude": "get_voltage",
@@ -30,7 +32,8 @@
       "name": "name",
       "reactance": "x",
       "resistance": "r",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "ac_line_charging_susceptance": "get_line_charging_susceptance"
@@ -48,7 +51,8 @@
       "name": "name",
       "reactance": "x",
       "resistance": "r",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "ac_line_charging_susceptance": "get_line_charging_susceptance",
@@ -68,7 +72,8 @@
       "rating": "rating",
       "reactance": "x",
       "resistance": "r",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "susceptance": "get_susceptance"
@@ -89,7 +94,8 @@
       "rating": "rating",
       "reactance": "x",
       "resistance": "r",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "susceptance": "get_susceptance"
@@ -105,13 +111,14 @@
       "susceptance": 0.0
     },
     "field_map": {
-      "ac_fixed_shift_angle": "\u03b1",
+      "ac_fixed_shift_angle": "α",
       "ac_tap_ratio": "tap",
       "name": "name",
       "rating": "rating",
       "reactance": "x",
       "resistance": "r",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "susceptance": "get_susceptance"
@@ -130,7 +137,8 @@
     "field_map": {
       "fixed_flow": "active_power_flow",
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "active_power_limits_from": "get_hvdc_flow_limits"
@@ -147,7 +155,8 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
@@ -185,7 +194,8 @@
     "field_map": {
       "name": "name",
       "rating": "rating",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "active_power_limits": "get_max_active_power",
@@ -215,7 +225,8 @@
     "field_map": {
       "name": "name",
       "rating": "rating",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "active_power_limits": "get_max_active_power",
@@ -244,7 +255,8 @@
     "field_map": {
       "name": "name",
       "rating": "rating",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
@@ -270,7 +282,8 @@
     "field_map": {
       "initial_level": "initial_storage",
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {},
     "source_type": "HydroPumpedStorage",
@@ -286,7 +299,8 @@
     "field_map": {
       "name": "name",
       "rating": "rating",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
@@ -313,7 +327,8 @@
     "field_map": {
       "name": "name",
       "rating": "rating",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
@@ -339,7 +354,8 @@
     "field_map": {
       "name": "name",
       "rating": "rating",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
@@ -365,7 +381,8 @@
     "field_map": {
       "name": "name",
       "rating": "rating",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
@@ -388,7 +405,8 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {},
     "source_type": "Area",
@@ -401,7 +419,8 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {},
     "source_type": "LoadZone",
@@ -414,7 +433,8 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {},
     "source_type": "VariableReserve",
@@ -427,7 +447,8 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {},
     "source_type": "TransmissionInterface",
@@ -441,7 +462,8 @@
     "field_map": {
       "initial_soc": "initial_storage_capacity_level",
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
       "capacity": "get_storage_capacity",
