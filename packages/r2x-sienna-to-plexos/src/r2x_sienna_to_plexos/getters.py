@@ -33,6 +33,7 @@ from r2x_sienna.models import (
     ThermalMultiStart,
     ThermalStandard,
     Transformer2W,
+    TransmissionInterface,
     TwoTerminalHVDCLine,
     VariableReserve,
 )
@@ -426,6 +427,12 @@ def membership_collection_nodes(_: TranslationContext, __: Any) -> Result[Collec
 
 
 @getter
+def membership_collection_lines(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the Lines collection enum."""
+    return Ok(CollectionEnum.Lines)
+
+
+@getter
 def membership_collection_generators(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Generators collection enum."""
     return Ok(CollectionEnum.Generators)
@@ -638,6 +645,50 @@ def membership_component_child_node(
         return Err(ValueError(f"Source {comp_type} '{source_comp.name}' is missing bus data"))
 
     return _lookup_target_node_by_name(context, bus.name)
+
+
+@getter
+def membership_interface_child_line(
+    context: TranslationContext, interface: Any
+) -> Result[PLEXOSLine, ValueError]:
+    """Resolve an interface's lines to translated lines.
+
+    Note: This returns the first line. For multiple lines,
+    the membership rule should handle iteration.
+    """
+    interface_name = getattr(interface, "name", "")
+
+    source_interface = next(
+        (
+            intf
+            for intf in context.source_system.get_components(TransmissionInterface)
+            if intf.name == interface_name
+        ),
+        None,
+    )
+
+    if source_interface is None:
+        return Err(ValueError(f"No source TransmissionInterface found for '{interface_name}'"))
+
+    lines = getattr(source_interface, "lines", None)
+    if not lines:
+        return Err(ValueError(f"TransmissionInterface '{interface_name}' has no lines"))
+
+    if not lines:
+        return Err(ValueError(f"TransmissionInterface '{interface_name}' has empty lines"))
+
+    first_line = lines[0]
+    line_name = first_line.name if hasattr(first_line, "name") else str(first_line)
+
+    target_line = next(
+        (line for line in context.target_system.get_components(PLEXOSLine) if line.name == line_name),
+        None,
+    )
+
+    if target_line is None:
+        return Err(ValueError(f"No PLEXOSLine found for line '{line_name}'"))
+
+    return Ok(target_line)
 
 
 @getter

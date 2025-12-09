@@ -17,6 +17,8 @@ from plexosdb import CollectionEnum
 from r2x_plexos.models import (
     PLEXOSBattery,
     PLEXOSGenerator,
+    PLEXOSInterface,
+    PLEXOSLine,
     PLEXOSMembership,
     PLEXOSNode,
     PLEXOSPropertyValue,
@@ -41,6 +43,7 @@ from r2x_sienna.models import (
     ThermalMultiStart,
     ThermalStandard,
     Transformer2W,
+    TransmissionInterface,
     VariableReserve,
 )
 from r2x_sienna.units import get_magnitude  # type: ignore[import-untyped]
@@ -80,8 +83,6 @@ def _ensure_membership(
 
 def ensure_region_node_memberships(context: TranslationContext) -> None:
     """Create Region->Node memberships for all regions and their nodes."""
-    logger.info("Starting region-node membership creation...")
-
     regions = list(context.target_system.get_components(PLEXOSRegion))
     all_nodes = list(context.target_system.get_components(PLEXOSNode))
     all_buses = list(context.source_system.get_components(ACBus))
@@ -107,8 +108,6 @@ def ensure_region_node_memberships(context: TranslationContext) -> None:
 
 def ensure_generator_node_memberships(context: TranslationContext) -> None:
     """Ensure every translated generator has a node membership based on its source bus."""
-    logger.info("Starting generator-node membership creation...")
-
     sienna_generator_types = [
         HydroDispatch,
         ThermalStandard,
@@ -149,8 +148,6 @@ def ensure_generator_node_memberships(context: TranslationContext) -> None:
 
 def ensure_battery_node_memberships(context: TranslationContext) -> None:
     """Ensure every translated battery has a node membership based on its source bus."""
-    logger.info("Starting battery-node membership creation...")
-
     source_batteries: dict[str, Any] = {}
     for battery in context.source_system.get_components(EnergyReservoirStorage):
         source_batteries[battery.name] = battery
@@ -178,8 +175,6 @@ def ensure_battery_node_memberships(context: TranslationContext) -> None:
 
 def ensure_node_zone_memberships(context: TranslationContext) -> None:
     """Create Node->Zone memberships for all nodes and their load zones."""
-    logger.info("Starting node-zone membership creation...")
-
     all_nodes = list(context.target_system.get_components(PLEXOSNode))
     all_zones = list(context.target_system.get_components(PLEXOSZone))
     all_buses = list(context.source_system.get_components(ACBus))
@@ -212,8 +207,6 @@ def ensure_node_zone_memberships(context: TranslationContext) -> None:
 
 def ensure_reserve_generator_memberships(context: TranslationContext) -> None:
     """Create Reserve->Generator memberships for all reserves and their participating generators."""
-    logger.info("Starting reserve-generator membership creation...")
-
     all_reserves = list(context.target_system.get_components(PLEXOSReserve))
     all_generators = list(context.target_system.get_components(PLEXOSGenerator))
     source_reserves = list(context.source_system.get_components(VariableReserve))
@@ -244,8 +237,6 @@ def ensure_reserve_generator_memberships(context: TranslationContext) -> None:
 
 def ensure_transformer_node_memberships(context: TranslationContext) -> None:
     """Create Transformer->Node memberships (both from and to) for all transformers."""
-    logger.info("Starting transformer-node membership creation...")
-
     transformer_types = [Transformer2W, TapTransformer, PhaseShiftingTransformer]
 
     all_transformers = list(context.target_system.get_components(PLEXOSTransformer))
@@ -286,6 +277,36 @@ def ensure_transformer_node_memberships(context: TranslationContext) -> None:
             total_memberships += 1
 
     logger.info(f"Total {total_memberships} Transformer-Node memberships created.")
+
+
+def ensure_interface_line_memberships(context: TranslationContext) -> None:
+    """Create Interface->Line memberships for all interfaces and their lines."""
+    all_interfaces = list(context.target_system.get_components(PLEXOSInterface))
+    all_lines = list(context.target_system.get_components(PLEXOSLine))
+    source_interfaces = list(context.source_system.get_components(TransmissionInterface))
+
+    lines_by_name = {line.name: line for line in all_lines}
+    source_interfaces_by_name = {intf.name: intf for intf in source_interfaces}
+
+    total_memberships = 0
+    for interface in all_interfaces:
+        source_interface = source_interfaces_by_name.get(interface.name)
+        if source_interface is None:
+            continue
+
+        lines = getattr(source_interface, "lines", None)
+        if not lines:
+            continue
+
+        for line_ref in lines:
+            line_name = line_ref.name if hasattr(line_ref, "name") else str(line_ref)
+            line = lines_by_name.get(line_name)
+
+            if line is not None:
+                _ensure_membership(context, interface, line, CollectionEnum.Lines)
+                total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Interface-Line memberships created.")
 
 
 def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:

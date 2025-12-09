@@ -9,6 +9,7 @@ from loguru import logger
 
 from .getters import (
     membership_component_child_node,
+    membership_interface_child_line,
     membership_line_from_parent_node,
     membership_line_to_parent_node,
     membership_region_child_node,
@@ -18,6 +19,7 @@ from .getters import (
 from .getters_utils import (
     ensure_battery_node_memberships,
     ensure_generator_node_memberships,
+    ensure_interface_line_memberships,
     ensure_node_zone_memberships,
     ensure_region_node_memberships,
     ensure_reserve_generator_memberships,
@@ -35,6 +37,7 @@ __all__ = [
     "SiennaToPlexosConfig",
     "__version__",
     "ensure_region_node_memberships",
+    "ensure_interface_line_memberships",
     "ensure_generator_node_memberships",
     "ensure_battery_node_memberships",
     "ensure_node_zone_memberships",
@@ -46,4 +49,5 @@ __all__ = [
     "membership_line_from_parent_node",
     "membership_line_to_parent_node",
     "membership_component_child_node",
+    "membership_interface_child_line",
 ]
