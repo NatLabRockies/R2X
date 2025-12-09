@@ -14,8 +14,18 @@ from infrasys.function_data import LinearFunctionData, PiecewiseLinearData, Quad
 from infrasys.value_curves import AverageRateCurve, IncrementalCurve, InputOutputCurve
 from loguru import logger
 from plexosdb import CollectionEnum
-from r2x_plexos.models import PLEXOSMembership, PLEXOSNode, PLEXOSPropertyValue, PLEXOSRegion
-from r2x_sienna.models import ACBus, Area
+from r2x_plexos.models import PLEXOSGenerator, PLEXOSMembership, PLEXOSNode, PLEXOSPropertyValue, PLEXOSRegion
+from r2x_sienna.models import (
+    ACBus,
+    Area,
+    HydroDispatch,
+    HydroEnergyReservoir,
+    HydroPumpedStorage,
+    RenewableDispatch,
+    RenewableNonDispatch,
+    ThermalMultiStart,
+    ThermalStandard,
+)
 from r2x_sienna.units import get_magnitude  # type: ignore[import-untyped]
 
 if TYPE_CHECKING:
@@ -32,10 +42,6 @@ def ensure_region_node_memberships(context: TranslationContext) -> None:
     all_nodes = list(context.target_system.get_components(PLEXOSNode))
     all_buses = list(context.source_system.get_components(ACBus))
 
-    logger.info(f"Found {len(regions)} regions, {len(all_nodes)} nodes, {len(all_buses)} buses")
-
-    buses_with_area = [bus for bus in all_buses if hasattr(bus, "area") and bus.area is not None]
-    logger.info(f"Buses with area attribute: {len(buses_with_area)}/{len(all_buses)}")
     node_to_area = {}
     for node in all_nodes:
         for bus in all_buses:
@@ -43,8 +49,6 @@ def ensure_region_node_memberships(context: TranslationContext) -> None:
                 area_name = bus.area.name if isinstance(bus.area, Area) else str(bus.area)
                 node_to_area[node.name] = area_name
                 break
-
-    logger.info(f"Mapped {len(node_to_area)} nodes to areas")
 
     total_memberships = 0
     for region in regions:
@@ -61,8 +65,53 @@ def ensure_region_node_memberships(context: TranslationContext) -> None:
             context.target_system.add_supplemental_attribute(node, membership)
             total_memberships += 1
 
-        logger.info(f"Region '{region_name}': created {len(nodes_in_region)} memberships")
-    logger.info(f"Total memberships created: {total_memberships}")
+    logger.info(f"Total {total_memberships} Region-Node memberships created.")
+
+
+def ensure_generator_node_memberships(context: TranslationContext) -> None:
+    """Ensure every translated generator has a node membership based on its source bus."""
+    logger.info("Starting generator-node membership creation...")
+
+    sienna_generator_types = [
+        HydroDispatch,
+        ThermalStandard,
+        ThermalMultiStart,
+        RenewableDispatch,
+        RenewableNonDispatch,
+        HydroEnergyReservoir,
+        HydroPumpedStorage,
+    ]
+
+    source_generators: dict[str, Any] = {}
+    for gen_type in sienna_generator_types:
+        gen: Any
+        for gen in context.source_system.get_components(gen_type):  # type: ignore[arg-type]
+            source_generators[gen.name] = gen
+
+    target_generators = {gen.name: gen for gen in context.target_system.get_components(PLEXOSGenerator)}
+    nodes_by_name = {node.name: node for node in context.target_system.get_components(PLEXOSNode)}
+
+    total_memberships = 0
+    for name, source_gen in source_generators.items():
+        target_gen = target_generators.get(name)
+        if target_gen is None:
+            continue
+
+        bus = getattr(source_gen, "bus", None)
+        if bus is None:
+            continue
+
+        node = nodes_by_name.get(bus.name)
+        if node is not None:
+            membership = PLEXOSMembership(
+                parent_object=target_gen,
+                child_object=node,
+                collection=CollectionEnum.Nodes,
+            )
+            context.target_system.add_supplemental_attribute(target_gen, membership)
+            total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Generator-Node memberships created.")
 
 
 def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:

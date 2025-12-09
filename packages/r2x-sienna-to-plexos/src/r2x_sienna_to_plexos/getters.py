@@ -11,11 +11,18 @@ from r2x_sienna.models import (
     ACBus,
     Area,
     EnergyReservoirStorage,
+    HydroDispatch,
+    HydroEnergyReservoir,
+    HydroPumpedStorage,
     Line,
     MonitoredLine,
     PhaseShiftingTransformer,
     PowerLoad,
+    RenewableDispatch,
+    RenewableNonDispatch,
     TapTransformer,
+    ThermalMultiStart,
+    ThermalStandard,
     Transformer2W,
     TwoTerminalHVDCLine,
 )
@@ -403,6 +410,12 @@ def membership_parent_component(_: TranslationContext, component: Any) -> Result
 
 
 @getter
+def membership_collection_nodes(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the Nodes collection enum."""
+    return Ok(CollectionEnum.Nodes)
+
+
+@getter
 def membership_collection_region(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Region collection enum."""
     return Ok(CollectionEnum.Region)
@@ -442,6 +455,27 @@ def _lookup_target_node_by_source_area(
     return Err(ValueError(f"No PLEXOSNode found with source area '{area_name}'"))
 
 
+def _lookup_source_generator(context: TranslationContext, gen_name: str) -> Any | None:
+    """Find a source generator by name across all Sienna generator types."""
+    generator_types = [
+        HydroDispatch,
+        ThermalStandard,
+        ThermalMultiStart,
+        RenewableDispatch,
+        RenewableNonDispatch,
+        HydroEnergyReservoir,
+        HydroPumpedStorage,
+    ]
+
+    for gen_type in generator_types:
+        generators: list[Any] = list(context.source_system.get_components(gen_type))  # type: ignore[arg-type]
+        for gen in generators:
+            if gen.name == gen_name:
+                return gen
+
+    return None
+
+
 def _lookup_target_node_by_name(
     context: TranslationContext, node_name: str
 ) -> Result[PLEXOSNode, ValueError]:
@@ -450,6 +484,23 @@ def _lookup_target_node_by_name(
         if node.name == node_name:
             return Ok(node)
     return Err(ValueError(f"No PLEXOSNode found with name '{node_name}'"))
+
+
+@getter
+def membership_component_child_node(
+    context: TranslationContext, component: Any
+) -> Result[PLEXOSNode, ValueError]:
+    """Resolve a component's bus to the translated node."""
+    comp_name = getattr(component, "name", "")
+    source_gen = _lookup_source_generator(context, comp_name)
+    if source_gen is None:
+        return Err(ValueError(f"No source generator found for '{comp_name}'"))
+
+    bus = getattr(source_gen, "bus", None)
+    if bus is None or not getattr(bus, "name", None):
+        return Err(ValueError(f"Source generator '{source_gen.name}' is missing bus data"))
+
+    return _lookup_target_node_by_name(context, bus.name)
 
 
 @getter
