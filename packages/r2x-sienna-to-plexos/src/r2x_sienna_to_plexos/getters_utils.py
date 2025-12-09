@@ -21,6 +21,7 @@ from r2x_plexos.models import (
     PLEXOSNode,
     PLEXOSPropertyValue,
     PLEXOSRegion,
+    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
@@ -29,6 +30,7 @@ from r2x_sienna.models import (
     HydroDispatch,
     HydroEnergyReservoir,
     HydroPumpedStorage,
+    LoadZone,
     RenewableDispatch,
     RenewableNonDispatch,
     SynchronousCondenser,
@@ -166,6 +168,40 @@ def ensure_battery_node_memberships(context: TranslationContext) -> None:
             total_memberships += 1
 
     logger.info(f"Total {total_memberships} Battery-Node memberships created.")
+
+
+def ensure_node_zone_memberships(context: TranslationContext) -> None:
+    """Create Node->Zone memberships for all nodes and their load zones."""
+    logger.info("Starting node-zone membership creation...")
+
+    all_nodes = list(context.target_system.get_components(PLEXOSNode))
+    all_zones = list(context.target_system.get_components(PLEXOSZone))
+    all_buses = list(context.source_system.get_components(ACBus))
+
+    node_to_zone: dict[str, str] = {}
+    for node in all_nodes:
+        for bus in all_buses:
+            if bus.name == node.name and hasattr(bus, "load_zone") and bus.load_zone is not None:
+                zone_name: str = (
+                    bus.load_zone.name if isinstance(bus.load_zone, LoadZone) else str(bus.load_zone)
+                )
+                node_to_zone[node.name] = zone_name
+                break
+
+    zones_by_name = {zone.name: zone for zone in all_zones}
+
+    total_memberships = 0
+    for node in all_nodes:
+        zone_name_lookup: str | None = node_to_zone.get(node.name)
+        if zone_name_lookup is None:
+            continue
+
+        zone = zones_by_name.get(zone_name_lookup)
+        if zone is not None:
+            _ensure_membership(context, node, zone, CollectionEnum.Zone)
+            total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Node-Zone memberships created.")
 
 
 def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:

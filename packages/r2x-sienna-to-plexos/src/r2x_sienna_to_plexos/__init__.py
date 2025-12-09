@@ -17,6 +17,7 @@ from .getters import (
 from .getters_utils import (
     ensure_battery_node_memberships,
     ensure_generator_node_memberships,
+    ensure_node_zone_memberships,
     ensure_region_node_memberships,
 )
 from .plugin_config import SiennaToPlexosConfig
@@ -33,6 +34,7 @@ __all__ = [
     "ensure_region_node_memberships",
     "ensure_generator_node_memberships",
     "ensure_battery_node_memberships",
+    "ensure_node_zone_memberships",
     "membership_region_parent_node",
     "membership_region_child_node",
     "membership_line_from_parent_node",

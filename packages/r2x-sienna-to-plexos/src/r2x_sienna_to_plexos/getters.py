@@ -6,7 +6,7 @@ from typing import Any
 
 from infrasys.cost_curves import FuelCurve
 from plexosdb.enums import CollectionEnum
-from r2x_plexos.models import PLEXOSBattery, PLEXOSGenerator, PLEXOSLine, PLEXOSNode
+from r2x_plexos.models import PLEXOSBattery, PLEXOSGenerator, PLEXOSLine, PLEXOSNode, PLEXOSZone
 from r2x_sienna.models import (
     ACBus,
     Area,
@@ -15,6 +15,7 @@ from r2x_sienna.models import (
     HydroEnergyReservoir,
     HydroPumpedStorage,
     Line,
+    LoadZone,
     MonitoredLine,
     PhaseShiftingTransformer,
     PowerLoad,
@@ -434,6 +435,20 @@ def membership_collection_node_to(_: TranslationContext, __: Any) -> Result[Coll
     return Ok(CollectionEnum.NodeTo)
 
 
+@getter
+def membership_collection_zone(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the Zone collection enum."""
+    return Ok(CollectionEnum.Zone)
+
+
+def _lookup_target_zone_by_name(context: TranslationContext, zone_name: str) -> Result[Any, ValueError]:
+    """Return the translated zone with the given name."""
+    for zone in context.target_system.get_components(PLEXOSZone):
+        if zone.name == zone_name:
+            return Ok(zone)
+    return Err(ValueError(f"No PLEXOSZone found with name '{zone_name}'"))
+
+
 def _lookup_target_node_by_source_area(
     context: TranslationContext, area_name: str
 ) -> Result[PLEXOSNode, ValueError]:
@@ -495,6 +510,25 @@ def _lookup_target_node_by_name(
         if node.name == node_name:
             return Ok(node)
     return Err(ValueError(f"No PLEXOSNode found with name '{node_name}'"))
+
+
+@getter
+def membership_node_child_zone(context: TranslationContext, node: PLEXOSNode) -> Result[Any, ValueError]:
+    """Resolve a node's load zone to the translated zone."""
+    source_bus = next(
+        (bus for bus in context.source_system.get_components(ACBus) if bus.name == node.name),
+        None,
+    )
+    if source_bus is None:
+        return Err(ValueError(f"No source ACBus found for node '{node.name}'"))
+
+    load_zone = getattr(source_bus, "load_zone", None)
+    if load_zone is None:
+        return Err(ValueError(f"Source bus '{source_bus.name}' has no load_zone"))
+
+    zone_name = load_zone.name if isinstance(load_zone, LoadZone) else str(load_zone)
+
+    return _lookup_target_zone_by_name(context, zone_name)
 
 
 @getter
