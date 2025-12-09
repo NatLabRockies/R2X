@@ -6,7 +6,7 @@ from typing import Any
 
 from infrasys.cost_curves import FuelCurve
 from plexosdb.enums import CollectionEnum
-from r2x_plexos.models import PLEXOSLine, PLEXOSNode
+from r2x_plexos.models import PLEXOSBattery, PLEXOSGenerator, PLEXOSLine, PLEXOSNode
 from r2x_sienna.models import (
     ACBus,
     Area,
@@ -20,6 +20,7 @@ from r2x_sienna.models import (
     PowerLoad,
     RenewableDispatch,
     RenewableNonDispatch,
+    SynchronousCondenser,
     TapTransformer,
     ThermalMultiStart,
     ThermalStandard,
@@ -465,6 +466,7 @@ def _lookup_source_generator(context: TranslationContext, gen_name: str) -> Any 
         RenewableNonDispatch,
         HydroEnergyReservoir,
         HydroPumpedStorage,
+        SynchronousCondenser,
     ]
 
     for gen_type in generator_types:
@@ -473,6 +475,15 @@ def _lookup_source_generator(context: TranslationContext, gen_name: str) -> Any 
             if gen.name == gen_name:
                 return gen
 
+    return None
+
+
+def _lookup_source_battery(context: TranslationContext, battery_name: str) -> Any | None:
+    """Find a source battery by name."""
+    batteries: list[Any] = list(context.source_system.get_components(EnergyReservoirStorage))
+    for battery in batteries:
+        if battery.name == battery_name:
+            return battery
     return None
 
 
@@ -490,15 +501,32 @@ def _lookup_target_node_by_name(
 def membership_component_child_node(
     context: TranslationContext, component: Any
 ) -> Result[PLEXOSNode, ValueError]:
-    """Resolve a component's bus to the translated node."""
-    comp_name = getattr(component, "name", "")
-    source_gen = _lookup_source_generator(context, comp_name)
-    if source_gen is None:
-        return Err(ValueError(f"No source generator found for '{comp_name}'"))
+    """Resolve a component's bus to the translated node.
 
-    bus = getattr(source_gen, "bus", None)
+    Works for both PLEXOSGenerator and PLEXOSBattery components.
+    """
+    comp_name = getattr(component, "name", "")
+
+    if isinstance(component, PLEXOSGenerator):
+        source_comp = _lookup_source_generator(context, comp_name)
+        comp_type = "generator"
+    elif isinstance(component, PLEXOSBattery):
+        source_comp = _lookup_source_battery(context, comp_name)
+        comp_type = "battery"
+    else:
+        source_comp = _lookup_source_generator(context, comp_name)
+        if source_comp is None:
+            source_comp = _lookup_source_battery(context, comp_name)
+            comp_type = "battery" if source_comp is not None else "component"
+        else:
+            comp_type = "generator"
+
+    if source_comp is None:
+        return Err(ValueError(f"No source {comp_type} found for '{comp_name}'"))
+
+    bus = getattr(source_comp, "bus", None)
     if bus is None or not getattr(bus, "name", None):
-        return Err(ValueError(f"Source generator '{source_gen.name}' is missing bus data"))
+        return Err(ValueError(f"Source {comp_type} '{source_comp.name}' is missing bus data"))
 
     return _lookup_target_node_by_name(context, bus.name)
 

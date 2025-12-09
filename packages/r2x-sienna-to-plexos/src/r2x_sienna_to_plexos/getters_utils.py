@@ -14,15 +14,24 @@ from infrasys.function_data import LinearFunctionData, PiecewiseLinearData, Quad
 from infrasys.value_curves import AverageRateCurve, IncrementalCurve, InputOutputCurve
 from loguru import logger
 from plexosdb import CollectionEnum
-from r2x_plexos.models import PLEXOSGenerator, PLEXOSMembership, PLEXOSNode, PLEXOSPropertyValue, PLEXOSRegion
+from r2x_plexos.models import (
+    PLEXOSBattery,
+    PLEXOSGenerator,
+    PLEXOSMembership,
+    PLEXOSNode,
+    PLEXOSPropertyValue,
+    PLEXOSRegion,
+)
 from r2x_sienna.models import (
     ACBus,
     Area,
+    EnergyReservoirStorage,
     HydroDispatch,
     HydroEnergyReservoir,
     HydroPumpedStorage,
     RenewableDispatch,
     RenewableNonDispatch,
+    SynchronousCondenser,
     ThermalMultiStart,
     ThermalStandard,
 )
@@ -100,6 +109,7 @@ def ensure_generator_node_memberships(context: TranslationContext) -> None:
         RenewableNonDispatch,
         HydroEnergyReservoir,
         HydroPumpedStorage,
+        SynchronousCondenser,
     ]
 
     source_generators: dict[str, Any] = {}
@@ -127,6 +137,35 @@ def ensure_generator_node_memberships(context: TranslationContext) -> None:
             total_memberships += 1
 
     logger.info(f"Total {total_memberships} Generator-Node memberships created.")
+
+
+def ensure_battery_node_memberships(context: TranslationContext) -> None:
+    """Ensure every translated battery has a node membership based on its source bus."""
+    logger.info("Starting battery-node membership creation...")
+
+    source_batteries: dict[str, Any] = {}
+    for battery in context.source_system.get_components(EnergyReservoirStorage):
+        source_batteries[battery.name] = battery
+
+    target_batteries = {bat.name: bat for bat in context.target_system.get_components(PLEXOSBattery)}
+    nodes_by_name = {node.name: node for node in context.target_system.get_components(PLEXOSNode)}
+
+    total_memberships = 0
+    for name, source_battery in source_batteries.items():
+        target_battery = target_batteries.get(name)
+        if target_battery is None:
+            continue
+
+        bus = getattr(source_battery, "bus", None)
+        if bus is None:
+            continue
+
+        node = nodes_by_name.get(bus.name)
+        if node is not None:
+            _ensure_membership(context, target_battery, node, CollectionEnum.Nodes)
+            total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Battery-Node memberships created.")
 
 
 def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:

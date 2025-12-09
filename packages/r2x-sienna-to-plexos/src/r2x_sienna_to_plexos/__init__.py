@@ -14,7 +14,11 @@ from .getters import (
     membership_region_child_node,
     membership_region_parent_node,
 )
-from .getters_utils import ensure_generator_node_memberships, ensure_region_node_memberships
+from .getters_utils import (
+    ensure_battery_node_memberships,
+    ensure_generator_node_memberships,
+    ensure_region_node_memberships,
+)
 from .plugin_config import SiennaToPlexosConfig
 
 __version__ = version("r2x_sienna_to_plexos")
@@ -28,6 +32,7 @@ __all__ = [
     "__version__",
     "ensure_region_node_memberships",
     "ensure_generator_node_memberships",
+    "ensure_battery_node_memberships",
     "membership_region_parent_node",
     "membership_region_child_node",
     "membership_line_from_parent_node",

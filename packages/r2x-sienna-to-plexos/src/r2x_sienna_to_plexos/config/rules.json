@@ -497,7 +497,8 @@
       "collection": "membership_collection_nodes"
     },
     "source_type": [
-      "PLEXOSGenerator"
+      "PLEXOSGenerator",
+      "PLEXOSBattery"
     ],
     "target_type": "PLEXOSMembership",
     "version": 1
