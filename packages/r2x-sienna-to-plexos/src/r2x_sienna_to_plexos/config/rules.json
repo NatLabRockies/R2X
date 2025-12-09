@@ -475,5 +475,41 @@
     "source_type": "EnergyReservoirStorage",
     "target_type": "PLEXOSBattery",
     "version": 1
+  },
+  {
+    "name": "region_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_region_parent_node",
+      "child_object": "membership_parent_component",
+      "collection": "membership_collection_region"
+    },
+    "source_type": "PLEXOSRegion",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "line_from_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_line_from_parent_node",
+      "collection": "membership_collection_node_from"
+    },
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "line_to_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_line_to_parent_node",
+      "collection": "membership_collection_node_to"
+    },
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 2
   }
 ]
