@@ -34,6 +34,33 @@ if TYPE_CHECKING:
 InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData]
 
 
+def _ensure_membership(
+    context: TranslationContext,
+    parent_object: Any,
+    child_object: Any,
+    collection: CollectionEnum,
+) -> None:
+    """Create and add a membership between parent and child objects.
+
+    Parameters
+    ----------
+    context : TranslationContext
+        The translation context containing the target system
+    parent_object : Any
+        The parent object in the membership relationship
+    child_object : Any
+        The child object in the membership relationship
+    collection : CollectionEnum
+        The collection type for the membership
+    """
+    membership = PLEXOSMembership(
+        parent_object=parent_object,
+        child_object=child_object,
+        collection=collection,
+    )
+    context.target_system.add_supplemental_attribute(parent_object, membership)
+
+
 def ensure_region_node_memberships(context: TranslationContext) -> None:
     """Create Region->Node memberships for all regions and their nodes."""
     logger.info("Starting region-node membership creation...")
@@ -53,16 +80,9 @@ def ensure_region_node_memberships(context: TranslationContext) -> None:
     total_memberships = 0
     for region in regions:
         region_name = region.name
-        nodes_in_region = []
-
         nodes_in_region = [node for node in all_nodes if node_to_area.get(node.name) == region_name]
         for node in nodes_in_region:
-            membership = PLEXOSMembership(
-                parent_object=node,
-                child_object=region,
-                collection=CollectionEnum.Region,
-            )
-            context.target_system.add_supplemental_attribute(node, membership)
+            _ensure_membership(context, node, region, CollectionEnum.Region)
             total_memberships += 1
 
     logger.info(f"Total {total_memberships} Region-Node memberships created.")
@@ -103,12 +123,7 @@ def ensure_generator_node_memberships(context: TranslationContext) -> None:
 
         node = nodes_by_name.get(bus.name)
         if node is not None:
-            membership = PLEXOSMembership(
-                parent_object=target_gen,
-                child_object=node,
-                collection=CollectionEnum.Nodes,
-            )
-            context.target_system.add_supplemental_attribute(target_gen, membership)
+            _ensure_membership(context, target_gen, node, CollectionEnum.Nodes)
             total_memberships += 1
 
     logger.info(f"Total {total_memberships} Generator-Node memberships created.")
