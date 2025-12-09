@@ -501,6 +501,18 @@
     "version": 1
   },
   {
+    "name": "reserve_generator_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_reserve_child_generator",
+      "collection": "membership_collection_generators"
+    },
+    "source_type": "PLEXOSReserve",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
     "name": "component_node_membership",
     "system": "target",
     "getters": {

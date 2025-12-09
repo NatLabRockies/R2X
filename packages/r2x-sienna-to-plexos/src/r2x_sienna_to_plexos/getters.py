@@ -27,6 +27,7 @@ from r2x_sienna.models import (
     ThermalStandard,
     Transformer2W,
     TwoTerminalHVDCLine,
+    VariableReserve,
 )
 from r2x_sienna.models.getters import (
     get_max_active_power as sienna_get_max_active_power,
@@ -418,6 +419,12 @@ def membership_collection_nodes(_: TranslationContext, __: Any) -> Result[Collec
 
 
 @getter
+def membership_collection_generators(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the Generators collection enum."""
+    return Ok(CollectionEnum.Generators)
+
+
+@getter
 def membership_collection_region(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Region collection enum."""
     return Ok(CollectionEnum.Region)
@@ -529,6 +536,44 @@ def membership_node_child_zone(context: TranslationContext, node: PLEXOSNode) ->
     zone_name = load_zone.name if isinstance(load_zone, LoadZone) else str(load_zone)
 
     return _lookup_target_zone_by_name(context, zone_name)
+
+
+@getter
+def membership_reserve_child_generator(
+    context: TranslationContext, reserve: Any
+) -> Result[PLEXOSGenerator, ValueError]:
+    """Resolve a reserve's participating generators to translated generators.
+
+    Note: This returns the first generator. For multiple generators,
+    the membership rule should handle iteration.
+    """
+    reserve_name = getattr(reserve, "name", "")
+    source_reserve = next(
+        (res for res in context.source_system.get_components(VariableReserve) if res.name == reserve_name),
+        None,
+    )
+
+    if source_reserve is None:
+        return Err(ValueError(f"No source VariableReserve found for '{reserve_name}'"))
+
+    contributing_devices = getattr(source_reserve, "contributing_devices", None)
+    if not contributing_devices:
+        return Err(ValueError(f"VariableReserve '{reserve_name}' has no contributing_devices"))
+
+    if not contributing_devices:
+        return Err(ValueError(f"VariableReserve '{reserve_name}' has empty contributing_devices"))
+
+    first_device = contributing_devices[0]
+    device_name = first_device.name if hasattr(first_device, "name") else str(first_device)
+    target_gen = next(
+        (gen for gen in context.target_system.get_components(PLEXOSGenerator) if gen.name == device_name),
+        None,
+    )
+
+    if target_gen is None:
+        return Err(ValueError(f"No PLEXOSGenerator found for device '{device_name}'"))
+
+    return Ok(target_gen)
 
 
 @getter

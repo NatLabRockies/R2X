@@ -21,6 +21,7 @@ from r2x_plexos.models import (
     PLEXOSNode,
     PLEXOSPropertyValue,
     PLEXOSRegion,
+    PLEXOSReserve,
     PLEXOSZone,
 )
 from r2x_sienna.models import (
@@ -36,6 +37,7 @@ from r2x_sienna.models import (
     SynchronousCondenser,
     ThermalMultiStart,
     ThermalStandard,
+    VariableReserve,
 )
 from r2x_sienna.units import get_magnitude  # type: ignore[import-untyped]
 
@@ -202,6 +204,38 @@ def ensure_node_zone_memberships(context: TranslationContext) -> None:
             total_memberships += 1
 
     logger.info(f"Total {total_memberships} Node-Zone memberships created.")
+
+
+def ensure_reserve_generator_memberships(context: TranslationContext) -> None:
+    """Create Reserve->Generator memberships for all reserves and their participating generators."""
+    logger.info("Starting reserve-generator membership creation...")
+
+    all_reserves = list(context.target_system.get_components(PLEXOSReserve))
+    all_generators = list(context.target_system.get_components(PLEXOSGenerator))
+    source_reserves = list(context.source_system.get_components(VariableReserve))
+
+    generators_by_name = {gen.name: gen for gen in all_generators}
+    source_reserves_by_name = {res.name: res for res in source_reserves}
+
+    total_memberships = 0
+    for reserve in all_reserves:
+        source_reserve = source_reserves_by_name.get(reserve.name)
+        if source_reserve is None:
+            continue
+
+        contributing_devices = getattr(source_reserve, "contributing_devices", None)
+        if not contributing_devices:
+            continue
+
+        for device in contributing_devices:
+            device_name = device.name if hasattr(device, "name") else str(device)
+            generator = generators_by_name.get(device_name)
+
+            if generator is not None:
+                _ensure_membership(context, reserve, generator, CollectionEnum.Generators)
+                total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Reserve-Generator memberships created.")
 
 
 def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:
