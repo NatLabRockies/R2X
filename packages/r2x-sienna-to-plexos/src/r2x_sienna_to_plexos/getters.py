@@ -6,7 +6,14 @@ from typing import Any
 
 from infrasys.cost_curves import FuelCurve
 from plexosdb.enums import CollectionEnum
-from r2x_plexos.models import PLEXOSBattery, PLEXOSGenerator, PLEXOSLine, PLEXOSNode, PLEXOSZone
+from r2x_plexos.models import (
+    PLEXOSBattery,
+    PLEXOSGenerator,
+    PLEXOSLine,
+    PLEXOSNode,
+    PLEXOSTransformer,
+    PLEXOSZone,
+)
 from r2x_sienna.models import (
     ACBus,
     Area,
@@ -519,6 +526,29 @@ def _lookup_target_node_by_name(
     return Err(ValueError(f"No PLEXOSNode found with name '{node_name}'"))
 
 
+def _find_source_transformer(context: TranslationContext, transformer_name: str) -> Any | None:
+    """Find a source transformer by name across Transformer2W, TapTransformer, and PhaseShiftingTransformer types."""
+    transformer_types: list[type[Transformer2W | TapTransformer | PhaseShiftingTransformer]] = [
+        Transformer2W,
+        TapTransformer,
+        PhaseShiftingTransformer,
+    ]
+
+    for transformer_type in transformer_types:
+        source_transformer: Transformer2W | TapTransformer | PhaseShiftingTransformer | None = next(
+            (
+                tf
+                for tf in context.source_system.get_components(transformer_type)
+                if tf.name == transformer_name
+            ),
+            None,
+        )
+        if source_transformer is not None:
+            return source_transformer
+
+    return None
+
+
 @getter
 def membership_node_child_zone(context: TranslationContext, node: PLEXOSNode) -> Result[Any, ValueError]:
     """Resolve a node's load zone to the translated zone."""
@@ -690,6 +720,50 @@ def membership_line_to_parent_node(
         return Err(ValueError(f"Source line '{line.name}' missing arc data"))
 
     to_bus = source_line.arc.to_from
+    to_bus_name = to_bus.name if hasattr(to_bus, "name") else str(to_bus)
+
+    return _lookup_target_node_by_name(context, to_bus_name)
+
+
+@getter
+def membership_transformer_from_parent_node(
+    context: TranslationContext, transformer: Any
+) -> Result[PLEXOSNode, ValueError]:
+    """Return the from-node for a translated transformer."""
+    if not isinstance(transformer, PLEXOSTransformer):
+        return Err(ValueError(f"Component '{transformer.name}' is not a PLEXOSTransformer"))
+
+    source_transformer = _find_source_transformer(context, transformer.name)
+
+    if source_transformer is None:
+        return Err(ValueError(f"Source transformer '{transformer.name}' not found"))
+
+    if not hasattr(source_transformer, "arc"):
+        return Err(ValueError(f"Source transformer '{transformer.name}' missing arc data"))
+
+    from_bus = source_transformer.arc.from_to
+    from_bus_name = from_bus.name if hasattr(from_bus, "name") else str(from_bus)
+
+    return _lookup_target_node_by_name(context, from_bus_name)
+
+
+@getter
+def membership_transformer_to_parent_node(
+    context: TranslationContext, transformer: Any
+) -> Result[PLEXOSNode, ValueError]:
+    """Return the to-node for a translated transformer."""
+    if not isinstance(transformer, PLEXOSTransformer):
+        return Err(ValueError(f"Component '{transformer.name}' is not a PLEXOSTransformer"))
+
+    source_transformer = _find_source_transformer(context, transformer.name)
+
+    if source_transformer is None:
+        return Err(ValueError(f"Source transformer '{transformer.name}' not found"))
+
+    if not hasattr(source_transformer, "arc"):
+        return Err(ValueError(f"Source transformer '{transformer.name}' missing arc data"))
+
+    to_bus = source_transformer.arc.to_from
     to_bus_name = to_bus.name if hasattr(to_bus, "name") else str(to_bus)
 
     return _lookup_target_node_by_name(context, to_bus_name)

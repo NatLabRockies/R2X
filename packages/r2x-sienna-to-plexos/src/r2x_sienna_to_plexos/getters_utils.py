@@ -22,6 +22,7 @@ from r2x_plexos.models import (
     PLEXOSPropertyValue,
     PLEXOSRegion,
     PLEXOSReserve,
+    PLEXOSTransformer,
     PLEXOSZone,
 )
 from r2x_sienna.models import (
@@ -32,11 +33,14 @@ from r2x_sienna.models import (
     HydroEnergyReservoir,
     HydroPumpedStorage,
     LoadZone,
+    PhaseShiftingTransformer,
     RenewableDispatch,
     RenewableNonDispatch,
     SynchronousCondenser,
+    TapTransformer,
     ThermalMultiStart,
     ThermalStandard,
+    Transformer2W,
     VariableReserve,
 )
 from r2x_sienna.units import get_magnitude  # type: ignore[import-untyped]
@@ -236,6 +240,52 @@ def ensure_reserve_generator_memberships(context: TranslationContext) -> None:
                 total_memberships += 1
 
     logger.info(f"Total {total_memberships} Reserve-Generator memberships created.")
+
+
+def ensure_transformer_node_memberships(context: TranslationContext) -> None:
+    """Create Transformer->Node memberships (both from and to) for all transformers."""
+    logger.info("Starting transformer-node membership creation...")
+
+    transformer_types = [Transformer2W, TapTransformer, PhaseShiftingTransformer]
+
+    all_transformers = list(context.target_system.get_components(PLEXOSTransformer))
+    all_nodes = list(context.target_system.get_components(PLEXOSNode))
+
+    source_transformers_by_name: dict[str, Any] = {}
+    transformer: Any
+    for transformer_type in transformer_types:
+        for transformer in context.source_system.get_components(transformer_type):  # type: ignore[arg-type]
+            source_transformers_by_name[transformer.name] = transformer
+
+    nodes_by_name = {node.name: node for node in all_nodes}
+
+    total_memberships = 0
+    for transformer in all_transformers:
+        source_transformer = source_transformers_by_name.get(transformer.name)
+        if source_transformer is None:
+            continue
+
+        if not hasattr(source_transformer, "arc"):
+            continue
+
+        arc = source_transformer.arc
+        from_bus = arc.from_to
+        from_bus_name = from_bus.name if hasattr(from_bus, "name") else str(from_bus)
+        from_node = nodes_by_name.get(from_bus_name)
+
+        if from_node is not None:
+            _ensure_membership(context, transformer, from_node, CollectionEnum.NodeFrom)
+            total_memberships += 1
+
+        to_bus = arc.to_from
+        to_bus_name = to_bus.name if hasattr(to_bus, "name") else str(to_bus)
+        to_node = nodes_by_name.get(to_bus_name)
+
+        if to_node is not None:
+            _ensure_membership(context, transformer, to_node, CollectionEnum.NodeTo)
+            total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Transformer-Node memberships created.")
 
 
 def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:
