@@ -7,15 +7,62 @@ transform Sienna cost curves into PLEXOS property values with band support.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from infrasys.cost_curves import CostCurve, FuelCurve
 from infrasys.function_data import LinearFunctionData, PiecewiseLinearData, QuadraticFunctionData, XYCoords
 from infrasys.value_curves import AverageRateCurve, IncrementalCurve, InputOutputCurve
-from r2x_plexos.models import PLEXOSPropertyValue
+from loguru import logger
+from plexosdb import CollectionEnum
+from r2x_plexos.models import PLEXOSMembership, PLEXOSNode, PLEXOSPropertyValue, PLEXOSRegion
+from r2x_sienna.models import ACBus, Area
 from r2x_sienna.units import get_magnitude  # type: ignore[import-untyped]
 
+if TYPE_CHECKING:
+    from r2x_core import TranslationContext
+
 InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData]
+
+
+def ensure_region_node_memberships(context: TranslationContext) -> None:
+    """Create Region->Node memberships for all regions and their nodes."""
+    logger.info("Starting region-node membership creation...")
+
+    regions = list(context.target_system.get_components(PLEXOSRegion))
+    all_nodes = list(context.target_system.get_components(PLEXOSNode))
+    all_buses = list(context.source_system.get_components(ACBus))
+
+    logger.info(f"Found {len(regions)} regions, {len(all_nodes)} nodes, {len(all_buses)} buses")
+
+    buses_with_area = [bus for bus in all_buses if hasattr(bus, "area") and bus.area is not None]
+    logger.info(f"Buses with area attribute: {len(buses_with_area)}/{len(all_buses)}")
+    node_to_area = {}
+    for node in all_nodes:
+        for bus in all_buses:
+            if bus.name == node.name and hasattr(bus, "area") and bus.area is not None:
+                area_name = bus.area.name if isinstance(bus.area, Area) else str(bus.area)
+                node_to_area[node.name] = area_name
+                break
+
+    logger.info(f"Mapped {len(node_to_area)} nodes to areas")
+
+    total_memberships = 0
+    for region in regions:
+        region_name = region.name
+        nodes_in_region = []
+
+        nodes_in_region = [node for node in all_nodes if node_to_area.get(node.name) == region_name]
+        for node in nodes_in_region:
+            membership = PLEXOSMembership(
+                parent_object=node,
+                child_object=region,
+                collection=CollectionEnum.Region,
+            )
+            context.target_system.add_supplemental_attribute(node, membership)
+            total_memberships += 1
+
+        logger.info(f"Region '{region_name}': created {len(nodes_in_region)} memberships")
+    logger.info(f"Total memberships created: {total_memberships}")
 
 
 def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:

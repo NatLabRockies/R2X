@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from infrasys.cost_curves import FuelCurve
-from r2x_sienna.models import PowerLoad
+from plexosdb.enums import CollectionEnum
+from r2x_plexos.models import PLEXOSLine, PLEXOSNode
+from r2x_sienna.models import (
+    ACBus,
+    Area,
+    EnergyReservoirStorage,
+    Line,
+    MonitoredLine,
+    PhaseShiftingTransformer,
+    PowerLoad,
+    TapTransformer,
+    Transformer2W,
+    TwoTerminalHVDCLine,
+)
 from r2x_sienna.models.getters import (
     get_max_active_power as sienna_get_max_active_power,
 )
@@ -15,9 +28,10 @@ from r2x_sienna.models.getters import (
 from r2x_sienna.models.getters import (
     get_value as sienna_get_value,
 )
+from r2x_sienna.models.named_tuples import FromTo_ToFrom
 from r2x_sienna.units import get_magnitude  # type: ignore[import-untyped]
 
-from r2x_core import Err, Ok, Result
+from r2x_core import Err, Ok, Result, TranslationContext
 from r2x_core.getters import getter
 from r2x_sienna_to_plexos.getters_utils import (
     coerce_value,
@@ -25,19 +39,6 @@ from r2x_sienna_to_plexos.getters_utils import (
     compute_markup_data,
     resolve_base_power,
 )
-
-if TYPE_CHECKING:
-    from r2x_sienna.models import (
-        ACBus,
-        EnergyReservoirStorage,
-        Line,
-        MonitoredLine,
-        PhaseShiftingTransformer,
-        TapTransformer,
-        Transformer2W,
-    )
-
-    from r2x_core import TranslationContext
 
 
 @getter
@@ -112,24 +113,28 @@ def get_line_charging_susceptance(
     Returns 0.0 if b is None or not available.
     """
     # Access b attribute directly from Line/MonitoredLine component
-    b = source_component.b
+    line_b = source_component.b
 
     # If b is None, return 0.0 as safe default
-    if b is None:
+    if line_b is None:
         return Ok(0.0)
 
     # Handle complex numbers by extracting imaginary part
-    if isinstance(b, complex):
-        return Ok(float(b.imag))
+    if isinstance(line_b, complex):
+        return Ok(float(line_b.imag))
+
+    # Handle FromTo_ToFrom types
+    if isinstance(line_b, FromTo_ToFrom):
+        return Ok(float(line_b.from_to))
 
     # Handle Quantity types
-    magnitude = get_magnitude(b)
+    magnitude = get_magnitude(line_b)
     if magnitude is not None:
         return Ok(float(magnitude))
 
     # Handle plain floats/ints
-    if isinstance(b, int | float):
-        return Ok(float(b))
+    if isinstance(line_b, int | float):
+        return Ok(float(line_b))
 
     # If we can't convert it, return 0.0 as safe default
     return Ok(0.0)
@@ -389,3 +394,144 @@ def get_storage_capacity(
     context: TranslationContext, source_component: EnergyReservoirStorage
 ) -> Result[float, ValueError]:
     return Ok(float(source_component.storage_capacity))
+
+
+@getter
+def membership_parent_component(_: TranslationContext, component: Any) -> Result[Any, ValueError]:
+    """Return the component itself for membership parent/child fields."""
+    return Ok(component)
+
+
+@getter
+def membership_collection_region(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the Region collection enum."""
+    return Ok(CollectionEnum.Region)
+
+
+@getter
+def membership_collection_node_from(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the NodeFrom collection enum."""
+    return Ok(CollectionEnum.NodeFrom)
+
+
+@getter
+def membership_collection_node_to(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the NodeTo collection enum."""
+    return Ok(CollectionEnum.NodeTo)
+
+
+def _lookup_target_node_by_source_area(
+    context: TranslationContext, area_name: str
+) -> Result[PLEXOSNode, ValueError]:
+    """Return the translated node whose source ACBus has matching area name."""
+    for node in context.target_system.get_components(PLEXOSNode):
+        node_name = node.name
+        source_buses = list(
+            context.source_system.get_components(ACBus, filter_func=lambda bus, nn=node_name: bus.name == nn)
+        )
+
+        for source_bus in source_buses:
+            if hasattr(source_bus, "area"):
+                bus_area = source_bus.area
+                if isinstance(bus_area, Area):
+                    if bus_area.name == area_name:
+                        return Ok(node)
+                elif isinstance(bus_area, str) and bus_area == area_name:
+                    return Ok(node)
+
+    return Err(ValueError(f"No PLEXOSNode found with source area '{area_name}'"))
+
+
+def _lookup_target_node_by_name(
+    context: TranslationContext, node_name: str
+) -> Result[PLEXOSNode, ValueError]:
+    """Return the translated node with the given name."""
+    for node in context.target_system.get_components(PLEXOSNode):
+        if node.name == node_name:
+            return Ok(node)
+    return Err(ValueError(f"No PLEXOSNode found with name '{node_name}'"))
+
+
+@getter
+def membership_region_parent_node(context: TranslationContext, region: Any) -> Result[PLEXOSNode, ValueError]:
+    """Find the translated node for membership parent links."""
+    region_name = getattr(region, "name", "")
+    result = _lookup_target_node_by_source_area(context, region_name)
+    match result:
+        case Ok(_):
+            return result
+        case Err(error):
+            return Err(ValueError(str(error)) if not isinstance(error, ValueError) else error)
+        case _:
+            return Err(ValueError(f"Unexpected result type for region '{region_name}'"))
+
+
+@getter
+def membership_region_child_node(context: TranslationContext, region: Any) -> Result[PLEXOSNode, ValueError]:
+    """Find the translated node that matches the region name."""
+    region_name = getattr(region, "name", "")
+    result = _lookup_target_node_by_source_area(context, region_name)
+    match result:
+        case Ok(_):
+            return result
+        case Err(error):
+            return Err(ValueError(str(error)) if not isinstance(error, ValueError) else error)
+        case _:
+            return Err(ValueError(f"Unexpected result type for region '{region_name}'"))
+
+
+def _find_source_line(context: TranslationContext, line_name: str) -> Any | None:
+    """Find a source line by name across Line, MonitoredLine, and TwoTerminalHVDCLine types."""
+    line_types: list[type[Line | MonitoredLine | TwoTerminalHVDCLine]] = [
+        Line,
+        MonitoredLine,
+        TwoTerminalHVDCLine,
+    ]
+
+    for line_type in line_types:
+        source_line: Line | MonitoredLine | TwoTerminalHVDCLine | None = next(
+            (ln for ln in context.source_system.get_components(line_type) if ln.name == line_name),
+            None,
+        )
+        if source_line is not None:
+            return source_line
+
+    return None
+
+
+@getter
+def membership_line_from_parent_node(
+    context: TranslationContext, line: PLEXOSLine
+) -> Result[PLEXOSNode, ValueError]:
+    """Return the from-node for a translated line."""
+    source_line = _find_source_line(context, line.name)
+
+    if source_line is None:
+        return Err(ValueError(f"Source line '{line.name}' not found"))
+
+    if not hasattr(source_line, "arc"):
+        return Err(ValueError(f"Source line '{line.name}' missing arc data"))
+
+    from_bus = source_line.arc.from_to
+    from_bus_name = from_bus.name if hasattr(from_bus, "name") else str(from_bus)
+
+    return _lookup_target_node_by_name(context, from_bus_name)
+
+
+@getter
+def membership_line_to_parent_node(
+    context: TranslationContext, line: PLEXOSLine
+) -> Result[PLEXOSNode, ValueError]:
+    """Return the to-node for a translated line."""
+    source_line = _find_source_line(context, line.name)
+
+    if source_line is None:
+        return Err(ValueError(f"Source line '{line.name}' not found"))
+
+    if not hasattr(source_line, "arc"):
+        return Err(ValueError(f"Source line '{line.name}' missing arc data"))
+
+    to_bus = source_line.arc.to_from
+    to_bus_name = to_bus.name if hasattr(to_bus, "name") else str(to_bus)
+
+    return _lookup_target_node_by_name(context, to_bus_name)
