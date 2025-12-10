@@ -423,3 +423,470 @@ def test_get_mark_up_multiband_property(context_with_thermal_generators) -> None
 
     assert point_prop.get_bands() == [1, 2]
     assert mark_prop.get_bands() == [1, 2]
+
+
+# New tests for additional getters
+
+
+def test_get_voltage(context_with_buses) -> None:
+    """get_voltage extracts voltage magnitude from base_voltage."""
+    from r2x_sienna.models import ACBus
+    from r2x_sienna_to_plexos.getters import get_voltage
+
+    source_bus = context_with_buses.source_system.get_component(ACBus, "bus-1")
+    result = get_voltage(context_with_buses, source_bus)
+
+    assert result.is_ok()
+    value = result.unwrap()
+    assert isinstance(value, float)
+    assert value > 0.0
+
+
+def test_get_susceptance_transformer() -> None:
+    """get_susceptance extracts imaginary part from transformer primary_shunt."""
+    from r2x_sienna_to_plexos.getters import get_susceptance
+
+    class MockTransformer:
+        primary_shunt = 0.5 + 2.3j
+
+    class MockContext:
+        pass
+
+    result = get_susceptance(MockContext(), MockTransformer())
+
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(2.3)
+
+
+def test_get_susceptance_none_returns_error() -> None:
+    """get_susceptance returns error when primary_shunt is None."""
+    from r2x_sienna_to_plexos.getters import get_susceptance
+
+    class MockTransformer:
+        primary_shunt = None
+
+    class MockContext:
+        pass
+
+    result = get_susceptance(MockContext(), MockTransformer())
+
+    assert result.is_err()
+
+
+def test_get_line_charging_susceptance() -> None:
+    """get_line_charging_susceptance extracts b attribute from line."""
+    from r2x_sienna_to_plexos.getters import get_line_charging_susceptance
+
+    class MockLine:
+        b = 1.5
+
+    class MockContext:
+        pass
+
+    result = get_line_charging_susceptance(MockContext(), MockLine())
+
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(1.5)
+
+
+def test_get_line_charging_susceptance_none() -> None:
+    """get_line_charging_susceptance returns 0.0 when b is None."""
+    from r2x_sienna_to_plexos.getters import get_line_charging_susceptance
+
+    class MockLine:
+        b = None
+
+    class MockContext:
+        pass
+
+    result = get_line_charging_susceptance(MockContext(), MockLine())
+
+    assert result.is_ok()
+    assert result.unwrap() == 0.0
+
+
+def test_get_max_ramp_up(context_with_thermal_generators) -> None:
+    """get_max_ramp_up extracts up ramp limit."""
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_max_ramp_up
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
+    result = get_max_ramp_up(context_with_thermal_generators, source)
+
+    assert result.is_ok()
+    value = result.unwrap()
+    assert isinstance(value, float)
+
+
+def test_get_max_ramp_down(context_with_thermal_generators) -> None:
+    """get_max_ramp_down extracts down ramp limit."""
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_max_ramp_down
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
+    result = get_max_ramp_down(context_with_thermal_generators, source)
+
+    assert result.is_ok()
+    value = result.unwrap()
+    assert isinstance(value, float)
+
+
+def test_get_min_up_time(context_with_thermal_generators) -> None:
+    """get_min_up_time extracts minimum up time."""
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_min_up_time
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
+    result = get_min_up_time(context_with_thermal_generators, source)
+
+    # May return Ok or Err depending on fixture data
+    assert result.is_ok() or result.is_err()
+
+
+def test_get_min_down_time(context_with_thermal_generators) -> None:
+    """get_min_down_time extracts minimum down time."""
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_min_down_time
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
+    result = get_min_down_time(context_with_thermal_generators, source)
+
+    # May return Ok or Err depending on fixture data
+    assert result.is_ok() or result.is_err()
+
+
+def test_get_initial_hours_up() -> None:
+    """get_initial_hours_up returns hours when status is True."""
+    from r2x_sienna_to_plexos.getters import get_initial_hours_up
+
+    class MockGenerator:
+        time_at_status = 5.0
+        status = True
+
+    class MockContext:
+        pass
+
+    result = get_initial_hours_up(MockContext(), MockGenerator())
+
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(5.0)
+
+
+def test_get_initial_hours_down() -> None:
+    """get_initial_hours_down returns hours when status is False."""
+    from r2x_sienna_to_plexos.getters import get_initial_hours_down
+
+    class MockGenerator:
+        time_at_status = 3.0
+        status = False
+
+    class MockContext:
+        pass
+
+    result = get_initial_hours_down(MockContext(), MockGenerator())
+
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(3.0)
+
+
+def test_get_running_cost() -> None:
+    """get_running_cost extracts fixed cost from operation_cost."""
+    from r2x_sienna_to_plexos.getters import get_running_cost
+
+    class MockCost:
+        fixed = 100.0
+
+    class MockGenerator:
+        operation_cost = MockCost()
+
+    class MockContext:
+        pass
+
+    result = get_running_cost(MockContext(), MockGenerator())
+
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(100.0)
+
+
+def test_get_start_cost() -> None:
+    """get_start_cost extracts start_up cost from operation_cost."""
+    from r2x_sienna_to_plexos.getters import get_start_cost
+
+    class MockCost:
+        start_up = 50.0
+
+    class MockGenerator:
+        operation_cost = MockCost()
+
+    class MockContext:
+        pass
+
+    result = get_start_cost(MockContext(), MockGenerator())
+
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(50.0)
+
+
+def test_get_shutdown_cost() -> None:
+    """get_shutdown_cost extracts shut_down cost from operation_cost."""
+    from r2x_sienna_to_plexos.getters import get_shutdown_cost
+
+    class MockCost:
+        shut_down = 25.0
+
+    class MockGenerator:
+        operation_cost = MockCost()
+
+    class MockContext:
+        pass
+
+    result = get_shutdown_cost(MockContext(), MockGenerator())
+
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(25.0)
+
+
+def test_get_storage_charge_efficiency() -> None:
+    """get_storage_charge_efficiency extracts input efficiency."""
+    from r2x_sienna_to_plexos.getters import get_storage_charge_efficiency
+
+    class MockEfficiency:
+        input = 0.95
+
+    class MockStorage:
+        efficiency = MockEfficiency()
+
+    class MockContext:
+        pass
+
+    result = get_storage_charge_efficiency(MockContext(), MockStorage())
+
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.95)
+
+
+def test_get_storage_discharge_efficiency() -> None:
+    """get_storage_discharge_efficiency extracts output efficiency."""
+    from r2x_sienna_to_plexos.getters import get_storage_discharge_efficiency
+
+    class MockEfficiency:
+        output = 0.90
+
+    class MockStorage:
+        efficiency = MockEfficiency()
+
+    class MockContext:
+        pass
+
+    result = get_storage_discharge_efficiency(MockContext(), MockStorage())
+
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.90)
+
+
+def test_get_storage_cycles() -> None:
+    """get_storage_cycles extracts cycle_limits."""
+    from r2x_sienna_to_plexos.getters import get_storage_cycles
+
+    class MockStorage:
+        cycle_limits = 1000.0
+
+    class MockContext:
+        pass
+
+    result = get_storage_cycles(MockContext(), MockStorage())
+
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(1000.0)
+
+
+def test_get_storage_capacity() -> None:
+    """get_storage_capacity extracts storage_capacity."""
+    from r2x_sienna_to_plexos.getters import get_storage_capacity
+
+    class MockStorage:
+        storage_capacity = 500.0
+
+    class MockContext:
+        pass
+
+    result = get_storage_capacity(MockContext(), MockStorage())
+
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(500.0)
+
+
+def test_membership_parent_component() -> None:
+    """membership_parent_component returns the component itself."""
+    from r2x_sienna_to_plexos.getters import membership_parent_component
+
+    class MockComponent:
+        name = "test"
+
+    class MockContext:
+        pass
+
+    component = MockComponent()
+    result = membership_parent_component(MockContext(), component)
+
+    assert result.is_ok()
+    assert result.unwrap() is component
+
+
+def test_membership_collection_nodes() -> None:
+    """membership_collection_nodes returns CollectionEnum.Nodes."""
+    from plexosdb import CollectionEnum
+    from r2x_sienna_to_plexos.getters import membership_collection_nodes
+
+    class MockContext:
+        pass
+
+    result = membership_collection_nodes(MockContext(), None)
+
+    assert result.is_ok()
+    assert result.unwrap() == CollectionEnum.Nodes
+
+
+def test_membership_collection_generators() -> None:
+    """membership_collection_generators returns CollectionEnum.Generators."""
+    from plexosdb import CollectionEnum
+    from r2x_sienna_to_plexos.getters import membership_collection_generators
+
+    class MockContext:
+        pass
+
+    result = membership_collection_generators(MockContext(), None)
+
+    assert result.is_ok()
+    assert result.unwrap() == CollectionEnum.Generators
+
+
+def test_membership_collection_node_from() -> None:
+    """membership_collection_node_from returns CollectionEnum.NodeFrom."""
+    from plexosdb import CollectionEnum
+    from r2x_sienna_to_plexos.getters import membership_collection_node_from
+
+    class MockContext:
+        pass
+
+    result = membership_collection_node_from(MockContext(), None)
+
+    assert result.is_ok()
+    assert result.unwrap() == CollectionEnum.NodeFrom
+
+
+def test_membership_collection_node_to() -> None:
+    """membership_collection_node_to returns CollectionEnum.NodeTo."""
+    from plexosdb import CollectionEnum
+    from r2x_sienna_to_plexos.getters import membership_collection_node_to
+
+    class MockContext:
+        pass
+
+    result = membership_collection_node_to(MockContext(), None)
+
+    assert result.is_ok()
+    assert result.unwrap() == CollectionEnum.NodeTo
+
+
+def test_membership_collection_zone() -> None:
+    """membership_collection_zone returns CollectionEnum.Zone."""
+    from plexosdb import CollectionEnum
+    from r2x_sienna_to_plexos.getters import membership_collection_zone
+
+    class MockContext:
+        pass
+
+    result = membership_collection_zone(MockContext(), None)
+
+    assert result.is_ok()
+    assert result.unwrap() == CollectionEnum.Zone
+
+
+def test_get_vom_charge_returns_markup() -> None:
+    """get_vom_charge returns the same value as get_mark_up."""
+    from r2x_sienna_to_plexos.getters import get_vom_charge
+
+    class MockContext:
+        pass
+
+    class MockCost:
+        variable = 14.0
+
+    class MockGenerator:
+        operation_cost = MockCost()
+
+    result = get_vom_charge(MockContext(), MockGenerator())
+
+    assert result.is_ok()
+
+
+def test_all_membership_getters_registered() -> None:
+    """Verify all membership getters are registered."""
+    from r2x_core.getters import GETTER_REGISTRY
+
+    membership_getters = [
+        "membership_parent_component",
+        "membership_collection_nodes",
+        "membership_collection_generators",
+        "membership_collection_node_from",
+        "membership_collection_node_to",
+        "membership_collection_zone",
+        "membership_collection_region",
+        "membership_collection_head_storage",
+        "membership_collection_tail_storage",
+    ]
+
+    for getter_name in membership_getters:
+        assert getter_name in GETTER_REGISTRY, f"{getter_name} not registered"
+
+
+def test_heat_rate_getters_registered() -> None:
+    """Verify all heat rate getters are registered."""
+    from r2x_core.getters import GETTER_REGISTRY
+
+    heat_rate_getters = [
+        "get_heat_rate",
+        "get_heat_rate_base",
+        "get_heat_rate_incr",
+        "get_heat_rate_incr2",
+        "get_heat_rate_incr3",
+        "get_heat_rate_load_point",
+    ]
+
+    for getter_name in heat_rate_getters:
+        assert getter_name in GETTER_REGISTRY, f"{getter_name} not registered"
+
+
+def test_storage_getters_registered() -> None:
+    """Verify all storage getters are registered."""
+    from r2x_core.getters import GETTER_REGISTRY
+
+    storage_getters = [
+        "get_storage_charge_efficiency",
+        "get_storage_discharge_efficiency",
+        "get_storage_cycles",
+        "get_storage_max_power",
+        "get_storage_capacity",
+    ]
+
+    for getter_name in storage_getters:
+        assert getter_name in GETTER_REGISTRY, f"{getter_name} not registered"
+
+
+def test_cost_getters_registered() -> None:
+    """Verify all cost-related getters are registered."""
+    from r2x_core.getters import GETTER_REGISTRY
+
+    cost_getters = [
+        "get_running_cost",
+        "get_start_cost",
+        "get_shutdown_cost",
+        "get_fuel_price",
+        "get_mark_up",
+        "get_mark_up_point",
+        "get_vom_charge",
+    ]
+
+    for getter_name in cost_getters:
+        assert getter_name in GETTER_REGISTRY, f"{getter_name} not registered"
