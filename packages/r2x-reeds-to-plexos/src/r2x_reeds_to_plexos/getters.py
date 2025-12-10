@@ -307,37 +307,41 @@ def _lookup_source_generator(context: TranslationContext, name: str) -> Any | No
 
 
 @getter
-def membership_parent_component(_: TranslationContext, component: Any) -> Result[Any, ValueError]:
+def reeds_membership_parent_component(_: TranslationContext, component: Any) -> Result[Any, ValueError]:
     """Return the component itself for membership parent/child fields."""
     return Ok(component)
 
 
 @getter
-def membership_collection_nodes(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+def reeds_membership_collection_nodes(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Nodes collection enum."""
     return Ok(CollectionEnum.Nodes)
 
 
 @getter
-def membership_collection_node_from(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+def reeds_membership_collection_node_from(
+    _: TranslationContext, __: Any
+) -> Result[CollectionEnum, ValueError]:
     """Return the NodeFrom collection enum."""
     return Ok(CollectionEnum.NodeFrom)
 
 
 @getter
-def membership_collection_node_to(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+def reeds_membership_collection_node_to(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the NodeTo collection enum."""
     return Ok(CollectionEnum.NodeTo)
 
 
 @getter
-def membership_collection_region(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+def reeds_membership_collection_region(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Region collection enum."""
     return Ok(CollectionEnum.Region)
 
 
 @getter
-def membership_region_child_node(context: TranslationContext, region: Any) -> Result[PLEXOSNode, ValueError]:
+def reeds_membership_region_child_node(
+    context: TranslationContext, region: Any
+) -> Result[PLEXOSNode, ValueError]:
     """Find the translated node that matches the region name."""
     region_name = getattr(region, "name", "")
     result = _lookup_target_node(context, region_name)
@@ -355,7 +359,9 @@ def membership_region_child_node(context: TranslationContext, region: Any) -> Re
 
 
 @getter
-def membership_region_parent_node(context: TranslationContext, region: Any) -> Result[PLEXOSNode, ValueError]:
+def reeds_membership_region_parent_node(
+    context: TranslationContext, region: Any
+) -> Result[PLEXOSNode, ValueError]:
     """Find the translated node for membership parent links."""
     region_name = getattr(region, "name", "")
     result = _lookup_target_node(context, region_name)
@@ -373,7 +379,7 @@ def membership_region_parent_node(context: TranslationContext, region: Any) -> R
 
 
 @getter
-def membership_component_child_node(
+def reeds_membership_component_child_node(
     context: TranslationContext, component: Any
 ) -> Result[PLEXOSNode, ValueError]:
     """Resolve a component's region to the translated node."""
@@ -390,7 +396,7 @@ def membership_component_child_node(
 
 
 @getter
-def membership_line_from_parent_node(
+def reeds_membership_line_from_parent_node(
     context: TranslationContext, line: PLEXOSLine
 ) -> Result[PLEXOSNode, ValueError]:
     """Return the from-node for a translated line."""
@@ -407,7 +413,7 @@ def membership_line_from_parent_node(
 
 
 @getter
-def membership_line_to_parent_node(
+def reeds_membership_line_to_parent_node(
     context: TranslationContext, line: PLEXOSLine
 ) -> Result[PLEXOSNode, ValueError]:
     """Return the to-node for a translated line."""

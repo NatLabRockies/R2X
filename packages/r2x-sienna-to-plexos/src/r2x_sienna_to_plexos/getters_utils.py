@@ -24,6 +24,7 @@ from r2x_plexos.models import (
     PLEXOSPropertyValue,
     PLEXOSRegion,
     PLEXOSReserve,
+    PLEXOSStorage,
     PLEXOSTransformer,
     PLEXOSZone,
 )
@@ -307,6 +308,41 @@ def ensure_interface_line_memberships(context: TranslationContext) -> None:
                 total_memberships += 1
 
     logger.info(f"Total {total_memberships} Interface-Line memberships created.")
+
+
+def ensure_pumped_hydro_storage_memberships(context: TranslationContext) -> None:
+    """Create Generator->Storage memberships for pumped hydro generators.
+
+    Each HydroPumpedStorage creates:
+    - A head generator with _head suffix
+    - A tail generator with _tail suffix
+    - Two storage components (PLEXOSStorage) with matching names
+    - Head generator -> Head storage membership (HeadStorage collection)
+    - Tail generator -> Tail storage membership (TailStorage collection)
+    """
+    logger.info("Starting pumped hydro generator-storage membership creation...")
+
+    all_generators = list(context.target_system.get_components(PLEXOSGenerator))
+    all_storages = list(context.target_system.get_components(PLEXOSStorage))
+
+    storages_by_name = {storage.name: storage for storage in all_storages}
+    head_generators = [gen for gen in all_generators if gen.name.endswith("_head")]
+    tail_generators = [gen for gen in all_generators if gen.name.endswith("_tail")]
+
+    total_memberships = 0
+    for gen in head_generators:
+        storage = storages_by_name.get(gen.name)
+        if storage is not None:
+            _ensure_membership(context, gen, storage, CollectionEnum.HeadStorage)
+            total_memberships += 1
+
+    for gen in tail_generators:
+        storage = storages_by_name.get(gen.name)
+        if storage is not None:
+            _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
+            total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Pumped Hydro Generator-Storage memberships created.")
 
 
 def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:

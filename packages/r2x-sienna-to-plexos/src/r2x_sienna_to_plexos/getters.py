@@ -11,6 +11,7 @@ from r2x_plexos.models import (
     PLEXOSGenerator,
     PLEXOSLine,
     PLEXOSNode,
+    PLEXOSStorage,
     PLEXOSTransformer,
     PLEXOSZone,
 )
@@ -462,6 +463,18 @@ def membership_collection_zone(_: TranslationContext, __: Any) -> Result[Collect
     return Ok(CollectionEnum.Zone)
 
 
+@getter
+def membership_collection_head_storage(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the Head Storage collection enum."""
+    return Ok(CollectionEnum.HeadStorage)
+
+
+@getter
+def membership_collection_tail_storage(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the Tail Storage collection enum."""
+    return Ok(CollectionEnum.TailStorage)
+
+
 def _lookup_target_zone_by_name(context: TranslationContext, zone_name: str) -> Result[Any, ValueError]:
     """Return the translated zone with the given name."""
     for zone in context.target_system.get_components(PLEXOSZone):
@@ -533,6 +546,25 @@ def _lookup_target_node_by_name(
     return Err(ValueError(f"No PLEXOSNode found with name '{node_name}'"))
 
 
+def _find_source_line(context: TranslationContext, line_name: str) -> Any | None:
+    """Find a source line by name across Line, MonitoredLine, and TwoTerminalHVDCLine types."""
+    line_types: list[type[Line | MonitoredLine | TwoTerminalHVDCLine]] = [
+        Line,
+        MonitoredLine,
+        TwoTerminalHVDCLine,
+    ]
+
+    for line_type in line_types:
+        source_line: Line | MonitoredLine | TwoTerminalHVDCLine | None = next(
+            (ln for ln in context.source_system.get_components(line_type) if ln.name == line_name),
+            None,
+        )
+        if source_line is not None:
+            return source_line
+
+    return None
+
+
 def _find_source_transformer(context: TranslationContext, transformer_name: str) -> Any | None:
     """Find a source transformer by name across Transformer2W, TapTransformer, and PhaseShiftingTransformer types."""
     transformer_types: list[type[Transformer2W | TapTransformer | PhaseShiftingTransformer]] = [
@@ -553,6 +585,21 @@ def _find_source_transformer(context: TranslationContext, transformer_name: str)
         if source_transformer is not None:
             return source_transformer
 
+    return None
+
+
+def _lookup_source_pumped_hydro(context: TranslationContext, gen_name: str) -> Any | None:
+    """Find a source HydroPumpedStorage by deriving the base name from _head or _tail suffix."""
+    # Remove _head or _tail suffix to get base name
+    if gen_name.endswith(("_head", "_tail")):
+        base_name = gen_name.rsplit("_", 1)[0]
+    else:
+        return None
+
+    pumped_hydros: list[Any] = list(context.source_system.get_components(HydroPumpedStorage))
+    for ph in pumped_hydros:
+        if ph.name == base_name:
+            return ph
     return None
 
 
@@ -719,25 +766,6 @@ def membership_region_child_node(context: TranslationContext, region: Any) -> Re
             return Err(ValueError(f"Unexpected result type for region '{region_name}'"))
 
 
-def _find_source_line(context: TranslationContext, line_name: str) -> Any | None:
-    """Find a source line by name across Line, MonitoredLine, and TwoTerminalHVDCLine types."""
-    line_types: list[type[Line | MonitoredLine | TwoTerminalHVDCLine]] = [
-        Line,
-        MonitoredLine,
-        TwoTerminalHVDCLine,
-    ]
-
-    for line_type in line_types:
-        source_line: Line | MonitoredLine | TwoTerminalHVDCLine | None = next(
-            (ln for ln in context.source_system.get_components(line_type) if ln.name == line_name),
-            None,
-        )
-        if source_line is not None:
-            return source_line
-
-    return None
-
-
 @getter
 def membership_line_from_parent_node(
     context: TranslationContext, line: PLEXOSLine
@@ -818,3 +846,75 @@ def membership_transformer_to_parent_node(
     to_bus_name = to_bus.name if hasattr(to_bus, "name") else str(to_bus)
 
     return _lookup_target_node_by_name(context, to_bus_name)
+
+
+@getter
+def membership_pumped_hydro_head_storage(
+    context: TranslationContext, generator: Any
+) -> Result[Any, ValueError]:
+    """Resolve a pumped hydro generator's head storage.
+
+    The head generator (with _head suffix) links to a storage with the same name.
+    Both are created from the same HydroPumpedStorage source component.
+    """
+    gen_name = getattr(generator, "name", "")
+
+    if not gen_name.endswith("_head"):
+        return Err(ValueError(f"Generator '{gen_name}' is not a head generator (missing _head suffix)"))
+
+    source_pumped_hydro = _lookup_source_pumped_hydro(context, gen_name)
+    if source_pumped_hydro is None:
+        return Err(
+            ValueError(f"Generator '{gen_name}' does not correspond to a HydroPumpedStorage component")
+        )
+
+    storage_name = gen_name
+    target_storage = next(
+        (
+            storage
+            for storage in context.target_system.get_components(PLEXOSStorage)
+            if storage.name == storage_name
+        ),
+        None,
+    )
+
+    if target_storage is None:
+        return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
+
+    return Ok(target_storage)
+
+
+@getter
+def membership_pumped_hydro_tail_storage(
+    context: TranslationContext, generator: Any
+) -> Result[Any, ValueError]:
+    """Resolve a pumped hydro generator's tail storage.
+
+    The tail generator (with _tail suffix) links to a storage with the same name.
+    Both are created from the same HydroPumpedStorage source component.
+    """
+    gen_name = getattr(generator, "name", "")
+
+    if not gen_name.endswith("_tail"):
+        return Err(ValueError(f"Generator '{gen_name}' is not a tail generator (missing _tail suffix)"))
+
+    source_pumped_hydro = _lookup_source_pumped_hydro(context, gen_name)
+    if source_pumped_hydro is None:
+        return Err(
+            ValueError(f"Generator '{gen_name}' does not correspond to a HydroPumpedStorage component")
+        )
+
+    storage_name = gen_name
+    target_storage = next(
+        (
+            storage
+            for storage in context.target_system.get_components(PLEXOSStorage)
+            if storage.name == storage_name
+        ),
+        None,
+    )
+
+    if target_storage is None:
+        return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
+
+    return Ok(target_storage)
