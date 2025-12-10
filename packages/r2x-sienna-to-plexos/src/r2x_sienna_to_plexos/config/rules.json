@@ -13,8 +13,9 @@
     },
     "getters": {
       "ac_voltage_magnitude": "get_voltage",
+      "load_participation_factor": "get_load_participation_factor",
       "is_slack_bus": "is_slack_bus",
-      "load": "get_power_load",
+      "load": "get_power_or_standard_load",
       "units": "get_availability"
     },
     "source_type": "ACBus",

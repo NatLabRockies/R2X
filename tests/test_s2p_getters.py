@@ -113,21 +113,25 @@ def test_get_availability_with_real_component(context_with_buses) -> None:
     assert value >= 1
 
 
-def test_get_power_load_returns_result_float_type() -> None:
-    """get_power_load returns Result[float, ValueError]."""
-    from r2x_sienna_to_plexos.getters import get_power_load
+def test_get_power_or_standard_load_returns_result_float_type() -> None:
+    """get_power_or_standard_load returns Result[float, ValueError]."""
+    from r2x_sienna.models import PowerLoad
+    from r2x_sienna_to_plexos.getters import get_power_or_standard_load
 
     class MockLoad:
         max_active_power = 100.5
 
     class MockComponent:
         def list_child_components(self, component_type):
-            return [MockLoad()]
+            # Return MockLoad only for PowerLoad type, empty for StandardLoad
+            if component_type == PowerLoad:
+                return [MockLoad()]
+            return []
 
     class MockContext:
         pass
 
-    result = get_power_load(MockContext(), MockComponent())
+    result = get_power_or_standard_load(MockContext(), MockComponent())
 
     assert result.is_ok()
     value = result.unwrap()
@@ -135,9 +139,10 @@ def test_get_power_load_returns_result_float_type() -> None:
     assert value == 100.5
 
 
-def test_get_power_load_aggregates_multiple_loads() -> None:
-    """get_power_load sums active power from multiple PowerLoad components."""
-    from r2x_sienna_to_plexos.getters import get_power_load
+def test_get_power_or_standard_load_aggregates_multiple_loads() -> None:
+    """get_power_or_standard_load sums active power from multiple PowerLoad and StandardLoad components."""
+    from r2x_sienna.models import PowerLoad, StandardLoad
+    from r2x_sienna_to_plexos.getters import get_power_or_standard_load
 
     class MockLoad:
         def __init__(self, power):
@@ -145,21 +150,25 @@ def test_get_power_load_aggregates_multiple_loads() -> None:
 
     class MockComponent:
         def list_child_components(self, component_type):
-            return [MockLoad(100.0), MockLoad(200.5), MockLoad(50.25)]
+            if component_type == PowerLoad:
+                return [MockLoad(100.0), MockLoad(200.5)]
+            elif component_type == StandardLoad:
+                return [MockLoad(50.25)]
+            return []
 
     class MockContext:
         pass
 
-    result = get_power_load(MockContext(), MockComponent())
+    result = get_power_or_standard_load(MockContext(), MockComponent())
 
     assert result.is_ok()
     value = result.unwrap()
     assert value == 350.75
 
 
-def test_get_power_load_returns_zero_for_no_loads() -> None:
-    """get_power_load returns Ok(0.0) when no PowerLoad components exist."""
-    from r2x_sienna_to_plexos.getters import get_power_load
+def test_get_power_or_standard_load_returns_zero_for_no_loads() -> None:
+    """get_power_or_standard_load returns Ok(0.0) when no PowerLoad components exist."""
+    from r2x_sienna_to_plexos.getters import get_power_or_standard_load
 
     class MockComponent:
         def list_child_components(self, component_type):
@@ -168,16 +177,17 @@ def test_get_power_load_returns_zero_for_no_loads() -> None:
     class MockContext:
         pass
 
-    result = get_power_load(MockContext(), MockComponent())
+    result = get_power_or_standard_load(MockContext(), MockComponent())
 
     assert result.is_ok()
     value = result.unwrap()
     assert value == 0.0
 
 
-def test_get_power_load_skips_loads_without_max_active_power() -> None:
-    """get_power_load skips loads without max_active_power attribute."""
-    from r2x_sienna_to_plexos.getters import get_power_load
+def test_get_power_or_standard_load_skips_loads_without_max_active_power() -> None:
+    """get_power_or_standard_load skips loads without max_active_power attribute."""
+    from r2x_sienna.models import PowerLoad, StandardLoad
+    from r2x_sienna_to_plexos.getters import get_power_or_standard_load
 
     class MockLoadWithoutPower:
         pass  # No max_active_power
@@ -187,12 +197,16 @@ def test_get_power_load_skips_loads_without_max_active_power() -> None:
 
     class MockComponent:
         def list_child_components(self, component_type):
-            return [MockLoadWithoutPower(), MockLoadWithPower()]
+            if component_type == PowerLoad:
+                return [MockLoadWithoutPower(), MockLoadWithPower()]
+            elif component_type == StandardLoad:
+                return []
+            return []
 
     class MockContext:
         pass
 
-    result = get_power_load(MockContext(), MockComponent())
+    result = get_power_or_standard_load(MockContext(), MockComponent())
 
     assert result.is_ok()
     value = result.unwrap()
@@ -291,12 +305,12 @@ def test_get_availability_has_decorator() -> None:
     assert callable(getter_func)
 
 
-def test_get_power_load_has_decorator() -> None:
-    """get_power_load is registered via @getter decorator."""
+def test_get_power_or_standard_load_has_decorator() -> None:
+    """get_power_or_standard_load is registered via @getter decorator."""
     from r2x_core.getters import GETTER_REGISTRY
 
-    assert "get_power_load" in GETTER_REGISTRY
-    getter_func = GETTER_REGISTRY["get_power_load"]
+    assert "get_power_or_standard_load" in GETTER_REGISTRY
+    getter_func = GETTER_REGISTRY["get_power_or_standard_load"]
     assert callable(getter_func)
 
 
@@ -971,9 +985,9 @@ def test_get_line_charging_susceptance_with_from_to() -> None:
     assert result.unwrap() == pytest.approx(1.8)
 
 
-def test_get_power_load_with_none_system() -> None:
-    """Test get_power_load when context has no source_system."""
-    from r2x_sienna_to_plexos.getters import get_power_load
+def test_get_power_or_standard_load_with_none_system() -> None:
+    """Test get_power_or_standard_load when context has no source_system."""
+    from r2x_sienna_to_plexos.getters import get_power_or_standard_load
 
     class MockComponent:
         def list_child_components(self, component_type):
@@ -982,7 +996,7 @@ def test_get_power_load_with_none_system() -> None:
     class MockContext:
         source_system = None
 
-    result = get_power_load(MockContext(), MockComponent())
+    result = get_power_or_standard_load(MockContext(), MockComponent())
     assert result.is_ok()
     assert result.unwrap() == pytest.approx(0.0)
 

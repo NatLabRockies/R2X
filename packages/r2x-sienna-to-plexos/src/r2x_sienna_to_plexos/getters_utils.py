@@ -35,6 +35,7 @@ from r2x_sienna.models import (
     HydroDispatch,
     HydroEnergyReservoir,
     HydroPumpedStorage,
+    HydroReservoir,
     LoadZone,
     PhaseShiftingTransformer,
     RenewableDispatch,
@@ -117,6 +118,7 @@ def ensure_generator_node_memberships(context: TranslationContext) -> None:
         RenewableNonDispatch,
         HydroEnergyReservoir,
         HydroPumpedStorage,
+        HydroReservoir,
         SynchronousCondenser,
     ]
 

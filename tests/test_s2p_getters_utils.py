@@ -444,7 +444,7 @@ def test_compute_heat_rate_data_with_piecewise() -> None:
         value_curve=io_curve,
         power_units=UnitSystem.NATURAL_UNITS,
         fuel_cost=2.0,
-        startup_fuel_offtake=LinearCurve(0.0)
+        startup_fuel_offtake=LinearCurve(0.0),
     )
 
     class MockCost:
@@ -472,9 +472,7 @@ def test_compute_markup_data_with_piecewise() -> None:
     pw_data = PiecewiseLinearData(points=points)
     value_curve = InputOutputCurve(function_data=pw_data)
     cost_curve = CostCurve(
-        value_curve=value_curve,
-        power_units=UnitSystem.NATURAL_UNITS,
-        vom_cost=LinearCurve(0.0)
+        value_curve=value_curve, power_units=UnitSystem.NATURAL_UNITS, vom_cost=LinearCurve(0.0)
     )
 
     class MockCost:
@@ -830,4 +828,3 @@ def test_coerce_value_with_number() -> None:
     result = coerce_value(42)
     assert result == pytest.approx(42.0)
     assert isinstance(result, float)
-

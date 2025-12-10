@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from infrasys.cost_curves import FuelCurve
+from loguru import logger
 from plexosdb.enums import CollectionEnum
 from r2x_plexos.models import (
     PLEXOSBattery,
@@ -22,6 +23,7 @@ from r2x_sienna.models import (
     HydroDispatch,
     HydroEnergyReservoir,
     HydroPumpedStorage,
+    HydroReservoir,
     Line,
     LoadZone,
     MonitoredLine,
@@ -29,6 +31,7 @@ from r2x_sienna.models import (
     PowerLoad,
     RenewableDispatch,
     RenewableNonDispatch,
+    StandardLoad,
     SynchronousCondenser,
     TapTransformer,
     ThermalMultiStart,
@@ -61,6 +64,30 @@ from r2x_sienna_to_plexos.getters_utils import (
 
 
 @getter
+def get_load_participation_factor(
+    context: TranslationContext, source_component: ACBus
+) -> Result[float, ValueError]:
+    """Extract load participation factor from StandardLoads connected to the bus.
+
+    Aggregates the 'MMWG_LPF' or 'ReEDS_LPF' values from the ext dictionary of all StandardLoads
+    connected to this ACBus. Returns 0.0 if no StandardLoads are found or if
+    the ext field is missing.
+    """
+    standard_loads = context.source_system.get_components(
+        StandardLoad, filter_func=lambda load: load.bus == source_component
+    )
+
+    node_lpf_total = 0.0
+    for load in standard_loads:
+        if hasattr(load, "ext") and isinstance(load.ext, dict):
+            lpf = load.ext.get("MMWG_LPF") or load.ext.get("ReEDS_LPF", 0)
+            if isinstance(lpf, int | float):
+                node_lpf_total += float(lpf)
+
+    return Ok(node_lpf_total)
+
+
+@getter
 def is_slack_bus(context: TranslationContext, source_component: Any) -> Result[int, ValueError]:
     """Populate bustype field based on slack bus status."""
 
@@ -68,6 +95,13 @@ def is_slack_bus(context: TranslationContext, source_component: Any) -> Result[i
 
     value = 1 if source_component.bustype == ACBusTypes.SLACK else 0
     return Ok(value)
+
+
+@getter
+def get_voltage(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
+    """Extract AC voltage magnitude from base_voltage Quantity."""
+    value = get_magnitude(source_component.base_voltage)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
@@ -160,8 +194,10 @@ def get_line_charging_susceptance(
 
 
 @getter
-def get_power_load(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
-    """Populate power_load fields with aggregated active power."""
+def get_power_or_standard_load(
+    context: TranslationContext, source_component: Any
+) -> Result[float, ValueError]:
+    """Populate power_load fields with aggregated active power from PowerLoad and StandardLoad."""
 
     total_load = 0.0
 
@@ -170,25 +206,24 @@ def get_power_load(context: TranslationContext, source_component: Any) -> Result
         power_loads = source_system.get_components(
             PowerLoad, filter_func=lambda comp: comp.bus == source_component
         )
+        standard_loads = source_system.get_components(
+            StandardLoad, filter_func=lambda comp: comp.bus == source_component
+        )
+        all_loads = list(power_loads) + list(standard_loads)
     elif hasattr(source_component, "list_child_components"):
         power_loads = source_component.list_child_components(PowerLoad)
+        standard_loads = source_component.list_child_components(StandardLoad)
+        all_loads = list(power_loads) + list(standard_loads)
     else:
-        power_loads = []
+        all_loads = []
 
-    for load in power_loads:
+    for load in all_loads:
         if not hasattr(load, "max_active_power"):
             continue
         magnitude = get_magnitude(load.max_active_power)
         total_load += float(magnitude) if magnitude is not None else 0.0
 
     return Ok(total_load)
-
-
-@getter
-def get_voltage(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
-    """Extract AC voltage magnitude from base_voltage Quantity."""
-    value = get_magnitude(source_component.base_voltage)
-    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
@@ -603,6 +638,128 @@ def _lookup_source_pumped_hydro(context: TranslationContext, gen_name: str) -> A
     return None
 
 
+def _attach_generator_time_series(
+    context: TranslationContext,
+    generator_name: str,
+    target_generator: Any,
+) -> None:
+    """Attach time series from source generator to translated PLEXOS generator."""
+    source_gen: RenewableDispatch | RenewableNonDispatch | HydroReservoir | None = None
+
+    source_gen = next(
+        (g for g in context.source_system.get_components(RenewableDispatch) if g.name == generator_name),
+        None,
+    )
+
+    if source_gen is None:
+        source_gen = next(
+            (
+                g
+                for g in context.source_system.get_components(RenewableNonDispatch)
+                if g.name == generator_name
+            ),
+            None,
+        )
+
+    if source_gen is None:
+        source_gen = next(
+            (g for g in context.source_system.get_components(HydroReservoir) if g.name == generator_name),
+            None,
+        )
+
+    if source_gen is None:
+        logger.debug("No source generator found for {}", generator_name)
+        return
+
+    for metadata in context.source_system.time_series.list_time_series_metadata(source_gen):
+        ts_list = context.source_system.list_time_series(source_gen, name=metadata.name, **metadata.features)
+
+        if not ts_list:
+            logger.warning("Missing time series {} for generator {}", metadata.name, generator_name)
+            continue
+
+        ts = ts_list[0]
+        ts_type = ts.__class__
+        if not context.target_system.has_time_series(
+            target_generator, name=metadata.name, time_series_type=ts_type, **metadata.features
+        ):
+            context.target_system.add_time_series(ts, target_generator, **metadata.features)
+            logger.success("Attached time series {} to generator {}", metadata.name, generator_name)
+
+
+def _attach_region_node_load_time_series(
+    context: TranslationContext,
+    region_name: str,
+    node: PLEXOSNode,
+    region_component: Any | None,
+) -> None:
+    """Attach demand load and time series from StandardLoad to the translated node and region.
+
+    Aggregates all StandardLoads connected to buses in the given region/area and attaches
+    the time series to both the node and the region component.
+    """
+    buses_in_region = [
+        bus
+        for bus in context.source_system.get_components(ACBus)
+        if getattr(getattr(bus, "area", None), "name", None) == region_name
+    ]
+
+    if not buses_in_region:
+        logger.debug("No buses found in region {}", region_name)
+        return
+
+    # Find all StandardLoads connected to buses in this region
+    standard_loads = [
+        load
+        for load in context.source_system.get_components(StandardLoad)
+        if getattr(load, "bus", None) in buses_in_region
+    ]
+
+    if not standard_loads:
+        logger.debug("No StandardLoads found for region {}", region_name)
+        return
+
+    # Aggregate load values
+    total_load = 0.0
+    for load in standard_loads:
+        load_value = getattr(load, "max_active_power", None)
+        if load_value is not None:
+            magnitude = get_magnitude(load_value)
+            if magnitude is not None:
+                total_load += float(magnitude)
+
+    if total_load > 0.0:
+        try:
+            node.load = total_load
+            logger.debug("Set node.load = {} for {}", total_load, node.name)
+        except Exception as exc:
+            logger.debug("Could not set node.load for {}: {}", node.name, exc)
+
+        # Also set fixed_load on region if provided
+        if region_component is not None:
+            try:
+                region_component.fixed_load = total_load
+                logger.debug("Set fixed_load = {} for region {}", total_load, region_name)
+            except Exception as exc:
+                logger.debug("Could not set fixed_load for region {}: {}", region_name, exc)
+
+    for load in standard_loads:
+        for metadata in context.source_system.time_series.list_time_series_metadata(load):
+            ts_list = context.source_system.list_time_series(load, name=metadata.name, **metadata.features)
+            if not ts_list:
+                logger.warning("Missing load time series {} for {}", metadata.name, load.name)
+                continue
+
+            ts = ts_list[0]
+            ts_type = ts.__class__
+
+            if region_component is not None and not context.target_system.has_time_series(
+                region_component, name=metadata.name, time_series_type=ts_type, **metadata.features
+            ):
+                context.target_system.add_time_series(ts, region_component, **metadata.features)
+                logger.debug("Attached load time series {} to region {}", metadata.name, region_name)
+
+
 @getter
 def membership_node_child_zone(context: TranslationContext, node: PLEXOSNode) -> Result[Any, ValueError]:
     """Resolve a node's load zone to the translated zone."""
@@ -667,12 +824,14 @@ def membership_component_child_node(
     """Resolve a component's bus to the translated node.
 
     Works for both PLEXOSGenerator and PLEXOSBattery components.
+    Also attaches time series from source to target component.
     """
     comp_name = getattr(component, "name", "")
 
     if isinstance(component, PLEXOSGenerator):
         source_comp = _lookup_source_generator(context, comp_name)
         comp_type = "generator"
+        _attach_generator_time_series(context, comp_name, component)
     elif isinstance(component, PLEXOSBattery):
         source_comp = _lookup_source_battery(context, comp_name)
         comp_type = "battery"
@@ -683,6 +842,7 @@ def membership_component_child_node(
             comp_type = "battery" if source_comp is not None else "component"
         else:
             comp_type = "generator"
+            _attach_generator_time_series(context, comp_name, component)
 
     if source_comp is None:
         return Err(ValueError(f"No source {comp_type} found for '{comp_name}'"))
@@ -740,11 +900,15 @@ def membership_interface_child_line(
 
 @getter
 def membership_region_parent_node(context: TranslationContext, region: Any) -> Result[PLEXOSNode, ValueError]:
-    """Find the translated node for membership parent links."""
+    """Find the translated node for membership parent links and attach load time series."""
     region_name = getattr(region, "name", "")
     result = _lookup_target_node_by_source_area(context, region_name)
     match result:
-        case Ok(_):
+        case Ok(node):
+            try:
+                _attach_region_node_load_time_series(context, region_name, node, region_component=region)
+            except Exception as exc:
+                logger.warning("Failed to attach load time series for region {}: {}", region_name, exc)
             return result
         case Err(error):
             return Err(ValueError(str(error)) if not isinstance(error, ValueError) else error)
@@ -754,11 +918,15 @@ def membership_region_parent_node(context: TranslationContext, region: Any) -> R
 
 @getter
 def membership_region_child_node(context: TranslationContext, region: Any) -> Result[PLEXOSNode, ValueError]:
-    """Find the translated node that matches the region name."""
+    """Find the translated node that matches the region name and attach load time series."""
     region_name = getattr(region, "name", "")
     result = _lookup_target_node_by_source_area(context, region_name)
     match result:
-        case Ok(_):
+        case Ok(node):
+            try:
+                _attach_region_node_load_time_series(context, region_name, node, region_component=region)
+            except Exception as exc:
+                logger.warning("Failed to attach load time series for region {}: {}", region_name, exc)
             return result
         case Err(error):
             return Err(ValueError(str(error)) if not isinstance(error, ValueError) else error)
