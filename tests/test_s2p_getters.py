@@ -890,3 +890,676 @@ def test_cost_getters_registered() -> None:
 
     for getter_name in cost_getters:
         assert getter_name in GETTER_REGISTRY, f"{getter_name} not registered"
+
+
+def test_get_susceptance_with_complex_quantity() -> None:
+    """Test susceptance with complex Quantity types."""
+    from r2x_sienna_to_plexos.getters import get_susceptance
+
+    class MockQuantity:
+        def __init__(self, imag_val):
+            self.imag = imag_val
+
+    class MockTransformer:
+        primary_shunt = MockQuantity(3.5)
+
+    class MockContext:
+        pass
+
+    result = get_susceptance(MockContext(), MockTransformer())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(3.5)
+
+
+def test_get_susceptance_with_float() -> None:
+    """Test susceptance with plain float value."""
+    from r2x_sienna_to_plexos.getters import get_susceptance
+
+    class MockTransformer:
+        primary_shunt = 0.0 + 2.5j  # Complex number with imaginary part
+
+    class MockContext:
+        pass
+
+    result = get_susceptance(MockContext(), MockTransformer())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(2.5)
+
+
+def test_get_susceptance_conversion_failure() -> None:
+    """Test susceptance returns error for None values."""
+    from r2x_sienna_to_plexos.getters import get_susceptance
+
+    class MockTransformer:
+        primary_shunt = None
+
+    class MockContext:
+        pass
+
+    result = get_susceptance(MockContext(), MockTransformer())
+    assert result.is_err()
+
+
+def test_get_line_charging_susceptance_with_complex() -> None:
+    """Test line charging susceptance with complex number."""
+    from r2x_sienna_to_plexos.getters import get_line_charging_susceptance
+
+    class MockLine:
+        b = 1.5 + 2.3j
+
+    class MockContext:
+        pass
+
+    result = get_line_charging_susceptance(MockContext(), MockLine())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(2.3)
+
+
+def test_get_line_charging_susceptance_with_from_to() -> None:
+    """Test line charging susceptance with FromTo_ToFrom type."""
+    from r2x_sienna.models.named_tuples import FromTo_ToFrom
+    from r2x_sienna_to_plexos.getters import get_line_charging_susceptance
+
+    class MockLine:
+        b = FromTo_ToFrom(from_to=1.8, to_from=1.6)
+
+    class MockContext:
+        pass
+
+    result = get_line_charging_susceptance(MockContext(), MockLine())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(1.8)
+
+
+def test_get_power_load_with_none_system() -> None:
+    """Test get_power_load when context has no source_system."""
+    from r2x_sienna_to_plexos.getters import get_power_load
+
+    class MockComponent:
+        def list_child_components(self, component_type):
+            return []
+
+    class MockContext:
+        source_system = None
+
+    result = get_power_load(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+
+def test_get_heat_rate_with_none_values() -> None:
+    """Test heat rate getters with None values."""
+    from r2x_sienna_to_plexos.getters import get_heat_rate, get_heat_rate_base, get_heat_rate_incr2
+
+    class MockComponent:
+        operation_cost = None
+
+    class MockContext:
+        pass
+
+    result = get_heat_rate(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+    result = get_heat_rate_base(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+    result = get_heat_rate_incr2(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+
+def test_get_heat_rate_load_point_none() -> None:
+    """Test heat rate load point returns error when None."""
+    from r2x_sienna_to_plexos.getters import get_heat_rate_load_point
+
+    class MockComponent:
+        operation_cost = None
+
+    class MockContext:
+        pass
+
+    result = get_heat_rate_load_point(MockContext(), MockComponent())
+    assert result.is_err()
+
+
+def test_get_min_stable_level_no_limits() -> None:
+    """Test min stable level with no active_power_limits."""
+    from r2x_sienna_to_plexos.getters import get_min_stable_level
+
+    class MockComponent:
+        pass
+
+    class MockContext:
+        pass
+
+    result = get_min_stable_level(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+
+def test_get_max_capacity_with_rating() -> None:
+    """Test max capacity falls back to rating when limits missing."""
+    from r2x_sienna_to_plexos.getters import get_max_capacity
+
+    class MockComponent:
+        rating = 150.0
+        base_power = 100.0
+
+    class MockContext:
+        pass
+
+    result = get_max_capacity(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() > 0.0
+
+
+def test_get_max_capacity_error() -> None:
+    """Test max capacity returns error when both limits and rating missing."""
+    from r2x_sienna_to_plexos.getters import get_max_capacity
+
+    class MockComponent:
+        pass
+
+    class MockContext:
+        pass
+
+    result = get_max_capacity(MockContext(), MockComponent())
+    assert result.is_err()
+
+
+def test_get_max_ramp_up_error() -> None:
+    """Test max ramp up returns error on KeyError/TypeError."""
+    from r2x_sienna_to_plexos.getters import get_max_ramp_up
+
+    class MockComponent:
+        pass
+
+    class MockContext:
+        pass
+
+    result = get_max_ramp_up(MockContext(), MockComponent())
+    assert result.is_err()
+
+
+def test_get_max_ramp_down_error() -> None:
+    """Test max ramp down returns error on KeyError/TypeError."""
+    from r2x_sienna_to_plexos.getters import get_max_ramp_down
+
+    class MockComponent:
+        pass
+
+    class MockContext:
+        pass
+
+    result = get_max_ramp_down(MockContext(), MockComponent())
+    assert result.is_err()
+
+
+def test_get_min_up_time_from_ext() -> None:
+    """Test min up time reads from ext when time_limits missing."""
+    from r2x_sienna_to_plexos.getters import get_min_up_time
+
+    class MockComponent:
+        time_limits = None
+        ext = {"min_up_time": 4.0}  # noqa: RUF012
+
+    class MockContext:
+        pass
+
+    result = get_min_up_time(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(4.0)
+
+
+def test_get_min_down_time_from_ext() -> None:
+    """Test min down time reads from ext when time_limits missing."""
+    from r2x_sienna_to_plexos.getters import get_min_down_time
+
+    class MockComponent:
+        time_limits = None
+        ext = {"min_down_time": 3.0}  # noqa: RUF012
+
+    class MockContext:
+        pass
+
+    result = get_min_down_time(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(3.0)
+
+
+def test_get_initial_generation_none() -> None:
+    """Test initial generation with None active_power."""
+    from r2x_sienna_to_plexos.getters import get_initial_generation
+
+    class MockComponent:
+        active_power = None
+
+    class MockContext:
+        pass
+
+    result = get_initial_generation(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+
+def test_get_initial_hours_up_when_down() -> None:
+    """Test initial hours up returns 0 when status is False."""
+    from r2x_sienna_to_plexos.getters import get_initial_hours_up
+
+    class MockComponent:
+        time_at_status = 5.0
+        status = False
+
+    class MockContext:
+        pass
+
+    result = get_initial_hours_up(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+
+def test_get_initial_hours_down_when_up() -> None:
+    """Test initial hours down returns 0 when status is True."""
+    from r2x_sienna_to_plexos.getters import get_initial_hours_down
+
+    class MockComponent:
+        time_at_status = 3.0
+        status = True
+
+    class MockContext:
+        pass
+
+    result = get_initial_hours_down(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+
+def test_get_running_cost_none() -> None:
+    """Test running cost with None operation_cost."""
+    from r2x_sienna_to_plexos.getters import get_running_cost
+
+    class MockComponent:
+        operation_cost = None
+
+    class MockContext:
+        pass
+
+    result = get_running_cost(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+
+def test_get_start_cost_none() -> None:
+    """Test start cost with None operation_cost."""
+    from r2x_sienna_to_plexos.getters import get_start_cost
+
+    class MockComponent:
+        operation_cost = None
+
+    class MockContext:
+        pass
+
+    result = get_start_cost(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+
+def test_get_shutdown_cost_none() -> None:
+    """Test shutdown cost with None operation_cost."""
+    from r2x_sienna_to_plexos.getters import get_shutdown_cost
+
+    class MockComponent:
+        operation_cost = None
+
+    class MockContext:
+        pass
+
+    result = get_shutdown_cost(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+
+def test_get_fuel_price_not_fuel_curve() -> None:
+    """Test fuel price when variable is not a FuelCurve."""
+    from r2x_sienna_to_plexos.getters import get_fuel_price
+
+    class MockCost:
+        variable = 10.0
+
+    class MockComponent:
+        operation_cost = MockCost()
+
+    class MockContext:
+        pass
+
+    result = get_fuel_price(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(0.0)
+
+
+def test_get_mark_up_point_none() -> None:
+    """Test mark up point returns error when None."""
+    from r2x_sienna_to_plexos.getters import get_mark_up_point
+
+    class MockComponent:
+        operation_cost = None
+
+    class MockContext:
+        pass
+
+    result = get_mark_up_point(MockContext(), MockComponent())
+    assert result.is_err()
+
+
+def test_membership_collection_lines() -> None:
+    """Test membership_collection_lines returns Lines enum."""
+    from plexosdb import CollectionEnum
+    from r2x_sienna_to_plexos.getters import membership_collection_lines
+
+    class MockContext:
+        pass
+
+    result = membership_collection_lines(MockContext(), None)
+    assert result.is_ok()
+    assert result.unwrap() == CollectionEnum.Lines
+
+
+def test_membership_collection_region() -> None:
+    """Test membership_collection_region returns Region enum."""
+    from plexosdb import CollectionEnum
+    from r2x_sienna_to_plexos.getters import membership_collection_region
+
+    class MockContext:
+        pass
+
+    result = membership_collection_region(MockContext(), None)
+    assert result.is_ok()
+    assert result.unwrap() == CollectionEnum.Region
+
+
+def test_membership_collection_head_storage() -> None:
+    """Test membership_collection_head_storage returns HeadStorage enum."""
+    from plexosdb import CollectionEnum
+    from r2x_sienna_to_plexos.getters import membership_collection_head_storage
+
+    class MockContext:
+        pass
+
+    result = membership_collection_head_storage(MockContext(), None)
+    assert result.is_ok()
+    assert result.unwrap() == CollectionEnum.HeadStorage
+
+
+def test_membership_collection_tail_storage() -> None:
+    """Test membership_collection_tail_storage returns TailStorage enum."""
+    from plexosdb import CollectionEnum
+    from r2x_sienna_to_plexos.getters import membership_collection_tail_storage
+
+    class MockContext:
+        pass
+
+    result = membership_collection_tail_storage(MockContext(), None)
+    assert result.is_ok()
+    assert result.unwrap() == CollectionEnum.TailStorage
+
+
+def test_lookup_target_zone_by_name_not_found() -> None:
+    """Test _lookup_target_zone_by_name returns error when zone not found."""
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import _lookup_target_zone_by_name
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target", auto_add_composed_components=True)
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    result = _lookup_target_zone_by_name(context, "nonexistent")
+    assert result.is_err()
+
+
+def test_lookup_target_node_by_source_area_not_found() -> None:
+    """Test _lookup_target_node_by_source_area returns error when node not found."""
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import _lookup_target_node_by_source_area
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target", auto_add_composed_components=True)
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    result = _lookup_target_node_by_source_area(context, "nonexistent_area")
+    assert result.is_err()
+
+
+def test_lookup_source_generator_not_found() -> None:
+    """Test _lookup_source_generator returns None when not found."""
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import _lookup_source_generator
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target")
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    result = _lookup_source_generator(context, "nonexistent")
+    assert result is None
+
+
+def test_lookup_source_battery_not_found() -> None:
+    """Test _lookup_source_battery returns None when not found."""
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import _lookup_source_battery
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target")
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    result = _lookup_source_battery(context, "nonexistent")
+    assert result is None
+
+
+def test_lookup_target_node_by_name_not_found() -> None:
+    """Test _lookup_target_node_by_name returns error when node not found."""
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import _lookup_target_node_by_name
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target", auto_add_composed_components=True)
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    result = _lookup_target_node_by_name(context, "nonexistent")
+    assert result.is_err()
+
+
+def test_find_source_line_not_found() -> None:
+    """Test _find_source_line returns None when line not found."""
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import _find_source_line
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target")
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    result = _find_source_line(context, "nonexistent")
+    assert result is None
+
+
+def test_find_source_transformer_not_found() -> None:
+    """Test _find_source_transformer returns None when transformer not found."""
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import _find_source_transformer
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target")
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    result = _find_source_transformer(context, "nonexistent")
+    assert result is None
+
+
+def test_lookup_source_pumped_hydro_not_found() -> None:
+    """Test _lookup_source_pumped_hydro returns None for non-pumped names."""
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import _lookup_source_pumped_hydro
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target")
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    result = _lookup_source_pumped_hydro(context, "regular_gen")
+    assert result is None
+
+
+def test_membership_node_child_zone_no_source_bus() -> None:
+    """Test membership_node_child_zone returns error when source bus not found."""
+    from r2x_plexos.models import PLEXOSNode
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import membership_node_child_zone
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target", auto_add_composed_components=True)
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    node = PLEXOSNode(name="nonexistent")
+    result = membership_node_child_zone(context, node)
+    assert result.is_err()
+
+
+def test_membership_component_child_node_no_source() -> None:
+    """Test membership_component_child_node returns error when source not found."""
+    from r2x_plexos.models import PLEXOSGenerator
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import membership_component_child_node
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target", auto_add_composed_components=True)
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    generator = PLEXOSGenerator(name="nonexistent")
+    result = membership_component_child_node(context, generator)
+    assert result.is_err()
+
+
+def test_membership_pumped_hydro_head_storage_wrong_suffix() -> None:
+    """Test membership_pumped_hydro_head_storage errors on non-head generator."""
+    from r2x_plexos.models import PLEXOSGenerator
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import membership_pumped_hydro_head_storage
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target")
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    generator = PLEXOSGenerator(name="regular_gen")
+    result = membership_pumped_hydro_head_storage(context, generator)
+    assert result.is_err()
+
+
+def test_membership_pumped_hydro_tail_storage_wrong_suffix() -> None:
+    """Test membership_pumped_hydro_tail_storage errors on non-tail generator."""
+    from r2x_plexos.models import PLEXOSGenerator
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters import membership_pumped_hydro_tail_storage
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target")
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    generator = PLEXOSGenerator(name="regular_gen")
+    result = membership_pumped_hydro_tail_storage(context, generator)
+    assert result.is_err()

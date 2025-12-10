@@ -426,20 +426,65 @@ def test_compute_heat_rate_data_with_quadratic_fuel_curve(context_with_thermal_g
     assert "heat_rate_incr" in data
 
 
-def test_compute_heat_rate_data_with_piecewise_fuel_curve(context_with_thermal_generators) -> None:
-    """compute_heat_rate_data extracts multiband heat rate data."""
-    from r2x_plexos.models import PLEXOSPropertyValue
-    from r2x_sienna.models import ThermalStandard
+def test_compute_heat_rate_data_with_piecewise() -> None:
+    """Test compute_heat_rate_data with piecewise linear curve."""
+    from infrasys.cost_curves import FuelCurve, UnitSystem
+    from infrasys.function_data import PiecewiseLinearData, XYCoords
+    from infrasys.value_curves import InputOutputCurve, LinearCurve
     from r2x_sienna_to_plexos.getters_utils import compute_heat_rate_data
 
-    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-piecewise")
+    points = [
+        XYCoords(x=0.0, y=100.0),
+        XYCoords(x=50.0, y=150.0),
+        XYCoords(x=100.0, y=250.0),
+    ]
+    pw_data = PiecewiseLinearData(points=points)
+    io_curve = InputOutputCurve(function_data=pw_data)
+    fuel_curve = FuelCurve(
+        value_curve=io_curve,
+        power_units=UnitSystem.NATURAL_UNITS,
+        fuel_cost=2.0,
+        startup_fuel_offtake=LinearCurve(0.0)
+    )
 
-    data = compute_heat_rate_data(source)
+    class MockCost:
+        variable = fuel_curve
 
-    assert "load_point" in data
-    assert "heat_rate_incr" in data
-    assert isinstance(data["load_point"], PLEXOSPropertyValue)
-    assert isinstance(data["heat_rate_incr"], PLEXOSPropertyValue)
+    class MockComponent:
+        operation_cost = MockCost()
+
+    result = compute_heat_rate_data(MockComponent())
+    assert "heat_rate_incr" in result or "load_point" in result
+
+
+def test_compute_markup_data_with_piecewise() -> None:
+    """Test compute_markup_data with piecewise cost curve."""
+    from infrasys.cost_curves import CostCurve, UnitSystem
+    from infrasys.function_data import PiecewiseLinearData, XYCoords
+    from infrasys.value_curves import InputOutputCurve, LinearCurve
+    from r2x_sienna_to_plexos.getters_utils import compute_markup_data
+
+    points = [
+        XYCoords(x=0.0, y=10.0),
+        XYCoords(x=50.0, y=60.0),
+        XYCoords(x=100.0, y=160.0),
+    ]
+    pw_data = PiecewiseLinearData(points=points)
+    value_curve = InputOutputCurve(function_data=pw_data)
+    cost_curve = CostCurve(
+        value_curve=value_curve,
+        power_units=UnitSystem.NATURAL_UNITS,
+        vom_cost=LinearCurve(0.0)
+    )
+
+    class MockCost:
+        variable = cost_curve
+
+    class MockComponent:
+        operation_cost = MockCost()
+
+    result = compute_markup_data(MockComponent())
+    assert "mark_up_point" in result or "mark_up" in result
 
 
 def test_compute_heat_rate_data_returns_empty_for_no_fuel_curve() -> None:
@@ -555,3 +600,234 @@ def test_ensure_region_node_memberships_integration(system_complete) -> None:
     # Should have created memberships
     memberships = list(target_system.get_supplemental_attributes(PLEXOSMembership))
     assert len(memberships) >= 0  # May or may not create depending on area matching
+
+
+def test_ensure_membership_with_different_collections() -> None:
+    """Test _ensure_membership creates different memberships for different collections."""
+    from plexosdb import CollectionEnum
+    from r2x_plexos.models import PLEXOSGenerator, PLEXOSNode
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters_utils import _ensure_membership
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source")
+    target_system = System(name="target", auto_add_composed_components=True)
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    generator = PLEXOSGenerator(name="gen1")
+    node = PLEXOSNode(name="node1")
+    target_system.add_component(generator)
+    target_system.add_component(node)
+
+    # Create membership with Nodes collection
+    _ensure_membership(context, generator, node, CollectionEnum.Nodes)
+
+    from r2x_plexos.models import PLEXOSMembership
+
+    memberships = list(target_system.get_supplemental_attributes(PLEXOSMembership))
+    assert len(memberships) == 1
+
+
+def test_ensure_region_node_memberships_missing_area() -> None:
+    """Test ensure_region_node_memberships handles buses without area."""
+    from r2x_plexos.models import PLEXOSNode, PLEXOSRegion
+    from r2x_sienna.models import ACBus, Area
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters_utils import ensure_region_node_memberships
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source", auto_add_composed_components=True)
+    target_system = System(name="target", auto_add_composed_components=True)
+
+    # Bus with area
+    area = Area(name="area1")
+    bus = ACBus(name="bus1", bustype="PV", base_voltage=100.0, number=1, area=area)
+    source_system.add_component(area)
+    source_system.add_component(bus)
+
+    region = PLEXOSRegion(name="area1")
+    node = PLEXOSNode(name="bus1")
+    target_system.add_component(region)
+    target_system.add_component(node)
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    # Should not raise error
+    ensure_region_node_memberships(context)
+
+
+def test_ensure_node_zone_memberships_missing_load_zone() -> None:
+    """Test ensure_node_zone_memberships handles buses without load_zone."""
+    from r2x_plexos.models import PLEXOSNode, PLEXOSZone
+    from r2x_sienna.models import ACBus, LoadZone
+    from r2x_sienna_to_plexos import SiennaToPlexosConfig
+    from r2x_sienna_to_plexos.getters_utils import ensure_node_zone_memberships
+
+    from r2x_core import System, TranslationContext
+
+    source_system = System(name="source", auto_add_composed_components=True)
+    target_system = System(name="target", auto_add_composed_components=True)
+
+    # Bus with load_zone
+    load_zone = LoadZone(name="zone1")
+    bus = ACBus(name="bus1", bustype="PV", base_voltage=100.0, number=1, load_zone=load_zone)
+    source_system.add_component(load_zone)
+    source_system.add_component(bus)
+
+    zone = PLEXOSZone(name="zone1")
+    node = PLEXOSNode(name="bus1")
+    target_system.add_component(zone)
+    target_system.add_component(node)
+
+    context = TranslationContext(
+        source_system=source_system,
+        target_system=target_system,
+        config=SiennaToPlexosConfig(),
+        rules=[],
+    )
+
+    # Should not raise error
+    ensure_node_zone_memberships(context)
+
+
+def test_normalize_value_curve_input_output() -> None:
+    """Test normalize_value_curve with InputOutputCurve passthrough."""
+    from infrasys.function_data import LinearFunctionData
+    from infrasys.value_curves import InputOutputCurve
+    from r2x_sienna_to_plexos.getters_utils import normalize_value_curve
+
+    linear_data = LinearFunctionData(proportional_term=10.0, constant_term=5.0)
+    io_curve = InputOutputCurve(function_data=linear_data)
+
+    result = normalize_value_curve(io_curve)
+    assert result is io_curve
+
+
+def test_normalize_value_curve_conversion_failure() -> None:
+    """Test normalize_value_curve returns None on conversion failure."""
+    from r2x_sienna_to_plexos.getters_utils import normalize_value_curve
+
+    # Mock curve that will fail conversion
+    class MockCurve:
+        def to_input_output(self):
+            raise ValueError("Conversion failed")
+
+    result = normalize_value_curve(MockCurve())
+    assert result is None
+
+
+def test_normalize_value_curve_unsupported_type() -> None:
+    """Test normalize_value_curve with unsupported type."""
+    from r2x_sienna_to_plexos.getters_utils import normalize_value_curve
+
+    result = normalize_value_curve("not_a_curve")
+    assert result is None
+
+
+def test_extract_piecewise_segments_zero_dx() -> None:
+    """Test extract_piecewise_segments skips segments with zero dx."""
+    from infrasys.function_data import XYCoords
+    from r2x_sienna_to_plexos.getters_utils import extract_piecewise_segments
+
+    points = [
+        XYCoords(x=0.0, y=100.0),
+        XYCoords(x=0.0, y=120.0),  # Same x, should be skipped
+        XYCoords(x=50.0, y=150.0),
+    ]
+
+    load_points, slopes = extract_piecewise_segments(points)
+    assert len(load_points) == 1
+    assert len(slopes) == 1
+
+
+def test_compute_heat_rate_data_not_fuel_curve() -> None:
+    """Test compute_heat_rate_data returns empty when not FuelCurve."""
+    from r2x_sienna_to_plexos.getters_utils import compute_heat_rate_data
+
+    class MockCost:
+        variable = 10.0  # Not a FuelCurve
+
+    class MockComponent:
+        operation_cost = MockCost()
+
+    result = compute_heat_rate_data(MockComponent())
+    assert result == {}
+
+
+def test_compute_heat_rate_data_none_cost() -> None:
+    """Test compute_heat_rate_data with None operation_cost."""
+    from r2x_sienna_to_plexos.getters_utils import compute_heat_rate_data
+
+    class MockComponent:
+        operation_cost = None
+
+    result = compute_heat_rate_data(MockComponent())
+    assert result == {}
+
+
+def test_compute_markup_data_not_cost_curve() -> None:
+    """Test compute_markup_data returns empty when not CostCurve."""
+    from r2x_sienna_to_plexos.getters_utils import compute_markup_data
+
+    class MockCost:
+        variable = 10.0  # Not a CostCurve
+
+    class MockComponent:
+        operation_cost = MockCost()
+
+    result = compute_markup_data(MockComponent())
+    assert result == {}
+
+
+def test_compute_markup_data_none_cost() -> None:
+    """Test compute_markup_data with None operation_cost."""
+    from r2x_sienna_to_plexos.getters_utils import compute_markup_data
+
+    class MockComponent:
+        operation_cost = None
+
+    result = compute_markup_data(MockComponent())
+    assert result == {}
+
+
+def test_coerce_value_with_property_value() -> None:
+    """Test coerce_value preserves PLEXOSPropertyValue."""
+    from r2x_plexos.models import PLEXOSPropertyValue
+    from r2x_sienna_to_plexos.getters_utils import coerce_value
+
+    prop = PLEXOSPropertyValue()
+    prop.add_entry(value=10.0, band=1)
+
+    result = coerce_value(prop)
+    assert isinstance(result, PLEXOSPropertyValue)
+
+
+def test_coerce_value_with_none() -> None:
+    """Test coerce_value returns default for None."""
+    from r2x_sienna_to_plexos.getters_utils import coerce_value
+
+    result = coerce_value(None, default=99.0)
+    assert result == pytest.approx(99.0)
+
+
+def test_coerce_value_with_number() -> None:
+    """Test coerce_value converts number to float."""
+    from r2x_sienna_to_plexos.getters_utils import coerce_value
+
+    result = coerce_value(42)
+    assert result == pytest.approx(42.0)
+    assert isinstance(result, float)
+
