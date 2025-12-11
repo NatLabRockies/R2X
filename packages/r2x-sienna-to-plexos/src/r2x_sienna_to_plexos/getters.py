@@ -380,6 +380,34 @@ def get_max_capacity(context: TranslationContext, source_component: Any) -> Resu
 
 
 @getter
+def get_turbine_max_ramp_up(
+    context: TranslationContext, source_component: HydroTurbine
+) -> Result[float, ValueError]:
+    """Extract max ramp up (in MW/h) from the HydroTurbine, converting from per-unit if needed."""
+    ramp_limits = getattr(source_component, "ramp_limits", None)
+    base_power = get_magnitude(getattr(source_component, "base_power", None))
+    if ramp_limits and base_power is not None:
+        up = getattr(ramp_limits, "up", None)
+        if up is not None:
+            return Ok(float(get_magnitude(up)) * float(base_power))
+    return Ok(0.0)
+
+
+@getter
+def get_turbine_max_ramp_down(
+    context: TranslationContext, source_component: HydroTurbine
+) -> Result[float, ValueError]:
+    """Extract max ramp down (in MW/h) from the HydroTurbine, converting from per-unit if needed."""
+    ramp_limits = getattr(source_component, "ramp_limits", None)
+    base_power = get_magnitude(getattr(source_component, "base_power", None))
+    if ramp_limits and base_power is not None:
+        down = getattr(ramp_limits, "down", None)
+        if down is not None:
+            return Ok(float(get_magnitude(down)) * float(base_power))
+    return Ok(0.0)
+
+
+@getter
 def get_max_ramp_up(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     try:
         limits = sienna_get_ramp_limits(source_component)
@@ -748,7 +776,7 @@ def _attach_generator_time_series(
     target_generator: Any,
 ) -> None:
     """Attach time series from source generator to translated PLEXOS generator."""
-    source_gen: RenewableDispatch | RenewableNonDispatch | HydroReservoir | None = None
+    source_gen: RenewableDispatch | RenewableNonDispatch | HydroReservoir | HydroTurbine | None = None
 
     source_gen = next(
         (g for g in context.source_system.get_components(RenewableDispatch) if g.name == generator_name),

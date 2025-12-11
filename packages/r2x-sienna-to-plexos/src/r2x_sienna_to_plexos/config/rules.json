@@ -277,6 +277,26 @@
   },
   {
     "defaults": {
+      "category": "hydro-dispatch",
+      "load_point": 0.0,
+      "mark_up_point": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "rating": "rating",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "max_ramp_up": "get_turbine_max_ramp_up",
+      "max_ramp_down": "get_turbine_max_ramp_down"
+    },
+    "source_type": "HydroTurbine",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
       "category": "hydro-pumped-storage",
       "initial_level": 0.5
     },
