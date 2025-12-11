@@ -70,6 +70,13 @@ class Generator(Device):
     min_rated_capacity: Annotated[ActivePower, Field(description="Minimum rated power generation.")] = (
         0 * ureg.MW
     )
+    min_rated_capacity_factor: (
+        Annotated[
+            Percentage,
+            Field(description="Minimum rated power generation capacity factor."),
+        ]
+        | None
+    ) = None
     ramp_up: (
         Annotated[
             PowerRate,

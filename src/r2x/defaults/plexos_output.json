@@ -84,6 +84,7 @@
     "active_power_flow_limits_min": "Min Flow",
     "active_power_limits_max": "Max Capacity",
     "min_rated_capacity": "Min Stable Level",
+    "min_rated_capacity_factor": "Min Capacity Factor Hour",
     "available": "Units",
     "base_power": "Max Capacity",
     "base_voltage": "Voltage",

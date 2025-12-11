@@ -161,6 +161,11 @@ def update_system(
             if wecc_data_row.get("run_up_rate")
             else None
         )
+        values_to_add["min_rated_capacity_factor"] = (
+            BaseQuantity(wecc_data_row.get("min_stable_level_percentage"), "%")
+            if wecc_data_row.get("min_stable_level_percentage")
+            else None
+        )
         values_to_add["min_rated_capacity"] = (
             getattr(component, "active_power")
             * BaseQuantity(wecc_data_row.get("min_stable_level_percentage"), "")

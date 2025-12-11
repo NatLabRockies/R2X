@@ -33,6 +33,7 @@
     "Min Provision": "max_requirement",
     "Min SoC": "min_storage_capacity",
     "Min Stable Level": "min_rated_capacity",
+    "Min Capacity Factor Hour": "min_rated_capacity_factor",
     "Min Up Time": "min_up_time",
     "Production Rate": "rate",
     "Pump Efficiency": "pump_efficiency",
