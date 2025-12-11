@@ -162,7 +162,7 @@ def update_system(
             else None
         )
         values_to_add["min_rated_capacity_factor"] = (
-            BaseQuantity(wecc_data_row.get("min_stable_level_percentage"), "%")
+            100 * BaseQuantity(wecc_data_row.get("min_stable_level_percentage"), "%")
             if wecc_data_row.get("min_stable_level_percentage")
             else None
         )
