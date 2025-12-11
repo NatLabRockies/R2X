@@ -540,6 +540,26 @@ def get_storage_capacity(
 
 
 @getter
+def get_interface_min_flow(
+    context: TranslationContext, source_component: TransmissionInterface
+) -> Result[float, ValueError]:
+    """Get min_flow from active_power_flow_limits or default."""
+    limits = getattr(source_component, "active_power_flow_limits", None)
+    value = getattr(limits, "min", None) if limits else None
+    return Ok(float(value) if value is not None else 1e30)
+
+
+@getter
+def get_interface_max_flow(
+    context: TranslationContext, source_component: TransmissionInterface
+) -> Result[float, ValueError]:
+    """Get max_flow from active_power_flow_limits or default."""
+    limits = getattr(source_component, "active_power_flow_limits", None)
+    value = getattr(limits, "max", None) if limits else None
+    return Ok(float(value) if value is not None else 1e30)
+
+
+@getter
 def membership_parent_component(_: TranslationContext, component: Any) -> Result[Any, ValueError]:
     """Return the component itself for membership parent/child fields."""
     return Ok(component)

@@ -463,7 +463,10 @@
       "uuid": "uuid",
       "category": "category"
     },
-    "getters": {},
+    "getters": {
+      "min_flow": "get_interface_min_flow",
+      "max_flow": "get_interface_max_flow"
+    },
     "source_type": "TransmissionInterface",
     "target_type": "PLEXOSInterface",
     "version": 1
