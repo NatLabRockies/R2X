@@ -430,14 +430,26 @@
   },
   {
     "defaults": {
-      "category": "variable-reserve"
+      "category": "variable-reserve",
+      "is_enabled": -1,
+      "include_in_lt_plan": -1,
+      "include_in_mt_schedule": -1,
+      "include_in_st_schedule": -1
     },
     "field_map": {
       "name": "name",
       "uuid": "uuid",
       "category": "category"
     },
-    "getters": {},
+    "getters": {
+      "timeframe": "get_reserve_timeframe",
+      "duration": "get_reserve_duration",
+      "min_provision": "get_reserve_min_provision",
+      "max_provision": "get_reserve_max_provision",
+      "type": "get_reserve_type",
+      "vors": "get_reserve_vors",
+      "max_sharing": "get_reserve_max_sharing"
+    },
     "source_type": "VariableReserve",
     "target_type": "PLEXOSReserve",
     "version": 1
@@ -512,6 +524,18 @@
     "source_type": "PLEXOSReserve",
     "target_type": "PLEXOSMembership",
     "version": 1
+  },
+  {
+    "name": "reserve_battery_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_reserve_child_battery",
+      "collection": "membership_collection_batteries"
+    },
+    "source_type": "PLEXOSReserve",
+    "target_type": "PLEXOSMembership",
+    "version": 2
   },
   {
     "name": "component_node_membership",

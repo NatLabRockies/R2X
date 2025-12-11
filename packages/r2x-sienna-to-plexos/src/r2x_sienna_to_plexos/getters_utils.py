@@ -209,33 +209,59 @@ def ensure_node_zone_memberships(context: TranslationContext) -> None:
 
 
 def ensure_reserve_generator_memberships(context: TranslationContext) -> None:
-    """Create Reserve->Generator memberships for all reserves and their participating generators."""
-    all_reserves = list(context.target_system.get_components(PLEXOSReserve))
-    all_generators = list(context.target_system.get_components(PLEXOSGenerator))
-    source_reserves = list(context.source_system.get_components(VariableReserve))
+    """Create Reserve->Generator memberships by finding which generators provide each reserve service."""
+    from r2x_sienna_to_plexos.getters import SOURCE_GENERATOR_TYPES
 
-    generators_by_name = {gen.name: gen for gen in all_generators}
-    source_reserves_by_name = {res.name: res for res in source_reserves}
+    reserves_by_name = {res.name: res for res in context.target_system.get_components(PLEXOSReserve)}
+    generators_by_name = {gen.name: gen for gen in context.target_system.get_components(PLEXOSGenerator)}
+
+    # Properly annotate the list to satisfy mypy
+    all_source_generators: list[Any] = []
+    for gen_type in SOURCE_GENERATOR_TYPES:
+        all_source_generators.extend(list(context.source_system.get_components(gen_type)))  # type: ignore[arg-type]
 
     total_memberships = 0
-    for reserve in all_reserves:
-        source_reserve = source_reserves_by_name.get(reserve.name)
-        if source_reserve is None:
-            continue
+    for reserve_name, target_reserve in reserves_by_name.items():
+        for source_gen in all_source_generators:
+            services = getattr(source_gen, "services", None)
+            if not services:
+                continue
 
-        contributing_devices = getattr(source_reserve, "contributing_devices", None)
-        if not contributing_devices:
-            continue
-
-        for device in contributing_devices:
-            device_name = device.name if hasattr(device, "name") else str(device)
-            generator = generators_by_name.get(device_name)
-
-            if generator is not None:
-                _ensure_membership(context, reserve, generator, CollectionEnum.Generators)
-                total_memberships += 1
+            for service in services:
+                if getattr(service, "name", None) == reserve_name:
+                    target_gen = generators_by_name.get(source_gen.name)
+                    if target_gen:
+                        _ensure_membership(context, target_reserve, target_gen, CollectionEnum.Generators)
+                        total_memberships += 1
+                    break
 
     logger.info(f"Total {total_memberships} Reserve-Generator memberships created.")
+
+
+def ensure_reserve_battery_memberships(context: TranslationContext) -> None:
+    """Create Reserve->Battery memberships by checking the services of each source battery."""
+    reserves_by_name = {res.name: res for res in context.target_system.get_components(PLEXOSReserve)}
+    batteries_by_name = {bat.name: bat for bat in context.target_system.get_components(PLEXOSBattery)}
+
+    total_memberships = 0
+    for source_battery in context.source_system.get_components(EnergyReservoirStorage):
+        if not hasattr(source_battery, "services") or not source_battery.services:
+            continue
+
+        target_battery = batteries_by_name.get(source_battery.name)
+        if target_battery is None:
+            continue
+
+        for service in source_battery.services:
+            if not isinstance(service, VariableReserve):
+                continue
+
+            target_reserve = reserves_by_name.get(service.name)
+            if target_reserve is not None:
+                _ensure_membership(context, target_reserve, target_battery, CollectionEnum.Batteries)
+                total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Reserve-Battery memberships created.")
 
 
 def ensure_transformer_node_memberships(context: TranslationContext) -> None:

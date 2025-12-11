@@ -24,6 +24,7 @@ from r2x_sienna.models import (
     HydroEnergyReservoir,
     HydroPumpedStorage,
     HydroReservoir,
+    HydroTurbine,
     Line,
     LoadZone,
     MonitoredLine,
@@ -41,6 +42,7 @@ from r2x_sienna.models import (
     TwoTerminalHVDCLine,
     VariableReserve,
 )
+from r2x_sienna.models.enums import ReserveType
 from r2x_sienna.models.getters import (
     get_max_active_power as sienna_get_max_active_power,
 )
@@ -61,6 +63,19 @@ from r2x_sienna_to_plexos.getters_utils import (
     compute_markup_data,
     resolve_base_power,
 )
+
+SOURCE_GENERATOR_TYPES = [
+    ThermalStandard,
+    ThermalMultiStart,
+    HydroDispatch,
+    HydroPumpedStorage,
+    HydroReservoir,
+    HydroTurbine,
+    HydroEnergyReservoir,
+    RenewableDispatch,
+    RenewableNonDispatch,
+    SynchronousCondenser,
+]
 
 
 @getter
@@ -271,7 +286,78 @@ def get_min_stable_level(context: TranslationContext, source_component: Any) -> 
         return Ok(0.0)
     converted = sienna_get_value(limits, source_component)
     min_level = getattr(converted, "min", None)
-    return Ok(float(min_level) if min_level is not None else 0.0)
+    if min_level is None:
+        return Ok(0.0)
+    min_level = 0.0 if min_level < 0 else min_level
+    return Ok(float(min_level))
+
+
+@getter
+def get_reserve_timeframe(
+    context: TranslationContext, source_component: VariableReserve
+) -> Result[float, ValueError]:
+    """Get reserve timeframe in seconds."""
+    time_frame = getattr(source_component, "time_frame", 0.0)
+    return Ok(time_frame * 60)
+
+
+@getter
+def get_reserve_duration(
+    context: TranslationContext, source_component: VariableReserve
+) -> Result[float, ValueError]:
+    """Get reserve sustained time in seconds."""
+    sustained_time = getattr(source_component, "sustained_time", 0.0)
+    return Ok(sustained_time)
+
+
+@getter
+def get_reserve_min_provision(
+    context: TranslationContext, source_component: VariableReserve
+) -> Result[float, ValueError]:
+    """Get reserve requirement."""
+    requirement = getattr(source_component, "requirement", 0.0)
+    return Ok(requirement)
+
+
+@getter
+def get_reserve_max_provision(
+    context: TranslationContext, source_component: VariableReserve
+) -> Result[float, ValueError]:
+    """Get reserve max requirement."""
+    max_requirement = getattr(source_component, "max_requirement", 1e30)
+    return Ok(max_requirement)
+
+
+@getter
+def get_reserve_type(
+    context: TranslationContext, source_component: VariableReserve
+) -> Result[int, ValueError]:
+    """Get PLEXOS reserve type from Sienna ReserveType."""
+    reserve_type_mapping = {
+        ReserveType.SPINNING: 1,
+        ReserveType.FLEXIBILITY: 2,
+        ReserveType.REGULATION: 3,
+    }
+    plexos_type = reserve_type_mapping.get(source_component.reserve_type, 1)
+    return Ok(plexos_type)
+
+
+@getter
+def get_reserve_vors(
+    context: TranslationContext, source_component: VariableReserve
+) -> Result[float, ValueError]:
+    """Get reserve VORS."""
+    vors = getattr(source_component, "vors", -1.0)
+    return Ok(vors)
+
+
+@getter
+def get_reserve_max_sharing(
+    context: TranslationContext, source_component: VariableReserve
+) -> Result[float, ValueError]:
+    """Get reserve max participation factor as a percentage."""
+    max_participation_factor = getattr(source_component, "max_participation_factor", 1.0)
+    return Ok(max_participation_factor * 100)
 
 
 @getter
@@ -312,10 +398,15 @@ def get_max_ramp_down(context: TranslationContext, source_component: Any) -> Res
 
 
 def _get_time_limit(component: Any, attr: str, ext_key: str) -> float | None:
+    """Extract time limit from time_limits attribute or ext dict."""
     time_limits = getattr(component, "time_limits", None)
     value = getattr(time_limits, attr, None) if time_limits else None
-    if value is None and component.ext:
-        value = component.ext.get(ext_key)
+
+    if value is None:
+        ext = getattr(component, "ext", None)
+        if ext is not None and isinstance(ext, dict):
+            value = ext.get(ext_key)
+
     return _convert_time_value(value)
 
 
@@ -328,18 +419,16 @@ def _convert_time_value(value: Any) -> float | None:
 
 @getter
 def get_min_up_time(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
-    value = _get_time_limit(source_component, "up", "min_up_time")
-    if value is None:
-        return Err(ValueError("Minimum up time missing"))
-    return Ok(value)
+    """Extract minimum up time from time_limits or ext dict."""
+    value = _get_time_limit(source_component, "up", "NARIS_Min_Up_Time")
+    return Ok(value if value is not None else 0.0)
 
 
 @getter
 def get_min_down_time(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
-    value = _get_time_limit(source_component, "down", "min_down_time")
-    if value is None:
-        return Err(ValueError("Minimum down time missing"))
-    return Ok(value)
+    """Extract minimum down time from time_limits or ext dict."""
+    value = _get_time_limit(source_component, "down", "NARIS_Min_Down_Time")
+    return Ok(value if value is not None else 0.0)
 
 
 @getter
@@ -475,6 +564,12 @@ def membership_collection_generators(_: TranslationContext, __: Any) -> Result[C
 
 
 @getter
+def membership_collection_batteries(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the Batteries collection enum."""
+    return Ok(CollectionEnum.Batteries)
+
+
+@getter
 def membership_collection_region(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Region collection enum."""
     return Ok(CollectionEnum.Region)
@@ -542,18 +637,7 @@ def _lookup_target_node_by_source_area(
 
 def _lookup_source_generator(context: TranslationContext, gen_name: str) -> Any | None:
     """Find a source generator by name across all Sienna generator types."""
-    generator_types = [
-        HydroDispatch,
-        ThermalStandard,
-        ThermalMultiStart,
-        RenewableDispatch,
-        RenewableNonDispatch,
-        HydroEnergyReservoir,
-        HydroPumpedStorage,
-        SynchronousCondenser,
-    ]
-
-    for gen_type in generator_types:
+    for gen_type in SOURCE_GENERATOR_TYPES:
         generators: list[Any] = list(context.source_system.get_components(gen_type))  # type: ignore[arg-type]
         for gen in generators:
             if gen.name == gen_name:
@@ -783,38 +867,67 @@ def membership_node_child_zone(context: TranslationContext, node: PLEXOSNode) ->
 def membership_reserve_child_generator(
     context: TranslationContext, reserve: Any
 ) -> Result[PLEXOSGenerator, ValueError]:
-    """Resolve a reserve's participating generators to translated generators.
+    """
+    Resolve a reserve's participating generators.
 
-    Note: This returns the first generator. For multiple generators,
-    the membership rule should handle iteration.
+    Note: This returns the first contributing generator found. For multiple devices,
+    the membership rule would need to handle iteration.
     """
     reserve_name = getattr(reserve, "name", "")
     source_reserve = next(
-        (res for res in context.source_system.get_components(VariableReserve) if res.name == reserve_name),
+        (r for r in context.source_system.get_components(VariableReserve) if r.name == reserve_name),
         None,
     )
 
     if source_reserve is None:
-        return Err(ValueError(f"No source VariableReserve found for '{reserve_name}'"))
+        return Err(ValueError(f"Source reserve '{reserve_name}' not found"))
 
-    contributing_devices = getattr(source_reserve, "contributing_devices", None)
-    if not contributing_devices:
-        return Err(ValueError(f"VariableReserve '{reserve_name}' has no contributing_devices"))
+    for gen_type in SOURCE_GENERATOR_TYPES:
+        devices: list[Any] = list(context.source_system.get_components(gen_type))  # type: ignore[arg-type]
+        for device in devices:
+            services = getattr(device, "services", None)
+            if not services:
+                continue
+            for service in services:
+                if getattr(service, "name", None) == source_reserve.name:
+                    target_device = context.target_system.get_component_by_uuid(device.uuid)
+                    if target_device:
+                        return Ok(target_device)
 
-    if not contributing_devices:
-        return Err(ValueError(f"VariableReserve '{reserve_name}' has empty contributing_devices"))
+    return Err(ValueError(f"No contributing generators found for reserve '{reserve_name}'"))
 
-    first_device = contributing_devices[0]
-    device_name = first_device.name if hasattr(first_device, "name") else str(first_device)
-    target_gen = next(
-        (gen for gen in context.target_system.get_components(PLEXOSGenerator) if gen.name == device_name),
+
+@getter
+def membership_reserve_child_battery(
+    context: TranslationContext, reserve: Any
+) -> Result[PLEXOSBattery, ValueError]:
+    """
+    Resolve a reserve's participating batteries.
+
+    Note: This returns the first contributing battery found. For multiple devices,
+    the membership rule would need to handle iteration.
+    """
+    reserve_name = getattr(reserve, "name", "")
+    source_reserve = next(
+        (r for r in context.source_system.get_components(VariableReserve) if r.name == reserve_name),
         None,
     )
 
-    if target_gen is None:
-        return Err(ValueError(f"No PLEXOSGenerator found for device '{device_name}'"))
+    if source_reserve is None:
+        return Err(ValueError(f"Source reserve '{reserve_name}' not found"))
 
-    return Ok(target_gen)
+    batteries: list[Any] = list(context.source_system.get_components(EnergyReservoirStorage))
+    for device in batteries:
+        services = getattr(device, "services", None)
+        if not services:
+            continue
+        for service in services:
+            if getattr(service, "name", None) == source_reserve.name:
+                target_device = context.target_system.get_component_by_uuid(device.uuid)
+                if target_device and isinstance(target_device, PLEXOSBattery):
+                    return Ok(target_device)
+
+    return Err(ValueError(f"No contributing batteries found for reserve '{reserve_name}'"))
 
 
 @getter
