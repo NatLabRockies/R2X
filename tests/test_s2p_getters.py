@@ -1111,13 +1111,32 @@ def test_get_max_ramp_down_error() -> None:
     assert result.is_err()
 
 
-def test_get_min_up_time_from_ext() -> None:
-    """Test min up time reads from ext when time_limits missing."""
+def test_get_min_up_time_from_time_limits_and_ext() -> None:
+    """Min up time prefers time_limits.up, falls back to ext when missing."""
+    from r2x_sienna_to_plexos.getters import get_min_up_time
+
+    class TimeLimits:
+        up = 5.0
+
+    class MockComponent:
+        time_limits = TimeLimits()
+        ext = {"NARIS_Min_Up_Time": 4.0}  # noqa: RUF012
+
+    class MockContext:
+        pass
+
+    result = get_min_up_time(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(5.0)
+
+
+def test_get_min_up_time_from_ext_when_time_limits_none() -> None:
+    """Min up time reads from ext when time_limits is None."""
     from r2x_sienna_to_plexos.getters import get_min_up_time
 
     class MockComponent:
         time_limits = None
-        ext = {"min_up_time": 4.0}  # noqa: RUF012
+        ext = {"NARIS_Min_Up_Time": 4.0}  # noqa: RUF012
 
     class MockContext:
         pass
@@ -1127,13 +1146,32 @@ def test_get_min_up_time_from_ext() -> None:
     assert result.unwrap() == pytest.approx(4.0)
 
 
-def test_get_min_down_time_from_ext() -> None:
-    """Test min down time reads from ext when time_limits missing."""
+def test_get_min_down_time_from_time_limits_and_ext() -> None:
+    """Min down time prefers time_limits.down, falls back to ext when missing."""
+    from r2x_sienna_to_plexos.getters import get_min_down_time
+
+    class TimeLimits:
+        down = 6.0
+
+    class MockComponent:
+        time_limits = TimeLimits()
+        ext = {"NARIS_Min_Down_Time": 3.0}  # noqa: RUF012
+
+    class MockContext:
+        pass
+
+    result = get_min_down_time(MockContext(), MockComponent())
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(6.0)
+
+
+def test_get_min_down_time_from_ext_when_time_limits_none() -> None:
+    """Min down time reads from ext when time_limits is None."""
     from r2x_sienna_to_plexos.getters import get_min_down_time
 
     class MockComponent:
         time_limits = None
-        ext = {"min_down_time": 3.0}  # noqa: RUF012
+        ext = {"NARIS_Min_Down_Time": 3.0}  # noqa: RUF012
 
     class MockContext:
         pass
