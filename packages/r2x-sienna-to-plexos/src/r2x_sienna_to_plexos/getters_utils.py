@@ -215,7 +215,6 @@ def ensure_reserve_generator_memberships(context: TranslationContext) -> None:
     reserves_by_name = {res.name: res for res in context.target_system.get_components(PLEXOSReserve)}
     generators_by_name = {gen.name: gen for gen in context.target_system.get_components(PLEXOSGenerator)}
 
-    # Properly annotate the list to satisfy mypy
     all_source_generators: list[Any] = []
     for gen_type in SOURCE_GENERATOR_TYPES:
         all_source_generators.extend(list(context.source_system.get_components(gen_type)))  # type: ignore[arg-type]
