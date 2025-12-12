@@ -18,6 +18,12 @@
       "load": "get_power_or_standard_load",
       "units": "get_availability"
     },
+    "filter": {
+      "casefold": true,
+      "field": "name",
+      "op": "not_startswith",
+      "values": ["starbus"]
+    },
     "source_type": "ACBus",
     "target_type": "PLEXOSNode",
     "version": 1
