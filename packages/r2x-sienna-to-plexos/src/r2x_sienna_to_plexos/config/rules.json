@@ -62,8 +62,7 @@
       "category": "category"
     },
     "getters": {
-      "ac_line_charging_susceptance": "get_line_charging_susceptance",
-      "flow_limits": "get_asymmetric_flow_limits"
+      "ac_line_charging_susceptance": "get_line_charging_susceptance"
     },
     "source_type": "MonitoredLine",
     "target_type": "PLEXOSLine",
@@ -147,9 +146,7 @@
       "uuid": "uuid",
       "category": "category"
     },
-    "getters": {
-      "active_power_limits_from": "get_hvdc_flow_limits"
-    },
+    "getters": {},
     "source_type": "TwoTerminalHVDCLine",
     "target_type": "PLEXOSLine",
     "version": 1
@@ -205,7 +202,6 @@
       "category": "category"
     },
     "getters": {
-      "active_power_limits": "get_max_active_power",
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
       "heat_rate_base": "get_heat_rate_base",
@@ -214,10 +210,7 @@
       "heat_rate_incr3": "get_heat_rate_incr3",
       "load_point": "get_heat_rate_load_point",
       "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point",
-      "ramp_limits": "get_ramp_limits",
-      "start_time_limits": "get_start_time_limits",
-      "time_limits": "get_time_limits"
+      "mark_up_point": "get_mark_up_point"
     },
     "source_type": "ThermalMultiStart",
     "target_type": "PLEXOSGenerator",
@@ -236,7 +229,6 @@
       "category": "category"
     },
     "getters": {
-      "active_power_limits": "get_max_active_power",
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
       "heat_rate_base": "get_heat_rate_base",
@@ -245,9 +237,7 @@
       "heat_rate_incr3": "get_heat_rate_incr3",
       "load_point": "get_heat_rate_load_point",
       "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point",
-      "ramp_limits": "get_ramp_limits",
-      "time_limits": "get_time_limits"
+      "mark_up_point": "get_mark_up_point"
     },
     "source_type": "HydroDispatch",
     "target_type": "PLEXOSGenerator",

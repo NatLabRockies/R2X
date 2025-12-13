@@ -385,7 +385,7 @@ def get_turbine_max_ramp_up(
 ) -> Result[float, ValueError]:
     """Extract max ramp up (in MW/h) from the HydroTurbine, converting from per-unit if needed."""
     ramp_limits = getattr(source_component, "ramp_limits", None)
-    base_power = get_magnitude(getattr(source_component, "base_power", None))
+    base_power = resolve_base_power(source_component)
     if ramp_limits and base_power is not None:
         up = getattr(ramp_limits, "up", None)
         if up is not None:
@@ -399,7 +399,7 @@ def get_turbine_max_ramp_down(
 ) -> Result[float, ValueError]:
     """Extract max ramp down (in MW/h) from the HydroTurbine, converting from per-unit if needed."""
     ramp_limits = getattr(source_component, "ramp_limits", None)
-    base_power = get_magnitude(getattr(source_component, "base_power", None))
+    base_power = resolve_base_power(source_component)
     if ramp_limits and base_power is not None:
         down = getattr(ramp_limits, "down", None)
         if down is not None:
