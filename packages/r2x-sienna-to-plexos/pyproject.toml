@@ -1,0 +1,4 @@
+[project]
+name = "r2x-sienna-to-plexos"
+version = "0.0.0"
+dependencies = ["r2x-plexos>=0.1.0,<1.0.0", "r2x-sienna>=0.1.0,<1.0.0"]

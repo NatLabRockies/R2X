@@ -1,0 +1,608 @@
+[
+  {
+    "defaults": {
+      "category": "node",
+      "load": 0.0,
+      "units": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "units": "available",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "ac_voltage_magnitude": "get_voltage",
+      "load_participation_factor": "get_load_participation_factor",
+      "is_slack_bus": "is_slack_bus",
+      "load": "get_power_or_standard_load",
+      "units": "get_availability"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "name",
+      "op": "not_startswith",
+      "values": ["starbus"]
+    },
+    "source_type": "ACBus",
+    "target_type": "PLEXOSNode",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "line",
+      "min_flow": 0.0
+    },
+    "field_map": {
+      "fixed_flow": "active_power_flow",
+      "max_flow": "rating",
+      "name": "name",
+      "reactance": "x",
+      "resistance": "r",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "ac_line_charging_susceptance": "get_line_charging_susceptance"
+    },
+    "source_type": "Line",
+    "target_type": "PLEXOSLine",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "monitored-line"
+    },
+    "field_map": {
+      "fixed_flow": "active_power_flow",
+      "name": "name",
+      "reactance": "x",
+      "resistance": "r",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "ac_line_charging_susceptance": "get_line_charging_susceptance",
+      "flow_limits": "get_asymmetric_flow_limits"
+    },
+    "source_type": "MonitoredLine",
+    "target_type": "PLEXOSLine",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "transformer-2w",
+      "susceptance": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "rating": "rating",
+      "reactance": "x",
+      "resistance": "r",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "susceptance": "get_susceptance"
+    },
+    "source_type": "Transformer2W",
+    "target_type": "PLEXOSTransformer",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "ac_tap_ratio": 1.0,
+      "category": "tap-transformer",
+      "susceptance": 0.0
+    },
+    "field_map": {
+      "ac_tap_ratio": "tap",
+      "name": "name",
+      "rating": "rating",
+      "reactance": "x",
+      "resistance": "r",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "susceptance": "get_susceptance"
+    },
+    "source_type": "TapTransformer",
+    "target_type": "PLEXOSTransformer",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "ac_tap_ratio": 1.0,
+      "category": "phase-shifting-transformer",
+      "susceptance": 0.0
+    },
+    "field_map": {
+      "ac_fixed_shift_angle": "α",
+      "ac_tap_ratio": "tap",
+      "name": "name",
+      "rating": "rating",
+      "reactance": "x",
+      "resistance": "r",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "susceptance": "get_susceptance"
+    },
+    "source_type": "PhaseShiftingTransformer",
+    "target_type": "PLEXOSTransformer",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "ac_line_charging_susceptance": 0.0,
+      "category": "two-terminal-hvdc-line",
+      "reactance": 0.0,
+      "resistance": 0.0
+    },
+    "field_map": {
+      "fixed_flow": "active_power_flow",
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "active_power_limits_from": "get_hvdc_flow_limits"
+    },
+    "source_type": "TwoTerminalHVDCLine",
+    "target_type": "PLEXOSLine",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "thermal",
+      "load_point": 0.0,
+      "mark_up_point": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "fuel_price": "get_fuel_price",
+      "heat_rate": "get_heat_rate",
+      "heat_rate_base": "get_heat_rate_base",
+      "heat_rate_incr": "get_heat_rate_incr",
+      "heat_rate_incr2": "get_heat_rate_incr2",
+      "heat_rate_incr3": "get_heat_rate_incr3",
+      "initial_generation": "get_initial_generation",
+      "initial_hours_down": "get_initial_hours_down",
+      "initial_hours_up": "get_initial_hours_up",
+      "load_point": "get_heat_rate_load_point",
+      "mark_up": "get_mark_up",
+      "mark_up_point": "get_mark_up_point",
+      "max_capacity": "get_max_capacity",
+      "max_ramp_down": "get_max_ramp_down",
+      "max_ramp_up": "get_max_ramp_up",
+      "min_down_time": "get_min_down_time",
+      "min_stable_level": "get_min_stable_level",
+      "min_up_time": "get_min_up_time",
+      "running_cost": "get_running_cost",
+      "shutdown_cost": "get_shutdown_cost",
+      "start_cost": "get_start_cost"
+    },
+    "source_type": "ThermalStandard",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "thermal-multi-start",
+      "load_point": 0.0,
+      "mark_up_point": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "rating": "rating",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "active_power_limits": "get_max_active_power",
+      "fuel_price": "get_fuel_price",
+      "heat_rate": "get_heat_rate",
+      "heat_rate_base": "get_heat_rate_base",
+      "heat_rate_incr": "get_heat_rate_incr",
+      "heat_rate_incr2": "get_heat_rate_incr2",
+      "heat_rate_incr3": "get_heat_rate_incr3",
+      "load_point": "get_heat_rate_load_point",
+      "mark_up": "get_mark_up",
+      "mark_up_point": "get_mark_up_point",
+      "ramp_limits": "get_ramp_limits",
+      "start_time_limits": "get_start_time_limits",
+      "time_limits": "get_time_limits"
+    },
+    "source_type": "ThermalMultiStart",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "hydro-dispatch",
+      "load_point": 0.0,
+      "mark_up_point": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "rating": "rating",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "active_power_limits": "get_max_active_power",
+      "fuel_price": "get_fuel_price",
+      "heat_rate": "get_heat_rate",
+      "heat_rate_base": "get_heat_rate_base",
+      "heat_rate_incr": "get_heat_rate_incr",
+      "heat_rate_incr2": "get_heat_rate_incr2",
+      "heat_rate_incr3": "get_heat_rate_incr3",
+      "load_point": "get_heat_rate_load_point",
+      "mark_up": "get_mark_up",
+      "mark_up_point": "get_mark_up_point",
+      "ramp_limits": "get_ramp_limits",
+      "time_limits": "get_time_limits"
+    },
+    "source_type": "HydroDispatch",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "hydro-dispatch",
+      "load_point": 0.0,
+      "mark_up_point": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "rating": "rating",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "fuel_price": "get_fuel_price",
+      "heat_rate": "get_heat_rate",
+      "heat_rate_base": "get_heat_rate_base",
+      "heat_rate_incr": "get_heat_rate_incr",
+      "heat_rate_incr2": "get_heat_rate_incr2",
+      "heat_rate_incr3": "get_heat_rate_incr3",
+      "load_point": "get_heat_rate_load_point",
+      "mark_up": "get_mark_up",
+      "mark_up_point": "get_mark_up_point",
+      "max_capacity": "get_max_capacity"
+    },
+    "source_type": "HydroEnergyReservoir",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "hydro-dispatch",
+      "load_point": 0.0,
+      "mark_up_point": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "rating": "rating",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "max_ramp_up": "get_turbine_max_ramp_up",
+      "max_ramp_down": "get_turbine_max_ramp_down"
+    },
+    "source_type": "HydroTurbine",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "hydro-pumped-storage",
+      "initial_level": 0.5
+    },
+    "field_map": {
+      "initial_level": "initial_storage",
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {},
+    "source_type": "HydroPumpedStorage",
+    "target_type": "PLEXOSStorage",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "hydro-pumped-storage",
+      "load_point": 0.0,
+      "mark_up_point": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "rating": "rating",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "fuel_price": "get_fuel_price",
+      "heat_rate": "get_heat_rate",
+      "heat_rate_base": "get_heat_rate_base",
+      "heat_rate_incr": "get_heat_rate_incr",
+      "heat_rate_incr2": "get_heat_rate_incr2",
+      "heat_rate_incr3": "get_heat_rate_incr3",
+      "load_point": "get_heat_rate_load_point",
+      "mark_up": "get_mark_up",
+      "mark_up_point": "get_mark_up_point",
+      "max_capacity": "get_max_capacity"
+    },
+    "source_type": "HydroPumpedStorage",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "renewable-dispatch",
+      "load_point": 0.0,
+      "mark_up_point": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "rating": "rating",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "fuel_price": "get_fuel_price",
+      "heat_rate": "get_heat_rate",
+      "heat_rate_base": "get_heat_rate_base",
+      "heat_rate_incr": "get_heat_rate_incr",
+      "heat_rate_incr2": "get_heat_rate_incr2",
+      "heat_rate_incr3": "get_heat_rate_incr3",
+      "load_point": "get_heat_rate_load_point",
+      "mark_up": "get_mark_up",
+      "mark_up_point": "get_mark_up_point"
+    },
+    "source_type": "RenewableDispatch",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "renewable-non-dispatch",
+      "load_point": 0.0,
+      "mark_up_point": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "rating": "rating",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "fuel_price": "get_fuel_price",
+      "heat_rate": "get_heat_rate",
+      "heat_rate_base": "get_heat_rate_base",
+      "heat_rate_incr": "get_heat_rate_incr",
+      "heat_rate_incr2": "get_heat_rate_incr2",
+      "heat_rate_incr3": "get_heat_rate_incr3",
+      "load_point": "get_heat_rate_load_point",
+      "mark_up": "get_mark_up",
+      "mark_up_point": "get_mark_up_point"
+    },
+    "source_type": "RenewableNonDispatch",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "synchronous-condenser",
+      "load_point": 0.0,
+      "mark_up_point": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "rating": "rating",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "fuel_price": "get_fuel_price",
+      "heat_rate": "get_heat_rate",
+      "heat_rate_base": "get_heat_rate_base",
+      "heat_rate_incr": "get_heat_rate_incr",
+      "heat_rate_incr2": "get_heat_rate_incr2",
+      "heat_rate_incr3": "get_heat_rate_incr3",
+      "load_point": "get_heat_rate_load_point",
+      "mark_up": "get_mark_up",
+      "mark_up_point": "get_mark_up_point"
+    },
+    "source_type": "SynchronousCondenser",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "area"
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {},
+    "source_type": "Area",
+    "target_type": "PLEXOSRegion",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "load-zone"
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {},
+    "source_type": "LoadZone",
+    "target_type": "PLEXOSZone",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "variable-reserve",
+      "is_enabled": -1,
+      "include_in_lt_plan": -1,
+      "include_in_mt_schedule": -1,
+      "include_in_st_schedule": -1
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "timeframe": "get_reserve_timeframe",
+      "duration": "get_reserve_duration",
+      "min_provision": "get_reserve_min_provision",
+      "max_provision": "get_reserve_max_provision",
+      "type": "get_reserve_type",
+      "vors": "get_reserve_vors",
+      "max_sharing": "get_reserve_max_sharing"
+    },
+    "source_type": "VariableReserve",
+    "target_type": "PLEXOSReserve",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "interface"
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "min_flow": "get_interface_min_flow",
+      "max_flow": "get_interface_max_flow"
+    },
+    "source_type": "TransmissionInterface",
+    "target_type": "PLEXOSInterface",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "battery"
+    },
+    "field_map": {
+      "initial_soc": "initial_storage_capacity_level",
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "capacity": "get_storage_capacity",
+      "charge_efficiency": "get_storage_charge_efficiency",
+      "discharge_efficiency": "get_storage_discharge_efficiency",
+      "max_cycles": "get_storage_cycles",
+      "max_power": "get_storage_max_power"
+    },
+    "source_type": "EnergyReservoirStorage",
+    "target_type": "PLEXOSBattery",
+    "version": 1
+  },
+  {
+    "name": "region_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_region_parent_node",
+      "child_object": "membership_parent_component",
+      "collection": "membership_collection_region"
+    },
+    "source_type": "PLEXOSRegion",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "node_zone_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_node_child_zone",
+      "collection": "membership_collection_zone"
+    },
+    "source_type": "PLEXOSNode",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "reserve_generator_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_reserve_child_generator",
+      "collection": "membership_collection_generators"
+    },
+    "source_type": "PLEXOSReserve",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "reserve_battery_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_reserve_child_battery",
+      "collection": "membership_collection_batteries"
+    },
+    "source_type": "PLEXOSReserve",
+    "target_type": "PLEXOSMembership",
+    "version": 2
+  },
+  {
+    "name": "component_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_component_child_node",
+      "collection": "membership_collection_nodes"
+    },
+    "source_type": [
+      "PLEXOSGenerator",
+      "PLEXOSBattery"
+    ],
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "line_from_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_line_from_parent_node",
+      "collection": "membership_collection_node_from"
+    },
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "line_to_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_line_to_parent_node",
+      "collection": "membership_collection_node_to"
+    },
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 2
+  }
+]

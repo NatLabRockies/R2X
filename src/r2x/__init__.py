@@ -1,3 +1,10 @@
-# from .core import *
-# from .models import ACBus, Generator
-from .__version__ import __data_model_version__, __version__
+"""R2X - Multi-system translations for power systems modeling."""
+
+from importlib.metadata import version
+
+from loguru import logger
+
+__version__ = version("r2x")
+
+
+logger.disable("r2x")
