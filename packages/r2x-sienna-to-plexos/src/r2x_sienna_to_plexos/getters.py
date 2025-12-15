@@ -653,6 +653,40 @@ def membership_collection_tail_storage(_: TranslationContext, __: Any) -> Result
     return Ok(CollectionEnum.TailStorage)
 
 
+@getter
+def get_head_storage_uuid(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[str, ValueError]:
+    import uuid
+
+    return Ok(str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source_component.uuid}_head")))
+
+
+@getter
+def get_tail_storage_uuid(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[str, ValueError]:
+    import uuid
+
+    return Ok(str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source_component.uuid}_tail")))
+
+
+@getter
+def get_head_storage_name(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[str, ValueError]:
+    """Return the storage name for the head reservoir (appends _head)."""
+    return Ok(f"{source_component.name}_head")
+
+
+@getter
+def get_tail_storage_name(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[str, ValueError]:
+    """Return the storage name for the tail reservoir (appends _tail)."""
+    return Ok(f"{source_component.name}_tail")
+
+
 def _lookup_target_zone_by_name(context: TranslationContext, zone_name: str) -> Result[Any, ValueError]:
     """Return the translated zone with the given name."""
     for zone in context.target_system.get_components(PLEXOSZone):
@@ -1178,24 +1212,12 @@ def membership_transformer_to_parent_node(
 
 
 @getter
-def membership_pumped_hydro_head_storage(
-    context: TranslationContext, generator: Any
-) -> Result[Any, ValueError]:
-    """Resolve a pumped hydro generator's head storage.
-
-    The head generator (with _head suffix) links to a storage with the same name.
-    Both are created from the same HydroPumpedStorage source component.
-    """
+def membership_head_storage_generator(context: TranslationContext, generator: Any) -> Result[Any, ValueError]:
+    """Resolve a pumped hydro generator's head storage."""
     gen_name = getattr(generator, "name", "")
 
     if not gen_name.endswith("_head"):
         return Err(ValueError(f"Generator '{gen_name}' is not a head generator (missing _head suffix)"))
-
-    source_pumped_hydro = _lookup_source_pumped_hydro(context, gen_name)
-    if source_pumped_hydro is None:
-        return Err(
-            ValueError(f"Generator '{gen_name}' does not correspond to a HydroPumpedStorage component")
-        )
 
     storage_name = gen_name
     target_storage = next(
@@ -1214,24 +1236,12 @@ def membership_pumped_hydro_head_storage(
 
 
 @getter
-def membership_pumped_hydro_tail_storage(
-    context: TranslationContext, generator: Any
-) -> Result[Any, ValueError]:
-    """Resolve a pumped hydro generator's tail storage.
-
-    The tail generator (with _tail suffix) links to a storage with the same name.
-    Both are created from the same HydroPumpedStorage source component.
-    """
+def membership_tail_storage_generator(context: TranslationContext, generator: Any) -> Result[Any, ValueError]:
+    """Resolve a pumped hydro generator's tail storage."""
     gen_name = getattr(generator, "name", "")
 
     if not gen_name.endswith("_tail"):
         return Err(ValueError(f"Generator '{gen_name}' is not a tail generator (missing _tail suffix)"))
-
-    source_pumped_hydro = _lookup_source_pumped_hydro(context, gen_name)
-    if source_pumped_hydro is None:
-        return Err(
-            ValueError(f"Generator '{gen_name}' does not correspond to a HydroPumpedStorage component")
-        )
 
     storage_name = gen_name
     target_storage = next(
