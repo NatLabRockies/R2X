@@ -1213,13 +1213,11 @@ def membership_transformer_to_parent_node(
 
 @getter
 def membership_head_storage_generator(context: TranslationContext, generator: Any) -> Result[Any, ValueError]:
-    """Resolve a pumped hydro generator's head storage."""
+    """Resolve a generator's head storage by matching base name."""
     gen_name = getattr(generator, "name", "")
-
     if not gen_name.endswith("_head"):
         return Err(ValueError(f"Generator '{gen_name}' is not a head generator (missing _head suffix)"))
-
-    storage_name = gen_name
+    storage_name = gen_name  # Should match the storage name if naming is consistent
     target_storage = next(
         (
             storage
@@ -1228,22 +1226,30 @@ def membership_head_storage_generator(context: TranslationContext, generator: An
         ),
         None,
     )
-
     if target_storage is None:
-        return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
-
+        # Try to find HydroReservoir with base name and reconstruct storage name
+        base_name = gen_name[:-5]  # remove '_head'
+        alt_storage_name = f"{base_name}_head"
+        target_storage = next(
+            (
+                storage
+                for storage in context.target_system.get_components(PLEXOSStorage)
+                if storage.name == alt_storage_name
+            ),
+            None,
+        )
+        if target_storage is None:
+            return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}' or '{alt_storage_name}'"))
     return Ok(target_storage)
 
 
 @getter
 def membership_tail_storage_generator(context: TranslationContext, generator: Any) -> Result[Any, ValueError]:
-    """Resolve a pumped hydro generator's tail storage."""
+    """Resolve a generator's tail storage by matching base name."""
     gen_name = getattr(generator, "name", "")
-
     if not gen_name.endswith("_tail"):
         return Err(ValueError(f"Generator '{gen_name}' is not a tail generator (missing _tail suffix)"))
-
-    storage_name = gen_name
+    storage_name = gen_name  # Should match the storage name if naming is consistent
     target_storage = next(
         (
             storage
@@ -1252,8 +1258,18 @@ def membership_tail_storage_generator(context: TranslationContext, generator: An
         ),
         None,
     )
-
     if target_storage is None:
-        return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
-
+        # Try to find HydroReservoir with base name and reconstruct storage name
+        base_name = gen_name[:-5]  # remove '_tail'
+        alt_storage_name = f"{base_name}_tail"
+        target_storage = next(
+            (
+                storage
+                for storage in context.target_system.get_components(PLEXOSStorage)
+                if storage.name == alt_storage_name
+            ),
+            None,
+        )
+        if target_storage is None:
+            return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}' or '{alt_storage_name}'"))
     return Ok(target_storage)

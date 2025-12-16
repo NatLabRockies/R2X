@@ -337,38 +337,52 @@ def ensure_interface_line_memberships(context: TranslationContext) -> None:
     logger.info(f"Total {total_memberships} Interface-Line memberships created.")
 
 
+def _extract_base_name(name: str) -> str:
+    if name.endswith("_Turbine"):
+        return name[:-8]
+    if name.endswith("_Reservoir_head"):
+        return name[:-15]
+    if name.endswith("_Reservoir_tail"):
+        return name[:-15]
+    if name.endswith("_Reservoir"):
+        return name[:-10]
+    return name
+
+
 def ensure_head_storage_generator_membership(context: TranslationContext) -> None:
-    """Create HeadStorage memberships between head generators and head storages."""
+    """Create HeadStorage memberships between generators and head storages."""
     all_generators = list(context.target_system.get_components(PLEXOSGenerator))
     all_storages = list(context.target_system.get_components(PLEXOSStorage))
 
-    storages_by_name = {storage.name: storage for storage in all_storages}
-    head_generators = [gen for gen in all_generators if gen.name.endswith("_head")]
+    head_storages = [storage for storage in all_storages if storage.name.endswith("_head")]
 
     total_memberships = 0
-    for gen in head_generators:
-        storage = storages_by_name.get(gen.name)
-        if storage is not None:
-            _ensure_membership(context, gen, storage, CollectionEnum.HeadStorage)
-            total_memberships += 1
+    for storage in head_storages:
+        storage_base = _extract_base_name(storage.name)
+        for gen in all_generators:
+            gen_base = _extract_base_name(gen.name)
+            if gen_base == storage_base:
+                _ensure_membership(context, gen, storage, CollectionEnum.HeadStorage)
+                total_memberships += 1
 
     logger.info(f"Total {total_memberships} HeadStorage-Generator memberships created.")
 
 
 def ensure_tail_storage_generator_membership(context: TranslationContext) -> None:
-    """Create TailStorage memberships between tail generators and tail storages."""
+    """Create TailStorage memberships between generators and tail storages."""
     all_generators = list(context.target_system.get_components(PLEXOSGenerator))
     all_storages = list(context.target_system.get_components(PLEXOSStorage))
 
-    storages_by_name = {storage.name: storage for storage in all_storages}
-    tail_generators = [gen for gen in all_generators if gen.name.endswith("_tail")]
+    tail_storages = [storage for storage in all_storages if storage.name.endswith("_tail")]
 
     total_memberships = 0
-    for gen in tail_generators:
-        storage = storages_by_name.get(gen.name)
-        if storage is not None:
-            _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
-            total_memberships += 1
+    for storage in tail_storages:
+        storage_base = _extract_base_name(storage.name)
+        for gen in all_generators:
+            gen_base = _extract_base_name(gen.name)
+            if gen_base == storage_base:
+                _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
+                total_memberships += 1
 
     logger.info(f"Total {total_memberships} TailStorage-Generator memberships created.")
 
