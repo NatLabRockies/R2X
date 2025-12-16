@@ -283,7 +283,9 @@
     },
     "getters": {
       "name": "get_head_storage_name",
-      "uuid": "get_head_storage_uuid"
+      "uuid": "get_head_storage_uuid",
+      "initial_level": "get_storage_initial_level",
+      "max_level": "get_storage_max_level"
     },
     "source_type": "HydroReservoir",
     "target_type": "PLEXOSStorage",
@@ -301,7 +303,9 @@
     },
     "getters": {
       "name": "get_tail_storage_name",
-      "uuid": "get_tail_storage_uuid"
+      "uuid": "get_tail_storage_uuid",
+      "initial_level": "get_storage_initial_level",
+      "max_level": "get_storage_max_level"
     },
     "source_type": "HydroReservoir",
     "target_type": "PLEXOSStorage",

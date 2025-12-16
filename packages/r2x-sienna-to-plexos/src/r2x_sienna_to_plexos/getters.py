@@ -242,6 +242,28 @@ def get_power_or_standard_load(
 
 
 @getter
+def get_storage_initial_level(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[float, ValueError]:
+    """Return the initial storage level for a HydroReservoir."""
+    value = getattr(source_component, "initial_level", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(0.0)
+
+
+@getter
+def get_storage_max_level(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[float, ValueError]:
+    """Return the max storage level for a HydroReservoir."""
+    value = getattr(source_component, "max_level", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(1.0)
+
+
+@getter
 def get_heat_rate(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     value = compute_heat_rate_data(source_component).get("heat_rate")
     return Ok(float(value) if value is not None else 0.0)
