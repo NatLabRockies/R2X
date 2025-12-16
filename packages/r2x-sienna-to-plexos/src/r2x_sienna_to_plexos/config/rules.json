@@ -90,8 +90,8 @@
   },
   {
     "defaults": {
-      "ac_tap_ratio": 1.0,
       "category": "tap-transformer",
+      "ac_tap_ratio": 1.0,
       "susceptance": 0.0
     },
     "field_map": {
@@ -112,8 +112,8 @@
   },
   {
     "defaults": {
-      "ac_tap_ratio": 1.0,
       "category": "phase-shifting-transformer",
+      "ac_tap_ratio": 1.0,
       "susceptance": 0.0
     },
     "field_map": {
@@ -135,8 +135,8 @@
   },
   {
     "defaults": {
-      "ac_line_charging_susceptance": 0.0,
       "category": "two-terminal-hvdc-line",
+      "ac_line_charging_susceptance": 0.0,
       "reactance": 0.0,
       "resistance": 0.0
     },
@@ -611,7 +611,7 @@
     "target_type": "PLEXOSMembership",
     "version": 1
   },
-  {
+    {
     "name": "head_storage_membership",
     "system": "target",
     "getters": {
@@ -621,7 +621,12 @@
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
-    "version": 2
+    "version": 2,
+    "filter": {
+      "field": "name",
+      "op": "endswith",
+      "values": ["_Turbine"]
+    }
   },
   {
     "name": "tail_storage_membership",
@@ -633,7 +638,36 @@
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
-    "version": 3
+    "version": 3,
+    "filter": {
+      "field": "name",
+      "op": "endswith",
+      "values": ["_Turbine"]
+    }
+  },
+  {
+    "name": "transformer_from_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_transformer_from_parent_node",
+      "collection": "membership_collection_node_from"
+    },
+    "source_type": "PLEXOSTransformer",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "transformer_to_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_transformer_to_parent_node",
+      "collection": "membership_collection_node_to"
+    },
+    "source_type": "PLEXOSTransformer",
+    "target_type": "PLEXOSMembership",
+    "version": 2
   },
   {
     "name": "line_from_node_membership",
