@@ -17,6 +17,8 @@ from .getters import (
     membership_region_parent_node,
     membership_reserve_child_battery,
     membership_reserve_child_generator,
+    membership_transformer_from_parent_node,
+    membership_transformer_to_parent_node,
 )
 from .getters_utils import (
     ensure_battery_node_memberships,
@@ -60,4 +62,6 @@ __all__ = [
     "membership_line_to_parent_node",
     "membership_component_child_node",
     "membership_interface_child_line",
+    "membership_transformer_from_parent_node",
+    "membership_transformer_to_parent_node",
 ]

@@ -875,6 +875,46 @@ def _attach_generator_time_series(
             logger.success("Attached time series {} to generator {}", metadata.name, generator_name)
 
 
+def _attach_reservoir_time_series_to_storage(
+    context: TranslationContext,
+    storage_name: str,
+    target_storage: Any,
+) -> None:
+    """Attach time series from source HydroReservoir to translated PLEXOSStorage."""
+    from r2x_sienna.models import HydroReservoir
+
+    base_name = storage_name[:-5] if storage_name.endswith(("_head", "_tail")) else storage_name
+
+    source_reservoir = None
+    for r in context.source_system.get_components(HydroReservoir):
+        if r.name == base_name:
+            source_reservoir = r
+            break
+
+    if source_reservoir is None:
+        for r in context.source_system.get_components(HydroReservoir):
+            if base_name in r.name:
+                source_reservoir = r
+                break
+
+    if source_reservoir is None:
+        return
+
+    for metadata in context.source_system.time_series.list_time_series_metadata(source_reservoir):
+        ts_list = context.source_system.list_time_series(
+            source_reservoir, name=metadata.name, **metadata.features
+        )
+        if not ts_list:
+            continue
+        ts = ts_list[0]
+        ts_type = ts.__class__
+        if not context.target_system.has_time_series(
+            target_storage, name=metadata.name, time_series_type=ts_type, **metadata.features
+        ):
+            context.target_system.add_time_series(ts, target_storage, **metadata.features)
+            logger.success("Attached time series {} to storage {}", metadata.name, storage_name)
+
+
 def _attach_region_node_load_time_series(
     context: TranslationContext,
     region_name: str,
@@ -1191,12 +1231,9 @@ def membership_line_to_parent_node(
 
 @getter
 def membership_transformer_from_parent_node(
-    context: TranslationContext, transformer: Any
+    context: TranslationContext, transformer: PLEXOSTransformer
 ) -> Result[PLEXOSNode, ValueError]:
     """Return the from-node for a translated transformer."""
-    if not isinstance(transformer, PLEXOSTransformer):
-        return Err(ValueError(f"Component '{transformer.name}' is not a PLEXOSTransformer"))
-
     source_transformer = _find_source_transformer(context, transformer.name)
 
     if source_transformer is None:
@@ -1213,12 +1250,9 @@ def membership_transformer_from_parent_node(
 
 @getter
 def membership_transformer_to_parent_node(
-    context: TranslationContext, transformer: Any
+    context: TranslationContext, transformer: PLEXOSTransformer
 ) -> Result[PLEXOSNode, ValueError]:
     """Return the to-node for a translated transformer."""
-    if not isinstance(transformer, PLEXOSTransformer):
-        return Err(ValueError(f"Component '{transformer.name}' is not a PLEXOSTransformer"))
-
     source_transformer = _find_source_transformer(context, transformer.name)
 
     if source_transformer is None:
@@ -1234,64 +1268,46 @@ def membership_transformer_to_parent_node(
 
 
 @getter
-def membership_head_storage_generator(context: TranslationContext, generator: Any) -> Result[Any, ValueError]:
-    """Resolve a generator's head storage by matching base name."""
+def membership_head_storage_generator(
+    context: TranslationContext, generator: HydroTurbine
+) -> Result[Any, ValueError]:
+    """Resolve a generator's head storage by matching base name and attach time series."""
     gen_name = getattr(generator, "name", "")
-    if not gen_name.endswith("_head"):
-        return Err(ValueError(f"Generator '{gen_name}' is not a head generator (missing _head suffix)"))
-    storage_name = gen_name  # Should match the storage name if naming is consistent
-    target_storage = next(
-        (
-            storage
-            for storage in context.target_system.get_components(PLEXOSStorage)
-            if storage.name == storage_name
-        ),
-        None,
-    )
+    if not gen_name.endswith("_Turbine"):
+        return Err(ValueError(f"Generator '{gen_name}' is not a hydro turbine (missing _Turbine suffix)"))
+    storage_name = gen_name.replace("_Turbine", "_Reservoir_head")
+
+    target_storage = None
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if storage.name == storage_name:
+            target_storage = storage
+            break
+
     if target_storage is None:
-        # Try to find HydroReservoir with base name and reconstruct storage name
-        base_name = gen_name[:-5]  # remove '_head'
-        alt_storage_name = f"{base_name}_head"
-        target_storage = next(
-            (
-                storage
-                for storage in context.target_system.get_components(PLEXOSStorage)
-                if storage.name == alt_storage_name
-            ),
-            None,
-        )
-        if target_storage is None:
-            return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}' or '{alt_storage_name}'"))
+        return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
+
+    _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
     return Ok(target_storage)
 
 
 @getter
-def membership_tail_storage_generator(context: TranslationContext, generator: Any) -> Result[Any, ValueError]:
-    """Resolve a generator's tail storage by matching base name."""
+def membership_tail_storage_generator(
+    context: TranslationContext, generator: HydroTurbine
+) -> Result[Any, ValueError]:
+    """Resolve a generator's tail storage by matching base name and attach time series."""
     gen_name = getattr(generator, "name", "")
-    if not gen_name.endswith("_tail"):
-        return Err(ValueError(f"Generator '{gen_name}' is not a tail generator (missing _tail suffix)"))
-    storage_name = gen_name  # Should match the storage name if naming is consistent
-    target_storage = next(
-        (
-            storage
-            for storage in context.target_system.get_components(PLEXOSStorage)
-            if storage.name == storage_name
-        ),
-        None,
-    )
+    if not gen_name.endswith("_Turbine"):
+        return Err(ValueError(f"Generator '{gen_name}' is not a hydro turbine (missing _Turbine suffix)"))
+    storage_name = gen_name.replace("_Turbine", "_Reservoir_tail")
+
+    target_storage = None
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if storage.name == storage_name:
+            target_storage = storage
+            break
+
     if target_storage is None:
-        # Try to find HydroReservoir with base name and reconstruct storage name
-        base_name = gen_name[:-5]  # remove '_tail'
-        alt_storage_name = f"{base_name}_tail"
-        target_storage = next(
-            (
-                storage
-                for storage in context.target_system.get_components(PLEXOSStorage)
-                if storage.name == alt_storage_name
-            ),
-            None,
-        )
-        if target_storage is None:
-            return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}' or '{alt_storage_name}'"))
+        return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
+
+    _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
     return Ok(target_storage)
