@@ -472,3 +472,59 @@ def test_ensure_tail_storage_generator_membership_matches_base_name():
         m.parent_object == gen and m.child_object == storage and m.collection == CollectionEnum.TailStorage
         for m in memberships
     ), "TailStorage membership should be created for matching base names"
+
+
+def test_get_storage_initial_level_returns_value():
+    from r2x_sienna_to_plexos.getters import get_storage_initial_level
+
+    from r2x_core import TranslationContext
+
+    class DummyReservoir:
+        initial_level = 42.5
+
+    context = TranslationContext(source_system=None, target_system=None, rules=[])
+    result = get_storage_initial_level(context, DummyReservoir())
+    assert result.is_ok()
+    assert result.unwrap() == 42.5
+
+
+def test_get_storage_initial_level_returns_default():
+    from r2x_sienna_to_plexos.getters import get_storage_initial_level
+
+    from r2x_core import TranslationContext
+
+    class DummyReservoir:
+        pass
+
+    context = TranslationContext(source_system=None, target_system=None, rules=[])
+    result = get_storage_initial_level(context, DummyReservoir())
+    assert result.is_ok()
+    assert result.unwrap() == 0.0
+
+
+def test_get_storage_max_level_returns_value():
+    from r2x_sienna_to_plexos.getters import get_storage_max_level
+
+    from r2x_core import TranslationContext
+
+    class DummyReservoir:
+        max_level = 123.4
+
+    context = TranslationContext(source_system=None, target_system=None, rules=[])
+    result = get_storage_max_level(context, DummyReservoir())
+    assert result.is_ok()
+    assert result.unwrap() == 123.4
+
+
+def test_get_storage_max_level_returns_default():
+    from r2x_sienna_to_plexos.getters import get_storage_max_level
+
+    from r2x_core import TranslationContext
+
+    class DummyReservoir:
+        pass
+
+    context = TranslationContext(source_system=None, target_system=None, rules=[])
+    result = get_storage_max_level(context, DummyReservoir())
+    assert result.is_ok()
+    assert result.unwrap() == 1.0
