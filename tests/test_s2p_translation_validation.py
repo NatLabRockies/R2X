@@ -408,3 +408,67 @@ def test_s2p_membership_collections_correct(default_rules, system_complete):
         assert isinstance(
             membership.collection, CollectionEnum
         ), f"Membership has invalid collection type: {type(membership.collection)}"
+
+
+def test_ensure_head_storage_generator_membership_matches_base_name():
+    """Test that ensure_head_storage_generator_membership matches base names correctly."""
+    from plexosdb.enums import CollectionEnum
+    from r2x_plexos.models import PLEXOSGenerator, PLEXOSMembership, PLEXOSStorage
+    from r2x_sienna_to_plexos.getters_utils import ensure_head_storage_generator_membership
+
+    from r2x_core import System, TranslationContext
+
+    # Setup systems
+    target_system = System(name="target")
+    context = TranslationContext(
+        source_system=None,
+        target_system=target_system,
+        config=None,
+        rules=[],
+    )
+
+    # Add generator and storage with matching base name
+    gen = PLEXOSGenerator(name="AmistadDamPower_1_ERC_1_Turbine")
+    storage = PLEXOSStorage(name="AmistadDamPower_1_ERC_1_Reservoir_head")
+    target_system.add_component(gen)
+    target_system.add_component(storage)
+
+    ensure_head_storage_generator_membership(context)
+
+    memberships = list(target_system.get_supplemental_attributes(PLEXOSMembership))
+    assert any(
+        m.parent_object == gen and m.child_object == storage and m.collection == CollectionEnum.HeadStorage
+        for m in memberships
+    ), "HeadStorage membership should be created for matching base names"
+
+
+def test_ensure_tail_storage_generator_membership_matches_base_name():
+    """Test that ensure_tail_storage_generator_membership matches base names correctly."""
+    from plexosdb.enums import CollectionEnum
+    from r2x_plexos.models import PLEXOSGenerator, PLEXOSMembership, PLEXOSStorage
+    from r2x_sienna_to_plexos.getters_utils import ensure_tail_storage_generator_membership
+
+    from r2x_core import System, TranslationContext
+
+    # Setup systems
+    target_system = System(name="target")
+    context = TranslationContext(
+        source_system=None,
+        target_system=target_system,
+        config=None,
+        rules=[],
+    )
+
+    # Add generator and storage with matching base name
+    gen = PLEXOSGenerator(name="AmistadDamPower_1_ERC_1_Turbine")
+    storage = PLEXOSStorage(name="AmistadDamPower_1_ERC_1_Reservoir_tail")
+    target_system.add_component(gen)
+    target_system.add_component(storage)
+
+    ensure_tail_storage_generator_membership(context)
+
+    memberships = list(target_system.get_supplemental_attributes(PLEXOSMembership))
+    assert any(
+        m.parent_object == gen and m.child_object == storage and m.collection == CollectionEnum.TailStorage
+        for m in memberships
+    ), "TailStorage membership should be created for matching base names"
