@@ -364,7 +364,7 @@ def storage_conversion_factor(_: TranslationContext, __: ReEDSStorage) -> Result
 def get_from_bus_for_line(context: TranslationContext, component):
     """Get the from_bus for a line based on its interface."""
     try:
-        bus_name = f"{component.interface.from_region.name}"
+        bus_name = f"{component.interface.from_region.name}_BUS"
         for bus in context.target_system.get_components(ACBus):
             if getattr(bus, "name", None) == bus_name:
                 return Ok(bus)
@@ -377,7 +377,7 @@ def get_from_bus_for_line(context: TranslationContext, component):
 def get_to_bus_for_line(context: TranslationContext, component):
     """Get the to_bus for a line based on its interface."""
     try:
-        bus_name = f"{component.interface.to_region.name}"
+        bus_name = f"{component.interface.to_region.name}_BUS"
         for bus in context.target_system.get_components(ACBus):
             if getattr(bus, "name", None) == bus_name:
                 return Ok(bus)

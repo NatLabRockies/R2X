@@ -248,7 +248,7 @@
     "version": 1
   },
   {
-    "name": "tline",
+    "name": "region_line",
     "defaults": {
       "category": "line",
       "status": true
