@@ -36,6 +36,29 @@
     "version": 1
   },
   {
+    "name": "variable_reserve",
+    "defaults": {
+      "available": true
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid"
+    },
+    "getters": {
+      "reserve_type": "get_reserve_type",
+      "direction": "get_reserve_direction",
+      "requirement": "get_reserve_requirement",
+      "time_frame": "get_reserve_time_frame",
+      "sustained_time": "get_reserve_sustained_time",
+      "max_output_fraction": "get_reserve_max_output_fraction",
+      "max_participation_factor": "get_reserve_max_participation_factor",
+      "deployed_fraction": "get_reserve_deployed_fraction"
+    },
+    "source_type": "ReEDSReserve",
+    "target_type": "VariableReserve",
+    "version": 1
+  },
+  {
     "name": "thermal_gen",
     "defaults": {
       "category": "thermal",

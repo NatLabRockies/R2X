@@ -254,6 +254,63 @@ def get_area_to(context: TranslationContext, component: ReEDSInterface) -> Resul
 
 
 @getter
+def get_reserve_time_frame(_: TranslationContext, component) -> Result[float, ValueError]:
+    """Get the reserve time frame in seconds."""
+    return Ok(float(getattr(component, "time_frame", 0.0) or 0.0))
+
+
+@getter
+def get_reserve_requirement(_: TranslationContext, component) -> Result[float | None, ValueError]:
+    """Get the reserve requirement in p.u (SYSTEM_BASE)."""
+    return Ok(getattr(component, "requirement", 0.0))
+
+
+@getter
+def get_reserve_sustained_time(_: TranslationContext, component) -> Result[float, ValueError]:
+    """Get the sustained time in seconds."""
+    return Ok(float(getattr(component, "duration", 3600.0) or 3600.0))
+
+
+@getter
+def get_reserve_max_output_fraction(_: TranslationContext, component) -> Result[float, ValueError]:
+    """Get the max output fraction [0, 1.0]."""
+    return Ok(float(getattr(component, "max_output_fraction", 1.0) or 1.0))
+
+
+@getter
+def get_reserve_max_participation_factor(_: TranslationContext, component) -> Result[float, ValueError]:
+    """Get the max participation factor [0, 1.0]."""
+    return Ok(float(getattr(component, "max_participation_factor", 1.0) or 1.0))
+
+
+@getter
+def get_reserve_deployed_fraction(_: TranslationContext, component) -> Result[float, ValueError]:
+    """Get the deployed fraction [0, 1.0]."""
+    return Ok(float(getattr(component, "deployed_fraction", 1.0) or 1.0))
+
+
+@getter
+def get_reserve_type(_: TranslationContext, component) -> Result[str, ValueError]:
+    """Get the reserve type (e.g., 'SPINNING', 'REGULATION')."""
+    return Ok(getattr(component, "reserve_type", "SPINNING"))
+
+
+@getter
+def get_reserve_direction(_: TranslationContext, component) -> Result[str, ValueError]:
+    """Get the reserve direction as 'UP' or 'DOWN' string."""
+    direction = getattr(component, "direction", "UP")
+    if hasattr(direction, "name"):
+        direction_str = direction.name.upper()
+    elif isinstance(direction, str):
+        direction_str = direction.upper()
+    else:
+        direction_str = "UP"
+    if direction_str not in {"UP", "DOWN"}:
+        direction_str = "UP"
+    return Ok(direction_str)
+
+
+@getter
 def get_interface_flow_limits(_: TranslationContext, __: ReEDSInterface) -> Result[FromTo_ToFrom, ValueError]:
     """Provide zeroed flow limits placeholder."""
     return Ok(FromTo_ToFrom(from_to=0.0, to_from=0.0))
