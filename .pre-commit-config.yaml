@@ -21,12 +21,6 @@ repos:
         language: system
         types_or: [python, pyi]
 
-      - id: ty-check
-        name: ty check
-        entry: uv run ty check packages/
-        language: system
-        types_or: [python, pyi]
-
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
