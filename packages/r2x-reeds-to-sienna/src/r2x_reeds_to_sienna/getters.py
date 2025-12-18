@@ -35,6 +35,42 @@ def _ok_num(val: float | int) -> Result[float | int, ValueError]:
 
 
 @getter
+def get_line_resistance(_: TranslationContext, component) -> Result[float | int, ValueError]:
+    """Get line resistance 'r' value."""
+    r_value = getattr(component, "r", None)
+    if r_value is None:
+        return _ok_num(0.0)
+    return _ok_num(float(r_value))
+
+
+@getter
+def get_line_reactance(_: TranslationContext, component) -> Result[float | int, ValueError]:
+    """Get line reactance 'x' value."""
+    x_value = getattr(component, "x", None)
+    if x_value is None:
+        return _ok_num(0.0)
+    return _ok_num(float(x_value))
+
+
+@getter
+def get_line_susceptance(_: TranslationContext, component) -> Result[FromTo_ToFrom, ValueError]:
+    """Get line susceptance 'b' value as FromTo_ToFrom."""
+    b_value = getattr(component, "b", None)
+    if b_value is None:
+        b_value = 0.0
+    return Ok(FromTo_ToFrom(from_to=float(b_value), to_from=float(b_value)))
+
+
+@getter
+def get_line_conductance(_: TranslationContext, component) -> Result[FromTo_ToFrom, ValueError]:
+    """Get line susceptance 'b' value as FromTo_ToFrom."""
+    b_value = getattr(component, "b", None)
+    if b_value is None:
+        b_value = 0.0
+    return Ok(FromTo_ToFrom(from_to=float(b_value), to_from=float(b_value)))
+
+
+@getter
 def get_capacity_as_rating(_: TranslationContext, component: object) -> Result[float | int, ValueError]:
     """Map ReEDS capacity (MW) to Sienna rating/base_power fields."""
     capacity = getattr(component, "capacity", None)
@@ -410,32 +446,6 @@ def storage_conversion_factor(_: TranslationContext, __: ReEDSStorage) -> Result
     return _ok_num(1.0)
 
 
-# @getter
-# def get_from_bus_for_line(context: TranslationContext, component):
-#     """Get the from_bus for a line based on its interface."""
-#     try:
-#         bus_name = f"{component.interface.from_region.name}_BUS"
-#         for bus in context.target_system.get_components(ACBus):
-#             if getattr(bus, "name", None) == bus_name:
-#                 return Ok(bus)
-#         return Err(ValueError(f"ACBus '{bus_name}' not found for from_bus"))
-#     except Exception as e:
-#         return Err(ValueError(f"Could not get from_bus: {e}"))
-
-
-# @getter
-# def get_to_bus_for_line(context: TranslationContext, component):
-#     """Get the to_bus for a line based on its interface."""
-#     try:
-#         bus_name = f"{component.interface.to_region.name}_BUS"
-#         for bus in context.target_system.get_components(ACBus):
-#             if getattr(bus, "name", None) == bus_name:
-#                 return Ok(bus)
-#         return Err(ValueError(f"ACBus '{bus_name}' not found for to_bus"))
-#     except Exception as e:
-#         return Err(ValueError(f"Could not get to_bus: {e}"))
-
-
 @getter
 def get_line_rating(_: TranslationContext, component):
     """Use max_active_power.from_to as the line rating."""
@@ -476,30 +486,56 @@ def get_line_angle_limits(_: TranslationContext, component):
 @getter
 def get_arc_for_line(context: TranslationContext, component, resolved=None):
     """
-    Create an Arc object for the line, ensuring new ACBus objects for from_to and to_from,
-    and copying bustype and other fields from the existing buses with matching numbers.
-    If a bus with the same number already exists, trigger an error.
+    Create an Arc object for the line, referencing existing ACBus objects for from_to and to_from,
+    using the arc's own direction as indicated by its name.
     """
+    import re
+
     from r2x_sienna.models import ACBus, Arc
 
-    def bus_number_exists(number):
-        for bus in context.target_system.get_components(ACBus):
-            if getattr(bus, "number", None) == number:
-                return True
-        return False
+    # Try to extract direction from the arc/line name
+    arc_name_str = getattr(component, "name", "")
+    match = re.match(r"(p\d+)_((p\d+)_)?(ac|dc)", arc_name_str)
+    if match:
+        from_region_name = match.group(1)
+        to_region_name = match.group(3) if match.group(3) else None
+    else:
+        # fallback to interface
+        from_region_name = getattr(getattr(component.interface, "from_region", None), "name", None)
+        to_region_name = getattr(getattr(component.interface, "to_region", None), "name", None)
 
-    from_number_result = get_bus_number(context, component.interface.from_region)
-    to_number_result = get_bus_number(context, component.interface.to_region)
+    # If parsing failed, fallback to interface
+    if not from_region_name or not to_region_name:
+        from_region_name = getattr(getattr(component.interface, "from_region", None), "name", None)
+        to_region_name = getattr(getattr(component.interface, "to_region", None), "name", None)
+
+    # Get bus numbers
+    from_number_result = get_bus_number(context, type("Dummy", (), {"name": from_region_name})())
+    to_number_result = get_bus_number(context, type("Dummy", (), {"name": to_region_name})())
 
     if from_number_result.is_err() or to_number_result.is_err():
-        return Err(ValueError("Could not extract bus numbers from region names"))
+        return Err(ValueError("Could not extract bus numbers from arc name or interface"))
 
-    from_bus = f"{component.interface.from_region.name}_BUS"
-    to_bus = f"{component.interface.to_region.name}_BUS"
-    arc_name = f"{getattr(component, 'name', '')}__{getattr(component, 'uuid', '')}"
+    from_number = from_number_result.unwrap()
+    to_number = to_number_result.unwrap()
+
+    from_bus_obj = None
+    to_bus_obj = None
+    for bus in context.target_system.get_components(ACBus):
+        if getattr(bus, "number", None) == from_number:
+            from_bus_obj = bus
+        if getattr(bus, "number", None) == to_number:
+            to_bus_obj = bus
+
+    if from_bus_obj is None:
+        return Err(ValueError(f"ACBus with number {from_number} not found for Arc from_to"))
+    if to_bus_obj is None:
+        return Err(ValueError(f"ACBus with number {to_number} not found for Arc to_from"))
+
+    arc_name = f"{arc_name_str}__{getattr(component, 'uuid', '')}"
 
     try:
-        arc = Arc(name=arc_name, from_to=from_bus, to_from=to_bus)
+        arc = Arc(name=arc_name, from_to=from_bus_obj, to_from=to_bus_obj)
         return Ok(arc)
     except Exception as e:
         return Err(ValueError(f"Could not create Arc: {e}"))

@@ -266,9 +266,15 @@
     },
     "getters": {
       "rating": "get_line_rating",
+      "rating_b": "get_line_rating",
+      "rating_c": "get_line_rating",
       "active_power_flow": "get_line_active_power_flow",
       "reactive_power_flow": "get_line_reactive_power_flow",
       "angle_limits": "get_line_angle_limits",
+      "r": "get_line_resistance",
+      "x": "get_line_reactance",
+      "b": "get_line_susceptance",
+      "g": "get_line_conductance",
       "arc": "get_arc_for_line"
     },
     "source_type": "ReEDSTransmissionLine",
