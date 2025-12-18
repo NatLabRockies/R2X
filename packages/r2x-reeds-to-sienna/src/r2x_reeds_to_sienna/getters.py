@@ -35,6 +35,24 @@ def _ok_num(val: float | int) -> Result[float | int, ValueError]:
 
 
 @getter
+def unique_component_name(context: TranslationContext, component) -> Result[str, ValueError]:
+    """
+    Ensure the component name is unique among ThermalStandard components in the target system
+    by appending _1, _2, etc. if needed.
+    """
+    from r2x_sienna.models import ThermalStandard
+
+    base_name = getattr(component, "name", "")
+    name = base_name
+    i = 1
+    existing_names = {getattr(c, "name", None) for c in context.target_system.get_components(ThermalStandard)}
+    while name in existing_names:
+        name = f"{base_name}_{i}"
+        i += 1
+    return Ok(name)
+
+
+@getter
 def get_line_resistance(_: TranslationContext, component) -> Result[float | int, ValueError]:
     """Get line resistance 'r' value."""
     r_value = getattr(component, "r", None)

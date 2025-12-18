@@ -49,12 +49,12 @@
       }
     },
     "field_map": {
-      "name": "name",
       "uuid": "uuid",
       "category": "technology",
       "operation_cost": "operation_cost_default"
     },
     "getters": {
+      "name": "unique_component_name",
       "bus": "get_bus_for_region",
       "active_power": "get_zero_active_power",
       "reactive_power": "get_zero_reactive_power",
