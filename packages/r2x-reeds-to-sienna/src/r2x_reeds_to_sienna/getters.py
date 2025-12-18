@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+from infrasys.cost_curves import CostCurve, FuelCurve, LinearCurve
 from r2x_sienna.models import ACBus
 from r2x_sienna.models.costs import HydroGenerationCost, RenewableGenerationCost, ThermalGenerationCost
 from r2x_sienna.models.enums import ACBusTypes, PrimeMoversType, StorageTechs, ThermalFuels
-from r2x_sienna.models.named_tuples import FromTo_ToFrom, InputOutput, MinMax
+from r2x_sienna.models.named_tuples import FromTo_ToFrom, InputOutput, MinMax, UpDown
 from r2x_sienna.units import ureg
 
-from r2x_core import Err, Ok, Result
+from r2x_core import Err, Ok, Result, UnitSystem
 from r2x_core.getters import getter
 
 if TYPE_CHECKING:
@@ -67,7 +68,16 @@ def get_thermal_operation_cost(
     _: TranslationContext, __: ReEDSThermalGenerator
 ) -> Result[ThermalGenerationCost, ValueError]:
     """Return zeroed thermal operation cost."""
-    return Ok(ThermalGenerationCost())
+    return Ok(
+        ThermalGenerationCost(
+            fixed=0.0,
+            shut_down=0.0,
+            start_up=0.0,
+            variable=FuelCurve(
+                value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS, fuel_cost=0.0
+            ),
+        )
+    )
 
 
 @getter
@@ -75,7 +85,11 @@ def get_renewable_operation_cost(
     _: TranslationContext, __: ReEDSVariableGenerator
 ) -> Result[RenewableGenerationCost, ValueError]:
     """Return zeroed renewable operation cost."""
-    return Ok(RenewableGenerationCost())
+    return Ok(
+        RenewableGenerationCost(
+            variable=CostCurve(value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS)
+        )
+    )
 
 
 @getter
@@ -121,6 +135,12 @@ def get_renewable_prime_mover(
     if "pv" in tech:
         return Ok(PrimeMoversType.PVe)
     return Ok(PrimeMoversType.WT)
+
+
+@getter
+def get_load_base_power(_: TranslationContext, __: ReEDSDemand) -> Result[float | int, ValueError]:
+    """Return a default load base power of 100.0 MVA."""
+    return _ok_num(100.0)
 
 
 @getter
@@ -243,8 +263,14 @@ def get_bus_for_region(context: TranslationContext, component: object) -> Result
 
 @getter
 def get_bus_number(_: TranslationContext, component: ReEDSRegion) -> Result[int, ValueError]:
-    """Provide default bus number."""
-    return Ok(component.name[1:])
+    """Extract and return the bus number as an integer from the region name (e.g., 'p60' -> 60)."""
+    import re
+
+    name = getattr(component, "name", "")
+    match = re.match(r"p(\d+)", name)
+    if match:
+        return Ok(int(match.group(1)))
+    return Err(ValueError(f"Could not extract bus number from region name '{name}'"))
 
 
 @getter
@@ -287,13 +313,37 @@ def hydro_active_power_limits(
 
 
 @getter
+def hydro_ramp_limits(_: TranslationContext, component: ReEDSHydroGenerator) -> Result[UpDown, ValueError]:
+    """Min/max ramp limits for hydro."""
+    cap = float(getattr(component, "capacity", 0.0) or 0.0)
+    ramp_rate = float(getattr(component, "ramp_rate", 0.0) or 0.0)
+    ramp_limit = cap * ramp_rate / 100.0
+    return Ok(UpDown(up=ramp_limit, down=ramp_limit))
+
+
+@getter
+def hydro_time_limits(_: TranslationContext, component: ReEDSHydroGenerator) -> Result[MinMax, ValueError]:
+    """Min/max time limits for hydro."""
+    min_up_time = float(getattr(component, "min_up_time", 0.0) or 0.0)
+    min_down_time = float(getattr(component, "min_down_time", 0.0) or 0.0)
+    return Ok(UpDown(up=min_up_time, down=min_down_time))
+
+
+@getter
 def hydro_operation_cost(
     _: TranslationContext, __: ReEDSHydroGenerator
 ) -> Result[HydroGenerationCost, ValueError]:  # type: ignore[name-defined]
     """Return zeroed hydro cost."""
     from r2x_sienna.models.costs import HydroGenerationCost
 
-    return Ok(HydroGenerationCost())
+    return Ok(
+        HydroGenerationCost(
+            fixed=0.0,
+            variable=CostCurve(
+                value_curve=LinearCurve(10), power_units=UnitSystem.NATURAL_UNITS, vom_cost=LinearCurve(5.0)
+            ),
+        )
+    )
 
 
 @getter
@@ -360,30 +410,30 @@ def storage_conversion_factor(_: TranslationContext, __: ReEDSStorage) -> Result
     return _ok_num(1.0)
 
 
-@getter
-def get_from_bus_for_line(context: TranslationContext, component):
-    """Get the from_bus for a line based on its interface."""
-    try:
-        bus_name = f"{component.interface.from_region.name}_BUS"
-        for bus in context.target_system.get_components(ACBus):
-            if getattr(bus, "name", None) == bus_name:
-                return Ok(bus)
-        return Err(ValueError(f"ACBus '{bus_name}' not found for from_bus"))
-    except Exception as e:
-        return Err(ValueError(f"Could not get from_bus: {e}"))
+# @getter
+# def get_from_bus_for_line(context: TranslationContext, component):
+#     """Get the from_bus for a line based on its interface."""
+#     try:
+#         bus_name = f"{component.interface.from_region.name}_BUS"
+#         for bus in context.target_system.get_components(ACBus):
+#             if getattr(bus, "name", None) == bus_name:
+#                 return Ok(bus)
+#         return Err(ValueError(f"ACBus '{bus_name}' not found for from_bus"))
+#     except Exception as e:
+#         return Err(ValueError(f"Could not get from_bus: {e}"))
 
 
-@getter
-def get_to_bus_for_line(context: TranslationContext, component):
-    """Get the to_bus for a line based on its interface."""
-    try:
-        bus_name = f"{component.interface.to_region.name}_BUS"
-        for bus in context.target_system.get_components(ACBus):
-            if getattr(bus, "name", None) == bus_name:
-                return Ok(bus)
-        return Err(ValueError(f"ACBus '{bus_name}' not found for to_bus"))
-    except Exception as e:
-        return Err(ValueError(f"Could not get to_bus: {e}"))
+# @getter
+# def get_to_bus_for_line(context: TranslationContext, component):
+#     """Get the to_bus for a line based on its interface."""
+#     try:
+#         bus_name = f"{component.interface.to_region.name}_BUS"
+#         for bus in context.target_system.get_components(ACBus):
+#             if getattr(bus, "name", None) == bus_name:
+#                 return Ok(bus)
+#         return Err(ValueError(f"ACBus '{bus_name}' not found for to_bus"))
+#     except Exception as e:
+#         return Err(ValueError(f"Could not get to_bus: {e}"))
 
 
 @getter
@@ -421,3 +471,35 @@ def get_line_angle_limits(_: TranslationContext, component):
     if isinstance(val, tuple | list) and len(val) == 2:
         return Ok(MinMax(min=val[0], max=val[1]))
     return Ok(MinMax(min=-90.0, max=90.0))
+
+
+@getter
+def get_arc_for_line(context: TranslationContext, component, resolved=None):
+    """
+    Create an Arc object for the line, ensuring new ACBus objects for from_to and to_from,
+    and copying bustype and other fields from the existing buses with matching numbers.
+    If a bus with the same number already exists, trigger an error.
+    """
+    from r2x_sienna.models import ACBus, Arc
+
+    def bus_number_exists(number):
+        for bus in context.target_system.get_components(ACBus):
+            if getattr(bus, "number", None) == number:
+                return True
+        return False
+
+    from_number_result = get_bus_number(context, component.interface.from_region)
+    to_number_result = get_bus_number(context, component.interface.to_region)
+
+    if from_number_result.is_err() or to_number_result.is_err():
+        return Err(ValueError("Could not extract bus numbers from region names"))
+
+    from_bus = f"{component.interface.from_region.name}_BUS"
+    to_bus = f"{component.interface.to_region.name}_BUS"
+    arc_name = f"{getattr(component, 'name', '')}__{getattr(component, 'uuid', '')}"
+
+    try:
+        arc = Arc(name=arc_name, from_to=from_bus, to_from=to_bus)
+        return Ok(arc)
+    except Exception as e:
+        return Err(ValueError(f"Could not create Arc: {e}"))
