@@ -560,31 +560,23 @@ def get_line_angle_limits(_: TranslationContext, component):
 
 @getter
 def get_arc_for_line(context: TranslationContext, component, resolved=None):
-    """
-    Create an Arc object for the line, referencing existing ACBus objects for from_to and to_from,
-    using the arc's own direction as indicated by its name.
-    """
     import re
 
     from r2x_sienna.models import ACBus, Arc
 
-    # Try to extract direction from the arc/line name
     arc_name_str = getattr(component, "name", "")
     match = re.match(r"(p\d+)_((p\d+)_)?(ac|dc)", arc_name_str)
     if match:
         from_region_name = match.group(1)
         to_region_name = match.group(3) if match.group(3) else None
     else:
-        # fallback to interface
         from_region_name = getattr(getattr(component.interface, "from_region", None), "name", None)
         to_region_name = getattr(getattr(component.interface, "to_region", None), "name", None)
 
-    # If parsing failed, fallback to interface
     if not from_region_name or not to_region_name:
         from_region_name = getattr(getattr(component.interface, "from_region", None), "name", None)
         to_region_name = getattr(getattr(component.interface, "to_region", None), "name", None)
 
-    # Get bus numbers
     from_number_result = get_bus_number(context, type("Dummy", (), {"name": from_region_name})())
     to_number_result = get_bus_number(context, type("Dummy", (), {"name": to_region_name})())
 
@@ -602,10 +594,15 @@ def get_arc_for_line(context: TranslationContext, component, resolved=None):
         if getattr(bus, "number", None) == to_number:
             to_bus_obj = bus
 
-    if from_bus_obj is None:
-        return Err(ValueError(f"ACBus with number {from_number} not found for Arc from_to"))
-    if to_bus_obj is None:
-        return Err(ValueError(f"ACBus with number {to_number} not found for Arc to_from"))
+    if from_bus_obj is None or to_bus_obj is None:
+        return Err(ValueError("ACBus not found for Arc"))
+
+    # Check for existing Arc between these buses (in either direction)
+    for arc in context.target_system.get_components(Arc):
+        if (arc.from_to == from_bus_obj and arc.to_from == to_bus_obj) or (
+            arc.from_to == to_bus_obj and arc.to_from == from_bus_obj
+        ):
+            return Ok(arc)  # Return the existing Arc
 
     arc_name = f"{arc_name_str}__{getattr(component, 'uuid', '')}"
 
