@@ -52,9 +52,11 @@ dependencies = [
     "r2x-sienna-to-plexos",
     "r2x-plexos-to-sienna",
     "r2x-reeds-to-plexos",
+    "r2x-reeds-to-sienna",
     "r2x-plexos",
     "r2x-sienna",
     "r2x-core",
+    "r2x-sienna",
 ]
 
 [project.urls]
@@ -72,6 +74,7 @@ dev = [
     "pytest>=8.3.0,<9.0.0",
     "pytest-cov>=5.0.0,<6.0.0",
     "ruff>=0.6.8,<0.7.0",
+    "ty>=0.0.2",
 ]
 docs = [
     "autodoc-pydantic",
@@ -93,9 +96,8 @@ build-backend = "uv_build"
 r2x-sienna-to-plexos = { workspace = true }
 r2x-plexos-to-sienna = { workspace = true }
 r2x-reeds-to-plexos = { workspace = true }
-r2x-sienna = { git = "ssh://git@github.com/NREL-Sienna/r2x-sienna", branch = "pesap/r2x_core_compat" }
-r2x-plexos = { path = "../../r2x-plexos", editable = true }
-r2x-core = { path = "../../r2x-core/dev", editable = true }
+r2x-reeds-to-sienna = { workspace = true }
+r2x-sienna = { git = "ssh://git@github.com/NREL-Sienna/r2x-sienna", branch = "main" }
 
 [tool.uv.workspace]
 members = ["packages/*"]
@@ -114,7 +116,7 @@ mypy_path = [
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-testpaths = ["tests"]
+testpaths = ["tests", "packages"]
 addopts = [
     "--cov=packages",
     "--cov-report=term-missing:skip-covered",
