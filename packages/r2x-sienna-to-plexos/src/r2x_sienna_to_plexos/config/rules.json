@@ -43,7 +43,8 @@
       "category": "category"
     },
     "getters": {
-      "ac_line_charging_susceptance": "get_line_charging_susceptance"
+      "ac_line_charging_susceptance": "get_line_charging_susceptance",
+      "min_flow": "get_line_min_flow"
     },
     "source_type": "Line",
     "target_type": "PLEXOSLine",
@@ -56,13 +57,15 @@
     "field_map": {
       "fixed_flow": "active_power_flow",
       "name": "name",
+      "max_flow": "rating",
       "reactance": "x",
       "resistance": "r",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
-      "ac_line_charging_susceptance": "get_line_charging_susceptance"
+      "ac_line_charging_susceptance": "get_line_charging_susceptance",
+      "min_flow": "get_line_min_flow"
     },
     "source_type": "MonitoredLine",
     "target_type": "PLEXOSLine",
@@ -142,11 +145,14 @@
     },
     "field_map": {
       "fixed_flow": "active_power_flow",
+      "max_flow": "rating",
       "name": "name",
       "uuid": "uuid",
       "category": "category"
     },
-    "getters": {},
+    "getters": {
+      "min_flow": "get_line_min_flow"
+    },
     "source_type": "TwoTerminalHVDCLine",
     "target_type": "PLEXOSLine",
     "version": 1

@@ -172,6 +172,29 @@ def get_susceptance(
 
 
 @getter
+def get_line_min_flow(
+    context: TranslationContext, source_component: Line | MonitoredLine
+) -> Result[float, ValueError]:
+    """Extract line min flow as float from source component negative rating.
+
+    Returns the negative of the line's rating magnitude if available,
+    otherwise returns 0.0.
+    """
+    min_flow = getattr(source_component, "rating", None)
+    if min_flow is None:
+        return Ok(0.0)
+
+    magnitude = get_magnitude(min_flow)
+    if magnitude is not None:
+        return Ok(float(-abs(magnitude)))
+
+    if isinstance(min_flow, int | float):
+        return Ok(float(-abs(min_flow)))
+
+    return Ok(0.0)
+
+
+@getter
 def get_line_charging_susceptance(
     context: TranslationContext, source_component: Line | MonitoredLine
 ) -> Result[float, ValueError]:
