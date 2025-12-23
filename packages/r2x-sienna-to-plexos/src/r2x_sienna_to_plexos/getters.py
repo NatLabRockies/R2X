@@ -365,15 +365,6 @@ def get_reserve_min_provision(
 
 
 @getter
-def get_reserve_max_provision(
-    context: TranslationContext, source_component: VariableReserve
-) -> Result[float, ValueError]:
-    """Get reserve max requirement."""
-    max_requirement = getattr(source_component, "max_requirement", 1e30)
-    return Ok(max_requirement)
-
-
-@getter
 def get_reserve_type(
     context: TranslationContext, source_component: VariableReserve
 ) -> Result[int, ValueError]:

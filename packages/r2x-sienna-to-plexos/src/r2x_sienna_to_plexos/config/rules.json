@@ -507,7 +507,6 @@
       "timeframe": "get_reserve_timeframe",
       "duration": "get_reserve_duration",
       "min_provision": "get_reserve_min_provision",
-      "max_provision": "get_reserve_max_provision",
       "type": "get_reserve_type",
       "vors": "get_reserve_vors",
       "max_sharing": "get_reserve_max_sharing"
