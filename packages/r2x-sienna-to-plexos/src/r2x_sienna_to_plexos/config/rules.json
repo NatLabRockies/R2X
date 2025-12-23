@@ -291,7 +291,8 @@
       "name": "get_head_storage_name",
       "uuid": "get_head_storage_uuid",
       "initial_level": "get_storage_initial_level",
-      "max_level": "get_storage_max_level"
+      "max_volume": "get_storage_max_volume",
+      "natural_inflow": "get_storage_natural_inflow"
     },
     "source_type": "HydroReservoir",
     "target_type": "PLEXOSStorage",
@@ -311,7 +312,8 @@
       "name": "get_tail_storage_name",
       "uuid": "get_tail_storage_uuid",
       "initial_level": "get_storage_initial_level",
-      "max_level": "get_storage_max_level"
+      "max_volume": "get_storage_max_volume",
+      "natural_inflow": "get_storage_natural_inflow"
     },
     "source_type": "HydroReservoir",
     "target_type": "PLEXOSStorage",
@@ -547,7 +549,10 @@
       "charge_efficiency": "get_storage_charge_efficiency",
       "discharge_efficiency": "get_storage_discharge_efficiency",
       "max_cycles": "get_storage_cycles",
-      "max_power": "get_storage_max_power"
+      "max_power": "get_storage_max_power",
+      "forced_outage_rate": "get_battery_forced_outage_rate",
+      "maintenance_rate": "get_battery_maintenance_rate",
+      "mean_time_to_repair": "get_battery_mean_time_to_repair"
     },
     "source_type": "EnergyReservoirStorage",
     "target_type": "PLEXOSBattery",

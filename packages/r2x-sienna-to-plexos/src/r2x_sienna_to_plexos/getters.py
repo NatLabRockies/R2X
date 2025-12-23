@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from importlib.resources import files
 from typing import Any
 
 from infrasys.cost_curves import FuelCurve
@@ -276,14 +278,25 @@ def get_storage_initial_level(
 
 
 @getter
-def get_storage_max_level(
+def get_storage_max_volume(
     context: TranslationContext, source_component: HydroReservoir
 ) -> Result[float, ValueError]:
-    """Return the max storage level for a HydroReservoir."""
-    value = getattr(source_component, "max_level", None)
+    """Return the max storage volume for a HydroReservoir."""
+    value = getattr(source_component, "storage_level_limits", None)
+    if value is not None:
+        return Ok(float(value.max))
+    return Ok(0.0)
+
+
+@getter
+def get_storage_natural_inflow(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[float, ValueError]:
+    """Return the natural inflow for a HydroReservoir."""
+    value = getattr(source_component, "inflow", None)
     if value is not None:
         return Ok(float(value))
-    return Ok(1.0)
+    return Ok(0.0)
 
 
 @getter
@@ -565,6 +578,47 @@ def get_mark_up_point(context: TranslationContext, source_component: Any) -> Res
 def get_vom_charge(context: TranslationContext, source_component: Any) -> Result[Any, ValueError]:
     value = compute_markup_data(source_component).get("mark_up")
     return Ok(coerce_value(value))
+
+
+def _get_pcm_default(category: str, key: str) -> float:
+    defaults_path = files("r2x_sienna_to_plexos.config") / "pcm_defaults.json"
+    with defaults_path.open() as f:
+        defaults = json.load(f)
+    value = defaults.get(category, {}).get(key, 0.0)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@getter
+def get_battery_forced_outage_rate(
+    context: TranslationContext, source_component: Any
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "forced_outage_rate", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_pcm_default("battery", "forced_outage_rate"))
+
+
+@getter
+def get_battery_maintenance_rate(
+    context: TranslationContext, source_component: Any
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "maintenance_rate", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_pcm_default("battery", "maintenance_rate"))
+
+
+@getter
+def get_battery_mean_time_to_repair(
+    context: TranslationContext, source_component: Any
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "mean_time_to_repair", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_pcm_default("battery", "mean_time_to_repair"))
 
 
 @getter
