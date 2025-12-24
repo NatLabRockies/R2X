@@ -503,21 +503,22 @@ def test_get_storage_initial_level_returns_default():
 
 
 def test_get_storage_max_level_returns_value():
-    from r2x_sienna_to_plexos.getters import get_storage_max_level
+    from r2x_sienna.models import MinMax
+    from r2x_sienna_to_plexos.getters import get_storage_max_volume
 
     from r2x_core import TranslationContext
 
     class DummyReservoir:
-        max_level = 123.4
+        storage_level_limits = MinMax(min=0.0, max=123.4)
 
     context = TranslationContext(source_system=None, target_system=None, rules=[])
-    result = get_storage_max_level(context, DummyReservoir())
+    result = get_storage_max_volume(context, DummyReservoir())
     assert result.is_ok()
     assert result.unwrap() == 123.4
 
 
 def test_get_storage_max_level_returns_default():
-    from r2x_sienna_to_plexos.getters import get_storage_max_level
+    from r2x_sienna_to_plexos.getters import get_storage_max_volume
 
     from r2x_core import TranslationContext
 
@@ -525,6 +526,6 @@ def test_get_storage_max_level_returns_default():
         pass
 
     context = TranslationContext(source_system=None, target_system=None, rules=[])
-    result = get_storage_max_level(context, DummyReservoir())
+    result = get_storage_max_volume(context, DummyReservoir())
     assert result.is_ok()
-    assert result.unwrap() == 1.0
+    assert result.unwrap() == 0.0

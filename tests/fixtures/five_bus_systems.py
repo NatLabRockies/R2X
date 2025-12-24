@@ -486,8 +486,7 @@ def system_with_network(system_with_storage) -> System:
 
     line_1_2 = Line(
         name="line-1-2",
-        from_bus=bus1,
-        to_bus=bus2,
+        arc=Arc(from_to=bus1, to_from=bus2),
         rating=100.0,
         active_power_flow=100,
         reactive_power_flow=100,
@@ -497,8 +496,7 @@ def system_with_network(system_with_storage) -> System:
 
     line_2_3 = Line(
         name="line-2-3",
-        from_bus=bus2,
-        to_bus=bus3,
+        arc=Arc(from_to=bus2, to_from=bus3),
         active_power_flow=0.0,
         rating=100.0,
         reactive_power_flow=100,
@@ -508,8 +506,7 @@ def system_with_network(system_with_storage) -> System:
 
     line_3_4 = Line(
         name="line-3-4",
-        from_bus=bus3,
-        to_bus=bus4,
+        arc=Arc(from_to=bus3, to_from=bus4),
         active_power_flow=0.0,
         rating=100.0,
         reactive_power_flow=100,
@@ -519,8 +516,7 @@ def system_with_network(system_with_storage) -> System:
 
     line_4_5 = Line(
         name="line-4-5",
-        from_bus=bus4,
-        to_bus=bus5,
+        arc=Arc(from_to=bus4, to_from=bus5),
         active_power_flow=0.0,
         rating=100.0,
         reactive_power_flow=100,
@@ -530,54 +526,10 @@ def system_with_network(system_with_storage) -> System:
 
     transformer_1_5 = Transformer2W(
         name="transformer-1-5",
-        from_bus=bus1,
-        to_bus=bus5,
+        arc=Arc(from_to=bus1, to_from=bus5),
         active_power_flow=0.0,
     )
     sys.add_component(transformer_1_5)
-
-    # Arc components connecting transmission elements
-    arc_1_2 = Arc(
-        name="arc-1-2",
-        from_to=bus1,
-        to_from=bus2,
-    )
-    sys.add_component(arc_1_2)
-
-    arc_2_3 = Arc(
-        name="arc-2-3",
-        from_to=bus2,
-        to_from=bus3,
-    )
-    sys.add_component(arc_2_3)
-
-    arc_3_4 = Arc(
-        name="arc-3-4",
-        from_to=bus3,
-        to_from=bus4,
-    )
-    sys.add_component(arc_3_4)
-
-    arc_4_5 = Arc(
-        name="arc-4-5",
-        from_to=bus4,
-        to_from=bus5,
-    )
-    sys.add_component(arc_4_5)
-
-    arc_5_1 = Arc(
-        name="arc-5-1",
-        from_to=bus5,
-        to_from=bus1,
-    )
-    sys.add_component(arc_5_1)
-
-    arc_1_3 = Arc(
-        name="arc-1-3",
-        from_to=bus1,
-        to_from=bus3,
-    )
-    sys.add_component(arc_1_3)
 
     return sys
 
