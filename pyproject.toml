@@ -53,6 +53,9 @@ dependencies = [
     "r2x-plexos-to-sienna",
     "r2x-reeds-to-plexos",
     "r2x-reeds-to-sienna",
+    "r2x-plexos",
+    "r2x-sienna",
+    "r2x-core",
     "r2x-sienna",
 ]
 

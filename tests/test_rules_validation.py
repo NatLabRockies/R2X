@@ -471,3 +471,84 @@ def test_rule_defaults_can_be_empty() -> None:
     rules = Rule.from_records(rule_data)
 
     assert len(rules) == 1
+
+
+def test_rule_with_storage_properties() -> None:
+    """Test Rule.from_records with initial_level and max_level getters."""
+    from r2x_core import Rule
+
+    rule_data = [
+        {
+            "source_type": "HydroReservoir",
+            "target_type": "PLEXOSStorage",
+            "version": 1,
+            "getters": {
+                "initial_level": "get_storage_initial_level",
+                "max_level": "get_storage_max_level",
+            },
+        }
+    ]
+
+    rules = Rule.from_records(rule_data)
+    assert "initial_level" in rules[0].getters
+    assert "max_level" in rules[0].getters
+
+
+def test_rule_with_head_tail_storage_memberships() -> None:
+    """Test Rule.from_records with head/tail storage-generator membership getters."""
+    from r2x_core import Rule
+
+    rule_data = [
+        {
+            "source_type": "PLEXOSGenerator",
+            "target_type": "PLEXOSMembership",
+            "version": 1,
+            "getters": {
+                "parent_object": "membership_head_storage_generator",
+                "child_object": "membership_head_storage",
+                "collection": "membership_collection_head_storage",
+            },
+        },
+        {
+            "source_type": "PLEXOSGenerator",
+            "target_type": "PLEXOSMembership",
+            "version": 2,
+            "getters": {
+                "parent_object": "membership_tail_storage_generator",
+                "child_object": "membership_tail_storage",
+                "collection": "membership_collection_tail_storage",
+            },
+        },
+    ]
+
+    rules = Rule.from_records(rule_data)
+    assert "parent_object" in rules[0].getters
+    assert "child_object" in rules[0].getters
+    assert "collection" in rules[0].getters
+    assert "parent_object" in rules[1].getters
+    assert "child_object" in rules[1].getters
+    assert "collection" in rules[1].getters
+
+
+def test_rule_with_storage_properties_and_field_map() -> None:
+    """Test Rule.from_records with field_map and storage property getters."""
+    from r2x_core import Rule
+
+    rule_data = [
+        {
+            "source_type": "HydroReservoir",
+            "target_type": "PLEXOSStorage",
+            "version": 1,
+            "field_map": {"name": "name", "uuid": "uuid"},
+            "getters": {
+                "initial_level": "get_storage_initial_level",
+                "max_level": "get_storage_max_level",
+            },
+        }
+    ]
+
+    rules = Rule.from_records(rule_data)
+    assert "initial_level" in rules[0].getters
+    assert "max_level" in rules[0].getters
+    assert "name" in rules[0].field_map
+    assert "uuid" in rules[0].field_map

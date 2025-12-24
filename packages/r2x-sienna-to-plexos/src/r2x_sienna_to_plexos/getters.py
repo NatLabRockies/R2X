@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, TypeVar, cast
+import json
+from importlib.resources import files
+from typing import Any
 
 from infrasys.cost_curves import FuelCurve
 from loguru import logger
@@ -64,14 +66,6 @@ from r2x_sienna_to_plexos.getters_utils import (
     resolve_base_power,
 )
 
-T = TypeVar("T")
-
-
-def _ok(value: T) -> Result[T, ValueError]:
-    """Wrap an Ok result with the module-wide error type."""
-    return cast(Result[T, ValueError], Ok(value))
-
-
 SOURCE_GENERATOR_TYPES = [
     ThermalStandard,
     ThermalMultiStart,
@@ -107,7 +101,7 @@ def get_load_participation_factor(
             if isinstance(lpf, int | float):
                 node_lpf_total += float(lpf)
 
-    return _ok(node_lpf_total)
+    return Ok(node_lpf_total)
 
 
 @getter
@@ -117,14 +111,14 @@ def is_slack_bus(context: TranslationContext, source_component: Any) -> Result[i
     from r2x_sienna.models.enums import ACBusTypes
 
     value = 1 if source_component.bustype == ACBusTypes.SLACK else 0
-    return _ok(value)
+    return Ok(value)
 
 
 @getter
 def get_voltage(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     """Extract AC voltage magnitude from base_voltage Quantity."""
     value = get_magnitude(source_component.base_voltage)
-    return _ok(float(value) if value is not None else 0.0)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
@@ -136,8 +130,8 @@ def get_availability(context: TranslationContext, source_component: ACBus) -> Re
     """
     units = getattr(source_component, "units", None)
     if units is None:
-        return _ok(1)
-    return _ok(int(units))
+        return Ok(1)
+    return Ok(int(units))
 
 
 @getter
@@ -159,24 +153,47 @@ def get_susceptance(
 
     # Handle complex numbers by extracting imaginary part
     if isinstance(primary_shunt, complex):
-        return _ok(float(primary_shunt.imag))
+        return Ok(float(primary_shunt.imag))
 
     # Handle Quantity types - magnitude from get_magnitude might be Complex Quantity
     magnitude = get_magnitude(primary_shunt)
     if magnitude is not None:
         # Magnitude might be a Complex number (from pint or Python), extract imaginary part
         if isinstance(magnitude, complex):
-            return _ok(float(magnitude.imag))
+            return Ok(float(magnitude.imag))
         # For pint Complex Quantity objects, access .imag to get imaginary part
         imag_part = magnitude.imag
-        return _ok(float(imag_part))
+        return Ok(float(imag_part))
 
     # Handle plain floats/ints
     if isinstance(primary_shunt, int | float):
-        return _ok(float(primary_shunt))
+        return Ok(float(primary_shunt))
 
     # If conversion fails, return error to allow defaults
     return Err(ValueError(f"Cannot convert primary_shunt to float: {primary_shunt}"))
+
+
+@getter
+def get_line_min_flow(
+    context: TranslationContext, source_component: Line | MonitoredLine
+) -> Result[float, ValueError]:
+    """Extract line min flow as float from source component negative rating.
+
+    Returns the negative of the line's rating magnitude if available,
+    otherwise returns 0.0.
+    """
+    min_flow = getattr(source_component, "rating", None)
+    if min_flow is None:
+        return Ok(0.0)
+
+    magnitude = get_magnitude(min_flow)
+    if magnitude is not None:
+        return Ok(float(-abs(magnitude)))
+
+    if isinstance(min_flow, int | float):
+        return Ok(float(-abs(min_flow)))
+
+    return Ok(0.0)
 
 
 @getter
@@ -193,27 +210,27 @@ def get_line_charging_susceptance(
 
     # If b is None, return 0.0 as safe default
     if line_b is None:
-        return _ok(0.0)
+        return Ok(0.0)
 
     # Handle complex numbers by extracting imaginary part
     if isinstance(line_b, complex):
-        return _ok(float(line_b.imag))
+        return Ok(float(line_b.imag))
 
     # Handle FromTo_ToFrom types
     if isinstance(line_b, FromTo_ToFrom):
-        return _ok(float(line_b.from_to))
+        return Ok(float(line_b.from_to))
 
     # Handle Quantity types
     magnitude = get_magnitude(line_b)
     if magnitude is not None:
-        return _ok(float(magnitude))
+        return Ok(float(magnitude))
 
     # Handle plain floats/ints
     if isinstance(line_b, int | float):
-        return _ok(float(line_b))
+        return Ok(float(line_b))
 
     # If we can't convert it, return 0.0 as safe default
-    return _ok(0.0)
+    return Ok(0.0)
 
 
 @getter
@@ -246,37 +263,70 @@ def get_power_or_standard_load(
         magnitude = get_magnitude(load.max_active_power)
         total_load += float(magnitude) if magnitude is not None else 0.0
 
-    return _ok(total_load)
+    return Ok(total_load)
+
+
+@getter
+def get_storage_initial_level(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[float, ValueError]:
+    """Return the initial storage level for a HydroReservoir."""
+    value = getattr(source_component, "initial_level", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(0.0)
+
+
+@getter
+def get_storage_max_volume(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[float, ValueError]:
+    """Return the max storage volume for a HydroReservoir."""
+    value = getattr(source_component, "storage_level_limits", None)
+    if value is not None:
+        return Ok(float(value.max))
+    return Ok(0.0)
+
+
+@getter
+def get_storage_natural_inflow(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[float, ValueError]:
+    """Return the natural inflow for a HydroReservoir."""
+    value = getattr(source_component, "inflow", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(0.0)
 
 
 @getter
 def get_heat_rate(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     value = compute_heat_rate_data(source_component).get("heat_rate")
-    return _ok(float(value) if value is not None else 0.0)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
 def get_heat_rate_base(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     value = compute_heat_rate_data(source_component).get("heat_rate_base")
-    return _ok(float(value) if value is not None else 0.0)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
 def get_heat_rate_incr(context: TranslationContext, source_component: Any) -> Result[Any, ValueError]:
     value = compute_heat_rate_data(source_component).get("heat_rate_incr")
-    return _ok(coerce_value(value))
+    return Ok(coerce_value(value))
 
 
 @getter
 def get_heat_rate_incr2(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     value = compute_heat_rate_data(source_component).get("heat_rate_incr2")
-    return _ok(float(value) if value is not None else 0.0)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
 def get_heat_rate_incr3(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     value = compute_heat_rate_data(source_component).get("heat_rate_incr3")
-    return _ok(float(value) if value is not None else 0.0)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
@@ -284,20 +334,20 @@ def get_heat_rate_load_point(context: TranslationContext, source_component: Any)
     value = compute_heat_rate_data(source_component).get("load_point")
     if value is None:
         return Err(ValueError("No heat rate load points"))
-    return _ok(value)
+    return Ok(value)
 
 
 @getter
 def get_min_stable_level(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     limits = getattr(source_component, "active_power_limits", None)
     if not limits:
-        return _ok(0.0)
+        return Ok(0.0)
     converted = sienna_get_value(limits, source_component)
     min_level = getattr(converted, "min", None)
     if min_level is None:
-        return _ok(0.0)
+        return Ok(0.0)
     min_level = 0.0 if min_level < 0 else min_level
-    return _ok(float(min_level))
+    return Ok(float(min_level))
 
 
 @getter
@@ -306,7 +356,7 @@ def get_reserve_timeframe(
 ) -> Result[float, ValueError]:
     """Get reserve timeframe in seconds."""
     time_frame = getattr(source_component, "time_frame", 0.0)
-    return _ok(time_frame * 60)
+    return Ok(time_frame * 60)
 
 
 @getter
@@ -315,7 +365,7 @@ def get_reserve_duration(
 ) -> Result[float, ValueError]:
     """Get reserve sustained time in seconds."""
     sustained_time = getattr(source_component, "sustained_time", 0.0)
-    return _ok(sustained_time)
+    return Ok(sustained_time)
 
 
 @getter
@@ -324,16 +374,7 @@ def get_reserve_min_provision(
 ) -> Result[float, ValueError]:
     """Get reserve requirement."""
     requirement = getattr(source_component, "requirement", 0.0)
-    return _ok(requirement)
-
-
-@getter
-def get_reserve_max_provision(
-    context: TranslationContext, source_component: VariableReserve
-) -> Result[float, ValueError]:
-    """Get reserve max requirement."""
-    max_requirement = getattr(source_component, "max_requirement", 1e30)
-    return _ok(max_requirement)
+    return Ok(requirement)
 
 
 @getter
@@ -347,7 +388,7 @@ def get_reserve_type(
         ReserveType.REGULATION: 3,
     }
     plexos_type = reserve_type_mapping.get(source_component.reserve_type, 1)
-    return _ok(plexos_type)
+    return Ok(plexos_type)
 
 
 @getter
@@ -356,7 +397,7 @@ def get_reserve_vors(
 ) -> Result[float, ValueError]:
     """Get reserve VORS."""
     vors = getattr(source_component, "vors", -1.0)
-    return _ok(vors)
+    return Ok(vors)
 
 
 @getter
@@ -365,7 +406,7 @@ def get_reserve_max_sharing(
 ) -> Result[float, ValueError]:
     """Get reserve max participation factor as a percentage."""
     max_participation_factor = getattr(source_component, "max_participation_factor", 1.0)
-    return _ok(max_participation_factor * 100)
+    return Ok(max_participation_factor * 100)
 
 
 @getter
@@ -377,12 +418,12 @@ def get_max_capacity(context: TranslationContext, source_component: Any) -> Resu
         value = None
 
     if value is not None:
-        return _ok(float(value))
+        return Ok(float(value))
 
     rating = getattr(source_component, "rating", None)
     rating_value = get_magnitude(rating)
     if rating_value is not None:
-        return _ok(float(rating_value) * resolve_base_power(source_component))
+        return Ok(float(rating_value) * resolve_base_power(source_component))
 
     return Err(ValueError("active_power_limits or rating missing"))
 
@@ -393,12 +434,12 @@ def get_turbine_max_ramp_up(
 ) -> Result[float, ValueError]:
     """Extract max ramp up (in MW/h) from the HydroTurbine, converting from per-unit if needed."""
     ramp_limits = getattr(source_component, "ramp_limits", None)
-    base_power = get_magnitude(getattr(source_component, "base_power", None))
+    base_power = resolve_base_power(source_component)
     if ramp_limits and base_power is not None:
         up = getattr(ramp_limits, "up", None)
         if up is not None:
-            return _ok(float(get_magnitude(up)) * float(base_power))
-    return _ok(0.0)
+            return Ok(float(get_magnitude(up)) * float(base_power))
+    return Ok(0.0)
 
 
 @getter
@@ -407,12 +448,12 @@ def get_turbine_max_ramp_down(
 ) -> Result[float, ValueError]:
     """Extract max ramp down (in MW/h) from the HydroTurbine, converting from per-unit if needed."""
     ramp_limits = getattr(source_component, "ramp_limits", None)
-    base_power = get_magnitude(getattr(source_component, "base_power", None))
+    base_power = resolve_base_power(source_component)
     if ramp_limits and base_power is not None:
         down = getattr(ramp_limits, "down", None)
         if down is not None:
-            return _ok(float(get_magnitude(down)) * float(base_power))
-    return _ok(0.0)
+            return Ok(float(get_magnitude(down)) * float(base_power))
+    return Ok(0.0)
 
 
 @getter
@@ -421,7 +462,7 @@ def get_max_ramp_up(context: TranslationContext, source_component: Any) -> Resul
         limits = sienna_get_ramp_limits(source_component)
     except (KeyError, TypeError) as err:
         return Err(ValueError(str(err)))
-    return _ok(float(limits.up) if limits.up is not None else 0.0)
+    return Ok(float(limits.up) if limits.up is not None else 0.0)
 
 
 @getter
@@ -430,7 +471,7 @@ def get_max_ramp_down(context: TranslationContext, source_component: Any) -> Res
         limits = sienna_get_ramp_limits(source_component)
     except (KeyError, TypeError) as err:
         return Err(ValueError(str(err)))
-    return _ok(float(limits.down) if limits.down is not None else 0.0)
+    return Ok(float(limits.down) if limits.down is not None else 0.0)
 
 
 def _get_time_limit(component: Any, attr: str, ext_key: str) -> float | None:
@@ -457,55 +498,55 @@ def _convert_time_value(value: Any) -> float | None:
 def get_min_up_time(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     """Extract minimum up time from time_limits or ext dict."""
     value = _get_time_limit(source_component, "up", "NARIS_Min_Up_Time")
-    return _ok(value if value is not None else 0.0)
+    return Ok(value if value is not None else 0.0)
 
 
 @getter
 def get_min_down_time(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     """Extract minimum down time from time_limits or ext dict."""
     value = _get_time_limit(source_component, "down", "NARIS_Min_Down_Time")
-    return _ok(value if value is not None else 0.0)
+    return Ok(value if value is not None else 0.0)
 
 
 @getter
 def get_initial_generation(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     power = get_magnitude(getattr(source_component, "active_power", None))
     if power is None:
-        return _ok(0.0)
-    return _ok(float(power) * resolve_base_power(source_component))
+        return Ok(0.0)
+    return Ok(float(power) * resolve_base_power(source_component))
 
 
 @getter
 def get_initial_hours_up(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     hours = _convert_time_value(getattr(source_component, "time_at_status", None)) or 0.0
-    return _ok(hours if getattr(source_component, "status", False) else 0.0)
+    return Ok(hours if getattr(source_component, "status", False) else 0.0)
 
 
 @getter
 def get_initial_hours_down(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     hours = _convert_time_value(getattr(source_component, "time_at_status", None)) or 0.0
-    return _ok(hours if not getattr(source_component, "status", False) else 0.0)
+    return Ok(hours if not getattr(source_component, "status", False) else 0.0)
 
 
 @getter
 def get_running_cost(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     cost = getattr(source_component, "operation_cost", None)
     value = get_magnitude(getattr(cost, "fixed", None)) if cost else None
-    return _ok(float(value) if value is not None else 0.0)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
 def get_start_cost(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     cost = getattr(source_component, "operation_cost", None)
     value = get_magnitude(getattr(cost, "start_up", None)) if cost else None
-    return _ok(float(value) if value is not None else 0.0)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
 def get_shutdown_cost(context: TranslationContext, source_component: Any) -> Result[float, ValueError]:
     cost = getattr(source_component, "operation_cost", None)
     value = get_magnitude(getattr(cost, "shut_down", None)) if cost else None
-    return _ok(float(value) if value is not None else 0.0)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
@@ -515,14 +556,14 @@ def get_fuel_price(context: TranslationContext, source_component: Any) -> Result
     if isinstance(variable, FuelCurve):
         price = get_magnitude(getattr(variable, "fuel_cost", None))
         if price is not None:
-            return _ok(float(price))
-    return _ok(0.0)
+            return Ok(float(price))
+    return Ok(0.0)
 
 
 @getter
 def get_mark_up(context: TranslationContext, source_component: Any) -> Result[Any, ValueError]:
     value = compute_markup_data(source_component).get("mark_up")
-    return _ok(coerce_value(value))
+    return Ok(coerce_value(value))
 
 
 @getter
@@ -530,34 +571,75 @@ def get_mark_up_point(context: TranslationContext, source_component: Any) -> Res
     value = compute_markup_data(source_component).get("mark_up_point")
     if value is None:
         return Err(ValueError("No mark-up load points"))
-    return _ok(value)
+    return Ok(value)
 
 
 @getter
 def get_vom_charge(context: TranslationContext, source_component: Any) -> Result[Any, ValueError]:
     value = compute_markup_data(source_component).get("mark_up")
-    return _ok(coerce_value(value))
+    return Ok(coerce_value(value))
+
+
+def _get_pcm_default(category: str, key: str) -> float:
+    defaults_path = files("r2x_sienna_to_plexos.config") / "pcm_defaults.json"
+    with defaults_path.open() as f:
+        defaults = json.load(f)
+    value = defaults.get(category, {}).get(key, 0.0)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@getter
+def get_battery_forced_outage_rate(
+    context: TranslationContext, source_component: Any
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "forced_outage_rate", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_pcm_default("battery", "forced_outage_rate"))
+
+
+@getter
+def get_battery_maintenance_rate(
+    context: TranslationContext, source_component: Any
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "maintenance_rate", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_pcm_default("battery", "maintenance_rate"))
+
+
+@getter
+def get_battery_mean_time_to_repair(
+    context: TranslationContext, source_component: Any
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "mean_time_to_repair", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_pcm_default("battery", "mean_time_to_repair"))
 
 
 @getter
 def get_storage_charge_efficiency(
     context: TranslationContext, source_component: EnergyReservoirStorage
 ) -> Result[float, ValueError]:
-    return _ok(float(source_component.efficiency.input))
+    return Ok(float(source_component.efficiency.input))
 
 
 @getter
 def get_storage_discharge_efficiency(
     context: TranslationContext, source_component: EnergyReservoirStorage
 ) -> Result[float, ValueError]:
-    return _ok(float(source_component.efficiency.output))
+    return Ok(float(source_component.efficiency.output))
 
 
 @getter
 def get_storage_cycles(
     context: TranslationContext, source_component: EnergyReservoirStorage
 ) -> Result[float, ValueError]:
-    return _ok(float(source_component.cycle_limits))
+    return Ok(float(source_component.cycle_limits))
 
 
 @getter
@@ -565,14 +647,14 @@ def get_storage_max_power(
     context: TranslationContext, source_component: EnergyReservoirStorage
 ) -> Result[float, ValueError]:
     value = get_magnitude(source_component.output_active_power_limits.max)
-    return _ok(float(value) if value is not None else 0.0)
+    return Ok(float(value) if value is not None else 0.0)
 
 
 @getter
 def get_storage_capacity(
     context: TranslationContext, source_component: EnergyReservoirStorage
 ) -> Result[float, ValueError]:
-    return _ok(float(source_component.storage_capacity))
+    return Ok(float(source_component.storage_capacity))
 
 
 @getter
@@ -582,7 +664,7 @@ def get_interface_min_flow(
     """Get min_flow from active_power_flow_limits or default."""
     limits = getattr(source_component, "active_power_flow_limits", None)
     value = getattr(limits, "min", None) if limits else None
-    return _ok(float(value) if value is not None else 1e30)
+    return Ok(float(value) if value is not None else 1e30)
 
 
 @getter
@@ -592,80 +674,114 @@ def get_interface_max_flow(
     """Get max_flow from active_power_flow_limits or default."""
     limits = getattr(source_component, "active_power_flow_limits", None)
     value = getattr(limits, "max", None) if limits else None
-    return _ok(float(value) if value is not None else 1e30)
+    return Ok(float(value) if value is not None else 1e30)
 
 
 @getter
 def membership_parent_component(_: TranslationContext, component: Any) -> Result[Any, ValueError]:
     """Return the component itself for membership parent/child fields."""
-    return _ok(component)
+    return Ok(component)
 
 
 @getter
 def membership_collection_nodes(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Nodes collection enum."""
-    return _ok(CollectionEnum.Nodes)
+    return Ok(CollectionEnum.Nodes)
 
 
 @getter
 def membership_collection_lines(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Lines collection enum."""
-    return _ok(CollectionEnum.Lines)
+    return Ok(CollectionEnum.Lines)
 
 
 @getter
 def membership_collection_generators(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Generators collection enum."""
-    return _ok(CollectionEnum.Generators)
+    return Ok(CollectionEnum.Generators)
 
 
 @getter
 def membership_collection_batteries(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Batteries collection enum."""
-    return _ok(CollectionEnum.Batteries)
+    return Ok(CollectionEnum.Batteries)
 
 
 @getter
 def membership_collection_region(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Region collection enum."""
-    return _ok(CollectionEnum.Region)
+    return Ok(CollectionEnum.Region)
 
 
 @getter
 def membership_collection_node_from(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the NodeFrom collection enum."""
-    return _ok(CollectionEnum.NodeFrom)
+    return Ok(CollectionEnum.NodeFrom)
 
 
 @getter
 def membership_collection_node_to(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the NodeTo collection enum."""
-    return _ok(CollectionEnum.NodeTo)
+    return Ok(CollectionEnum.NodeTo)
 
 
 @getter
 def membership_collection_zone(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Zone collection enum."""
-    return _ok(CollectionEnum.Zone)
+    return Ok(CollectionEnum.Zone)
 
 
 @getter
 def membership_collection_head_storage(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Head Storage collection enum."""
-    return _ok(CollectionEnum.HeadStorage)
+    return Ok(CollectionEnum.HeadStorage)
 
 
 @getter
 def membership_collection_tail_storage(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Tail Storage collection enum."""
-    return _ok(CollectionEnum.TailStorage)
+    return Ok(CollectionEnum.TailStorage)
+
+
+@getter
+def get_head_storage_uuid(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[str, ValueError]:
+    import uuid
+
+    return Ok(str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source_component.uuid}_head")))
+
+
+@getter
+def get_tail_storage_uuid(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[str, ValueError]:
+    import uuid
+
+    return Ok(str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source_component.uuid}_tail")))
+
+
+@getter
+def get_head_storage_name(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[str, ValueError]:
+    """Return the storage name for the head reservoir (appends _head)."""
+    return Ok(f"{source_component.name}_head")
+
+
+@getter
+def get_tail_storage_name(
+    context: TranslationContext, source_component: HydroReservoir
+) -> Result[str, ValueError]:
+    """Return the storage name for the tail reservoir (appends _tail)."""
+    return Ok(f"{source_component.name}_tail")
 
 
 def _lookup_target_zone_by_name(context: TranslationContext, zone_name: str) -> Result[Any, ValueError]:
     """Return the translated zone with the given name."""
     for zone in context.target_system.get_components(PLEXOSZone):
         if zone.name == zone_name:
-            return _ok(zone)
+            return Ok(zone)
     return Err(ValueError(f"No PLEXOSZone found with name '{zone_name}'"))
 
 
@@ -684,9 +800,9 @@ def _lookup_target_node_by_source_area(
                 bus_area = source_bus.area
                 if isinstance(bus_area, Area):
                     if bus_area.name == area_name:
-                        return _ok(node)
+                        return Ok(node)
                 elif isinstance(bus_area, str) and bus_area == area_name:
-                    return _ok(node)
+                    return Ok(node)
 
     return Err(ValueError(f"No PLEXOSNode found with source area '{area_name}'"))
 
@@ -717,7 +833,7 @@ def _lookup_target_node_by_name(
     """Return the translated node with the given name."""
     for node in context.target_system.get_components(PLEXOSNode):
         if node.name == node_name:
-            return _ok(node)
+            return Ok(node)
     return Err(ValueError(f"No PLEXOSNode found with name '{node_name}'"))
 
 
@@ -825,6 +941,46 @@ def _attach_generator_time_series(
         ):
             context.target_system.add_time_series(ts, target_generator, **metadata.features)
             logger.success("Attached time series {} to generator {}", metadata.name, generator_name)
+
+
+def _attach_reservoir_time_series_to_storage(
+    context: TranslationContext,
+    storage_name: str,
+    target_storage: Any,
+) -> None:
+    """Attach time series from source HydroReservoir to translated PLEXOSStorage."""
+    from r2x_sienna.models import HydroReservoir
+
+    base_name = storage_name[:-5] if storage_name.endswith(("_head", "_tail")) else storage_name
+
+    source_reservoir = None
+    for r in context.source_system.get_components(HydroReservoir):
+        if r.name == base_name:
+            source_reservoir = r
+            break
+
+    if source_reservoir is None:
+        for r in context.source_system.get_components(HydroReservoir):
+            if base_name in r.name:
+                source_reservoir = r
+                break
+
+    if source_reservoir is None:
+        return
+
+    for metadata in context.source_system.time_series.list_time_series_metadata(source_reservoir):
+        ts_list = context.source_system.list_time_series(
+            source_reservoir, name=metadata.name, **metadata.features
+        )
+        if not ts_list:
+            continue
+        ts = ts_list[0]
+        ts_type = ts.__class__
+        if not context.target_system.has_time_series(
+            target_storage, name=metadata.name, time_series_type=ts_type, **metadata.features
+        ):
+            context.target_system.add_time_series(ts, target_storage, **metadata.features)
+            logger.success("Attached time series {} to storage {}", metadata.name, storage_name)
 
 
 def _attach_region_node_load_time_series(
@@ -948,7 +1104,7 @@ def membership_reserve_child_generator(
                 if getattr(service, "name", None) == source_reserve.name:
                     target_device = context.target_system.get_component_by_uuid(device.uuid)
                     if target_device:
-                        return _ok(target_device)
+                        return Ok(target_device)
 
     return Err(ValueError(f"No contributing generators found for reserve '{reserve_name}'"))
 
@@ -981,7 +1137,7 @@ def membership_reserve_child_battery(
             if getattr(service, "name", None) == source_reserve.name:
                 target_device = context.target_system.get_component_by_uuid(device.uuid)
                 if target_device and isinstance(target_device, PLEXOSBattery):
-                    return _ok(target_device)
+                    return Ok(target_device)
 
     return Err(ValueError(f"No contributing batteries found for reserve '{reserve_name}'"))
 
@@ -1064,7 +1220,7 @@ def membership_interface_child_line(
     if target_line is None:
         return Err(ValueError(f"No PLEXOSLine found for line '{line_name}'"))
 
-    return _ok(target_line)
+    return Ok(target_line)
 
 
 @getter
@@ -1143,12 +1299,9 @@ def membership_line_to_parent_node(
 
 @getter
 def membership_transformer_from_parent_node(
-    context: TranslationContext, transformer: Any
+    context: TranslationContext, transformer: PLEXOSTransformer
 ) -> Result[PLEXOSNode, ValueError]:
     """Return the from-node for a translated transformer."""
-    if not isinstance(transformer, PLEXOSTransformer):
-        return Err(ValueError(f"Component '{transformer.name}' is not a PLEXOSTransformer"))
-
     source_transformer = _find_source_transformer(context, transformer.name)
 
     if source_transformer is None:
@@ -1165,12 +1318,9 @@ def membership_transformer_from_parent_node(
 
 @getter
 def membership_transformer_to_parent_node(
-    context: TranslationContext, transformer: Any
+    context: TranslationContext, transformer: PLEXOSTransformer
 ) -> Result[PLEXOSNode, ValueError]:
     """Return the to-node for a translated transformer."""
-    if not isinstance(transformer, PLEXOSTransformer):
-        return Err(ValueError(f"Component '{transformer.name}' is not a PLEXOSTransformer"))
-
     source_transformer = _find_source_transformer(context, transformer.name)
 
     if source_transformer is None:
@@ -1186,72 +1336,46 @@ def membership_transformer_to_parent_node(
 
 
 @getter
-def membership_pumped_hydro_head_storage(
-    context: TranslationContext, generator: Any
+def membership_head_storage_generator(
+    context: TranslationContext, generator: HydroTurbine
 ) -> Result[Any, ValueError]:
-    """Resolve a pumped hydro generator's head storage.
-
-    The head generator (with _head suffix) links to a storage with the same name.
-    Both are created from the same HydroPumpedStorage source component.
-    """
+    """Resolve a generator's head storage by matching base name and attach time series."""
     gen_name = getattr(generator, "name", "")
+    if not gen_name.endswith("_Turbine"):
+        return Err(ValueError(f"Generator '{gen_name}' is not a hydro turbine (missing _Turbine suffix)"))
+    storage_name = gen_name.replace("_Turbine", "_Reservoir_head")
 
-    if not gen_name.endswith("_head"):
-        return Err(ValueError(f"Generator '{gen_name}' is not a head generator (missing _head suffix)"))
-
-    source_pumped_hydro = _lookup_source_pumped_hydro(context, gen_name)
-    if source_pumped_hydro is None:
-        return Err(
-            ValueError(f"Generator '{gen_name}' does not correspond to a HydroPumpedStorage component")
-        )
-
-    storage_name = gen_name
-    target_storage = next(
-        (
-            storage
-            for storage in context.target_system.get_components(PLEXOSStorage)
-            if storage.name == storage_name
-        ),
-        None,
-    )
+    target_storage = None
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if storage.name == storage_name:
+            target_storage = storage
+            break
 
     if target_storage is None:
         return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
 
-    return _ok(target_storage)
+    _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
+    return Ok(target_storage)
 
 
 @getter
-def membership_pumped_hydro_tail_storage(
-    context: TranslationContext, generator: Any
+def membership_tail_storage_generator(
+    context: TranslationContext, generator: HydroTurbine
 ) -> Result[Any, ValueError]:
-    """Resolve a pumped hydro generator's tail storage.
-
-    The tail generator (with _tail suffix) links to a storage with the same name.
-    Both are created from the same HydroPumpedStorage source component.
-    """
+    """Resolve a generator's tail storage by matching base name and attach time series."""
     gen_name = getattr(generator, "name", "")
+    if not gen_name.endswith("_Turbine"):
+        return Err(ValueError(f"Generator '{gen_name}' is not a hydro turbine (missing _Turbine suffix)"))
+    storage_name = gen_name.replace("_Turbine", "_Reservoir_tail")
 
-    if not gen_name.endswith("_tail"):
-        return Err(ValueError(f"Generator '{gen_name}' is not a tail generator (missing _tail suffix)"))
-
-    source_pumped_hydro = _lookup_source_pumped_hydro(context, gen_name)
-    if source_pumped_hydro is None:
-        return Err(
-            ValueError(f"Generator '{gen_name}' does not correspond to a HydroPumpedStorage component")
-        )
-
-    storage_name = gen_name
-    target_storage = next(
-        (
-            storage
-            for storage in context.target_system.get_components(PLEXOSStorage)
-            if storage.name == storage_name
-        ),
-        None,
-    )
+    target_storage = None
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if storage.name == storage_name:
+            target_storage = storage
+            break
 
     if target_storage is None:
         return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
 
-    return _ok(target_storage)
+    _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
+    return Ok(target_storage)

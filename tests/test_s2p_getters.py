@@ -1571,11 +1571,11 @@ def test_membership_component_child_node_no_source() -> None:
     assert result.is_err()
 
 
-def test_membership_pumped_hydro_head_storage_wrong_suffix() -> None:
-    """Test membership_pumped_hydro_head_storage errors on non-head generator."""
+def test_membership_head_storage_generator_wrong_suffix() -> None:
+    """Test membership_head_storage_generator errors on non-head generator."""
     from r2x_plexos.models import PLEXOSGenerator
     from r2x_sienna_to_plexos import SiennaToPlexosConfig
-    from r2x_sienna_to_plexos.getters import membership_pumped_hydro_head_storage
+    from r2x_sienna_to_plexos.getters import membership_head_storage_generator
 
     from r2x_core import System, TranslationContext
 
@@ -1590,15 +1590,15 @@ def test_membership_pumped_hydro_head_storage_wrong_suffix() -> None:
     )
 
     generator = PLEXOSGenerator(name="regular_gen")
-    result = membership_pumped_hydro_head_storage(context, generator)
+    result = membership_head_storage_generator(context, generator)
     assert result.is_err()
 
 
-def test_membership_pumped_hydro_tail_storage_wrong_suffix() -> None:
-    """Test membership_pumped_hydro_tail_storage errors on non-tail generator."""
+def test_membership_tail_storage_generator_wrong_suffix() -> None:
+    """Test membership_tail_storage_generator errors on non-tail generator."""
     from r2x_plexos.models import PLEXOSGenerator
     from r2x_sienna_to_plexos import SiennaToPlexosConfig
-    from r2x_sienna_to_plexos.getters import membership_pumped_hydro_tail_storage
+    from r2x_sienna_to_plexos.getters import membership_tail_storage_generator
 
     from r2x_core import System, TranslationContext
 
@@ -1613,5 +1613,5 @@ def test_membership_pumped_hydro_tail_storage_wrong_suffix() -> None:
     )
 
     generator = PLEXOSGenerator(name="regular_gen")
-    result = membership_pumped_hydro_tail_storage(context, generator)
+    result = membership_tail_storage_generator(context, generator)
     assert result.is_err()

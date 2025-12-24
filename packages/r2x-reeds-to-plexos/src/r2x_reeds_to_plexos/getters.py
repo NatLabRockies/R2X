@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from plexosdb import CollectionEnum
@@ -23,14 +23,7 @@ if TYPE_CHECKING:
         ReEDSVariableGenerator,
     )
 
-from r2x_core.context import TranslationContext
-
-T = TypeVar("T")
-
-
-def _ok(value: T) -> Result[T, ValueError]:
-    """Wrap `Ok` with a typed ValueError error type."""
-    return cast(Result[T, ValueError], Ok(value))
+    from r2x_core.context import TranslationContext
 
 
 def _float_or_zero(value: Any | None) -> float:
@@ -97,7 +90,7 @@ def _attach_region_load_time_series(
 def forced_outage_rate_percent(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
     """Convert forced outage fraction (0-1) to percent expected by PLEXOS."""
     rate = getattr(component, "forced_outage_rate", None)
-    return _ok(_float_or_zero(rate) * 100.0)
+    return Ok(_float_or_zero(rate) * 100.0)
 
 
 @getter
@@ -106,15 +99,15 @@ def min_capacity_factor_percent(
 ) -> Result[float, ValueError]:
     """Convert minimum capacity factor (0-1) to percent."""
     factor = getattr(component, "min_capacity_factor", None)
-    return _ok(_float_or_zero(factor) * 100.0)
+    return Ok(_float_or_zero(factor) * 100.0)
 
 
 def line_max_flow(_: TranslationContext, component: ReEDSTransmissionLine) -> Result[float, ValueError]:
     """Return the larger of the forward/backward flow limits."""
     limits = getattr(component, "max_active_power", None)
     if limits is None:
-        return _ok(0.0)
-    return _ok(float(max(limits.from_to, limits.to_from)))
+        return Ok(0.0)
+    return Ok(float(max(limits.from_to, limits.to_from)))
 
 
 @getter
@@ -122,27 +115,27 @@ def line_min_flow(_: TranslationContext, component: ReEDSTransmissionLine) -> Re
     """Return the negative of the maximum absolute flow for min_flow."""
     limits = getattr(component, "max_active_power", None)
     if limits is None:
-        return _ok(0.0)
+        return Ok(0.0)
     max_abs = max(abs(limits.from_to), abs(limits.to_from))
-    return _ok(-float(max_abs))
+    return Ok(-float(max_abs))
 
 
 @getter
 def reserve_timeframe(_: TranslationContext, component: ReEDSReserve) -> Result[float, ValueError]:
     """Return the reserve timeframe in seconds."""
-    return _ok(_float_or_zero(getattr(component, "time_frame", None)))
+    return Ok(_float_or_zero(getattr(component, "time_frame", None)))
 
 
 @getter
 def reserve_duration(_: TranslationContext, component: ReEDSReserve) -> Result[float, ValueError]:
     """Return the reserve duration in seconds."""
-    return _ok(_float_or_zero(getattr(component, "duration", None)))
+    return Ok(_float_or_zero(getattr(component, "duration", None)))
 
 
 @getter
 def reserve_requirement(_: TranslationContext, component: ReEDSReserve) -> Result[float, ValueError]:
     """Return the reserve requirement in MW."""
-    return _ok(_float_or_zero(getattr(component, "max_requirement", None)))
+    return Ok(_float_or_zero(getattr(component, "max_requirement", None)))
 
 
 @getter
@@ -152,8 +145,8 @@ def ramp_rate_mw_per_hour(
     """Convert ramp rate from MW/min to MW/hour for PLEXOS."""
     ramp_rate = getattr(component, "ramp_rate", None)
     if ramp_rate is None:
-        return _ok(0.0)
-    return _ok(float(ramp_rate) * 60.0)
+        return Ok(0.0)
+    return Ok(float(ramp_rate) * 60.0)
 
 
 @getter
@@ -163,23 +156,23 @@ def min_stable_level_mw(_: TranslationContext, component: ReEDSThermalGenerator)
     capacity = getattr(component, "capacity", 0.0)
 
     if min_level_fraction is None:
-        return _ok(0.0)
+        return Ok(0.0)
 
-    return _ok(float(min_level_fraction) * float(capacity))
+    return Ok(float(min_level_fraction) * float(capacity))
 
 
 @getter
 def min_up_time_hours(_: TranslationContext, component: ReEDSThermalGenerator) -> Result[float, ValueError]:
     """Return min up time in hours."""
     min_up = getattr(component, "min_up_time", None)
-    return _ok(_float_or_zero(min_up))
+    return Ok(_float_or_zero(min_up))
 
 
 @getter
 def min_down_time_hours(_: TranslationContext, component: ReEDSThermalGenerator) -> Result[float, ValueError]:
     """Return min down time in hours."""
     min_down = getattr(component, "min_down_time", None)
-    return _ok(_float_or_zero(min_down))
+    return Ok(_float_or_zero(min_down))
 
 
 @getter
@@ -191,9 +184,9 @@ def vre_category_with_resource_class(
     resource_class = getattr(component, "resource_class", None)
 
     if resource_class is None:
-        return _ok(technology)
+        return Ok(technology)
 
-    return _ok(f"{technology}-{resource_class}")
+    return Ok(f"{technology}-{resource_class}")
 
 
 @getter
@@ -202,7 +195,7 @@ def supply_curve_cost_getter(
 ) -> Result[float, ValueError]:
     """Return supply curve cost as build cost."""
     cost = getattr(component, "supply_curve_cost", None)
-    return _ok(_float_or_zero(cost))
+    return Ok(_float_or_zero(cost))
 
 
 @getter
@@ -213,27 +206,27 @@ def storage_energy_from_duration_or_explicit(
     # First check if explicit energy_capacity is provided
     energy_capacity = getattr(component, "energy_capacity", None)
     if energy_capacity is not None:
-        return _ok(float(energy_capacity))
+        return Ok(float(energy_capacity))
 
     # Otherwise calculate from duration and power
     capacity = getattr(component, "capacity", 0.0)
     duration = getattr(component, "storage_duration", 0.0)
 
-    return _ok(float(capacity) * float(duration))
+    return Ok(float(capacity) * float(duration))
 
 
 @getter
 def storage_capital_cost_power(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
     """Return power-based capital cost."""
     cost = getattr(component, "capital_cost", None)
-    return _ok(_float_or_zero(cost))
+    return Ok(_float_or_zero(cost))
 
 
 @getter
 def storage_fom_cost_power(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
     """Return power-based FOM cost."""
     cost = getattr(component, "fom_cost", None)
-    return _ok(_float_or_zero(cost))
+    return Ok(_float_or_zero(cost))
 
 
 @getter
@@ -241,10 +234,10 @@ def hydro_min_flow(_: TranslationContext, component: ReEDSHydroGenerator) -> Res
     """Extract minimum flow from flow_range tuple."""
     flow_range = getattr(component, "flow_range", None)
     if flow_range is None:
-        return _ok(0.0)
+        return Ok(0.0)
 
     # flow_range is MinMax(min=..., max=...)
-    return _ok(float(flow_range.min))
+    return Ok(float(flow_range.min))
 
 
 @getter
@@ -254,8 +247,8 @@ def hydro_ramp_rate_mw_per_hour(
     """Convert hydro ramp rate from MW/min to MW/hour."""
     ramp_rate = getattr(component, "ramp_rate", None)
     if ramp_rate is None:
-        return _ok(0.0)
-    return _ok(float(ramp_rate) * 60.0)
+        return Ok(0.0)
+    return Ok(float(ramp_rate) * 60.0)
 
 
 @getter
@@ -265,9 +258,9 @@ def hydro_must_run_flag(_: TranslationContext, component: ReEDSHydroGenerator) -
 
     # If not dispatchable, set must_run to 1
     if not is_dispatchable:
-        return _ok(1)
+        return Ok(1)
 
-    return _ok(0)
+    return Ok(0)
 
 
 @getter
@@ -276,7 +269,7 @@ def consuming_tech_load_mw(
 ) -> Result[float, ValueError]:
     """Return consumption capacity as load."""
     capacity = getattr(component, "capacity", None)
-    return _ok(_float_or_zero(capacity))
+    return Ok(_float_or_zero(capacity))
 
 
 @getter
@@ -286,11 +279,11 @@ def consuming_tech_efficiency_to_heat_rate(
     """Convert electricity efficiency to heat rate equivalent."""
     efficiency = getattr(component, "electricity_efficiency", None)
     if efficiency is None or efficiency == 0:
-        return _ok(0.0)
+        return Ok(0.0)
 
     # Heat rate is inverse of efficiency (roughly)
     # This is a simplification; actual conversion depends on units
-    return _ok(1.0 / float(efficiency))
+    return Ok(1.0 / float(efficiency))
 
 
 def _lookup_target_node(context: TranslationContext, region_name: str) -> Result[PLEXOSNode, ValueError]:
@@ -299,7 +292,7 @@ def _lookup_target_node(context: TranslationContext, region_name: str) -> Result
 
     for node in context.target_system.get_components(PLEXOSNode):
         if node.name == region_name:
-            return _ok(node)
+            return Ok(node)
     return Err(ValueError(f"No PLEXOSNode found for region '{region_name}'"))
 
 
@@ -316,13 +309,13 @@ def _lookup_source_generator(context: TranslationContext, name: str) -> Any | No
 @getter
 def reeds_membership_parent_component(_: TranslationContext, component: Any) -> Result[Any, ValueError]:
     """Return the component itself for membership parent/child fields."""
-    return _ok(component)
+    return Ok(component)
 
 
 @getter
 def reeds_membership_collection_nodes(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Nodes collection enum."""
-    return _ok(CollectionEnum.Nodes)
+    return Ok(CollectionEnum.Nodes)
 
 
 @getter
@@ -330,19 +323,19 @@ def reeds_membership_collection_node_from(
     _: TranslationContext, __: Any
 ) -> Result[CollectionEnum, ValueError]:
     """Return the NodeFrom collection enum."""
-    return _ok(CollectionEnum.NodeFrom)
+    return Ok(CollectionEnum.NodeFrom)
 
 
 @getter
 def reeds_membership_collection_node_to(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the NodeTo collection enum."""
-    return _ok(CollectionEnum.NodeTo)
+    return Ok(CollectionEnum.NodeTo)
 
 
 @getter
 def reeds_membership_collection_region(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Region collection enum."""
-    return _ok(CollectionEnum.Region)
+    return Ok(CollectionEnum.Region)
 
 
 @getter

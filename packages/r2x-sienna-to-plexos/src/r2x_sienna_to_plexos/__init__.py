@@ -17,16 +17,19 @@ from .getters import (
     membership_region_parent_node,
     membership_reserve_child_battery,
     membership_reserve_child_generator,
+    membership_transformer_from_parent_node,
+    membership_transformer_to_parent_node,
 )
 from .getters_utils import (
     ensure_battery_node_memberships,
     ensure_generator_node_memberships,
+    ensure_head_storage_generator_membership,
     ensure_interface_line_memberships,
     ensure_node_zone_memberships,
-    ensure_pumped_hydro_storage_memberships,
     ensure_region_node_memberships,
     ensure_reserve_battery_memberships,
     ensure_reserve_generator_memberships,
+    ensure_tail_storage_generator_membership,
     ensure_transformer_node_memberships,
 )
 from .plugin_config import SiennaToPlexosConfig
@@ -46,10 +49,11 @@ __all__ = [
     "ensure_generator_node_memberships",
     "ensure_battery_node_memberships",
     "ensure_node_zone_memberships",
-    "ensure_pumped_hydro_storage_memberships",
     "ensure_reserve_battery_memberships",
     "ensure_reserve_generator_memberships",
     "ensure_transformer_node_memberships",
+    "ensure_head_storage_generator_membership",
+    "ensure_tail_storage_generator_membership",
     "membership_region_parent_node",
     "membership_region_child_node",
     "membership_reserve_child_generator",
@@ -58,4 +62,6 @@ __all__ = [
     "membership_line_to_parent_node",
     "membership_component_child_node",
     "membership_interface_child_line",
+    "membership_transformer_from_parent_node",
+    "membership_transformer_to_parent_node",
 ]
