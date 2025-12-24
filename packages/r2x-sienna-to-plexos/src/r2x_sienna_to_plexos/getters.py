@@ -580,11 +580,11 @@ def get_vom_charge(context: TranslationContext, source_component: Any) -> Result
     return Ok(coerce_value(value))
 
 
-def _get_pcm_default(category: str, key: str) -> float:
-    defaults_path = files("r2x_sienna_to_plexos.config") / "pcm_defaults.json"
+def _get_defaults(category: str, key: str) -> float:
+    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
     with defaults_path.open() as f:
         defaults = json.load(f)
-    value = defaults.get(category, {}).get(key, 0.0)
+    value = defaults.get("pcm_defaults", {}).get(category, {}).get(key, 0.0)
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -598,7 +598,7 @@ def get_battery_forced_outage_rate(
     value = getattr(source_component, "forced_outage_rate", None)
     if value is not None:
         return Ok(float(value))
-    return Ok(_get_pcm_default("battery", "forced_outage_rate"))
+    return Ok(_get_defaults("battery", "forced_outage_rate"))
 
 
 @getter
@@ -608,7 +608,7 @@ def get_battery_maintenance_rate(
     value = getattr(source_component, "maintenance_rate", None)
     if value is not None:
         return Ok(float(value))
-    return Ok(_get_pcm_default("battery", "maintenance_rate"))
+    return Ok(_get_defaults("battery", "maintenance_rate"))
 
 
 @getter
@@ -618,7 +618,7 @@ def get_battery_mean_time_to_repair(
     value = getattr(source_component, "mean_time_to_repair", None)
     if value is not None:
         return Ok(float(value))
-    return Ok(_get_pcm_default("battery", "mean_time_to_repair"))
+    return Ok(_get_defaults("battery", "mean_time_to_repair"))
 
 
 @getter

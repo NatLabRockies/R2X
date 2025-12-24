@@ -35,11 +35,11 @@ repos:
 
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.10.0
-pass_filenames: false
     hooks:
       - id: commitizen
         stages:
           - commit-msg
+        pass_filenames: false
 
   - repo: local
     hooks:
@@ -51,9 +51,7 @@ pass_filenames: false
         pass_filenames: false
         stages: [pre-push]
 
-
   - repo: https://github.com/astral-sh/uv-pre-commit
-    # uv version.
     rev: 0.9.4
     hooks:
       - id: uv-lock
