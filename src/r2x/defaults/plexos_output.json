@@ -103,6 +103,7 @@
     "losses": "Loss Incr",
     "lpf": "Load Participation Factor",
     "max_active_power": "Load",
+    "max_capacity_factor": "Max Capacity Factor Hour",
     "max_power_flow": "Max Flow",
     "max_requirement": "Min Provision",
     "max_storage_capacity": "Max SoC",

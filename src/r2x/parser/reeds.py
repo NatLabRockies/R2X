@@ -652,6 +652,33 @@ class ReEDSParser(BaseParser):
             user_dict = {"weather_year": self.weather_year}
             self.system.add_time_series(ts, generator, **user_dict)
             counter += 1
+
+        bagasse_cf_data = self.get_data("cogen_bagasse_cf_hourly")
+        bagasse_cf_column_name = f'Hourly CUF {self.reeds_config.solve_year}'
+        if bagasse_cf_column_name not in bagasse_cf_data.columns:
+            msg = (
+                "There is no COGENERATION-BAGASSE capacity factor data"
+                f"for solve year {self.reeds_config.solve_year}."
+            )
+            logger.warning(msg)
+        else:
+            bagasse_cf_profile = bagasse_cf_data[bagasse_cf_column_name].to_numpy()
+            start = bagasse_cf_data["DateTime"].item(0)
+            resolution = timedelta(hours=1)
+            for generator in self.system.get_components(ThermalGen):
+                if generator.category != 'COGENERATION-BAGASSE':
+                    continue
+
+                ts = SingleTimeSeries.from_array(
+                    data=bagasse_cf_profile,
+                    variable_name="max_capacity_factor",
+                    initial_time=start,
+                    resolution=resolution,
+                )
+                user_dict = {"weather_year": self.weather_year}
+                self.system.add_time_series(ts, generator, **user_dict)
+                counter += 1
+
         logger.debug("Added {} time series objects", counter)
 
     def _construct_reserve_provision(self):

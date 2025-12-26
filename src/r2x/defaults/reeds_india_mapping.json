@@ -149,6 +149,13 @@
     "keep_case": true,
     "optional": true
   },
+  "cogen_bagasse_cf_hourly": {
+    "description": "Hourly capacity factor for cogeneration-bagasse technologies.",
+    "fname": "bagasse_hourly_cuf_combined.csv",
+    "input": true,
+    "keep_case": true,
+    "optional": true
+  },
   "ilr": {
     "column_mapping": {
       "i": "tech",
