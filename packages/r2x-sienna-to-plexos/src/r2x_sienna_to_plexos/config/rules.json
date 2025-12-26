@@ -12,7 +12,7 @@
       "category": "category"
     },
     "getters": {
-      "ac_voltage_magnitude": "get_voltage",
+      "voltage": "get_voltage",
       "load_participation_factor": "get_load_participation_factor",
       "is_slack_bus": "is_slack_bus",
       "load": "get_power_or_standard_load",
@@ -473,7 +473,10 @@
       "uuid": "uuid",
       "category": "category"
     },
-    "getters": {},
+    "getters": {
+      "units": "get_area_units",
+      "load": "get_area_load"
+    },
     "source_type": "Area",
     "target_type": "PLEXOSRegion",
     "version": 1

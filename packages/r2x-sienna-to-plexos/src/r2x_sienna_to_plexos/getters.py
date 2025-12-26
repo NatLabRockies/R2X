@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from importlib.resources import files
 from typing import Any
 
@@ -762,6 +763,46 @@ def get_tail_storage_uuid(
 
 
 @getter
+def get_area_units(context: TranslationContext, source_component: Area) -> Result[float, ValueError]:
+    """Always return 1 for region units."""
+    return Ok(1.0)
+
+
+@getter
+def get_area_load(context: TranslationContext, source_component: Area) -> Result[float, ValueError]:
+    """
+    Aggregate static load for the region.
+    Supports both StandardLoad and PowerLoad.
+    """
+    buses_in_area = [
+        bus
+        for bus in context.source_system.get_components(ACBus)
+        if getattr(bus, "area", None) == source_component
+    ]
+    if not buses_in_area:
+        return Ok(0.0)
+
+    all_loads = [
+        load
+        for load in (
+            list(context.source_system.get_components(StandardLoad))
+            + list(context.source_system.get_components(PowerLoad))
+        )
+        if getattr(load, "bus", None) in buses_in_area
+    ]
+
+    total_load = 0.0
+    for load in all_loads:
+        load_value = getattr(load, "constant_active_power", None) * resolve_base_power(load)
+        if load_value is not None:
+            magnitude = get_magnitude(load_value)
+            if magnitude is not None:
+                total_load += float(magnitude)
+    # Do NOT try to attach the time series here!
+    return Ok(total_load)
+
+
+@getter
 def get_head_storage_name(
     context: TranslationContext, source_component: HydroReservoir
 ) -> Result[str, ValueError]:
@@ -879,21 +920,6 @@ def _find_source_transformer(context: TranslationContext, transformer_name: str)
     return None
 
 
-def _lookup_source_pumped_hydro(context: TranslationContext, gen_name: str) -> Any | None:
-    """Find a source HydroPumpedStorage by deriving the base name from _head or _tail suffix."""
-    # Remove _head or _tail suffix to get base name
-    if gen_name.endswith(("_head", "_tail")):
-        base_name = gen_name.rsplit("_", 1)[0]
-    else:
-        return None
-
-    pumped_hydros: list[Any] = list(context.source_system.get_components(HydroPumpedStorage))
-    for ph in pumped_hydros:
-        if ph.name == base_name:
-            return ph
-    return None
-
-
 def _attach_generator_time_series(
     context: TranslationContext,
     generator_name: str,
@@ -948,7 +974,7 @@ def _attach_reservoir_time_series_to_storage(
     storage_name: str,
     target_storage: Any,
 ) -> None:
-    """Attach time series from source HydroReservoir to translated PLEXOSStorage."""
+    """Attach time series from source HydroReservoir to translated PLEXOSStorage, mapping inflow to natural_inflow."""
     from r2x_sienna.models import HydroReservoir
 
     base_name = storage_name[:-5] if storage_name.endswith(("_head", "_tail")) else storage_name
@@ -965,22 +991,28 @@ def _attach_reservoir_time_series_to_storage(
                 source_reservoir = r
                 break
 
-    if source_reservoir is None:
-        return
+    plexos_ts_list: list[Any] | None
+    if context.source_system.time_series.has_time_series(source_reservoir):
+        plexos_ts_list = []
+        for ts in context.source_system.list_time_series(source_reservoir):
+            plexos_ts = deepcopy(ts)
+            if ts.name in ("inflow", "hydro_budget"):
+                plexos_ts.name = "natural_inflow"
+            elif ts.name == "outflow":
+                plexos_ts.name = "natural_outflow"
+                continue
+            plexos_ts_list.append(plexos_ts)
+    else:
+        plexos_ts_list = None
 
-    for metadata in context.source_system.time_series.list_time_series_metadata(source_reservoir):
-        ts_list = context.source_system.list_time_series(
-            source_reservoir, name=metadata.name, **metadata.features
-        )
-        if not ts_list:
-            continue
-        ts = ts_list[0]
-        ts_type = ts.__class__
-        if not context.target_system.has_time_series(
-            target_storage, name=metadata.name, time_series_type=ts_type, **metadata.features
-        ):
-            context.target_system.add_time_series(ts, target_storage, **metadata.features)
-            logger.success("Attached time series {} to storage {}", metadata.name, storage_name)
+    if plexos_ts_list:
+        for ts in plexos_ts_list:
+            ts_type = ts.__class__
+            if not context.target_system.has_time_series(
+                target_storage, name=ts.name, time_series_type=ts_type, **getattr(ts, "features", {})
+            ):
+                context.target_system.add_time_series(ts, target_storage, **getattr(ts, "features", {}))
+                logger.success("Attached time series {} to storage {}", ts.name, storage_name)
 
 
 def _attach_region_node_load_time_series(
@@ -989,11 +1021,8 @@ def _attach_region_node_load_time_series(
     node: PLEXOSNode,
     region_component: Any | None,
 ) -> None:
-    """Attach demand load and time series from StandardLoad to the translated node and region.
+    """Attach aggregated demand load and time series to the translated region's 'load' property."""
 
-    Aggregates all StandardLoads connected to buses in the given region/area and attaches
-    the time series to both the node and the region component.
-    """
     buses_in_region = [
         bus
         for bus in context.source_system.get_components(ACBus)
@@ -1004,20 +1033,23 @@ def _attach_region_node_load_time_series(
         logger.debug("No buses found in region {}", region_name)
         return
 
-    # Find all StandardLoads connected to buses in this region
-    standard_loads = [
+    # Find all StandardLoads and PowerLoads connected to buses in this region
+    all_loads = [
         load
-        for load in context.source_system.get_components(StandardLoad)
+        for load in (
+            list(context.source_system.get_components(StandardLoad))
+            + list(context.source_system.get_components(PowerLoad))
+        )
         if getattr(load, "bus", None) in buses_in_region
     ]
 
-    if not standard_loads:
-        logger.debug("No StandardLoads found for region {}", region_name)
+    if not all_loads:
+        logger.debug("No loads found for region {}", region_name)
         return
 
-    # Aggregate load values
+    # Aggregate static load values
     total_load = 0.0
-    for load in standard_loads:
+    for load in all_loads:
         load_value = getattr(load, "max_active_power", None)
         if load_value is not None:
             magnitude = get_magnitude(load_value)
@@ -1031,7 +1063,6 @@ def _attach_region_node_load_time_series(
         except Exception as exc:
             logger.debug("Could not set node.load for {}: {}", node.name, exc)
 
-        # Also set fixed_load on region if provided
         if region_component is not None:
             try:
                 region_component.fixed_load = total_load
@@ -1039,21 +1070,26 @@ def _attach_region_node_load_time_series(
             except Exception as exc:
                 logger.debug("Could not set fixed_load for region {}: {}", region_name, exc)
 
-    for load in standard_loads:
-        for metadata in context.source_system.time_series.list_time_series_metadata(load):
-            ts_list = context.source_system.list_time_series(load, name=metadata.name, **metadata.features)
-            if not ts_list:
-                logger.warning("Missing load time series {} for {}", metadata.name, load.name)
-                continue
+    # Aggregate time series for the region's load property
+    aggregated_ts = None
+    for load in all_loads:
+        if context.source_system.time_series.has_time_series(load):
+            for ts in context.source_system.list_time_series(load):
+                if ts.name == "max_active_power":
+                    ts_copy = deepcopy(ts)
+                    ts_copy.name = "load"
+                    if aggregated_ts is None:
+                        aggregated_ts = ts_copy
+                    else:
+                        aggregated_ts.data += ts_copy.data
+                    break
 
-            ts = ts_list[0]
-            ts_type = ts.__class__
-
-            if region_component is not None and not context.target_system.has_time_series(
-                region_component, name=metadata.name, time_series_type=ts_type, **metadata.features
-            ):
-                context.target_system.add_time_series(ts, region_component, **metadata.features)
-                logger.debug("Attached load time series {} to region {}", metadata.name, region_name)
+    # Attach the aggregated time series to the region's 'load' property
+    if aggregated_ts is not None and region_component is not None:
+        ts_type = aggregated_ts.__class__
+        if not context.target_system.has_time_series(region_component, name="load", time_series_type=ts_type):
+            context.target_system.add_time_series(aggregated_ts, region_component)
+            logger.debug("Attached aggregated 'load' time series to region {}", region_name)
 
 
 @getter

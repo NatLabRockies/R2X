@@ -1504,27 +1504,6 @@ def test_find_source_transformer_not_found() -> None:
     assert result is None
 
 
-def test_lookup_source_pumped_hydro_not_found() -> None:
-    """Test _lookup_source_pumped_hydro returns None for non-pumped names."""
-    from r2x_sienna_to_plexos import SiennaToPlexosConfig
-    from r2x_sienna_to_plexos.getters import _lookup_source_pumped_hydro
-
-    from r2x_core import System, TranslationContext
-
-    source_system = System(name="source")
-    target_system = System(name="target")
-
-    context = TranslationContext(
-        source_system=source_system,
-        target_system=target_system,
-        config=SiennaToPlexosConfig(),
-        rules=[],
-    )
-
-    result = _lookup_source_pumped_hydro(context, "regular_gen")
-    assert result is None
-
-
 def test_membership_node_child_zone_no_source_bus() -> None:
     """Test membership_node_child_zone returns error when source bus not found."""
     from r2x_plexos.models import PLEXOSNode
