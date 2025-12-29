@@ -3,4 +3,4 @@ name = "r2x-reeds-to-plexos"
 version = "0.0.0"
 description = "Add your description here"
 requires-python = ">=3.11, <3.14"
-dependencies = ["r2x-reeds>=0.1.0,<1.0.0", "r2x-plexos>=0.1.0,<1.0.0"]
+dependencies = ["r2x-reeds>=0.2.0,<1.0.0", "r2x-plexos>=0.1.2,<1.0.0"]

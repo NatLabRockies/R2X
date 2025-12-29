@@ -1,20 +1,166 @@
 [
   {
     "defaults": {
-      "category": "reeds-generator",
+      "category": "thermal",
       "fuel_price": 0.0,
       "heat_rate": 0.0,
-      "vom_charge": 0.0
+      "vom_charge": 0.0,
+      "fom_charge": 0.0,
+      "start_cost": 0.0,
+      "min_down_time": 0.0,
+      "min_up_time": 0.0
     },
     "field_map": {
+      "uuid": "uuid",
       "category": "technology",
       "fuel_price": "fuel_price",
       "heat_rate": "heat_rate",
       "max_capacity": "capacity",
       "name": "name",
-      "vom_charge": "vom_cost"
+      "vom_charge": "vom_cost",
+      "fom_charge": "fom_cost",
+      "start_cost": "startup_cost"
     },
     "getters": {
+      "forced_outage_rate": "forced_outage_rate_percent",
+      "min_capacity_factor": "min_capacity_factor_percent",
+      "max_ramp_up": "ramp_rate_mw_per_hour",
+      "max_ramp_down": "ramp_rate_mw_per_hour",
+      "min_stable_level": "min_stable_level_mw",
+      "min_up_time": "min_up_time_hours",
+      "min_down_time": "min_down_time_hours"
+    },
+    "source_type": "ReEDSThermalGenerator",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "renewable",
+      "fuel_price": 0.0,
+      "heat_rate": 0.0,
+      "vom_charge": 0.0,
+      "fom_charge": 0.0
+    },
+    "field_map": {
+      "uuid": "uuid",
+      "max_capacity": "capacity",
+      "name": "name",
+      "vom_charge": "vom_cost",
+      "fom_charge": "fom_cost"
+    },
+    "getters": {
+      "forced_outage_rate": "forced_outage_rate_percent",
+      "category": "vre_category_with_resource_class",
+      "build_cost": "supply_curve_cost_getter"
+    },
+    "source_type": "ReEDSVariableGenerator",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "hydro",
+      "fuel_price": 0.0,
+      "heat_rate": 0.0,
+      "vom_charge": 0.0,
+      "fom_charge": 0.0
+    },
+    "field_map": {
+      "uuid": "uuid",
+      "category": "technology",
+      "max_capacity": "capacity",
+      "name": "name",
+      "vom_charge": "vom_cost",
+      "fom_charge": "fom_cost"
+    },
+    "getters": {
+      "forced_outage_rate": "forced_outage_rate_percent",
+      "min_stable_level": "hydro_min_flow",
+      "max_ramp_up": "hydro_ramp_rate_mw_per_hour",
+      "max_ramp_down": "hydro_ramp_rate_mw_per_hour",
+      "must_run_units": "hydro_must_run_flag"
+    },
+    "source_type": "ReEDSHydroGenerator",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "electrolyzer",
+      "fuel_price": 0.0,
+      "heat_rate": 0.0,
+      "vom_charge": 0.0,
+      "fom_charge": 0.0
+    },
+    "field_map": {
+      "uuid": "uuid",
+      "category": "technology",
+      "name": "name",
+      "vom_charge": "vom_cost",
+      "fom_charge": "fom_cost",
+      "build_cost": "capital_cost"
+    },
+    "getters": {
+      "max_capacity": "consuming_tech_load_mw",
+      "heat_rate": "consuming_tech_efficiency_to_heat_rate"
+    },
+    "source_type": "ReEDSConsumingTechnology",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "storage"
+    },
+    "field_map": {
+      "category": "technology",
+      "max_power": "capacity",
+      "name": "name"
+    },
+    "getters": {
+      "build_cost": "storage_capital_cost_power",
+      "fom_charge": "storage_fom_cost_power"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "technology",
+      "op": "not_in",
+      "values": [
+        "pumped-hydro",
+        "pumped_storage"
+      ]
+    },
+    "source_type": "ReEDSStorage",
+    "target_type": "PLEXOSBattery",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "reeds-generator",
+      "fuel_price": 0.0,
+      "heat_rate": 0.0,
+      "vom_charge": 0.0,
+      "fom_charge": 0.0
+    },
+  "field_map": {
+    "uuid": "uuid",
+    "category": "technology",
+    "fuel_price": "fuel_price",
+    "heat_rate": "heat_rate",
+    "max_capacity": "capacity",
+    "name": "name",
+    "vom_charge": "vom_cost"
+  },
+  "filter": {
+    "casefold": true,
+    "field": "category",
+    "op": "eq",
+    "values": [
+      "reeds-generator"
+    ]
+  },
+  "getters": {
       "forced_outage_rate": "forced_outage_rate_percent",
       "min_capacity_factor": "min_capacity_factor_percent"
     },
@@ -127,5 +273,56 @@
     "source_type": "ReEDSReserve",
     "target_type": "PLEXOSReserve",
     "version": 1
+  },
+  {
+    "name": "region_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_region_parent_node",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_region"
+    },
+    "source_type": "PLEXOSRegion",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "component_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_parent_component",
+      "child_object": "reeds_membership_component_child_node",
+      "collection": "reeds_membership_collection_nodes"
+    },
+    "source_type": [
+      "PLEXOSGenerator",
+      "PLEXOSBattery"
+    ],
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "line_from_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_parent_component",
+      "child_object": "reeds_membership_line_from_parent_node",
+      "collection": "reeds_membership_collection_node_from"
+    },
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "line_to_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_parent_component",
+      "child_object": "reeds_membership_line_to_parent_node",
+      "collection": "reeds_membership_collection_node_to"
+    },
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 2
   }
 ]

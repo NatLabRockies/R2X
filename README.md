@@ -28,16 +28,52 @@ uvx r2x --help
 
 ## Quick Start
 
+Use of Sienna parser.
+
 ```python
-from r2x import translate
+import json
 
-result = translate("plexos_system.json", "plexos", "sienna")
+from r2x_sienna.config import SiennaConfig
+from r2x_sienna.parser import SiennaParser
+from r2x_sienna.upgrader.data_upgrader import SiennaUpgrader
+from r2x_core.logger import setup_logging
+from r2x_core.store import DataStore
+from r2x_core.upgrader_utils import run_upgrade_step
 
-if result.is_ok():
-    system = result.unwrap()
-    print(f"Translated: {system.name}")
-else:
-    print(f"Error: {result.unwrap_err()}")
+# Use for debugging and see parser/exporter progress
+setup_logging(level="DEBUG")
+
+# Use for level info and store logging results to file
+setup_logging(level="INFO", log_file="debug.log")
+
+path_to_sys = "path/to/sienna_sys.json"
+
+# Required if upgrading a psy4 to psy5 system
+upgrader = SiennaUpgrader(path=path_to_sys)
+result = None
+with open(path_to_sys) as f:
+    loaded_sys = json.load(f)
+
+for step in upgrader.list_steps():
+    result = run_upgrade_step(step, data=loaded_sys, upgrader_context={"info": "value"})
+
+config = SiennaConfig(
+    model_year=2029,
+    system_name="Sienna System",
+    json_path=path_to_sys,
+    scenario="Base",
+    system_base_power=100.0,
+    skip_validation=False,
+)
+data_store = DataStore()
+parser = SiennaParser(
+    config=config,
+    data_store=data_store,
+    name=sys_name,
+    skip_validation=False,
+)
+stdin_payload = json.dumps(loaded_sys)
+sienna_sys = parser.build_system(stdin_payload=stdin_payload)
 ```
 
 See the `examples/` directory for more usage patterns including validation, dry-run previews, and custom configuration.

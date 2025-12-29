@@ -11,7 +11,9 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def reeds_system_example(vre_single_time_series, load_single_time_series) -> System:
+def reeds_system_example(
+    vre_single_time_series, load_single_time_series, wind_single_time_series, hydro_single_time_series
+) -> System:
     """Single ReEDS system containing key component families."""
     from r2x_reeds.models import (
         EmissionType,
@@ -98,6 +100,10 @@ def reeds_system_example(vre_single_time_series, load_single_time_series) -> Sys
     solar_generators = [gen for gen in generators if gen.technology and "pv" in gen.technology.lower()]
     if solar_generators:
         system.add_time_series(vre_single_time_series, *solar_generators)
+
+    wind_generators = [gen for gen in generators if gen.technology and "wind" in gen.technology.lower()]
+    if wind_generators:
+        system.add_time_series(wind_single_time_series, *wind_generators)
 
     system.add_supplemental_attribute(
         generators[0],

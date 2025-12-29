@@ -52,9 +52,10 @@ dependencies = [
     "r2x-sienna-to-plexos",
     "r2x-plexos-to-sienna",
     "r2x-reeds-to-plexos",
+    "r2x-reeds-to-sienna",
     "r2x-plexos",
-    "r2x-core",
     "r2x-sienna",
+    "r2x-core",
 ]
 
 [project.urls]
@@ -72,6 +73,7 @@ dev = [
     "pytest>=8.3.0,<9.0.0",
     "pytest-cov>=5.0.0,<6.0.0",
     "ruff>=0.6.8,<0.7.0",
+    "ty>=0.0.2",
 ]
 docs = [
     "autodoc-pydantic",
@@ -94,7 +96,8 @@ r2x-sienna-to-plexos = { workspace = true }
 r2x-plexos-to-sienna = { workspace = true }
 r2x-reeds-to-plexos = { workspace = true }
 r2x-core = { git = "https://github.com/NREL/r2x-core", branch = "main" }
-r2x-sienna = { git = "ssh://git@github.com/NREL-Sienna/r2x-sienna", branch = "pesap/r2x_core_compat" }
+r2x-reeds-to-sienna = { workspace = true }
+r2x-sienna = { git = "ssh://git@github.com/NREL-Sienna/r2x-sienna", branch = "main" }
 
 [tool.uv.workspace]
 members = ["packages/*"]
@@ -108,26 +111,25 @@ plugins = [
 mypy_path = [
   "packages/r2x-sienna-to-plexos/src",
   "packages/r2x-reeds-to-plexos/src",
+  "packages/r2x-reeds-to-sienna/src",
   "packages/r2x-plexos-to-sienna/src",
 ]
 
-[[tool.mypy.overrides]]
-module = "r2x_sienna"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "r2x_sienna.*"
-ignore_missing_imports = true
-
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-testpaths = ["tests"]
-markers = [
-    "integration: integration tests requiring real data (deselect with '-m \"not integration\"')",
-]
+testpaths = ["tests", "packages"]
 addopts = [
     "--cov=packages",
-    "--cov-report=term-missing",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=html",
+    "--cov-report=json",
+    "--strict-markers",
+    "-v",
+]
+markers = [
+    "unit: Fast unit tests with no external dependencies",
+    "integration: Integration tests requiring system setup",
+    "slow: Slow tests (>1s)",
 ]
 
 [tool.ruff]
@@ -175,7 +177,20 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 
-[tool.coverage.run]
-omit = [
-    "tests/*",
-    ]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "@abstractmethod",
+  "@abstract",
+]
+precision = 2
+fail_under = 90
+
+[tool.coverage.html]
+directory = "htmlcov"

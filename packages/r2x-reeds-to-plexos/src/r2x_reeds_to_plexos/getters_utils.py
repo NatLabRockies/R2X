@@ -17,7 +17,7 @@ from r2x_plexos.models import (
 from r2x_core import System
 
 if TYPE_CHECKING:
-    from r2x_core.context import TranslationContext
+    from r2x_core import System, TranslationContext
 
 
 def ensure_region_node_memberships(context: TranslationContext) -> None:
@@ -29,7 +29,31 @@ def ensure_region_node_memberships(context: TranslationContext) -> None:
         node = nodes_by_name.get(region.name)
         if node is None:
             continue
-        _ensure_membership(system, region, node, CollectionEnum.Nodes)
+        _ensure_membership(system, node, region, CollectionEnum.Region)
+
+
+def ensure_generator_node_memberships(context: TranslationContext) -> None:
+    """Ensure every translated generator has a node membership based on its source region."""
+    from r2x_reeds.models import ReEDSGenerator
+
+    source_generators = {gen.name: gen for gen in context.source_system.get_components(ReEDSGenerator)}
+    target_generators = {gen.name: gen for gen in context.target_system.get_components(PLEXOSGenerator)}
+    nodes_by_name = {node.name: node for node in context.target_system.get_components(PLEXOSNode)}
+
+    for name, source_gen in source_generators.items():
+        target_gen = target_generators.get(name)
+        if target_gen is None:
+            continue
+
+        # Get the region name from the source generator
+        region = getattr(source_gen, "region", None)
+        if region is None:
+            continue
+
+        # Find corresponding node and create membership if needed
+        node = nodes_by_name.get(region.name)
+        if node is not None:
+            _ensure_membership(context.target_system, target_gen, node, CollectionEnum.Nodes)
 
 
 def link_line_memberships(context: TranslationContext) -> None:
@@ -105,7 +129,6 @@ def convert_pumped_storage_generators(context: TranslationContext) -> None:
     target_storages = {
         storage.name: storage for storage in context.target_system.get_components(PLEXOSStorage)
     }
-    nodes_by_name = {node.name: node for node in context.target_system.get_components(PLEXOSNode)}
     for name in pumped_names:
         source_gen = source_generators[name]
         generator = target_generators.get(name)
@@ -118,13 +141,27 @@ def convert_pumped_storage_generators(context: TranslationContext) -> None:
         if generator is None:
             continue
 
-        node_memberships = _ensure_generator_node_memberships(context, source_gen, generator, nodes_by_name)
-        for membership in node_memberships:
-            collection = membership.collection
-            if collection is None:
-                continue
-            _ensure_membership(context.target_system, storage, membership.child_object, collection)
         _ensure_membership(context.target_system, generator, storage, CollectionEnum.Storages)
+
+
+def transfer_time_series_to_generators(context: TranslationContext) -> None:
+    """Transfer time series from ReEDS generators to translated PLEXOS generators."""
+    from r2x_reeds.models.components import ReEDSGenerator
+
+    source_generators = {gen.name: gen for gen in context.source_system.get_components(ReEDSGenerator)}
+    target_generators = {gen.name: gen for gen in context.target_system.get_components(PLEXOSGenerator)}
+
+    for name, source_gen in source_generators.items():
+        target_gen = target_generators.get(name)
+        if target_gen is None:
+            continue
+
+        # Get all time series from source generator using list_time_series
+        time_series_list = context.source_system.list_time_series(source_gen)
+
+        # Attach each time series to target generator
+        for ts in time_series_list:
+            context.target_system.add_time_series(ts, target_gen)
 
 
 def _ensure_membership(system: System, parent: Any, child: Any, collection: CollectionEnum) -> None:

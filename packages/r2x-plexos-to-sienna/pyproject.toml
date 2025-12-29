@@ -2,4 +2,4 @@
 name = "r2x-plexos-to-sienna"
 version = "0.0.0"
 description = "Add your description here"
-dependencies = ["r2x-plexos>=0.1.0,<1.0.0", "r2x-sienna>=0.1.0,<1.0.0"]
+dependencies = ["r2x-plexos>=0.1.2,<1.0.0", "r2x-sienna>=0.1.0,<1.0.0"]

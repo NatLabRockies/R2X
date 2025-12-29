@@ -7,15 +7,419 @@ transform Sienna cost curves into PLEXOS property values with band support.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from infrasys.cost_curves import CostCurve, FuelCurve
 from infrasys.function_data import LinearFunctionData, PiecewiseLinearData, QuadraticFunctionData, XYCoords
 from infrasys.value_curves import AverageRateCurve, IncrementalCurve, InputOutputCurve
-from r2x_plexos.models import PLEXOSPropertyValue
-from r2x_sienna.units import get_magnitude
+from loguru import logger
+from plexosdb import CollectionEnum
+from r2x_plexos.models import (
+    PLEXOSBattery,
+    PLEXOSGenerator,
+    PLEXOSInterface,
+    PLEXOSLine,
+    PLEXOSMembership,
+    PLEXOSNode,
+    PLEXOSPropertyValue,
+    PLEXOSRegion,
+    PLEXOSReserve,
+    PLEXOSStorage,
+    PLEXOSTransformer,
+    PLEXOSZone,
+)
+from r2x_sienna.models import (
+    ACBus,
+    Area,
+    EnergyReservoirStorage,
+    HydroDispatch,
+    HydroEnergyReservoir,
+    HydroPumpedStorage,
+    HydroReservoir,
+    LoadZone,
+    PhaseShiftingTransformer,
+    RenewableDispatch,
+    RenewableNonDispatch,
+    SynchronousCondenser,
+    TapTransformer,
+    ThermalMultiStart,
+    ThermalStandard,
+    Transformer2W,
+    TransmissionInterface,
+    VariableReserve,
+)
+from r2x_sienna.units import get_magnitude  # type: ignore[import-untyped]
+
+if TYPE_CHECKING:
+    from r2x_core import TranslationContext
 
 InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData]
+
+
+def _ensure_membership(
+    context: TranslationContext,
+    parent_object: Any,
+    child_object: Any,
+    collection: CollectionEnum,
+) -> None:
+    """Create and add a membership between parent and child objects.
+
+    Parameters
+    ----------
+    context : TranslationContext
+        The translation context containing the target system
+    parent_object : Any
+        The parent object in the membership relationship
+    child_object : Any
+        The child object in the membership relationship
+    collection : CollectionEnum
+        The collection type for the membership
+    """
+    membership = PLEXOSMembership(
+        parent_object=parent_object,
+        child_object=child_object,
+        collection=collection,
+    )
+    context.target_system.add_supplemental_attribute(parent_object, membership)
+
+
+def ensure_region_node_memberships(context: TranslationContext) -> None:
+    """Create Region->Node memberships for all regions and their nodes."""
+    regions = list(context.target_system.get_components(PLEXOSRegion))
+    all_nodes = list(context.target_system.get_components(PLEXOSNode))
+    all_buses = list(context.source_system.get_components(ACBus))
+
+    node_to_area = {}
+    for node in all_nodes:
+        for bus in all_buses:
+            if bus.name == node.name and hasattr(bus, "area") and bus.area is not None:
+                area_name = bus.area.name if isinstance(bus.area, Area) else str(bus.area)
+                node_to_area[node.name] = area_name
+                break
+
+    total_memberships = 0
+    for region in regions:
+        region_name = region.name
+        nodes_in_region = [node for node in all_nodes if node_to_area.get(node.name) == region_name]
+        for node in nodes_in_region:
+            _ensure_membership(context, node, region, CollectionEnum.Region)
+            total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Region-Node memberships created.")
+
+
+def ensure_generator_node_memberships(context: TranslationContext) -> None:
+    """Ensure every translated generator has a node membership based on its source bus."""
+    sienna_generator_types = [
+        HydroDispatch,
+        ThermalStandard,
+        ThermalMultiStart,
+        RenewableDispatch,
+        RenewableNonDispatch,
+        HydroEnergyReservoir,
+        HydroPumpedStorage,
+        HydroReservoir,
+        SynchronousCondenser,
+    ]
+
+    source_generators: dict[str, Any] = {}
+    for gen_type in sienna_generator_types:
+        gen: Any
+        for gen in context.source_system.get_components(gen_type):  # type: ignore[arg-type]
+            source_generators[gen.name] = gen
+
+    target_generators = {gen.name: gen for gen in context.target_system.get_components(PLEXOSGenerator)}
+    nodes_by_name = {node.name: node for node in context.target_system.get_components(PLEXOSNode)}
+
+    total_memberships = 0
+    for name, source_gen in source_generators.items():
+        target_gen = target_generators.get(name)
+        if target_gen is None:
+            continue
+
+        bus = getattr(source_gen, "bus", None)
+        if bus is None:
+            continue
+
+        node = nodes_by_name.get(bus.name)
+        if node is not None:
+            _ensure_membership(context, target_gen, node, CollectionEnum.Nodes)
+            total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Generator-Node memberships created.")
+
+
+def ensure_battery_node_memberships(context: TranslationContext) -> None:
+    """Ensure every translated battery has a node membership based on its source bus."""
+    source_batteries: dict[str, Any] = {}
+    for battery in context.source_system.get_components(EnergyReservoirStorage):
+        source_batteries[battery.name] = battery
+
+    target_batteries = {bat.name: bat for bat in context.target_system.get_components(PLEXOSBattery)}
+    nodes_by_name = {node.name: node for node in context.target_system.get_components(PLEXOSNode)}
+
+    total_memberships = 0
+    for name, source_battery in source_batteries.items():
+        target_battery = target_batteries.get(name)
+        if target_battery is None:
+            continue
+
+        bus = getattr(source_battery, "bus", None)
+        if bus is None:
+            continue
+
+        node = nodes_by_name.get(bus.name)
+        if node is not None:
+            _ensure_membership(context, target_battery, node, CollectionEnum.Nodes)
+            total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Battery-Node memberships created.")
+
+
+def ensure_node_zone_memberships(context: TranslationContext) -> None:
+    """Create Node->Zone memberships for all nodes and their load zones."""
+    all_nodes = list(context.target_system.get_components(PLEXOSNode))
+    all_zones = list(context.target_system.get_components(PLEXOSZone))
+    all_buses = list(context.source_system.get_components(ACBus))
+
+    node_to_zone: dict[str, str] = {}
+    for node in all_nodes:
+        for bus in all_buses:
+            if bus.name == node.name and hasattr(bus, "load_zone") and bus.load_zone is not None:
+                zone_name: str = (
+                    bus.load_zone.name if isinstance(bus.load_zone, LoadZone) else str(bus.load_zone)
+                )
+                node_to_zone[node.name] = zone_name
+                break
+
+    zones_by_name = {zone.name: zone for zone in all_zones}
+
+    total_memberships = 0
+    for node in all_nodes:
+        zone_name_lookup: str | None = node_to_zone.get(node.name)
+        if zone_name_lookup is None:
+            continue
+
+        zone = zones_by_name.get(zone_name_lookup)
+        if zone is not None:
+            _ensure_membership(context, node, zone, CollectionEnum.Zone)
+            total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Node-Zone memberships created.")
+
+
+def ensure_reserve_generator_memberships(context: TranslationContext) -> None:
+    """Create Reserve->Generator memberships by finding which generators provide each reserve service."""
+    from r2x_sienna_to_plexos.getters import SOURCE_GENERATOR_TYPES
+
+    reserves_by_name = {res.name: res for res in context.target_system.get_components(PLEXOSReserve)}
+    generators_by_name = {gen.name: gen for gen in context.target_system.get_components(PLEXOSGenerator)}
+
+    all_source_generators: list[Any] = []
+    for gen_type in SOURCE_GENERATOR_TYPES:
+        all_source_generators.extend(list(context.source_system.get_components(gen_type)))  # type: ignore[arg-type]
+
+    total_memberships = 0
+    for reserve_name, target_reserve in reserves_by_name.items():
+        for source_gen in all_source_generators:
+            services = getattr(source_gen, "services", None)
+            if not services:
+                continue
+
+            for service in services:
+                if getattr(service, "name", None) == reserve_name:
+                    target_gen = generators_by_name.get(source_gen.name)
+                    if target_gen:
+                        _ensure_membership(context, target_reserve, target_gen, CollectionEnum.Generators)
+                        total_memberships += 1
+                    break
+
+    logger.info(f"Total {total_memberships} Reserve-Generator memberships created.")
+
+
+def ensure_reserve_battery_memberships(context: TranslationContext) -> None:
+    """Create Reserve->Battery memberships by checking the services of each source battery."""
+    reserves_by_name = {res.name: res for res in context.target_system.get_components(PLEXOSReserve)}
+    batteries_by_name = {bat.name: bat for bat in context.target_system.get_components(PLEXOSBattery)}
+
+    total_memberships = 0
+    for source_battery in context.source_system.get_components(EnergyReservoirStorage):
+        if not hasattr(source_battery, "services") or not source_battery.services:
+            continue
+
+        target_battery = batteries_by_name.get(source_battery.name)
+        if target_battery is None:
+            continue
+
+        for service in source_battery.services:
+            if not isinstance(service, VariableReserve):
+                continue
+
+            target_reserve = reserves_by_name.get(service.name)
+            if target_reserve is not None:
+                _ensure_membership(context, target_reserve, target_battery, CollectionEnum.Batteries)
+                total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Reserve-Battery memberships created.")
+
+
+def ensure_transformer_node_memberships(context: TranslationContext) -> None:
+    """Create Transformer->Node memberships (both from and to) for all transformers."""
+    transformer_types = [Transformer2W, TapTransformer, PhaseShiftingTransformer]
+
+    all_transformers = list(context.target_system.get_components(PLEXOSTransformer))
+    all_nodes = list(context.target_system.get_components(PLEXOSNode))
+
+    source_transformers_by_name: dict[str, Any] = {}
+    transformer: Any
+    for transformer_type in transformer_types:
+        for transformer in context.source_system.get_components(transformer_type):  # type: ignore[arg-type]
+            source_transformers_by_name[transformer.name] = transformer
+
+    nodes_by_name = {node.name: node for node in all_nodes}
+
+    total_memberships = 0
+    for transformer in all_transformers:
+        source_transformer = source_transformers_by_name.get(transformer.name)
+        if source_transformer is None:
+            continue
+
+        if not hasattr(source_transformer, "arc"):
+            continue
+
+        arc = source_transformer.arc
+        from_bus = arc.from_to
+        from_bus_name = from_bus.name if hasattr(from_bus, "name") else str(from_bus)
+        from_node = nodes_by_name.get(from_bus_name)
+
+        if from_node is not None:
+            _ensure_membership(context, transformer, from_node, CollectionEnum.NodeFrom)
+            total_memberships += 1
+
+        to_bus = arc.to_from
+        to_bus_name = to_bus.name if hasattr(to_bus, "name") else str(to_bus)
+        to_node = nodes_by_name.get(to_bus_name)
+
+        if to_node is not None:
+            _ensure_membership(context, transformer, to_node, CollectionEnum.NodeTo)
+            total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Transformer-Node memberships created.")
+
+
+def ensure_interface_line_memberships(context: TranslationContext) -> None:
+    """Create Interface->Line memberships for all interfaces and their lines."""
+    all_interfaces = list(context.target_system.get_components(PLEXOSInterface))
+    all_lines = list(context.target_system.get_components(PLEXOSLine))
+    source_interfaces = list(context.source_system.get_components(TransmissionInterface))
+
+    lines_by_name = {line.name: line for line in all_lines}
+    source_interfaces_by_name = {intf.name: intf for intf in source_interfaces}
+
+    total_memberships = 0
+    for interface in all_interfaces:
+        source_interface = source_interfaces_by_name.get(interface.name)
+        if source_interface is None:
+            continue
+
+        lines = getattr(source_interface, "lines", None)
+        if not lines:
+            continue
+
+        for line_ref in lines:
+            line_name = line_ref.name if hasattr(line_ref, "name") else str(line_ref)
+            line = lines_by_name.get(line_name)
+
+            if line is not None:
+                _ensure_membership(context, interface, line, CollectionEnum.Lines)
+                total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Interface-Line memberships created.")
+
+
+def _extract_base_name(name: str) -> str:
+    if name.endswith("_Turbine"):
+        return name[:-8]
+    if name.endswith("_Reservoir_head"):
+        return name[:-15]
+    if name.endswith("_Reservoir_tail"):
+        return name[:-15]
+    if name.endswith("_Reservoir"):
+        return name[:-10]
+    return name
+
+
+def ensure_head_storage_generator_membership(context: TranslationContext) -> None:
+    """Create HeadStorage memberships between generators and head storages."""
+    all_generators = list(context.target_system.get_components(PLEXOSGenerator))
+    all_storages = list(context.target_system.get_components(PLEXOSStorage))
+
+    head_storages = [storage for storage in all_storages if storage.name.endswith("_head")]
+
+    total_memberships = 0
+    for storage in head_storages:
+        storage_base = _extract_base_name(storage.name)
+        for gen in all_generators:
+            gen_base = _extract_base_name(gen.name)
+            if gen_base == storage_base:
+                _ensure_membership(context, gen, storage, CollectionEnum.HeadStorage)
+                total_memberships += 1
+
+    logger.info(f"Total {total_memberships} HeadStorage-Generator memberships created.")
+
+
+def ensure_tail_storage_generator_membership(context: TranslationContext) -> None:
+    """Create TailStorage memberships between generators and tail storages."""
+    all_generators = list(context.target_system.get_components(PLEXOSGenerator))
+    all_storages = list(context.target_system.get_components(PLEXOSStorage))
+
+    tail_storages = [storage for storage in all_storages if storage.name.endswith("_tail")]
+
+    total_memberships = 0
+    for storage in tail_storages:
+        storage_base = _extract_base_name(storage.name)
+        for gen in all_generators:
+            gen_base = _extract_base_name(gen.name)
+            if gen_base == storage_base:
+                _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
+                total_memberships += 1
+
+    logger.info(f"Total {total_memberships} TailStorage-Generator memberships created.")
+
+
+def ensure_pumped_hydro_storage_memberships(context: TranslationContext) -> None:
+    """Create Generator->Storage memberships for pumped hydro generators.
+
+    Each HydroPumpedStorage creates:
+    - A head generator with _head suffix
+    - A tail generator with _tail suffix
+    - Two storage components (PLEXOSStorage) with matching names
+    - Head generator -> Head storage membership (HeadStorage collection)
+    - Tail generator -> Tail storage membership (TailStorage collection)
+    """
+    logger.info("Starting pumped hydro generator-storage membership creation...")
+
+    all_generators = list(context.target_system.get_components(PLEXOSGenerator))
+    all_storages = list(context.target_system.get_components(PLEXOSStorage))
+
+    storages_by_name = {storage.name: storage for storage in all_storages}
+    head_generators = [gen for gen in all_generators if gen.name.endswith("_head")]
+    tail_generators = [gen for gen in all_generators if gen.name.endswith("_tail")]
+
+    total_memberships = 0
+    for gen in head_generators:
+        storage = storages_by_name.get(gen.name)
+        if storage is not None:
+            _ensure_membership(context, gen, storage, CollectionEnum.HeadStorage)
+            total_memberships += 1
+
+    for gen in tail_generators:
+        storage = storages_by_name.get(gen.name)
+        if storage is not None:
+            _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
+            total_memberships += 1
+
+    logger.info(f"Total {total_memberships} Pumped Hydro Generator-Storage memberships created.")
 
 
 def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:
