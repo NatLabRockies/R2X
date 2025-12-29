@@ -54,28 +54,6 @@ def test_load_s2p_defaults_json() -> None:
     assert isinstance(defaults_data, dict)
 
 
-def test_load_s2p_pcm_defaults_json() -> None:
-    """Test loading S2P PCM defaults configuration."""
-    from importlib.resources import files
-
-    pcm_path = files("r2x_sienna_to_plexos.config") / "pcm_defaults.json"
-    assert pcm_path.exists()
-
-    pcm_data = json.loads(pcm_path.read_text())
-    assert isinstance(pcm_data, dict)
-
-
-def test_load_s2p_sienna_config_json() -> None:
-    """Test loading S2P Sienna configuration."""
-    from importlib.resources import files
-
-    config_path = files("r2x_sienna_to_plexos.config") / "sienna_config.json"
-    assert config_path.exists()
-
-    config_data = json.loads(config_path.read_text())
-    assert isinstance(config_data, dict)
-
-
 def test_load_r2p_rules_json() -> None:
     """Test loading ReEDS-to-PLEXOS rules from package."""
     from importlib.resources import files
@@ -180,8 +158,6 @@ def test_config_files_are_valid_json() -> None:
     config_files = [
         ("r2x_sienna_to_plexos.config", "rules.json"),
         ("r2x_sienna_to_plexos.config", "defaults.json"),
-        ("r2x_sienna_to_plexos.config", "pcm_defaults.json"),
-        ("r2x_sienna_to_plexos.config", "sienna_config.json"),
         ("r2x_reeds_to_plexos.config", "rules.json"),
     ]
 
