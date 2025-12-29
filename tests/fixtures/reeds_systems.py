@@ -18,14 +18,17 @@ def reeds_system_example(
     from r2x_reeds.models import (
         EmissionType,
         FromTo_ToFrom,
+        FuelType,
         ReEDSDemand,
         ReEDSEmission,
-        ReEDSGenerator,
         ReEDSInterface,
         ReEDSRegion,
         ReEDSReserve,
         ReEDSReserveRegion,
+        ReEDSStorage,
+        ReEDSThermalGenerator,
         ReEDSTransmissionLine,
+        ReEDSVariableGenerator,
         ReserveDirection,
         ReserveType,
     )
@@ -43,46 +46,50 @@ def reeds_system_example(
         system.add_component(region)
 
     generators = [
-        ReEDSGenerator(
+        ReEDSThermalGenerator(
             name="WEST_CC",
             region=regions[0],
             technology="gas-cc",
             capacity=300.0,
             heat_rate=7.0,
-            fuel_type="natural-gas",
+            fuel_type=FuelType.NATURAL_GAS,
             forced_outage_rate=0.04,
         ),
-        ReEDSGenerator(
+        ReEDSVariableGenerator(
             name="WEST_WIND",
             region=regions[0],
             technology="wind-ons",
             capacity=150.0,
         ),
-        ReEDSGenerator(
+        ReEDSThermalGenerator(
             name="EAST_COAL",
             region=regions[1],
             technology="coal-new",
             capacity=500.0,
             heat_rate=7.0,
-            fuel_type="coal",
+            fuel_type=FuelType.COAL,
             forced_outage_rate=0.08,
         ),
-        ReEDSGenerator(
+        ReEDSVariableGenerator(
             name="TEXAS_SOLAR",
             region=regions[2],
             technology="upv",
             capacity=200.0,
         ),
-        ReEDSGenerator(
+        ReEDSStorage(
             name="WEST_PSH",
             region=regions[0],
+            storage_duration=10,
             technology="pumped-hydro",
+            round_trip_efficiency=0.85,
             capacity=250.0,
         ),
-        ReEDSGenerator(
+        ReEDSStorage(
             name="WEST_BATTERY",
             region=regions[0],
             technology="battery",
+            storage_duration=4,
+            round_trip_efficiency=0.85,
             category="battery_4h",
             capacity=75.0,
         ),
@@ -130,6 +137,7 @@ def reeds_system_example(
             direction=ReserveDirection.UP,
             time_frame=900.0,
             duration=600.0,
+            max_requirement=200.0,
         )
     )
 

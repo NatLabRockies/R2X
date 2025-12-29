@@ -79,12 +79,12 @@ TRANSLATION_CASES = [
 )
 def test_translation_pipeline_uses_package_rules(default_rules, source_system, expect_conversions):
     """End-to-end translation validation using only package-provided rules."""
-    result, context = run_translation(source_system, default_rules)
+    result, target_system = run_translation(source_system, default_rules)
 
     assert result.total_rules > 0, "Rules from the package config should execute"
 
     converted_components = sum(rule_result.converted for rule_result in result.rule_results)
-    generated_targets = sum(1 for _ in context.target_system.iter_all_components())
+    generated_targets = sum(1 for _ in target_system.iter_all_components())
 
     if expect_conversions:
         assert converted_components > 0, "Populated systems should convert at least one component"

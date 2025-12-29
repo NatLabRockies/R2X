@@ -43,12 +43,16 @@ def translated_r2p_context(
         attach_emissions_to_generators,
         attach_region_load_profiles,
         convert_pumped_storage_generators,
+        ensure_region_node_memberships,
+        link_line_memberships,
     )
 
     from r2x_core import apply_rules_to_context
 
     context = build_r2p_context(reeds_system_example, r2p_default_rules)
     result = apply_rules_to_context(context)
+    ensure_region_node_memberships(context)
+    link_line_memberships(context)
     attach_region_load_profiles(context)
     attach_emissions_to_generators(context)
     convert_pumped_storage_generators(context)

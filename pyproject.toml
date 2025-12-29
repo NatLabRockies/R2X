@@ -56,7 +56,6 @@ dependencies = [
     "r2x-plexos",
     "r2x-sienna",
     "r2x-core",
-    "r2x-sienna",
 ]
 
 [project.urls]
@@ -96,6 +95,7 @@ build-backend = "uv_build"
 r2x-sienna-to-plexos = { workspace = true }
 r2x-plexos-to-sienna = { workspace = true }
 r2x-reeds-to-plexos = { workspace = true }
+r2x-core = { git = "https://github.com/NREL/r2x-core", branch = "main" }
 r2x-reeds-to-sienna = { workspace = true }
 r2x-sienna = { git = "ssh://git@github.com/NREL-Sienna/r2x-sienna", branch = "main" }
 
@@ -111,6 +111,7 @@ plugins = [
 mypy_path = [
   "packages/r2x-sienna-to-plexos/src",
   "packages/r2x-reeds-to-plexos/src",
+  "packages/r2x-reeds-to-sienna/src",
   "packages/r2x-plexos-to-sienna/src",
 ]
 
