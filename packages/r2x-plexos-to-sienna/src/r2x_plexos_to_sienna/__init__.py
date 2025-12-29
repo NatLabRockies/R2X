@@ -7,6 +7,7 @@ from importlib.metadata import version
 
 from loguru import logger
 
+from .getters import *  # noqa: F403
 from .plugin_config import PlexosToSiennaConfig
 
 __version__ = version("r2x_plexos_to_sienna")

@@ -1,20 +1,21 @@
 [
   {
     "defaults": {
+      "category": "node",
       "load": 0.0,
       "units": 0.0
     },
     "field_map": {
-      "available": "units",
       "name": "name",
       "uuid": "uuid",
-      "number": "number"
+      "available": "units",
+      "category": "category"
     },
     "getters": {
-      "ac_voltage_magnitude": "get_voltage",
-      "load": "get_power_load",
-      "units": "get_availability",
-      "is_slack_bus": "is_slack_node"
+      "number": "get_node_number",
+      "base_voltage": "get_base_voltage",
+      "bustype": "is_slack_bus",
+      "ext": "get_node_ext"
     },
     "source_type": "PLEXOSNode",
     "target_type": "ACBus",
@@ -23,39 +24,69 @@
   {
     "defaults": {
       "category": "line",
-      "min_flow": 0.0
+      "min_flow": 0.0,
+      "reactive_power_flow": 0.0
     },
     "field_map": {
       "active_power_flow": "fixed_flow",
+      "reactive_power_flow": "get_reactive_power_flow",
       "name": "name",
       "uuid": "uuid",
       "x": "reactance",
-      "r": "resistance"
+      "r": "resistance",
+      "category": "category"
     },
     "getters": {
-      "get_from_bus":"from_bus"
+      "arc": "get_line_arc",
+      "angle_limits": "get_line_angle_limits",
+      "b": "get_line_susceptance"
     },
     "source_type": "PLEXOSLine",
     "target_type": "Line",
     "version": 1
   },
-  {
+    {
     "defaults": {
-      "category": "monitored-line"
+      "category": "monitored-line",
+      "reactive_power_flow": 0.0
     },
     "field_map": {
       "active_power_flow": "fixed_flow",
       "name": "name",
       "uuid": "uuid",
       "x": "reactance",
-      "r": "resistance"
+      "r": "resistance",
+      "category": "category"
     },
     "getters": {
-      "flow_limits": "get_asymmetric_flow_limits",
-      "ac_line_charging_susceptance": "get_line_charging_susceptance"
+      "arc": "get_line_arc",
+      "reactive_power_flow": "get_line_reactive_power_flow",
+      "angle_limits": "get_line_angle_limits",
+      "b": "get_line_susceptance"
     },
     "source_type": "PLEXOSLine",
     "target_type": "MonitoredLine",
+    "version": 1
+  },
+
+
+{
+    "defaults": {
+      "ac_line_charging_susceptance": 0.0,
+      "category": "two-terminal-hvdc-line",
+      "reactance": 0.0,
+      "resistance": 0.0
+    },
+    "field_map": {
+      "active_power_flow": "fixed_flow",
+      "name": "name",
+      "uuid": "uuid"
+    },
+    "getters": {
+      "arc": "get_line_arc"
+    },
+    "source_type": "PLEXOSLine",
+    "target_type": "TwoTerminalHVDCLine",
     "version": 1
   },
   {
@@ -122,55 +153,27 @@
   },
   {
     "defaults": {
-      "ac_line_charging_susceptance": 0.0,
-      "category": "two-terminal-hvdc-line",
-      "reactance": 0.0,
-      "resistance": 0.0
-    },
-    "field_map": {
-      "active_power_flow": "fixed_flow",
-      "name": "name",
-      "uuid": "uuid"
-    },
-    "getters": {
-      "active_power_limits_from": "get_hvdc_flow_limits"
-    },
-    "source_type": "PLEXOSLine",
-    "target_type": "TwoTerminalHVDCLine",
-    "version": 1
-  },
-  {
-    "defaults": {
       "category": "thermal",
       "load_point": 0.0,
       "mark_up_point": 0.0
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "category": "category"
     },
     "getters": {
-      "fuel_price": "get_fuel_price",
-      "heat_rate": "get_heat_rate",
-      "heat_rate_base": "get_heat_rate_base",
-      "heat_rate_incr": "get_heat_rate_incr",
-      "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
-      "initial_generation": "get_initial_generation",
-      "initial_hours_down": "get_initial_hours_down",
-      "initial_hours_up": "get_initial_hours_up",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point",
-      "max_capacity": "get_max_capacity",
-      "max_ramp_down": "get_max_ramp_down",
-      "max_ramp_up": "get_max_ramp_up",
-      "min_down_time": "get_min_down_time",
-      "min_stable_level": "get_min_stable_level",
-      "min_up_time": "get_min_up_time",
-      "running_cost": "get_running_cost",
-      "shutdown_cost": "get_shutdown_cost",
-      "start_cost": "get_start_cost"
+      "active_power": "get_gen_active_power",
+      "reactive_power": "get_gen_reactive_power",
+      "rating": "get_gen_rating",
+      "base_power": "get_gen_base_power",
+      "active_power_limits": "get_gen_active_power_limits",
+      "must_run": "get_gen_must_run",
+      "prime_mover_type": "get_prime_mover_type",
+      "status": "get_gen_status",
+      "time_at_status": "get_time_at_status",
+      "operation_cost": "get_thermal_operation_cost",
+      "fuel": "get_fuel_type"
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "ThermalStandard",
@@ -188,19 +191,18 @@
       "uuid": "uuid"
     },
     "getters": {
-      "fuel_price": "get_fuel_price",
-      "heat_rate": "get_heat_rate",
-      "heat_rate_base": "get_heat_rate_base",
-      "heat_rate_incr": "get_heat_rate_incr",
-      "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point",
-      "active_power_limits": "get_max_active_power",
-      "ramp_limits": "get_ramp_limits",
-      "start_time_limits": "get_start_time_limits",
-      "time_limits": "get_time_limits"
+      "active_power": "get_gen_active_power",
+      "reactive_power": "get_gen_reactive_power",
+      "rating": "get_gen_rating",
+      "base_power": "get_gen_base_power",
+      "active_power_limits": "get_gen_active_power_limits",
+      "must_run": "get_gen_must_run",
+      "prime_mover_type": "get_prime_mover_type",
+      "status": "get_gen_status",
+      "time_at_status": "get_time_at_status",
+      "operation_cost": "get_thermal_operation_cost",
+      "fuel": "get_fuel_type",
+      "start_types": "get_gen_start_types"
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "ThermalMultiStart",
