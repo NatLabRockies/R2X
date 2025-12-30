@@ -10,6 +10,7 @@ from . import getters as _getters  # noqa: F401  # ensure getter registration
 from .getters_utils import (
     attach_emissions_to_generators,
     attach_region_load_profiles,
+    attach_reserve_time_series,
     convert_pumped_storage_generators,
     ensure_generator_node_memberships,
     ensure_region_node_memberships,
@@ -27,6 +28,7 @@ logger.disable("r2x_reeds_to_plexos")
 __all__ = [
     "ReedsToPlexosConfig",
     "__version__",
+    "attach_reserve_time_series",
     "attach_emissions_to_generators",
     "attach_region_load_profiles",
     "convert_pumped_storage_generators",

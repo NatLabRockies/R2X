@@ -319,30 +319,6 @@ def _lookup_source_generator(context: TranslationContext, name: str) -> Any | No
     return None
 
 
-def attach_reserve_time_series(context: TranslationContext) -> None:
-    """Attach time series from ReEDSReserve to the translated PLEXOSReserve."""
-    from r2x_plexos.models import PLEXOSReserve
-    from r2x_reeds.models.components import ReEDSReserve
-
-    source_reserves = {r.name: r for r in context.source_system.get_components(ReEDSReserve)}
-    for reserve in context.target_system.get_components(PLEXOSReserve):
-        source_reserve = source_reserves.get(reserve.name)
-        if source_reserve is None:
-            continue
-        for metadata in context.source_system.time_series.list_time_series_metadata(source_reserve):
-            ts_list = context.source_system.list_time_series(
-                source_reserve, name=metadata.name, **metadata.features
-            )
-            if not ts_list:
-                continue
-            ts = ts_list[0]
-            ts_type = ts.__class__
-            if not context.target_system.has_time_series(
-                reserve, name=metadata.name, time_series_type=ts_type, **metadata.features
-            ):
-                context.target_system.add_time_series(ts, reserve, **metadata.features)
-
-
 @getter
 def reeds_membership_parent_component(_: TranslationContext, component: Any) -> Result[Any, ValueError]:
     """Return the component itself for membership parent/child fields."""
