@@ -319,6 +319,30 @@ def _lookup_source_generator(context: TranslationContext, name: str) -> Any | No
     return None
 
 
+def attach_reserve_time_series(context: TranslationContext) -> None:
+    """Attach time series from ReEDSReserve to the translated PLEXOSReserve."""
+    from r2x_plexos.models import PLEXOSReserve
+    from r2x_reeds.models.components import ReEDSReserve
+
+    source_reserves = {r.name: r for r in context.source_system.get_components(ReEDSReserve)}
+    for reserve in context.target_system.get_components(PLEXOSReserve):
+        source_reserve = source_reserves.get(reserve.name)
+        if source_reserve is None:
+            continue
+        for metadata in context.source_system.time_series.list_time_series_metadata(source_reserve):
+            ts_list = context.source_system.list_time_series(
+                source_reserve, name=metadata.name, **metadata.features
+            )
+            if not ts_list:
+                continue
+            ts = ts_list[0]
+            ts_type = ts.__class__
+            if not context.target_system.has_time_series(
+                reserve, name=metadata.name, time_series_type=ts_type, **metadata.features
+            ):
+                context.target_system.add_time_series(ts, reserve, **metadata.features)
+
+
 @getter
 def reeds_membership_parent_component(_: TranslationContext, component: Any) -> Result[Any, ValueError]:
     """Return the component itself for membership parent/child fields."""
@@ -349,6 +373,12 @@ def reeds_membership_collection_node_to(_: TranslationContext, __: Any) -> Resul
 def reeds_membership_collection_region(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
     """Return the Region collection enum."""
     return Ok(CollectionEnum.Region)
+
+
+@getter
+def reeds_membership_collection_lines(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the Lines collection enum."""
+    return Ok(CollectionEnum.Lines)
 
 
 @getter
@@ -440,3 +470,25 @@ def reeds_membership_line_to_parent_node(
         return Err(ValueError(f"Source line '{line.name}' missing interface data"))
 
     return _lookup_target_node(context, source_line.interface.to_region.name)
+
+
+@getter
+def reeds_membership_line_parent_interface(context: TranslationContext, line: Any) -> Result[Any, ValueError]:
+    """Return the parent interface for a translated line, matching either direction."""
+    from r2x_plexos.models import PLEXOSInterface
+
+    parts = getattr(line, "name", "").split("_")
+    if len(parts) < 3:
+        return Err(ValueError(f"Line name '{getattr(line, 'name', '')}' does not match expected format"))
+    from_region, to_region, _ = parts[0], parts[1], parts[2]
+    interface_names = [f"{from_region}||{to_region}", f"{to_region}||{from_region}"]
+    for iface in context.target_system.get_components(PLEXOSInterface):
+        if iface.name in interface_names:
+            return Ok(iface)
+    return Err(ValueError(f"No PLEXOSInterface found for '{interface_names[0]}' or '{interface_names[1]}'"))
+
+
+@getter
+def reeds_membership_line_child_line(_: TranslationContext, line: Any) -> Result[Any, ValueError]:
+    """Return the line itself as the child object."""
+    return Ok(line)

@@ -340,5 +340,17 @@
     "source_type": "PLEXOSLine",
     "target_type": "PLEXOSMembership",
     "version": 2
+  },
+  {
+    "name": "interface_line_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_line_parent_interface",
+      "child_object": "reeds_membership_line_child_line",
+      "collection": "reeds_membership_collection_lines"
+    },
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 3
   }
 ]
