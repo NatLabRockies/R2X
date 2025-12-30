@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         ReEDSConsumingTechnology,
         ReEDSGenerator,
         ReEDSHydroGenerator,
+        ReEDSInterface,
         ReEDSReserve,
         ReEDSStorage,
         ReEDSThermalGenerator,
@@ -91,6 +92,18 @@ def forced_outage_rate_percent(_: TranslationContext, component: ReEDSGenerator)
     """Convert forced outage fraction (0-1) to percent expected by PLEXOS."""
     rate = getattr(component, "forced_outage_rate", None)
     return Ok(_float_or_zero(rate) * 100.0)
+
+
+@getter
+def interface_min_flow(_: TranslationContext, component: ReEDSInterface) -> Result[float, ValueError]:
+    """Return the minimum flow for an interface (negative of max absolute flow)."""
+    return Ok(0.0)
+
+
+@getter
+def interface_max_flow(_: TranslationContext, component: ReEDSInterface) -> Result[float, ValueError]:
+    """Return the maximum flow for an interface."""
+    return Ok(0.0)
 
 
 @getter

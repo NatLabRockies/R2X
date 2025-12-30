@@ -258,6 +258,7 @@
   },
   {
     "defaults": {
+      "category": "reeds-reserve",
       "duration": 0.0,
       "min_provision": 0.0,
       "timeframe": 0.0
@@ -272,6 +273,21 @@
     },
     "source_type": "ReEDSReserve",
     "target_type": "PLEXOSReserve",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "reeds-interface"
+    },
+    "field_map": {
+      "name": "name"
+    },
+    "getters": {
+      "min_flow": "interface_min_flow",
+      "max_flow": "interface_max_flow"
+    },
+    "source_type": "ReEDSInterface",
+    "target_type": "PLEXOSInterface",
     "version": 1
   },
   {
