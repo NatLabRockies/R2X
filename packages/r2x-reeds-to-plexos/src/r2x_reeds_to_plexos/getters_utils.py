@@ -200,29 +200,4 @@ def _ensure_membership(system: System, parent: Any, child: Any, collection: Coll
     system.add_supplemental_attribute(child, membership)
 
 
-def _ensure_generator_node_memberships(
-    context: TranslationContext,
-    source_generator: Any,
-    generator: PLEXOSGenerator | None,
-    nodes_by_name: dict[str, PLEXOSNode],
-) -> list[PLEXOSMembership]:
-    """Guarantee node memberships on a generator and return them."""
-    if generator is None:
-        return []
-
-    memberships = context.target_system.get_supplemental_attributes_with_component(
-        generator, PLEXOSMembership
-    )
-    if not any(m.collection == CollectionEnum.Nodes for m in memberships):
-        region = getattr(source_generator, "region", None)
-        node = nodes_by_name.get(region.name) if region is not None else None
-        if node is not None:
-            _ensure_membership(context.target_system, generator, node, CollectionEnum.Nodes)
-            memberships = context.target_system.get_supplemental_attributes_with_component(
-                generator, PLEXOSMembership
-            )
-
-    return [m for m in memberships if m.collection == CollectionEnum.Nodes]
-
-
 PUMPED_STORAGE_TECHS = {"pumped-hydro", "pumped_storage"}

@@ -88,6 +88,20 @@ def _attach_region_load_time_series(
 
 
 @getter
+def add_head_suffix(_: TranslationContext, component: Any) -> Result[str, ValueError]:
+    """Add '_head' suffix to the storage name."""
+    name = getattr(component, "name", "")
+    return Ok(f"{name}_head")
+
+
+@getter
+def add_tail_suffix(_: TranslationContext, component: Any) -> Result[str, ValueError]:
+    """Add '_tail' suffix to the storage name."""
+    name = getattr(component, "name", "")
+    return Ok(f"{name}_tail")
+
+
+@getter
 def forced_outage_rate_percent(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
     """Convert forced outage fraction (0-1) to percent expected by PLEXOS."""
     rate = getattr(component, "forced_outage_rate", None)
@@ -358,6 +372,30 @@ def reeds_membership_collection_lines(_: TranslationContext, __: Any) -> Result[
 
 
 @getter
+def reeds_membership_collection_head_storage(
+    _: TranslationContext, __: Any
+) -> Result[CollectionEnum, ValueError]:
+    """Return the HeadStorage collection enum."""
+    return Ok(CollectionEnum.HeadStorage)
+
+
+@getter
+def reeds_membership_collection_tail_storage(
+    _: TranslationContext, __: Any
+) -> Result[CollectionEnum, ValueError]:
+    """Return the TailStorage collection enum."""
+    return Ok(CollectionEnum.TailStorage)
+
+
+@getter
+def reeds_membership_storage_generator_parent(
+    _: TranslationContext, generator: Any
+) -> Result[Any, ValueError]:
+    """Return the generator itself as the parent object."""
+    return Ok(generator)
+
+
+@getter
 def reeds_membership_region_child_node(
     context: TranslationContext, region: Any
 ) -> Result[PLEXOSNode, ValueError]:
@@ -468,3 +506,33 @@ def reeds_membership_line_parent_interface(context: TranslationContext, line: An
 def reeds_membership_line_child_line(_: TranslationContext, line: Any) -> Result[Any, ValueError]:
     """Return the line itself as the child object."""
     return Ok(line)
+
+
+@getter
+def reeds_membership_storage_child_head_storage(
+    context: TranslationContext, generator: Any
+) -> Result[Any, ValueError]:
+    """Return the head storage (with _head suffix) for this generator."""
+    from r2x_plexos.models import PLEXOSStorage
+
+    base_name = getattr(generator, "name", "")
+    storage_name = f"{base_name}_head"
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if storage.name == storage_name:
+            return Ok(storage)
+    return Err(ValueError(f"No head storage found for generator '{base_name}'"))
+
+
+@getter
+def reeds_membership_storage_child_tail_storage(
+    context: TranslationContext, generator: Any
+) -> Result[Any, ValueError]:
+    """Return the tail storage (with _tail suffix) for this generator."""
+    from r2x_plexos.models import PLEXOSStorage
+
+    base_name = getattr(generator, "name", "")
+    storage_name = f"{base_name}_tail"
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if storage.name == storage_name:
+            return Ok(storage)
+    return Err(ValueError(f"No tail storage found for generator '{base_name}'"))

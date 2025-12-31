@@ -169,6 +169,10 @@
     "version": 1
   },
   {
+    "defaults": {
+      "category": "storage",
+      "storage_type": "head"
+    },
     "field_map": {
       "category": "technology",
       "name": "name"
@@ -182,8 +186,60 @@
         "pumped_storage"
       ]
     },
+    "getters": {
+      "name": "add_head_suffix"
+    },
     "source_type": "ReEDSGenerator",
     "target_type": "PLEXOSStorage",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "storage",
+      "storage_type": "tail"
+    },
+    "field_map": {
+      "category": "technology",
+      "name": "name"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "technology",
+      "op": "in",
+      "values": [
+        "pumped-hydro",
+        "pumped_storage"
+      ]
+    },
+    "getters": {
+      "name": "add_tail_suffix"
+    },
+    "source_type": "ReEDSGenerator",
+    "target_type": "PLEXOSStorage",
+    "version": 2
+  },
+  {
+    "defaults": {
+      "category": "pumped-hydro"
+    },
+    "field_map": {
+      "category": "category",
+      "max_capacity": "capacity",
+      "name": "name"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "category",
+      "op": "eq",
+      "values": [
+        "pumped_storage"
+      ]
+    },
+    "getters": {
+      "forced_outage_rate": "forced_outage_rate_percent"
+    },
+    "source_type": "ReEDSStorage",
+    "target_type": "PLEXOSGenerator",
     "version": 1
   },
   {
@@ -350,6 +406,42 @@
       "collection": "reeds_membership_collection_lines"
     },
     "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 3
+  },
+  {
+    "name": "generator_head_storage_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_storage_generator_parent",
+      "child_object": "reeds_membership_storage_child_head_storage",
+      "collection": "reeds_membership_collection_head_storage"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "category",
+      "op": "eq",
+      "values": ["pumped_storage"]
+    },
+    "source_type": "PLEXOSGenerator",
+    "target_type": "PLEXOSMembership",
+    "version": 2
+  },
+  {
+    "name": "generator_tail_storage_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_storage_generator_parent",
+      "child_object": "reeds_membership_storage_child_tail_storage",
+      "collection": "reeds_membership_collection_tail_storage"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "category",
+      "op": "eq",
+      "values": ["pumped_storage"]
+    },
+    "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
     "version": 3
   }
