@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from plexosdb import CollectionEnum
+from r2x_plexos import PLEXOSPropertyValue
 
 from r2x_core import Err, Ok, Result
 from r2x_core.getters import getter
@@ -178,9 +179,15 @@ def reserve_duration(_: TranslationContext, component: ReEDSReserve) -> Result[f
 
 
 @getter
-def reserve_requirement(_: TranslationContext, component: ReEDSReserve) -> Result[float, ValueError]:
-    """Return the reserve requirement in MW."""
-    return Ok(_float_or_zero(getattr(component, "max_requirement", None)))
+def reserve_requirement(
+    _: TranslationContext, component: ReEDSReserve
+) -> Result[PLEXOSPropertyValue, ValueError]:
+    """Return the reserve requirement as a PLEXOSPropertyValue with units MW."""
+    value = getattr(component, "requirement", None)
+    value = float(value) if value is not None else 0.0
+    prop = PLEXOSPropertyValue(units="MW")
+    prop.add_entry(value=value, units="MW")
+    return Ok(prop)
 
 
 @getter

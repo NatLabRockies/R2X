@@ -32,24 +32,13 @@ def attach_reserve_time_series(context: TranslationContext) -> None:
         if source_reserve is None:
             continue
 
-        for metadata in context.source_system.time_series.list_time_series_metadata(source_reserve):
-            if metadata.name.lower() not in {"requirement", "min_provision"}:
-                continue
-            ts_list = context.source_system.list_time_series(
-                source_reserve, name=metadata.name, **metadata.features
-            )
-            if not ts_list:
-                continue
-            ts = deepcopy(ts_list[0])
-            ts.name = "min_provision"
-            ts_type = ts.__class__
-            features = dict(metadata.features)
-            features.pop("name", None)
-
-            if not context.target_system.has_time_series(
-                reserve, time_series_type=ts_type, name="min_provision", **features
-            ):
-                context.target_system.add_time_series(ts, reserve, **features)
+        if context.source_system.has_time_series(source_reserve):
+            ts_list = context.source_system.list_time_series(source_reserve)
+            for ts in ts_list:
+                if ts.name.lower() in {"requirement", "min_provision"}:
+                    plexos_ts = deepcopy(ts)
+                    plexos_ts.name = "min_provision"
+                    context.target_system.add_time_series(plexos_ts, reserve)
 
 
 def ensure_region_node_memberships(context: TranslationContext) -> None:
