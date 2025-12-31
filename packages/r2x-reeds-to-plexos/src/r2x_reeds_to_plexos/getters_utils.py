@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from plexosdb import CollectionEnum
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 
 
 def attach_reserve_time_series(context: TranslationContext) -> None:
-    """Attach time series from ReEDSReserve to the translated PLEXOSReserve."""
+    """Attach only min_provision time series from ReEDSReserve to the translated PLEXOSReserve."""
     from r2x_plexos.models import PLEXOSReserve
     from r2x_reeds.models.components import ReEDSReserve
 
@@ -30,18 +31,25 @@ def attach_reserve_time_series(context: TranslationContext) -> None:
         source_reserve = source_reserves.get(reserve.name)
         if source_reserve is None:
             continue
+
         for metadata in context.source_system.time_series.list_time_series_metadata(source_reserve):
+            if metadata.name.lower() not in {"requirement", "min_provision"}:
+                continue
             ts_list = context.source_system.list_time_series(
                 source_reserve, name=metadata.name, **metadata.features
             )
             if not ts_list:
                 continue
-            ts = ts_list[0]
+            ts = deepcopy(ts_list[0])
+            ts.name = "min_provision"
             ts_type = ts.__class__
+            features = dict(metadata.features)
+            features.pop("name", None)
+
             if not context.target_system.has_time_series(
-                reserve, name=metadata.name, time_series_type=ts_type, **metadata.features
+                reserve, time_series_type=ts_type, name="min_provision", **features
             ):
-                context.target_system.add_time_series(ts, reserve, **metadata.features)
+                context.target_system.add_time_series(ts, reserve, **features)
 
 
 def ensure_region_node_memberships(context: TranslationContext) -> None:

@@ -102,6 +102,24 @@ def add_tail_suffix(_: TranslationContext, component: Any) -> Result[str, ValueE
 
 
 @getter
+def reserve_type(_: TranslationContext, component: ReEDSReserve) -> Result[int, ValueError]:
+    """Return the PLEXOS reserve type code for a ReEDSReserve."""
+    mapping = {
+        "REGULATION": 7,  # Regulation
+        "SPINNING": 1,  # Raise
+        "NON_SPINNING": 5,  # Replacement
+        "FLEXIBILITY": 6,  # Operational
+        "CONTINGENCY": 3,  # Regulation Raise
+        "COMBO": 6,  # Operational (best fit)
+    }
+    res_type = getattr(component, "reserve_type", None)
+    res_type = res_type.value
+    if res_type is None or res_type not in mapping:
+        return Ok(1)
+    return Ok(mapping.get(res_type, 1))
+
+
+@getter
 def forced_outage_rate_percent(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
     """Convert forced outage fraction (0-1) to percent expected by PLEXOS."""
     rate = getattr(component, "forced_outage_rate", None)

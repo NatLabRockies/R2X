@@ -325,7 +325,8 @@
     "getters": {
       "duration": "reserve_duration",
       "min_provision": "reserve_requirement",
-      "timeframe": "reserve_timeframe"
+      "timeframe": "reserve_timeframe",
+      "type": "reserve_type"
     },
     "source_type": "ReEDSReserve",
     "target_type": "PLEXOSReserve",
