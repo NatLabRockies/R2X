@@ -113,9 +113,9 @@ def reserve_type(_: TranslationContext, component: ReEDSReserve) -> Result[int, 
         "COMBO": 6,  # Operational (best fit)
     }
     res_type = getattr(component, "reserve_type", None)
-    res_type = res_type.value
-    if res_type is None or res_type not in mapping:
+    if res_type is None:
         return Ok(1)
+    res_type = res_type.value
     return Ok(mapping.get(res_type, 1))
 
 

@@ -44,6 +44,7 @@
     },
     "field_map": {
       "uuid": "uuid",
+      "category": "category",
       "max_capacity": "capacity",
       "name": "name",
       "vom_charge": "vom_cost",
@@ -301,7 +302,8 @@
       "category": "reeds-line"
     },
     "field_map": {
-      "name": "name"
+      "name": "name",
+      "category": "category"
     },
     "getters": {
       "max_flow": "line_max_flow",
@@ -320,7 +322,8 @@
       "timeframe": 0.0
     },
     "field_map": {
-      "name": "name"
+      "name": "name",
+      "category": "category"
     },
     "getters": {
       "duration": "reserve_duration",
@@ -337,7 +340,8 @@
       "category": "reeds-interface"
     },
     "field_map": {
-      "name": "name"
+      "name": "name",
+      "category": "category"
     },
     "getters": {
       "min_flow": "interface_min_flow",
