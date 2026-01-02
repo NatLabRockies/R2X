@@ -53,7 +53,9 @@
     "getters": {
       "forced_outage_rate": "forced_outage_rate_percent",
       "category": "vre_category_with_resource_class",
-      "build_cost": "supply_curve_cost_getter"
+      "build_cost": "supply_curve_cost_getter",
+      "rating": "rating",
+      "load_subtracter": "load_subtracter"
     },
     "source_type": "ReEDSVariableGenerator",
     "target_type": "PLEXOSGenerator",
@@ -80,7 +82,8 @@
       "min_stable_level": "hydro_min_flow",
       "max_ramp_up": "hydro_ramp_rate_mw_per_hour",
       "max_ramp_down": "hydro_ramp_rate_mw_per_hour",
-      "must_run_units": "hydro_must_run_flag"
+      "must_run_units": "hydro_must_run_flag",
+      "fixed_load": "fixed_load"
     },
     "source_type": "ReEDSHydroGenerator",
     "target_type": "PLEXOSGenerator",

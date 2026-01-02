@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from plexosdb import CollectionEnum
-from r2x_plexos import PLEXOSPropertyValue
 
 from r2x_core import Err, Ok, Result
 from r2x_core.getters import getter
@@ -63,9 +63,9 @@ def _attach_region_load_time_series(
             logger.debug("Could not set node.load for {}: {}", node.name, exc)
         if region_component is not None:
             try:
-                region_component.fixed_load = float(load_value)
+                region_component.load = float(load_value)
             except Exception as exc:
-                logger.debug("Could not set fixed_load for region {}: {}", region_name, exc)
+                logger.debug("Could not set load for region {}: {}", region_name, exc)
 
     for metadata in context.source_system.time_series.list_time_series_metadata(demand):
         ts_list = context.source_system.list_time_series(demand, name=metadata.name, **metadata.features)
@@ -73,19 +73,32 @@ def _attach_region_load_time_series(
             logger.warning("Missing demand time series {} for {}", metadata.name, demand.name)
             continue
 
-        ts = ts_list[0]
+        ts = deepcopy(ts_list[0])
         ts_type = ts.__class__
-        if not context.target_system.has_time_series(
-            node, name=metadata.name, time_series_type=ts_type, **metadata.features
-        ):
-            context.target_system.add_time_series(ts, node, **metadata.features)
-            logger.debug("Attached demand time series {} to node {}", metadata.name, node.name)
+
+        if ts.name.lower() == "max_active_power":
+            ts.name = "load"
 
         if region_component is not None and not context.target_system.has_time_series(
-            region_component, name=metadata.name, time_series_type=ts_type, **metadata.features
+            region_component, name=ts.name, time_series_type=ts_type, **metadata.features
         ):
             context.target_system.add_time_series(ts, region_component, **metadata.features)
-            logger.debug("Attached demand time series {} to region {}", metadata.name, region_name)
+            logger.debug("Attached demand time series {} to region {}", ts.name, region_name)
+
+
+@getter
+def fixed_load(_: TranslationContext, component: Any) -> Result[float, ValueError]:
+    return Ok(getattr(component, "fixed_load", 0.0))
+
+
+@getter
+def rating(_: TranslationContext, component: Any) -> Result[float, ValueError]:
+    return Ok(getattr(component, "capacity", 0.0))
+
+
+@getter
+def load_subtracter(_: TranslationContext, component: Any) -> Result[float, ValueError]:
+    return Ok(getattr(component, "load_subtracter", 0.0))
 
 
 @getter
@@ -179,15 +192,11 @@ def reserve_duration(_: TranslationContext, component: ReEDSReserve) -> Result[f
 
 
 @getter
-def reserve_requirement(
-    _: TranslationContext, component: ReEDSReserve
-) -> Result[PLEXOSPropertyValue, ValueError]:
+def reserve_requirement(_: TranslationContext, component: ReEDSReserve) -> Result[float | int, ValueError]:
     """Return the reserve requirement as a PLEXOSPropertyValue with units MW."""
     value = getattr(component, "requirement", None)
     value = float(value) if value is not None else 0.0
-    prop = PLEXOSPropertyValue(units="MW")
-    prop.add_entry(value=value, units="MW")
-    return Ok(prop)
+    return Ok(value)
 
 
 @getter
@@ -421,26 +430,6 @@ def reeds_membership_storage_generator_parent(
 
 
 @getter
-def reeds_membership_region_child_node(
-    context: TranslationContext, region: Any
-) -> Result[PLEXOSNode, ValueError]:
-    """Find the translated node that matches the region name."""
-    region_name = getattr(region, "name", "")
-    result = _lookup_target_node(context, region_name)
-    match result:
-        case Ok(node):
-            try:
-                _attach_region_load_time_series(context, region_name, node, region_component=region)
-            except Exception as exc:
-                logger.warning("Failed to attach load time series for region %s: %s", region_name, exc)
-            return result
-        case Err(error):
-            return Err(ValueError(str(error)) if not isinstance(error, ValueError) else error)
-        case _:
-            return Err(ValueError(f"Unexpected result type for region '{region_name}'"))
-
-
-@getter
 def reeds_membership_region_parent_node(
     context: TranslationContext, region: Any
 ) -> Result[PLEXOSNode, ValueError]:
@@ -449,14 +438,12 @@ def reeds_membership_region_parent_node(
     result = _lookup_target_node(context, region_name)
     match result:
         case Ok(node):
-            try:
-                _attach_region_load_time_series(context, region_name, node, region_component=region)
-            except Exception as exc:
-                logger.warning("Failed to attach load time series for region %s: %s", region_name, exc)
-            return result
+            return Ok(node)
         case Err(error):
-            return Err(ValueError(str(error)) if not isinstance(error, ValueError) else error)
+            logger.error(f"Could not find parent node for region '{region_name}': {error}")
+            return Err(ValueError(f"Missing parent node for region '{region_name}'"))
         case _:
+            logger.error(f"Unexpected result type for region '{region_name}'")
             return Err(ValueError(f"Unexpected result type for region '{region_name}'"))
 
 

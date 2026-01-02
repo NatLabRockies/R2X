@@ -9,13 +9,13 @@ from loguru import logger
 from . import getters as _getters  # noqa: F401  # ensure getter registration
 from .getters_utils import (
     attach_emissions_to_generators,
-    attach_region_load_profiles,
+    attach_region_load_time_series,
     attach_reserve_time_series,
+    attach_time_series_to_generators,
     convert_pumped_storage_generators,
     ensure_generator_node_memberships,
     ensure_region_node_memberships,
     link_line_memberships,
-    transfer_time_series_to_generators,
 )
 from .plugin_config import ReedsToPlexosConfig
 
@@ -28,12 +28,12 @@ logger.disable("r2x_reeds_to_plexos")
 __all__ = [
     "ReedsToPlexosConfig",
     "__version__",
+    "attach_region_load_time_series",
     "attach_reserve_time_series",
     "attach_emissions_to_generators",
-    "attach_region_load_profiles",
     "convert_pumped_storage_generators",
     "ensure_generator_node_memberships",
     "ensure_region_node_memberships",
     "link_line_memberships",
-    "transfer_time_series_to_generators",
+    "attach_time_series_to_generators",
 ]
