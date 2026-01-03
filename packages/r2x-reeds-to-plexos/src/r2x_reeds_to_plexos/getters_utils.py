@@ -37,7 +37,6 @@ def attach_region_load_time_series(context: TranslationContext) -> None:
 
         region_component = target_regions[region_name]
 
-        ts_attached = False
         for metadata in context.source_system.time_series.list_time_series_metadata(demand):
             ts_list = context.source_system.list_time_series(demand, name=metadata.name, **metadata.features)
             if not ts_list:
@@ -55,15 +54,6 @@ def attach_region_load_time_series(context: TranslationContext) -> None:
             ):
                 context.target_system.add_time_series(ts, region_component, **metadata.features)
                 logger.debug("Attached demand time series {} to region {}", ts.name, region_name)
-                ts_attached = True
-
-        if not ts_attached:
-            load_value = getattr(demand, "max_active_power", None)
-            if load_value is not None:
-                try:
-                    region_component.load = float(load_value)
-                except Exception as exc:
-                    logger.debug("Could not set load for region {}: {}", region_name, exc)
 
 
 def attach_reserve_time_series(context: TranslationContext) -> None:

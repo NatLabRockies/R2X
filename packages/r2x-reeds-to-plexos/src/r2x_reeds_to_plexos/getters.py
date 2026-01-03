@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from importlib.resources import files
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -35,6 +37,11 @@ def _float_or_zero(value: Any | None) -> float:
 
 
 @getter
+def region_load(_: TranslationContext, component: Any) -> Result[float, ValueError]:
+    return Ok(getattr(component, "load", 0.0))
+
+
+@getter
 def fixed_load(_: TranslationContext, component: Any) -> Result[float, ValueError]:
     return Ok(getattr(component, "fixed_load", 0.0))
 
@@ -64,6 +71,22 @@ def add_tail_suffix(_: TranslationContext, component: Any) -> Result[str, ValueE
 
 
 @getter
+def storage_max_volume(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
+    """Return the maximum volume for storage."""
+    capacity = getattr(component, "capacity", 0.0)
+    duration = getattr(component, "storage_duration", 0.0)
+    max_volume = float(capacity) * float(duration)
+    return Ok(float(max_volume))
+
+
+@getter
+def storage_initial_volume(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
+    """Return the initial volume for storage (assumed 50% if not specified)."""
+    initial_volume = _float_or_zero(getattr(component, "energy_capacity", 0.0))
+    return Ok(float(initial_volume))
+
+
+@getter
 def reserve_type(_: TranslationContext, component: ReEDSReserve) -> Result[int, ValueError]:
     """Return the PLEXOS reserve type code for a ReEDSReserve."""
     mapping = {
@@ -82,10 +105,90 @@ def reserve_type(_: TranslationContext, component: ReEDSReserve) -> Result[int, 
 
 
 @getter
-def forced_outage_rate_percent(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
-    """Convert forced outage fraction (0-1) to percent expected by PLEXOS."""
+def forced_outage_rate_percent(
+    _: TranslationContext, component: ReEDSGenerator | ReEDSStorage
+) -> Result[float, ValueError]:
+    """Convert forced outage fraction (0-1) to percent expected by PLEXOS, using defaults if missing."""
+    gen_technology = getattr(component, "technology", "")
     rate = getattr(component, "forced_outage_rate", None)
-    return Ok(_float_or_zero(rate) * 100.0)
+
+    if rate is not None:
+        return Ok(_float_or_zero(rate) * 100.0)
+
+    default_rate = _get_defaults(gen_technology, "forced_outage_rate")
+    return Ok(float(default_rate) * 100.0)
+
+
+@getter
+def maintenance_rate_percent(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Convert maintenance rate fraction (0-1) to percent expected by PLEXOS, using defaults if missing."""
+    gen_technology = getattr(component, "technology", "")
+    rate = getattr(component, "maintenance_rate", None)
+
+    if rate is not None:
+        return Ok(_float_or_zero(rate) * 100.0)
+
+    default_rate = _get_defaults(gen_technology, "maintenance_rate")
+    return Ok(float(default_rate) * 100.0)
+
+
+@getter
+def charge_efficiency_percent(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Convert charge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
+    gen_technology = getattr(component, "technology", "")
+    efficiency = getattr(component, "charge_efficiency", None)
+
+    if efficiency is not None:
+        return Ok(_float_or_zero(efficiency) * 100.0)
+
+    default_efficiency = _get_defaults(gen_technology, "charge_efficiency")
+    return Ok(float(default_efficiency) * 100.0)
+
+
+@getter
+def discharge_efficiency_percent(
+    _: TranslationContext, component: ReEDSGenerator
+) -> Result[float, ValueError]:
+    """Convert discharge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
+    gen_technology = getattr(component, "technology", "")
+    efficiency = getattr(component, "discharge_efficiency", None)
+
+    if efficiency is not None:
+        return Ok(_float_or_zero(efficiency) * 100.0)
+
+    default_efficiency = _get_defaults(gen_technology, "discharge_efficiency")
+    return Ok(float(default_efficiency) * 100.0)
+
+
+@getter
+def mean_time_to_repair_hours(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Return mean time to repair in hours, using defaults if missing."""
+    gen_technology = getattr(component, "technology", "")
+    mttr = getattr(component, "mean_time_to_repair", None)
+
+    if mttr is not None:
+        return Ok(_float_or_zero(mttr))
+
+    default_mttr = _get_defaults(gen_technology, "mean_time_to_repair")
+    return Ok(float(default_mttr))
+
+
+@getter
+def battery_max_soc(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Return maximum state of charge (percent)."""
+    return Ok(100.0)
+
+
+@getter
+def battery_initial_soc(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Return initial state of charge (percent)."""
+    return Ok(50.0)
+
+
+@getter
+def battery_min_soc(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Return minimum state of charge (percent)."""
+    return Ok(0.0)
 
 
 @getter
@@ -107,6 +210,17 @@ def min_capacity_factor_percent(
     """Convert minimum capacity factor (0-1) to percent."""
     factor = getattr(component, "min_capacity_factor", None)
     return Ok(_float_or_zero(factor) * 100.0)
+
+
+def _get_defaults(technology: str, key: str) -> float:
+    defaults_path = files("r2x_reeds_to_plexos.config") / "defaults.json"
+    with defaults_path.open() as f:
+        defaults = json.load(f)
+    value = defaults.get("pcm_defaults", {}).get(technology, {}).get(key, 0.0)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def line_max_flow(_: TranslationContext, component: ReEDSTransmissionLine) -> Result[float, ValueError]:
