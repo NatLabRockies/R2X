@@ -47,8 +47,8 @@ def attach_region_load_time_series(context: TranslationContext) -> None:
             ts = deepcopy(ts_list[0])
             ts_type = ts.__class__
 
-            if ts.name.lower() == "max_active_power":
-                ts.name = "load"
+            if ts.name == "max_active_power":
+                ts.name = "max_active_power_load"
 
             if not context.target_system.has_time_series(
                 region_component, name=ts.name, time_series_type=ts_type, **metadata.features
@@ -80,14 +80,11 @@ def attach_reserve_time_series(context: TranslationContext) -> None:
         if context.source_system.has_time_series(source_reserve):
             ts_list = context.source_system.list_time_series(source_reserve)
             for ts in ts_list:
-                if ts.name.lower() in {"requirement", "min_provision"}:
-                    plexos_ts = deepcopy(ts)
-                    plexos_ts.name = "min_provision"
-                    context.target_system.add_time_series(plexos_ts, reserve)
+                context.target_system.add_time_series(deepcopy(ts), reserve)
 
 
 def attach_time_series_to_generators(context: TranslationContext) -> None:
-    """Transfer time series from ReEDS generators to translated PLEXOS generators."""
+    """Transfer time series from ReEDS generators to translated PLEXOS generators (with duplicate check)."""
     from r2x_reeds.models.components import ReEDSGenerator, ReEDSHydroGenerator, ReEDSVariableGenerator
 
     source_generators = {gen.name: gen for gen in context.source_system.get_components(ReEDSGenerator)}
@@ -105,27 +102,19 @@ def attach_time_series_to_generators(context: TranslationContext) -> None:
 
         if name in hydro_generators:
             for ts in context.source_system.list_time_series(source_gen):
-                plexos_ts = deepcopy(ts)
-                if ts.name == "hydro_budget" or ts.name == "max_active_power":
-                    plexos_ts.name = "fixed_load"
-                context.target_system.add_time_series(plexos_ts, target_gen)
+                if ts.name == "hydro_budget" and not context.target_system.has_time_series(
+                    target_gen, name=ts.name, time_series_type=type(ts)
+                ):
+                    context.target_system.add_time_series(deepcopy(ts), target_gen)
+            continue
 
-        elif name in variable_generators:
-            plexos_ts_list = []
+        if name in variable_generators:
             for ts in context.source_system.list_time_series(source_gen):
-                if ts.name == "max_active_power":
-                    plexos_ts = deepcopy(ts)
-                    plexos_ts.name = "load_subtracter"
-                    plexos_ts_list.append(plexos_ts)
-                    rating_ts = deepcopy(plexos_ts)
-                    rating_ts.name = "rating"
-                    plexos_ts_list.append(rating_ts)
-            for ts in plexos_ts_list:
-                context.target_system.add_time_series(ts, target_gen)
-        else:
-            for ts in context.source_system.list_time_series(source_gen):
-                if ts.name != "max_active_power":
-                    context.target_system.add_time_series(ts, target_gen)
+                if ts.name == "max_active_power" and not context.target_system.has_time_series(
+                    target_gen, name=ts.name, time_series_type=type(ts)
+                ):
+                    context.target_system.add_time_series(deepcopy(ts), target_gen)
+            continue
 
 
 def ensure_region_node_memberships(context: TranslationContext) -> None:
