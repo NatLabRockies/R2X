@@ -203,7 +203,8 @@
     "getters": {
       "name": "add_head_suffix",
       "max_volume": "storage_max_volume",
-      "initial_volume": "storage_initial_volume"
+      "initial_volume": "storage_initial_volume",
+      "natural_inflow": "storage_natural_inflow"
     },
     "source_type": "ReEDSGenerator",
     "target_type": "PLEXOSStorage",
@@ -230,7 +231,8 @@
     "getters": {
       "name": "add_tail_suffix",
       "max_volume": "storage_max_volume",
-      "initial_volume": "storage_initial_volume"
+      "initial_volume": "storage_initial_volume",
+      "natural_inflow": "storage_natural_inflow"
     },
     "source_type": "ReEDSGenerator",
     "target_type": "PLEXOSStorage",
@@ -307,6 +309,8 @@
     "version": 1
   },
   {
+    "defaults": {
+    },
     "field_map": {
       "name": "name"
     },
@@ -340,8 +344,7 @@
     },
     "getters": {
       "max_flow": "line_max_flow",
-      "min_flow": "line_min_flow",
-      "category": "line_category"
+      "min_flow": "line_min_flow"
     },
     "source_type": "ReEDSTransmissionLine",
     "target_type": "PLEXOSLine",
@@ -351,7 +354,6 @@
     "defaults": {
       "category": "reeds-reserve",
       "duration": 0.0,
-      "min_provision": 0.0,
       "timeframe": 0.0
     },
     "field_map": {
@@ -362,7 +364,8 @@
       "duration": "reserve_duration",
       "min_provision": "reserve_requirement",
       "timeframe": "reserve_timeframe",
-      "type": "reserve_type"
+      "type": "reserve_type",
+      "vors": "reserve_vors_percent"
     },
     "source_type": "ReEDSReserve",
     "target_type": "PLEXOSReserve",
