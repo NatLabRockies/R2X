@@ -5,11 +5,19 @@ from pathlib import Path
 from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
-from r2x_reeds import ReEDSConfig, ReEDSParser
+from r2x_reeds import ReEDSConfig, ReEDSParser, ReEDSUpgrader
 from r2x_sienna.config import SiennaConfig
 from r2x_sienna.exporter import SiennaExporter
 
-from r2x_core import DataStore, PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
+from r2x_core import (
+    DataStore,
+    PluginConfig,
+    Rule,
+    System,
+    TranslationContext,
+    apply_rules_to_context,
+    run_upgrade_step,
+)
 
 
 class ReedsToSiennaTranslation:
@@ -20,11 +28,19 @@ class ReedsToSiennaTranslation:
         self.solve_year = solve_year
         self.weather_year = weather_year
 
-    def run(self):
+    def run_reeds_upgrader(self, run_path_upgrader):
+        run_path = Path(run_path_upgrader)
+        upgrader = ReEDSUpgrader(path=run_path)
+        for step in upgrader.list_steps():
+            result = run_upgrade_step(step, data=run_path)
+            result.unwrap_or_raise()
+
+    def run(self, run_upgrader=False):
+        if run_upgrader:
+            self.run_reeds_upgrader(self.run_path)
+
         config = ReEDSConfig(
-            solve_year=self.solve_year,
-            weather_year=self.weather_year,
-            case_name=self.case_name
+            solve_year=self.solve_year, weather_year=self.weather_year, case_name=self.case_name
         )
         data_store = DataStore.from_plugin_config(path=self.run_path, plugin_config=config)
         connection = create_in_memory_db()
@@ -32,30 +48,20 @@ class ReedsToSiennaTranslation:
             connection,
             time_series_directory=Path(f"{self.output_folder}/{self.case_name}_tmp"),
             time_series_storage_type=TimeSeriesStorageType.ARROW,
-            permanent=True
+            permanent=True,
         )
-        parser = ReEDSParser(
-            config,
-            store=data_store,
-            name=self.case_name,
-            time_series_manager=ts_manager
-        )
+        parser = ReEDSParser(config, store=data_store, name=self.case_name, time_series_manager=ts_manager)
         reeds_sys = parser.build_system()
 
         rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
         rules = Rule.from_records(json.loads(rules_path.read_text()))
 
-        sienna_sys = System(
-            name="Sienna",
-            auto_add_composed_components=True,
-            time_series_manager=ts_manager
+        sienna_sys = System(name="Sienna", auto_add_composed_components=True, time_series_manager=ts_manager)
+        plugin_config = PluginConfig(
+            models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters")
         )
-        plugin_config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
         context = TranslationContext(
-            source_system=reeds_sys,
-            target_system=sienna_sys,
-            config=plugin_config,
-            rules=rules
+            source_system=reeds_sys, target_system=sienna_sys, config=plugin_config, rules=rules
         )
         apply_rules_to_context(context)
 
