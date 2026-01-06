@@ -116,9 +116,6 @@
     "version": 1
   },
   {
-    "defaults": {
-      "category": "storage"
-    },
     "field_map": {
       "category": "technology",
       "max_power": "capacity",
@@ -310,9 +307,11 @@
   },
   {
     "defaults": {
+      "category": "reeds-region"
     },
     "field_map": {
-      "name": "name"
+      "name": "name",
+      "category": "category"
     },
     "getters": {
       "load": "region_load"
@@ -323,21 +322,20 @@
   },
   {
     "defaults": {
+      "category": "reeds-nodes",
       "allow_dump_energy": -1,
       "allow_unserved_energy": -1,
       "load_participation_factor": 0
     },
     "field_map": {
-      "name": "name"
+      "name": "name",
+      "category": "category"
     },
     "source_type": "ReEDSRegion",
     "target_type": "PLEXOSNode",
     "version": 1
   },
   {
-    "defaults": {
-      "category": "reeds-line"
-    },
     "field_map": {
       "name": "name",
       "category": "category"
@@ -372,12 +370,8 @@
     "version": 1
   },
   {
-    "defaults": {
-      "category": "reeds-interface"
-    },
     "field_map": {
-      "name": "name",
-      "category": "category"
+      "name": "name"
     },
     "getters": {
       "min_flow": "interface_min_flow",
