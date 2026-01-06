@@ -10,6 +10,6 @@ manifest.add(
     PluginSpec.translation(
         name="r2x-reeds-to-sienna.translation",
         entry=ReedsToSiennaTranslation,
-        description="Translate ReEDS system to Sienna system."
+        description="Translate ReEDS system to Sienna system.",
     )
 )

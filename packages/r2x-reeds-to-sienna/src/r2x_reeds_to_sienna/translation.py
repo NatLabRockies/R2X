@@ -22,9 +22,7 @@ class ReedsToSiennaTranslation:
 
     def run(self):
         config = ReEDSConfig(
-            solve_year=self.solve_year,
-            weather_year=self.weather_year,
-            case_name=self.case_name
+            solve_year=self.solve_year, weather_year=self.weather_year, case_name=self.case_name
         )
         data_store = DataStore.from_plugin_config(path=self.run_path, plugin_config=config)
         connection = create_in_memory_db()
@@ -32,30 +30,20 @@ class ReedsToSiennaTranslation:
             connection,
             time_series_directory=Path(f"{self.output_folder}/{self.case_name}_tmp"),
             time_series_storage_type=TimeSeriesStorageType.ARROW,
-            permanent=True
+            permanent=True,
         )
-        parser = ReEDSParser(
-            config,
-            store=data_store,
-            name=self.case_name,
-            time_series_manager=ts_manager
-        )
+        parser = ReEDSParser(config, store=data_store, name=self.case_name, time_series_manager=ts_manager)
         reeds_sys = parser.build_system()
 
         rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
         rules = Rule.from_records(json.loads(rules_path.read_text()))
 
-        sienna_sys = System(
-            name="Sienna",
-            auto_add_composed_components=True,
-            time_series_manager=ts_manager
+        sienna_sys = System(name="Sienna", auto_add_composed_components=True, time_series_manager=ts_manager)
+        plugin_config = PluginConfig(
+            models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters")
         )
-        plugin_config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
         context = TranslationContext(
-            source_system=reeds_sys,
-            target_system=sienna_sys,
-            config=plugin_config,
-            rules=rules
+            source_system=reeds_sys, target_system=sienna_sys, config=plugin_config, rules=rules
         )
         apply_rules_to_context(context)
 
