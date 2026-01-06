@@ -13,15 +13,20 @@ This package provides a translation plugin to convert Sienna system models into 
 ```python
 from r2x_sienna_to_plexos.translation import SiennaToPlexosTranslation
 
+from r2x_core.logger import setup_logging
+
+# Run translation with custom logging level
+setup_logging(level="DEBUG")
+
 # Initialize the translation
 translation = SiennaToPlexosTranslation(
-    sienna_file="/path/to/sienna/system.json",  # Path to Sienna JSON file
-    output_folder="/path/to/output",            # Path for output files
-    case_name="my_case"                         # Name of the case
+    sienna_file="/path/to/sienna/system.json",
+    output_folder="/path/to/output",
+    case_name="my_case"
 )
 
 # Run the translation
-translation.run()
+translation.run(run_upgrader=True)
 ```
 
 ### Parameters

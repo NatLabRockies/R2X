@@ -2,7 +2,7 @@
 
 from r2x_core import PluginManifest, PluginSpec
 
-from .config import SiennaToPlexosConfig
+from .plugin_config import SiennaToPlexosConfig
 from .translation import SiennaToPlexosTranslation
 
 manifest = PluginManifest(package="r2x-sienna-to-plexos")
