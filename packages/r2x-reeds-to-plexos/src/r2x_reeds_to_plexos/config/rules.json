@@ -44,6 +44,7 @@
     },
     "field_map": {
       "uuid": "uuid",
+      "category": "category",
       "max_capacity": "capacity",
       "name": "name",
       "vom_charge": "vom_cost",
@@ -52,7 +53,9 @@
     "getters": {
       "forced_outage_rate": "forced_outage_rate_percent",
       "category": "vre_category_with_resource_class",
-      "build_cost": "supply_curve_cost_getter"
+      "build_cost": "supply_curve_cost_getter",
+      "rating": "rating",
+      "load_subtracter": "load_subtracter"
     },
     "source_type": "ReEDSVariableGenerator",
     "target_type": "PLEXOSGenerator",
@@ -76,10 +79,13 @@
     },
     "getters": {
       "forced_outage_rate": "forced_outage_rate_percent",
+      "maintenance_rate": "maintenance_rate_percent",
+      "mean_time_to_repair": "mean_time_to_repair_hours",
       "min_stable_level": "hydro_min_flow",
       "max_ramp_up": "hydro_ramp_rate_mw_per_hour",
       "max_ramp_down": "hydro_ramp_rate_mw_per_hour",
-      "must_run_units": "hydro_must_run_flag"
+      "must_run_units": "hydro_must_run_flag",
+      "fixed_load": "fixed_load"
     },
     "source_type": "ReEDSHydroGenerator",
     "target_type": "PLEXOSGenerator",
@@ -110,9 +116,6 @@
     "version": 1
   },
   {
-    "defaults": {
-      "category": "storage"
-    },
     "field_map": {
       "category": "technology",
       "max_power": "capacity",
@@ -120,7 +123,15 @@
     },
     "getters": {
       "build_cost": "storage_capital_cost_power",
-      "fom_charge": "storage_fom_cost_power"
+      "fom_charge": "storage_fom_cost_power",
+      "max_soc": "battery_max_soc",
+      "min_soc": "battery_min_soc",
+      "initial_soc": "battery_initial_soc",
+      "charge_efficiency": "charge_efficiency_percent",
+      "discharge_efficiency": "discharge_efficiency_percent",
+      "forced_outage_rate": "forced_outage_rate_percent",
+      "maintenance_rate": "maintenance_rate_percent",
+      "mean_time_to_repair": "mean_time_to_repair_hours"
     },
     "filter": {
       "casefold": true,
@@ -169,6 +180,10 @@
     "version": 1
   },
   {
+    "defaults": {
+      "category": "storage",
+      "storage_type": "head"
+    },
     "field_map": {
       "category": "technology",
       "name": "name"
@@ -182,8 +197,68 @@
         "pumped_storage"
       ]
     },
+    "getters": {
+      "name": "add_head_suffix",
+      "max_volume": "storage_max_volume",
+      "initial_volume": "storage_initial_volume",
+      "natural_inflow": "storage_natural_inflow"
+    },
     "source_type": "ReEDSGenerator",
     "target_type": "PLEXOSStorage",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "storage",
+      "storage_type": "tail"
+    },
+    "field_map": {
+      "category": "technology",
+      "name": "name"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "technology",
+      "op": "in",
+      "values": [
+        "pumped-hydro",
+        "pumped_storage"
+      ]
+    },
+    "getters": {
+      "name": "add_tail_suffix",
+      "max_volume": "storage_max_volume",
+      "initial_volume": "storage_initial_volume",
+      "natural_inflow": "storage_natural_inflow"
+    },
+    "source_type": "ReEDSGenerator",
+    "target_type": "PLEXOSStorage",
+    "version": 2
+  },
+  {
+    "defaults": {
+      "category": "pumped-hydro"
+    },
+    "field_map": {
+      "category": "category",
+      "max_capacity": "capacity",
+      "name": "name"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "category",
+      "op": "eq",
+      "values": [
+        "pumped_storage"
+      ]
+    },
+    "getters": {
+      "forced_outage_rate": "forced_outage_rate_percent",
+      "maintenance_rate": "maintenance_rate_percent",
+      "mean_time_to_repair": "mean_time_to_repair_hours"
+    },
+    "source_type": "ReEDSStorage",
+    "target_type": "PLEXOSGenerator",
     "version": 1
   },
   {
@@ -192,6 +267,7 @@
     },
     "field_map": {
       "category": "category",
+      "capacity": "capacity",
       "max_power": "capacity",
       "name": "name"
     },
@@ -215,13 +291,30 @@
         }
       ]
     },
+    "getters": {
+      "max_soc": "battery_max_soc",
+      "min_soc": "battery_min_soc",
+      "initial_soc": "battery_initial_soc",
+      "charge_efficiency": "charge_efficiency_percent",
+      "discharge_efficiency": "discharge_efficiency_percent",
+      "forced_outage_rate": "forced_outage_rate_percent",
+      "maintenance_rate": "maintenance_rate_percent",
+      "mean_time_to_repair": "mean_time_to_repair_hours"
+    },
     "source_type": "ReEDSGenerator",
     "target_type": "PLEXOSBattery",
     "version": 1
   },
   {
+    "defaults": {
+      "category": "reeds-region"
+    },
     "field_map": {
-      "name": "name"
+      "name": "name",
+      "category": "category"
+    },
+    "getters": {
+      "load": "region_load"
     },
     "source_type": "ReEDSRegion",
     "target_type": "PLEXOSRegion",
@@ -229,28 +322,27 @@
   },
   {
     "defaults": {
+      "category": "reeds-nodes",
       "allow_dump_energy": -1,
       "allow_unserved_energy": -1,
       "load_participation_factor": 0
     },
     "field_map": {
-      "name": "name"
+      "name": "name",
+      "category": "category"
     },
     "source_type": "ReEDSRegion",
     "target_type": "PLEXOSNode",
     "version": 1
   },
   {
-    "defaults": {
-      "category": "reeds-line"
-    },
     "field_map": {
-      "name": "name"
+      "name": "name",
+      "category": "category"
     },
     "getters": {
       "max_flow": "line_max_flow",
-      "min_flow": "line_min_flow",
-      "category": "line_category"
+      "min_flow": "line_min_flow"
     },
     "source_type": "ReEDSTransmissionLine",
     "target_type": "PLEXOSLine",
@@ -258,20 +350,35 @@
   },
   {
     "defaults": {
+      "category": "reeds-reserve",
       "duration": 0.0,
-      "min_provision": 0.0,
       "timeframe": 0.0
     },
     "field_map": {
-      "name": "name"
+      "name": "name",
+      "category": "category"
     },
     "getters": {
       "duration": "reserve_duration",
       "min_provision": "reserve_requirement",
-      "timeframe": "reserve_timeframe"
+      "timeframe": "reserve_timeframe",
+      "type": "reserve_type",
+      "vors": "reserve_vors_percent"
     },
     "source_type": "ReEDSReserve",
     "target_type": "PLEXOSReserve",
+    "version": 1
+  },
+  {
+    "field_map": {
+      "name": "name"
+    },
+    "getters": {
+      "min_flow": "interface_min_flow",
+      "max_flow": "interface_max_flow"
+    },
+    "source_type": "ReEDSInterface",
+    "target_type": "PLEXOSInterface",
     "version": 1
   },
   {
@@ -324,5 +431,53 @@
     "source_type": "PLEXOSLine",
     "target_type": "PLEXOSMembership",
     "version": 2
+  },
+  {
+    "name": "interface_line_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_line_parent_interface",
+      "child_object": "reeds_membership_line_child_line",
+      "collection": "reeds_membership_collection_lines"
+    },
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 3
+  },
+  {
+    "name": "generator_head_storage_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_storage_generator_parent",
+      "child_object": "reeds_membership_storage_child_head_storage",
+      "collection": "reeds_membership_collection_head_storage"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "category",
+      "op": "eq",
+      "values": ["pumped_storage"]
+    },
+    "source_type": "PLEXOSGenerator",
+    "target_type": "PLEXOSMembership",
+    "version": 2
+  },
+  {
+    "name": "generator_tail_storage_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_storage_generator_parent",
+      "child_object": "reeds_membership_storage_child_tail_storage",
+      "collection": "reeds_membership_collection_tail_storage"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "category",
+      "op": "eq",
+      "values": ["pumped_storage"]
+    },
+    "source_type": "PLEXOSGenerator",
+    "target_type": "PLEXOSMembership",
+    "version": 3
   }
 ]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from importlib.resources import files
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -16,6 +18,8 @@ if TYPE_CHECKING:
         ReEDSConsumingTechnology,
         ReEDSGenerator,
         ReEDSHydroGenerator,
+        ReEDSInterface,
+        ReEDSRegion,
         ReEDSReserve,
         ReEDSStorage,
         ReEDSThermalGenerator,
@@ -33,64 +37,219 @@ def _float_or_zero(value: Any | None) -> float:
     return float(value)
 
 
-def _attach_region_load_time_series(
-    context: TranslationContext,
-    region_name: str,
-    node: PLEXOSNode,
-    region_component: Any | None,
-) -> None:
-    """Attach demand load and time series from ReEDSDemand to the translated node/region."""
-    from r2x_reeds.models.components import ReEDSDemand
+def _get_defaults(technology: str, key: str) -> float:
+    defaults_path = files("r2x_reeds_to_plexos.config") / "defaults.json"
+    with defaults_path.open() as f:
+        defaults = json.load(f)
+    value = defaults.get("pcm_defaults", {}).get(technology, {}).get(key, 0.0)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
-    demand = next(
-        (
-            d
-            for d in context.source_system.get_components(ReEDSDemand)
-            if getattr(getattr(d, "region", None), "name", None) == region_name
-        ),
-        None,
-    )
-    if demand is None:
-        return
 
-    load_value = getattr(demand, "max_active_power", None)
-    if load_value is not None:
-        try:
-            node.load = float(load_value)
-        except Exception as exc:
-            logger.debug("Could not set node.load for {}: {}", node.name, exc)
-        if region_component is not None:
-            try:
-                region_component.fixed_load = float(load_value)
-            except Exception as exc:
-                logger.debug("Could not set fixed_load for region {}: {}", region_name, exc)
+def _lookup_target_node(context: TranslationContext, region_name: str) -> Result[PLEXOSNode, ValueError]:
+    """Return the translated node for a given region name."""
+    from r2x_plexos.models import PLEXOSNode
 
-    for metadata in context.source_system.time_series.list_time_series_metadata(demand):
-        ts_list = context.source_system.list_time_series(demand, name=metadata.name, **metadata.features)
-        if not ts_list:
-            logger.warning("Missing demand time series {} for {}", metadata.name, demand.name)
-            continue
+    for node in context.target_system.get_components(PLEXOSNode):
+        if node.name == region_name:
+            return Ok(node)
+    return Err(ValueError(f"No PLEXOSNode found for region '{region_name}'"))
 
-        ts = ts_list[0]
-        ts_type = ts.__class__
-        if not context.target_system.has_time_series(
-            node, name=metadata.name, time_series_type=ts_type, **metadata.features
-        ):
-            context.target_system.add_time_series(ts, node, **metadata.features)
-            logger.debug("Attached demand time series {} to node {}", metadata.name, node.name)
 
-        if region_component is not None and not context.target_system.has_time_series(
-            region_component, name=metadata.name, time_series_type=ts_type, **metadata.features
-        ):
-            context.target_system.add_time_series(ts, region_component, **metadata.features)
-            logger.debug("Attached demand time series {} to region {}", metadata.name, region_name)
+def _lookup_source_generator(context: TranslationContext, name: str) -> Any | None:
+    """Find a ReEDS generator-like component by name."""
+    from r2x_reeds.models import ReEDSGenerator
+
+    for gen in context.source_system.get_components(ReEDSGenerator):
+        if gen.name == name:
+            return gen
+    return None
 
 
 @getter
-def forced_outage_rate_percent(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
-    """Convert forced outage fraction (0-1) to percent expected by PLEXOS."""
+def region_load(_: TranslationContext, component: ReEDSRegion) -> Result[float | int, ValueError]:
+    """Return the load for a region as a PLEXOSPropertyValue with units MW."""
+
+    value = _float_or_zero(getattr(component, "load", 0.0))
+    return Ok(value)
+
+
+@getter
+def fixed_load(_: TranslationContext, component: ReEDSGenerator) -> Result[float | int, ValueError]:
+    """Return the fixed load as a PLEXOSPropertyValue with units MW."""
+
+    value = _float_or_zero(getattr(component, "fixed_load", None))
+    return Ok(value)
+
+
+@getter
+def rating(_: TranslationContext, component: ReEDSGenerator) -> Result[float | int, ValueError]:
+    """Return the rating as a PLEXOSPropertyValue with units MW."""
+    value = _float_or_zero(getattr(component, "capacity", 0.0))
+    return Ok(value)
+
+
+@getter
+def load_subtracter(_: TranslationContext, component: ReEDSGenerator) -> Result[float | int, ValueError]:
+    """Return the load subtracter as a PLEXOSPropertyValue with units MW."""
+    value = _float_or_zero(getattr(component, "load_subtracter", 0.0))
+    return Ok(value)
+
+
+@getter
+def add_head_suffix(_: TranslationContext, component: ReEDSStorage) -> Result[str, ValueError]:
+    """Add '_head' suffix to the storage name."""
+    name = getattr(component, "name", "")
+    return Ok(f"{name}_head")
+
+
+@getter
+def add_tail_suffix(_: TranslationContext, component: ReEDSStorage) -> Result[str, ValueError]:
+    """Add '_tail' suffix to the storage name."""
+    name = getattr(component, "name", "")
+    return Ok(f"{name}_tail")
+
+
+@getter
+def storage_max_volume(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
+    """Return the maximum volume for storage."""
+    capacity = getattr(component, "capacity", 0.0)
+    duration = getattr(component, "storage_duration", 0.0)
+    max_volume = float(capacity) * float(duration)
+    return Ok(float(max_volume))
+
+
+@getter
+def storage_initial_volume(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
+    """Return the initial volume for storage (assumed 50% if not specified)."""
+    initial_volume = _float_or_zero(getattr(component, "energy_capacity", 0.0))
+    return Ok(float(initial_volume))
+
+
+@getter
+def storage_natural_inflow(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
+    """Return the natural inflow for storage as a PLEXOSPropertyValue with units MW."""
+    value = _float_or_zero(getattr(component, "natural_inflow", 0.0))
+    return Ok(value)
+
+
+@getter
+def reserve_type(_: TranslationContext, component: ReEDSReserve) -> Result[int, ValueError]:
+    """Return the PLEXOS reserve type code for a ReEDSReserve."""
+    mapping = {
+        "REGULATION": 7,  # Regulation
+        "SPINNING": 1,  # Raise
+        "NON_SPINNING": 5,  # Replacement
+        "FLEXIBILITY": 6,  # Operational
+        "CONTINGENCY": 3,  # Regulation Raise
+        "COMBO": 6,  # Operational (best fit)
+    }
+    res_type = getattr(component, "reserve_type", None)
+    if res_type is None:
+        return Ok(1)
+    res_type = res_type.value
+    return Ok(mapping.get(res_type, 1))
+
+
+@getter
+def forced_outage_rate_percent(
+    _: TranslationContext, component: ReEDSGenerator | ReEDSStorage
+) -> Result[float, ValueError]:
+    """Convert forced outage fraction (0-1) to percent expected by PLEXOS, using defaults if missing."""
+    gen_technology = getattr(component, "technology", "")
     rate = getattr(component, "forced_outage_rate", None)
-    return Ok(_float_or_zero(rate) * 100.0)
+
+    if rate is not None:
+        return Ok(_float_or_zero(rate) * 100.0)
+
+    default_rate = _get_defaults(gen_technology, "forced_outage_rate")
+    return Ok(float(default_rate) * 100.0)
+
+
+@getter
+def maintenance_rate_percent(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Convert maintenance rate fraction (0-1) to percent expected by PLEXOS, using defaults if missing."""
+    gen_technology = getattr(component, "technology", "")
+    rate = getattr(component, "maintenance_rate", None)
+
+    if rate is not None:
+        return Ok(_float_or_zero(rate) * 100.0)
+
+    default_rate = _get_defaults(gen_technology, "maintenance_rate")
+    return Ok(float(default_rate) * 100.0)
+
+
+@getter
+def charge_efficiency_percent(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Convert charge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
+    gen_technology = getattr(component, "technology", "")
+    efficiency = getattr(component, "charge_efficiency", None)
+
+    if efficiency is not None:
+        return Ok(_float_or_zero(efficiency) * 100.0)
+
+    default_efficiency = _get_defaults(gen_technology, "charge_efficiency")
+    return Ok(float(default_efficiency) * 100.0)
+
+
+@getter
+def discharge_efficiency_percent(
+    _: TranslationContext, component: ReEDSGenerator
+) -> Result[float, ValueError]:
+    """Convert discharge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
+    gen_technology = getattr(component, "technology", "")
+    efficiency = getattr(component, "discharge_efficiency", None)
+
+    if efficiency is not None:
+        return Ok(_float_or_zero(efficiency) * 100.0)
+
+    default_efficiency = _get_defaults(gen_technology, "discharge_efficiency")
+    return Ok(float(default_efficiency) * 100.0)
+
+
+@getter
+def mean_time_to_repair_hours(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Return mean time to repair in hours, using defaults if missing."""
+    gen_technology = getattr(component, "technology", "")
+    mttr = getattr(component, "mean_time_to_repair", None)
+
+    if mttr is not None:
+        return Ok(_float_or_zero(mttr))
+
+    default_mttr = _get_defaults(gen_technology, "mean_time_to_repair")
+    return Ok(float(default_mttr))
+
+
+@getter
+def battery_max_soc(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Return maximum state of charge (percent)."""
+    return Ok(100.0)
+
+
+@getter
+def battery_initial_soc(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Return initial state of charge (percent)."""
+    return Ok(50.0)
+
+
+@getter
+def battery_min_soc(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+    """Return minimum state of charge (percent)."""
+    return Ok(0.0)
+
+
+@getter
+def interface_min_flow(_: TranslationContext, component: ReEDSInterface) -> Result[float, ValueError]:
+    """Return the minimum flow for an interface (negative of max absolute flow)."""
+    return Ok(0.0)
+
+
+@getter
+def interface_max_flow(_: TranslationContext, component: ReEDSInterface) -> Result[float, ValueError]:
+    """Return the maximum flow for an interface."""
+    return Ok(0.0)
 
 
 @getter
@@ -102,6 +261,7 @@ def min_capacity_factor_percent(
     return Ok(_float_or_zero(factor) * 100.0)
 
 
+@getter
 def line_max_flow(_: TranslationContext, component: ReEDSTransmissionLine) -> Result[float, ValueError]:
     """Return the larger of the forward/backward flow limits."""
     limits = getattr(component, "max_active_power", None)
@@ -121,6 +281,15 @@ def line_min_flow(_: TranslationContext, component: ReEDSTransmissionLine) -> Re
 
 
 @getter
+def reserve_vors_percent(
+    context: TranslationContext, source_component: ReEDSReserve
+) -> Result[float, ValueError]:
+    """Get reserve VORS or -1.0 default value."""
+    vors = getattr(source_component, "vors", -1.0)
+    return Ok(vors)
+
+
+@getter
 def reserve_timeframe(_: TranslationContext, component: ReEDSReserve) -> Result[float, ValueError]:
     """Return the reserve timeframe in seconds."""
     return Ok(_float_or_zero(getattr(component, "time_frame", None)))
@@ -133,9 +302,10 @@ def reserve_duration(_: TranslationContext, component: ReEDSReserve) -> Result[f
 
 
 @getter
-def reserve_requirement(_: TranslationContext, component: ReEDSReserve) -> Result[float, ValueError]:
-    """Return the reserve requirement in MW."""
-    return Ok(_float_or_zero(getattr(component, "max_requirement", None)))
+def reserve_requirement(_: TranslationContext, component: ReEDSReserve) -> Result[float | int, ValueError]:
+    """Return the reserve requirement as a PLEXOSPropertyValue with units MW."""
+    value = _float_or_zero(getattr(component, "requirement", None))
+    return Ok(value)
 
 
 @getter
@@ -286,26 +456,6 @@ def consuming_tech_efficiency_to_heat_rate(
     return Ok(1.0 / float(efficiency))
 
 
-def _lookup_target_node(context: TranslationContext, region_name: str) -> Result[PLEXOSNode, ValueError]:
-    """Return the translated node for a given region name."""
-    from r2x_plexos.models import PLEXOSNode
-
-    for node in context.target_system.get_components(PLEXOSNode):
-        if node.name == region_name:
-            return Ok(node)
-    return Err(ValueError(f"No PLEXOSNode found for region '{region_name}'"))
-
-
-def _lookup_source_generator(context: TranslationContext, name: str) -> Any | None:
-    """Find a ReEDS generator-like component by name."""
-    from r2x_reeds.models import ReEDSGenerator
-
-    for gen in context.source_system.get_components(ReEDSGenerator):
-        if gen.name == name:
-            return gen
-    return None
-
-
 @getter
 def reeds_membership_parent_component(_: TranslationContext, component: Any) -> Result[Any, ValueError]:
     """Return the component itself for membership parent/child fields."""
@@ -339,23 +489,33 @@ def reeds_membership_collection_region(_: TranslationContext, __: Any) -> Result
 
 
 @getter
-def reeds_membership_region_child_node(
-    context: TranslationContext, region: Any
-) -> Result[PLEXOSNode, ValueError]:
-    """Find the translated node that matches the region name."""
-    region_name = getattr(region, "name", "")
-    result = _lookup_target_node(context, region_name)
-    match result:
-        case Ok(node):
-            try:
-                _attach_region_load_time_series(context, region_name, node, region_component=region)
-            except Exception as exc:
-                logger.warning("Failed to attach load time series for region %s: %s", region_name, exc)
-            return result
-        case Err(error):
-            return Err(ValueError(str(error)) if not isinstance(error, ValueError) else error)
-        case _:
-            return Err(ValueError(f"Unexpected result type for region '{region_name}'"))
+def reeds_membership_collection_lines(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+    """Return the Lines collection enum."""
+    return Ok(CollectionEnum.Lines)
+
+
+@getter
+def reeds_membership_collection_head_storage(
+    _: TranslationContext, __: Any
+) -> Result[CollectionEnum, ValueError]:
+    """Return the HeadStorage collection enum."""
+    return Ok(CollectionEnum.HeadStorage)
+
+
+@getter
+def reeds_membership_collection_tail_storage(
+    _: TranslationContext, __: Any
+) -> Result[CollectionEnum, ValueError]:
+    """Return the TailStorage collection enum."""
+    return Ok(CollectionEnum.TailStorage)
+
+
+@getter
+def reeds_membership_storage_generator_parent(
+    _: TranslationContext, generator: Any
+) -> Result[Any, ValueError]:
+    """Return the generator itself as the parent object."""
+    return Ok(generator)
 
 
 @getter
@@ -367,14 +527,12 @@ def reeds_membership_region_parent_node(
     result = _lookup_target_node(context, region_name)
     match result:
         case Ok(node):
-            try:
-                _attach_region_load_time_series(context, region_name, node, region_component=region)
-            except Exception as exc:
-                logger.warning("Failed to attach load time series for region %s: %s", region_name, exc)
-            return result
+            return Ok(node)
         case Err(error):
-            return Err(ValueError(str(error)) if not isinstance(error, ValueError) else error)
+            logger.error(f"Could not find parent node for region '{region_name}': {error}")
+            return Err(ValueError(f"Missing parent node for region '{region_name}'"))
         case _:
+            logger.error(f"Unexpected result type for region '{region_name}'")
             return Err(ValueError(f"Unexpected result type for region '{region_name}'"))
 
 
@@ -427,3 +585,55 @@ def reeds_membership_line_to_parent_node(
         return Err(ValueError(f"Source line '{line.name}' missing interface data"))
 
     return _lookup_target_node(context, source_line.interface.to_region.name)
+
+
+@getter
+def reeds_membership_line_parent_interface(context: TranslationContext, line: Any) -> Result[Any, ValueError]:
+    """Return the parent interface for a translated line, matching either direction."""
+    from r2x_plexos.models import PLEXOSInterface
+
+    parts = getattr(line, "name", "").split("_")
+    if len(parts) < 3:
+        return Err(ValueError(f"Line name '{getattr(line, 'name', '')}' does not match expected format"))
+    from_region, to_region, _ = parts[0], parts[1], parts[2]
+    interface_names = [f"{from_region}||{to_region}", f"{to_region}||{from_region}"]
+    for iface in context.target_system.get_components(PLEXOSInterface):
+        if iface.name in interface_names:
+            return Ok(iface)
+    return Err(ValueError(f"No PLEXOSInterface found for '{interface_names[0]}' or '{interface_names[1]}'"))
+
+
+@getter
+def reeds_membership_line_child_line(_: TranslationContext, line: Any) -> Result[Any, ValueError]:
+    """Return the line itself as the child object."""
+    return Ok(line)
+
+
+@getter
+def reeds_membership_storage_child_head_storage(
+    context: TranslationContext, generator: Any
+) -> Result[Any, ValueError]:
+    """Return the head storage (with _head suffix) for this generator."""
+    from r2x_plexos.models import PLEXOSStorage
+
+    base_name = getattr(generator, "name", "")
+    storage_name = f"{base_name}_head"
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if storage.name == storage_name:
+            return Ok(storage)
+    return Err(ValueError(f"No head storage found for generator '{base_name}'"))
+
+
+@getter
+def reeds_membership_storage_child_tail_storage(
+    context: TranslationContext, generator: Any
+) -> Result[Any, ValueError]:
+    """Return the tail storage (with _tail suffix) for this generator."""
+    from r2x_plexos.models import PLEXOSStorage
+
+    base_name = getattr(generator, "name", "")
+    storage_name = f"{base_name}_tail"
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if storage.name == storage_name:
+            return Ok(storage)
+    return Err(ValueError(f"No tail storage found for generator '{base_name}'"))

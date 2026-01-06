@@ -1,0 +1,230 @@
+{
+  "models": [
+    "r2x_reeds.models",
+    "r2x_plexos.models"
+  ],
+  "pcm_defaults": {
+    "battery": {
+      "average_capacity_MW": 10.0,
+      "charge_efficiency": 0.95,
+      "discharge_efficiency": 0.95,
+      "forced_outage_rate": 0.01,
+      "maintenance_rate": 0.0,
+      "mean_time_to_repair": 12,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "biopower": {
+      "average_capacity_MW": 50.0,
+      "forced_outage_rate": 0.06,
+      "maintenance_rate": 0.05,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 20.0,
+      "ramp_rate_down": 15.0,
+      "ramp_rate_up": 15.0
+    },
+    "can-imports": {
+      "average_capacity_MW": 1000.0,
+      "forced_outage_rate": 0.02,
+      "maintenance_rate": 0.0,
+      "mean_time_to_repair": 24,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "coal-new": {
+      "average_capacity_MW": 500.0,
+      "forced_outage_rate": 0.05,
+      "maintenance_rate": 0.04,
+      "mean_time_to_repair": 72,
+      "min_energy": 0.0,
+      "min_power": 300.0,
+      "ramp_rate_down": 10.0,
+      "ramp_rate_up": 10.0
+    },
+    "csp": {
+      "average_capacity_MW": 100.0,
+      "forced_outage_rate": 0.02,
+      "maintenance_rate": 0.01,
+      "mean_time_to_repair": 24,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 50.0,
+      "ramp_rate_up": 50.0
+    },
+    "distpv": {
+      "average_capacity_MW": 5.0,
+      "forced_outage_rate": 0.01,
+      "maintenance_rate": 0.0,
+      "mean_time_to_repair": 12,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "gas-cc": {
+      "average_capacity_MW": 300.0,
+      "forced_outage_rate": 0.04,
+      "maintenance_rate": 0.03,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 150.0,
+      "ramp_rate_down": 25.0,
+      "ramp_rate_up": 25.0
+    },
+    "gas-ct": {
+      "average_capacity_MW": 100.0,
+      "forced_outage_rate": 0.04,
+      "maintenance_rate": 0.03,
+      "mean_time_to_repair": 24,
+      "min_energy": 0.0,
+      "min_power": 30.0,
+      "ramp_rate_down": 50.0,
+      "ramp_rate_up": 50.0
+    },
+    "gas-lm": {
+      "average_capacity_MW": 50.0,
+      "forced_outage_rate": 0.04,
+      "maintenance_rate": 0.03,
+      "mean_time_to_repair": 36,
+      "min_energy": 0.0,
+      "min_power": 20.0,
+      "ramp_rate_down": 30.0,
+      "ramp_rate_up": 30.0
+    },
+    "gas-st": {
+      "average_capacity_MW": 50.0,
+      "forced_outage_rate": 0.05,
+      "maintenance_rate": 0.04,
+      "mean_time_to_repair": 36,
+      "min_energy": 0.0,
+      "min_power": 20.0,
+      "ramp_rate_down": 20.0,
+      "ramp_rate_up": 20.0
+    },
+    "geothermal": {
+      "average_capacity_MW": 50.0,
+      "forced_outage_rate": 0.04,
+      "maintenance_rate": 0.03,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 25.0,
+      "ramp_rate_down": 5.0,
+      "ramp_rate_up": 5.0
+    },
+    "hyded": {
+      "average_capacity_MW": 50.0,
+      "forced_outage_rate": 0.02,
+      "maintenance_rate": 0.01,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "hydend": {
+      "average_capacity_MW": 50.0,
+      "forced_outage_rate": 0.02,
+      "maintenance_rate": 0.01,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "hydnpnd": {
+      "average_capacity_MW": 50.0,
+      "forced_outage_rate": 0.02,
+      "maintenance_rate": 0.01,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "hydro": {
+      "average_capacity_MW": 50.0,
+      "forced_outage_rate": 0.02,
+      "maintenance_rate": 0.01,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "hydund": {
+      "average_capacity_MW": 50.0,
+      "forced_outage_rate": 0.02,
+      "maintenance_rate": 0.01,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "nuclear": {
+      "average_capacity_MW": 1000.0,
+      "forced_outage_rate": 0.08,
+      "maintenance_rate": 0.07,
+      "mean_time_to_repair": 168,
+      "min_energy": 0.0,
+      "min_power": 500.0,
+      "ramp_rate_down": 5.0,
+      "ramp_rate_up": 5.0
+    },
+    "other": {
+      "average_capacity_MW": 50.0,
+      "forced_outage_rate": 0.05,
+      "maintenance_rate": 0.03,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 50.0,
+      "ramp_rate_up": 50.0
+    },
+    "pumped-hydro": {
+      "average_capacity_MW": 100.0,
+      "forced_outage_rate": 0.02,
+      "maintenance_rate": 0.01,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "upv": {
+      "average_capacity_MW": 20.0,
+      "forced_outage_rate": 0.01,
+      "maintenance_rate": 0.0,
+      "mean_time_to_repair": 24,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "wind-ofs": {
+      "average_capacity_MW": 5.0,
+      "forced_outage_rate": 0.03,
+      "maintenance_rate": 0.02,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "wind-ons": {
+      "average_capacity_MW": 2.5,
+      "forced_outage_rate": 0.02,
+      "maintenance_rate": 0.01,
+      "mean_time_to_repair": 24,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    }
+  }
+}
