@@ -10,12 +10,13 @@ from r2x_plexos.exporter import PLEXOSExporter
 from r2x_sienna.config import SiennaConfig
 from r2x_sienna.parser import SiennaParser
 from r2x_sienna.upgrader.data_upgrader import SiennaUpgrader
+from r2x_sienna.upgrader.upgrade_steps import *  # noqa: F403
 
 from r2x_core import Rule, System, TranslationContext, apply_rules_to_context
 from r2x_core.store import DataStore
 from r2x_core.upgrader_utils import run_upgrade_step
-from r2x_sienna_to_plexos import (
-    SiennaToPlexosConfig,
+from r2x_sienna_to_plexos import SiennaToPlexosConfig
+from r2x_sienna_to_plexos.getters_utils import (
     ensure_battery_node_memberships,
     ensure_generator_node_memberships,
     ensure_head_storage_generator_membership,
@@ -63,15 +64,12 @@ class SiennaToPlexosTranslation:
         self.skip_validation = skip_validation
         self.exclude_defaults = exclude_defaults
 
-    def run_sienna_upgrader(self, sienna_data: dict) -> dict:
+    def run_sienna_upgrader(self, sienna_data: dict):
         """Run the Sienna upgrader on the provided data."""
         upgrader = SiennaUpgrader(path=self.sienna_file)
-        print("Running Sienna Upgrader...")
-        for step in upgrader.list_steps():
-            print(step)
-            run_upgrade_step(step, data=sienna_data)
 
-        return sienna_data
+        for step in upgrader.list_steps():
+            run_upgrade_step(step, data=sienna_data)
 
     def run(self, run_upgrader: bool = False):
         """
@@ -84,7 +82,6 @@ class SiennaToPlexosTranslation:
             sienna_data = json.load(f)
 
         if run_upgrader:
-            breakpoint()
             self.run_sienna_upgrader(sienna_data)
 
         config = SiennaConfig(
@@ -105,7 +102,6 @@ class SiennaToPlexosTranslation:
         stdin_payload = json.dumps(sienna_data)
         sienna_sys = parser.build_system(stdin_payload=stdin_payload)
 
-        # Setup time series storage
         tmp_dir = Path(self.output_folder) / f"{self.case_name}_tmp"
         tmp_dir.mkdir(parents=True, exist_ok=True)
 

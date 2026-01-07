@@ -1,6 +1,12 @@
 [project]
 name = "r2x-reeds-to-plexos"
 version = "0.0.0"
-description = "Add your description here"
+description = "Translation helpers for ReEDS-to-Plexos interoperability."
 requires-python = ">=3.11, <3.14"
 dependencies = ["r2x-reeds>=0.2.0,<1.0.0", "r2x-plexos>=0.1.2,<1.0.0"]
+
+[project.entry-points."r2x_plugin"]
+reeds-to-plexos = "r2x_reeds_to_plexos.plugin:manifest"
+
+[tool.setuptools.package-data]
+r2x_reeds_to_plexos = ["config/*.json"]
