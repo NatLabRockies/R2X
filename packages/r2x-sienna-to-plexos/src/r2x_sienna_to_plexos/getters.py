@@ -793,7 +793,7 @@ def get_area_load(context: TranslationContext, source_component: Area) -> Result
 
     total_load = 0.0
     for load in all_loads:
-        load_value = getattr(load, "constant_active_power", None) * resolve_base_power(load)
+        load_value = getattr(load, "constant_active_power", 0.0) * resolve_base_power(load)
         if load_value is not None:
             magnitude = get_magnitude(load_value)
             if magnitude is not None:
@@ -1065,10 +1065,10 @@ def _attach_region_node_load_time_series(
 
         if region_component is not None:
             try:
-                region_component.fixed_load = total_load
-                logger.debug("Set fixed_load = {} for region {}", total_load, region_name)
+                region_component.load = total_load
+                logger.debug("Set load = {} for region {}", total_load, region_name)
             except Exception as exc:
-                logger.debug("Could not set fixed_load for region {}: {}", region_name, exc)
+                logger.debug("Could not set load for region {}: {}", region_name, exc)
 
     # Aggregate time series for the region's load property
     aggregated_ts = None

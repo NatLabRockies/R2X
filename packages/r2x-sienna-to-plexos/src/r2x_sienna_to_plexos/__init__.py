@@ -33,6 +33,7 @@ from .getters_utils import (
     ensure_transformer_node_memberships,
 )
 from .plugin_config import SiennaToPlexosConfig
+from .translation import SiennaToPlexosTranslation
 
 __version__ = version("r2x_sienna_to_plexos")
 
@@ -42,6 +43,7 @@ logger.disable("r2x_sienna_to_plexos")
 
 __all__ = [
     "SiennaToPlexosConfig",
+    "SiennaToPlexosTranslation",
     "__version__",
     "SOURCE_GENERATOR_TYPES",
     "ensure_region_node_memberships",
