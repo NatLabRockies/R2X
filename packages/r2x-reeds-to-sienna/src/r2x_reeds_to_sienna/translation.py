@@ -5,11 +5,19 @@ from pathlib import Path
 from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
-from r2x_reeds import ReEDSConfig, ReEDSParser
+from r2x_reeds import ReEDSConfig, ReEDSParser, ReEDSUpgrader
 from r2x_sienna.config import SiennaConfig
 from r2x_sienna.exporter import SiennaExporter
 
-from r2x_core import DataStore, PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
+from r2x_core import (
+    DataStore,
+    PluginConfig,
+    Rule,
+    System,
+    TranslationContext,
+    apply_rules_to_context,
+    run_upgrade_step,
+)
 
 
 class ReedsToSiennaTranslation:
@@ -20,7 +28,17 @@ class ReedsToSiennaTranslation:
         self.solve_year = solve_year
         self.weather_year = weather_year
 
-    def run(self):
+    def run_reeds_upgrader(self, run_path_upgrader):
+        run_path = Path(run_path_upgrader)
+        upgrader = ReEDSUpgrader(path=run_path)
+        for step in upgrader.list_steps():
+            result = run_upgrade_step(step, data=run_path)
+            result.unwrap_or_raise()
+
+    def run(self, run_upgrader=False):
+        if run_upgrader:
+            self.run_reeds_upgrader(self.run_path)
+
         config = ReEDSConfig(
             solve_year=self.solve_year, weather_year=self.weather_year, case_name=self.case_name
         )
