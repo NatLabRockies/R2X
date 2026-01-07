@@ -84,6 +84,9 @@ class SiennaToPlexosTranslation:
         if run_upgrader:
             self.run_sienna_upgrader(sienna_data)
 
+        if self.system_base_power is None:
+            self.system_base_power = 100.0
+
         config = SiennaConfig(
             model_year=self.model_year,
             system_name=self.case_name,
