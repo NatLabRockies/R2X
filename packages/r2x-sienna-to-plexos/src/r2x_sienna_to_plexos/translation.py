@@ -67,11 +67,11 @@ class SiennaToPlexosTranslation:
     def run_sienna_upgrader(self, sienna_data: dict):
         """Run the Sienna upgrader on the provided data."""
         upgrader = SiennaUpgrader(path=self.sienna_file)
-
         for step in upgrader.list_steps():
-            run_upgrade_step(step, data=sienna_data)
+            result = run_upgrade_step(step, data=sienna_data)
+            result.unwrap_or_raise()
 
-    def run(self, run_upgrader: bool = False):
+    def run(self, run_upgrader: bool = True):
         """
         Execute the Sienna to PLEXOS translation.
 
@@ -159,6 +159,8 @@ class SiennaToPlexosTranslation:
             exclude_defaults=self.exclude_defaults,
         )
 
-        plexos_exported_sys = exporter.export()
+        result = exporter.export()
+        if hasattr(result, "unwrap"):
+            result = result.unwrap()
 
-        return plexos_exported_sys
+        return result

@@ -12,6 +12,7 @@ manifest.add(
         name="r2x-sienna-to-plexos.translation",
         entry=SiennaToPlexosTranslation,
         config=SiennaToPlexosConfig,
+        method="run",
         description="Translate Sienna system to PLEXOS system.",
     )
 )

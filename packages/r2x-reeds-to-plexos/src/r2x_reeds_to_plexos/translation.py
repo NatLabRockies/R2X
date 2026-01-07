@@ -135,4 +135,7 @@ class ReedsToPlexosTranslation:
 
         result = exporter.export()
 
+        if hasattr(result, "unwrap"):
+            result = result.unwrap()
+
         return result

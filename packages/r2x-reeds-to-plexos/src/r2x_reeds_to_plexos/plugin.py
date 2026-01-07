@@ -12,6 +12,7 @@ manifest.add(
         name="r2x-reeds-to-plexos.translation",
         entry=ReedsToPlexosTranslation,
         config=ReedsToPlexosConfig,
+        method="run",
         description="Translate ReEDS system to Plexos system.",
     )
 )

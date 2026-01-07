@@ -793,7 +793,7 @@ def get_area_load(context: TranslationContext, source_component: Area) -> Result
 
     total_load = 0.0
     for load in all_loads:
-        load_value = getattr(load, "constant_active_power", None) * resolve_base_power(load)
+        load_value = getattr(load, "constant_active_power", 0.0) * resolve_base_power(load)
         if load_value is not None:
             magnitude = get_magnitude(load_value)
             if magnitude is not None:
