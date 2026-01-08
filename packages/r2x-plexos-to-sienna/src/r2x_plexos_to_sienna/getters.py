@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from infrasys.cost_curves import FuelCurve
-from infrasys.value_curves import LinearCurve
+from infrasys.value_curves import InputOutputCurve, LinearCurve
 from r2x_plexos.models import PLEXOSGenerator, PLEXOSLine, PLEXOSNode
 from r2x_sienna.models import ACBus, Arc
 from r2x_sienna.models.costs import ThermalGenerationCost
@@ -54,22 +54,21 @@ def is_slack_bus(_: TranslationContext, component: PLEXOSNode) -> Result[ACBusTy
 @getter
 def get_line_arc(context: TranslationContext, component: PLEXOSLine) -> Result[Arc, Any]:
     """Get the arc of a line by querying PlexosDB for node memberships and matching to ACBus objects."""
-    memberships: list[dict[str, Any]] = []
+    memberships = context.source_system.get_supplemental_attributes_with_component(component)
     from_node = None
     to_node = None
+
     for m in memberships:
-        if m.get("child_class_name") == "Node":
-            if m.get("collection_name") == "Node From":
-                from_node = m.get("child_name")
-            elif m.get("collection_name") == "Node To":
-                to_node = m.get("child_name")
+        if getattr(m, "collection", None) is not None:
+            if str(m.collection) == "CollectionEnum.NodeFrom" or str(m.collection) == "NodeFrom":
+                from_node = getattr(m.child_object, "name", None)
+            elif str(m.collection) == "CollectionEnum.NodeTo" or str(m.collection) == "NodeTo":
+                to_node = getattr(m.child_object, "name", None)
         if from_node and to_node:
             break
 
     if not from_node or not to_node:
-        raise ValueError(
-            f"Could not find both nodes for line {component.name}. " f"Memberships: {memberships}"
-        )
+        raise ValueError(f"Could not find both nodes for line {component.name}. Memberships: {memberships}")
 
     acbuses = list(context.target_system.get_components(ACBus))
     from_bus = next((bus for bus in acbuses if getattr(bus, "name", None) == from_node), None)
@@ -83,6 +82,33 @@ def get_line_arc(context: TranslationContext, component: PLEXOSLine) -> Result[A
 
     arc_sense = Arc(name=f"{from_node}-{to_node}", from_to=from_bus, to_from=to_bus)
     return Ok(arc_sense)
+
+
+@getter
+def get_line_conductance(_: TranslationContext, component: PLEXOSLine) -> Result[FromTo_ToFrom, Any]:
+    """Get the conductance of a line as a FromTo_ToFrom namedtuple (g = 1/r)."""
+    r = None
+    if hasattr(component, "resistance") and component.resistance:
+        if hasattr(component.resistance, "values") and component.resistance.values:
+            r = float(component.resistance.values[0])
+        else:
+            r = float(component.resistance)
+    if r and r != 0.0:
+        g = 1.0 / r
+        return Ok(FromTo_ToFrom(from_to=g, to_from=g))
+    return Ok(FromTo_ToFrom(from_to=0.0, to_from=0.0))
+
+
+@getter
+def get_line_rating_b(_: TranslationContext, component: PLEXOSLine) -> Result[float, Any]:
+    """Get the rating B of a line (if available)."""
+    return Ok(0.0)
+
+
+@getter
+def get_line_rating_c(_: TranslationContext, component: PLEXOSLine) -> Result[float, Any]:
+    """Get the rating C of a line (if available)."""
+    return Ok(0.0)
 
 
 @getter
@@ -115,6 +141,68 @@ def get_line_susceptance(_: TranslationContext, component: PLEXOSLine) -> Result
     if value is not None:
         return Ok(FromTo_ToFrom(from_to=value, to_from=value))
     return Ok(FromTo_ToFrom(from_to=0.0, to_from=0.0))
+
+
+@getter
+def get_line_flow_limits(_: TranslationContext, component: PLEXOSLine) -> Result[FromTo_ToFrom, Any]:
+    """Get the flow limits (from_to, to_from) of a line as a FromTo_ToFrom namedtuple."""
+    min_flow = getattr(component, "min_flow", -100.0)
+    max_flow = getattr(component, "max_flow", None)
+    if max_flow is not None:
+        if hasattr(max_flow, "values") and max_flow.values:
+            max_flow = float(max_flow.values[0])
+        else:
+            max_flow = float(max_flow)
+    else:
+        max_flow = 100.0
+    return Ok(FromTo_ToFrom(from_to=max_flow, to_from=min_flow))
+
+
+@getter
+def get_line_losses(_: TranslationContext, component: PLEXOSLine) -> Result[float, Any]:
+    """Get the losses of a line (if available)."""
+    value = getattr(component, "losses", 0.0)
+    if hasattr(value, "values") and value.values:
+        value = float(value.values[0])
+    return Ok(float(value))
+
+
+@getter
+def get_active_power_limits_from(_: TranslationContext, component: PLEXOSLine) -> Result[MinMax, Any]:
+    """Get the active power limits (min, max) at the 'from' end of an HVDC line."""
+    min_limit = getattr(component, "min_active_power_from", 0.0)
+    max_limit = getattr(component, "max_active_power_from", 0.0)
+    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+
+
+@getter
+def get_active_power_limits_to(_: TranslationContext, component: PLEXOSLine) -> Result[MinMax, Any]:
+    """Get the active power limits (min, max) at the 'to' end of an HVDC line."""
+    min_limit = getattr(component, "min_active_power_to", 0.0)
+    max_limit = getattr(component, "max_active_power_to", 0.0)
+    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+
+
+@getter
+def get_reactive_power_limits_from(_: TranslationContext, component: PLEXOSLine) -> Result[MinMax, Any]:
+    """Get the reactive power limits (min, max) at the 'from' end of an HVDC line."""
+    min_limit = getattr(component, "min_reactive_power_from", 0.0)
+    max_limit = getattr(component, "max_reactive_power_from", 0.0)
+    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+
+
+@getter
+def get_reactive_power_limits_to(_: TranslationContext, component: PLEXOSLine) -> Result[MinMax, Any]:
+    """Get the reactive power limits (min, max) at the 'to' end of an HVDC line."""
+    min_limit = getattr(component, "min_reactive_power_to", 0.0)
+    max_limit = getattr(component, "max_reactive_power_to", 0.0)
+    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+
+
+@getter
+def get_hvdc_line_loss(_: TranslationContext, component: PLEXOSLine) -> Result[InputOutputCurve, Any]:
+    """Get the losses of an HVDC line as an InputOutputCurve (if available)."""
+    return Ok(LinearCurve(0.0))
 
 
 @getter

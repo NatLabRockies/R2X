@@ -29,7 +29,7 @@
     },
     "field_map": {
       "active_power_flow": "fixed_flow",
-      "reactive_power_flow": "get_reactive_power_flow",
+      "rating": "max_flow",
       "name": "name",
       "uuid": "uuid",
       "x": "reactance",
@@ -37,15 +37,19 @@
       "category": "category"
     },
     "getters": {
+      "b": "get_line_susceptance",
+      "g": "get_line_conductance",
       "arc": "get_line_arc",
-      "angle_limits": "get_line_angle_limits",
-      "b": "get_line_susceptance"
+      "rating_b": "get_line_rating_b",
+      "rating_c": "get_line_rating_c",
+      "reactive_power_flow": "get_reactive_power_flow",
+      "angle_limits": "get_line_angle_limits"
     },
     "source_type": "PLEXOSLine",
     "target_type": "Line",
     "version": 1
   },
-    {
+  {
     "defaults": {
       "category": "monitored-line",
       "reactive_power_flow": 0.0
@@ -59,18 +63,22 @@
       "category": "category"
     },
     "getters": {
+      "b": "get_line_susceptance",
+      "g": "get_line_conductance",
       "arc": "get_line_arc",
-      "reactive_power_flow": "get_line_reactive_power_flow",
+      "rating": "get_line_rating",
+      "rating_b": "get_line_rating_b",
+      "rating_c": "get_line_rating_c",
+      "reactive_power_flow": "get_reactive_power_flow",
       "angle_limits": "get_line_angle_limits",
-      "b": "get_line_susceptance"
+      "flow_limits": "get_line_flow_limits",
+      "losses": "get_line_losses"
     },
     "source_type": "PLEXOSLine",
     "target_type": "MonitoredLine",
-    "version": 1
+    "version": 2
   },
-
-
-{
+  {
     "defaults": {
       "ac_line_charging_susceptance": 0.0,
       "category": "two-terminal-hvdc-line",
@@ -83,11 +91,16 @@
       "uuid": "uuid"
     },
     "getters": {
-      "arc": "get_line_arc"
+      "arc": "get_line_arc",
+      "active_power_limits_from": "get_active_power_limits_from",
+      "active_power_limits_to": "get_active_power_limits_to",
+      "reactive_power_limits_from": "get_reactive_power_limits_from",
+      "reactive_power_limits_to": "get_reactive_power_limits_to",
+      "loss": "get_hvdc_line_loss"
     },
     "source_type": "PLEXOSLine",
     "target_type": "TwoTerminalHVDCLine",
-    "version": 1
+    "version": 3
   },
   {
     "defaults": {
@@ -97,12 +110,19 @@
     "field_map": {
       "name": "name",
       "rating": "rating",
-      "uuid": "uuid",
+      "uuid": "uuid",l
       "x": "reactance",
       "r": "resistance"
     },
     "getters": {
-      "susceptance": "get_susceptance"
+      "active_power_flow": "get_trf_active_power_flow",
+      "reactive_power_flow": "get_trf_reactive_power_flow",
+      "primary_shunt": "get_trf_primary_shunt",
+      "base_power": "get_trf_base_power",
+      "base_voltage_primary": "get_trf_base_voltage_primary",
+      "base_voltage_secondary": "get_trf_base_voltage_secondary",
+      "winding_group_number": "get_trf_winding_group_number",
+      "control_objective": "get_trf_control_objective"
     },
     "source_type": "PLEXOSTransformer",
     "target_type": "Transformer2W",
@@ -123,11 +143,18 @@
       "r": "resistance"
     },
     "getters": {
-      "susceptance": "get_susceptance"
+      "active_power_flow": "get_trf_active_power_flow",
+      "reactive_power_flow": "get_trf_reactive_power_flow",
+      "primary_shunt": "get_trf_primary_shunt",
+      "base_power": "get_trf_base_power",
+      "base_voltage_primary": "get_trf_base_voltage_primary",
+      "base_voltage_secondary": "get_trf_base_voltage_secondary",
+      "winding_group_number": "get_trf_winding_group_number",
+      "control_objective": "get_trf_control_objective"
     },
     "source_type": "PLEXOSTransformer",
     "target_type": "TapTransformer",
-    "version": 1
+    "version": 2
   },
   {
     "defaults": {
@@ -145,11 +172,18 @@
       "α": "ac_fixed_shift_angle"
     },
     "getters": {
-      "susceptance": "get_susceptance"
+      "active_power_flow": "get_trf_active_power_flow",
+      "reactive_power_flow": "get_trf_reactive_power_flow",
+      "primary_shunt": "get_trf_primary_shunt",
+      "base_power": "get_trf_base_power",
+      "base_voltage_primary": "get_trf_base_voltage_primary",
+      "base_voltage_secondary": "get_trf_base_voltage_secondary",
+      "winding_group_number": "get_trf_winding_group_number",
+      "control_objective": "get_trf_control_objective"
     },
     "source_type": "PLEXOSTransformer",
     "target_type": "PhaseShiftingTransformer",
-    "version": 1
+    "version": 3
   },
   {
     "defaults": {
@@ -168,8 +202,10 @@
       "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
       "active_power_limits": "get_gen_active_power_limits",
+      "reactive_power_limits": "get_gen_reactive_power_limits",
       "must_run": "get_gen_must_run",
       "prime_mover_type": "get_prime_mover_type",
+      "ramp_limits": "get_gen_ramp_limits",
       "status": "get_gen_status",
       "time_at_status": "get_time_at_status",
       "operation_cost": "get_thermal_operation_cost",
@@ -196,9 +232,14 @@
       "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
       "active_power_limits": "get_gen_active_power_limits",
+      "reactive_power_limits": "get_gen_reactive_power_limits",
+      "ramp_limits": "get_gen_ramp_limits",
+      "power_trajectory": "get_gen_power_trajectory",
       "must_run": "get_gen_must_run",
       "prime_mover_type": "get_prime_mover_type",
       "status": "get_gen_status",
+      "time_limits": "get_time_limits",
+      "start_time_limits": "get_start_time_limits",
       "time_at_status": "get_time_at_status",
       "operation_cost": "get_thermal_operation_cost",
       "fuel": "get_fuel_type",
@@ -206,7 +247,7 @@
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "ThermalMultiStart",
-    "version": 1
+    "version": 3
   },
   {
     "defaults": {
@@ -220,22 +261,21 @@
       "uuid": "uuid"
     },
     "getters": {
-      "fuel_price": "get_fuel_price",
-      "heat_rate": "get_heat_rate",
-      "heat_rate_base": "get_heat_rate_base",
-      "heat_rate_incr": "get_heat_rate_incr",
-      "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point",
-      "active_power_limits": "get_max_active_power",
-      "ramp_limits": "get_ramp_limits",
-      "time_limits": "get_time_limits"
+      "active_power": "get_gen_active_power",
+      "reactive_power": "get_gen_reactive_power",
+      "prime_mover_type": "get_prime_mover_type",
+      "ramp_limits": "get_gen_ramp_limits",
+      "active_power_limits": "get_gen_active_power_limits",
+      "reactive_power_limits": "get_gen_reactive_power_limits",
+      "time_limits": "get_time_limits",
+      "base_power": "get_gen_base_power",
+      "time_at_status": "get_time_at_status",
+      "status": "get_gen_status",
+      "operation_cost": "get_gen_operation_cost"
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "HydroDispatch",
-    "version": 1
+    "version": 3
   },
   {
     "defaults": {
@@ -262,7 +302,7 @@
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "HydroEnergyReservoir",
-    "version": 1
+    "version": 4
   },
   {
     "defaults": {
@@ -277,7 +317,7 @@
     "getters": {},
     "source_type": "PLEXOSStorage",
     "target_type": "HydroPumpedStorage",
-    "version": 1
+    "version": 5
   },
   {
     "defaults": {
@@ -304,7 +344,7 @@
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "HydroPumpedStorage",
-    "version": 1
+    "version": 6
   },
   {
     "defaults": {
@@ -330,7 +370,7 @@
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "RenewableDispatch",
-    "version": 1
+    "version": 7
   },
   {
     "defaults": {
@@ -356,7 +396,7 @@
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "RenewableNonDispatch",
-    "version": 1
+    "version": 8
   },
   {
     "defaults": {
@@ -382,7 +422,7 @@
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "SynchronousCondenser",
-    "version": 1
+    "version": 9
   },
   {
     "defaults": {
