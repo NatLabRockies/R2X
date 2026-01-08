@@ -110,7 +110,7 @@
     "field_map": {
       "name": "name",
       "rating": "rating",
-      "uuid": "uuid",l
+      "uuid": "uuid",
       "x": "reactance",
       "r": "resistance"
     },
