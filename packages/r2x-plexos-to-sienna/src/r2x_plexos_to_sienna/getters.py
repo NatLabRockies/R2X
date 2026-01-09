@@ -2,25 +2,64 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from infrasys.cost_curves import FuelCurve
+from infrasys.cost_curves import CostCurve, FuelCurve
 from infrasys.value_curves import InputOutputCurve, LinearCurve
-from r2x_plexos.models import PLEXOSGenerator, PLEXOSLine, PLEXOSNode
+from r2x_plexos.models import (  # type: ignore
+    PLEXOSGenerator,
+    PLEXOSInterface,
+    PLEXOSLine,
+    PLEXOSNode,
+    PLEXOSReserve,
+)
 from r2x_sienna.models import ACBus, Arc
-from r2x_sienna.models.costs import ThermalGenerationCost
-from r2x_sienna.models.enums import ACBusTypes, PrimeMoversType, ThermalFuels
-from r2x_sienna.models.named_tuples import FromTo_ToFrom, MinMax
+from r2x_sienna.models.costs import (
+    HydroGenerationCost,
+    HydroReservoirCost,
+    RenewableGenerationCost,
+    ThermalGenerationCost,
+)
+from r2x_sienna.models.enums import ACBusTypes, PrimeMoversType, StorageTechs, ThermalFuels
+from r2x_sienna.models.named_tuples import FromTo_ToFrom, InputOutput, MinMax
 
 from r2x_core import Ok, Result, TranslationContext, UnitSystem
 from r2x_core.getters import getter
 
 
+def extract_number_from_name(name: str) -> int | None:
+    """Extract trailing digits from a string like 'p51191' or 'ACKRLNTC_9_1363'."""
+    match = re.search(r"(\d+)$", name)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+@getter
+def get_zone_peak_active_power(_: TranslationContext, component: Any) -> Result[float, Any]:
+    """Get the peak active power for a zone."""
+    value = getattr(component, "peak_active_power", 0.0)
+    return Ok(float(value))
+
+
+@getter
+def get_zone_peak_reactive_power(_: TranslationContext, component: Any) -> Result[float, Any]:
+    """Get the peak reactive power for a zone."""
+    value = getattr(component, "peak_reactive_power", 0.0)
+    return Ok(float(value))
+
+
 @getter
 def get_base_voltage(_: TranslationContext, component: PLEXOSNode) -> Result[float, Any]:
-    """Get the voltage of a node."""
-    value = getattr(component, "voltage", 0.0)
-    return Ok(value)
+    """Get the voltage of a node. Try 'voltage', then 'ac_voltage_magnitude', else default to 1.0."""
+    voltage = getattr(component, "voltage", 0.0)
+    if voltage and voltage != 0.0:
+        return Ok(float(voltage))
+    ac_voltage = getattr(component, "ac_voltage_magnitude", 0.0)
+    if ac_voltage and ac_voltage != 0.0:
+        return Ok(float(ac_voltage))
+    return Ok(1.0)
 
 
 @getter
@@ -33,14 +72,25 @@ def get_node_ext(_: TranslationContext, component: PLEXOSNode) -> Result[dict[st
 
 
 @getter
+def create_ext_field(_: TranslationContext, component: Any) -> Result[dict[str, Any], Any]:
+    """Create an ext dictionary with no fields."""
+    value = {}
+    return Ok(value)
+
+
+@getter
 def get_node_number(_: TranslationContext, component: PLEXOSNode) -> Result[int, Any]:
-    """Assign sequential node numbers starting from 1 if not present."""
-    _node_number_counter = 1
+    """Assign node number from attribute, or extract from name if not present."""
     if hasattr(component, "number") and component.number is not None:
-        return Ok(component.number)
-    value = _node_number_counter
-    _node_number_counter += 1
-    return Ok(value)  # TODO: look for actual number in the name of the node
+        return Ok(int(component.number))
+    if hasattr(component, "name") and component.name:
+        extracted = extract_number_from_name(component.name)
+        if extracted is not None:
+            return Ok(extracted)
+    # Fallback: use object_id if available
+    if hasattr(component, "object_id"):
+        return Ok(int(component.object_id))
+    return Ok(-1)
 
 
 @getter
@@ -97,18 +147,6 @@ def get_line_conductance(_: TranslationContext, component: PLEXOSLine) -> Result
         g = 1.0 / r
         return Ok(FromTo_ToFrom(from_to=g, to_from=g))
     return Ok(FromTo_ToFrom(from_to=0.0, to_from=0.0))
-
-
-@getter
-def get_line_rating_b(_: TranslationContext, component: PLEXOSLine) -> Result[float, Any]:
-    """Get the rating B of a line (if available)."""
-    return Ok(0.0)
-
-
-@getter
-def get_line_rating_c(_: TranslationContext, component: PLEXOSLine) -> Result[float, Any]:
-    """Get the rating C of a line (if available)."""
-    return Ok(0.0)
 
 
 @getter
@@ -213,6 +251,68 @@ def get_gen_active_power(_: TranslationContext, component: PLEXOSGenerator) -> R
 
 
 @getter
+def get_gen_bus(context: TranslationContext, component: Any) -> Result[ACBus | None, Any]:
+    """
+    Get the ACBus object for a generator by finding the connected node via memberships,
+    then matching the node name to the ACBus in the target system.
+    """
+    memberships = context.source_system.get_supplemental_attributes_with_component(component)
+    bus_name = None
+    for m in memberships:
+        if (
+            hasattr(m, "collection")
+            and (str(m.collection) == "CollectionEnum.Nodes" or str(m.collection) == "Nodes")
+            and hasattr(m, "child_object")
+            and m.child_object is not None
+            and hasattr(m.child_object, "name")
+        ):
+            bus_name = m.child_object.name
+            break
+
+    if not bus_name:
+        return Ok(None)
+
+    acbuses = list(context.target_system.get_components(ACBus))
+    bus = next((b for b in acbuses if getattr(b, "name", None) == bus_name), None)
+    return Ok(bus)
+
+
+@getter
+def get_hydro_gen_operation_cost(
+    _: TranslationContext, __: PLEXOSGenerator
+) -> Result[HydroGenerationCost, ValueError]:
+    """Return zeroed hydro operation cost."""
+    return Ok(
+        HydroGenerationCost(
+            fixed=0.0,
+            variable=CostCurve(
+                value_curve=LinearCurve(10), power_units=UnitSystem.NATURAL_UNITS, vom_cost=LinearCurve(5.0)
+            ),
+        )
+    )
+
+
+@getter
+def get_hydro_reservoir_operation_cost(
+    _: TranslationContext, __: PLEXOSGenerator
+) -> Result[HydroReservoirCost, ValueError]:
+    """Return zeroed hydro reservoir operation cost."""
+    return Ok(HydroReservoirCost(level_shortage_cost=0.0, spillage_cost=0.0, level_surplus_cost=0.0))
+
+
+@getter
+def get_renewable_operation_cost(
+    _: TranslationContext, __: PLEXOSGenerator
+) -> Result[RenewableGenerationCost, ValueError]:
+    """Return zeroed renewable operation cost."""
+    return Ok(
+        RenewableGenerationCost(
+            fixed=0.0, variable=CostCurve(value_curve=LinearCurve(0), power_units=UnitSystem.NATURAL_UNITS)
+        )
+    )
+
+
+@getter
 def get_gen_reactive_power(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
     """Get the reactive power of a generator."""
     value = getattr(component, "reactive_power", 0.0)
@@ -250,10 +350,31 @@ def get_gen_active_power_limits(_: TranslationContext, component: PLEXOSGenerato
 
 
 @getter
+def get_gen_active_power_losses(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+    """Get the active power losses incurred by having the unit online."""
+    value = getattr(component, "active_power_losses", 0.0)
+    return Ok(float(value))
+
+
+@getter
 def get_gen_must_run(_: TranslationContext, component: PLEXOSGenerator) -> Result[bool, Any]:
     """Get the must-run status of a generator."""
     value = getattr(component, "must_run", True)
     return Ok(bool(value))
+
+
+@getter
+def get_gen_reactive_power_limits(_: TranslationContext, component: PLEXOSGenerator) -> Result[Any, Any]:
+    """Get the reactive power limits of a generator."""
+    value = getattr(component, "reactive_power_limits", MinMax(min=0.0, max=0.0))
+    return Ok(value)
+
+
+@getter
+def get_gen_power_factor(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+    """Get the power factor of a generator."""
+    value = getattr(component, "power_factor", 1.0)
+    return Ok(float(value))
 
 
 @getter
@@ -299,3 +420,164 @@ def get_fuel_type(_: TranslationContext, component: PLEXOSGenerator) -> Result[s
     """Get the fuel type of a generator."""
     value = ThermalFuels.NATURAL_GAS
     return Ok(str(value))
+
+
+@getter
+def get_region_peak_active_power(_: TranslationContext, component: Any) -> Result[float, Any]:
+    """Get the peak active power in the area (use 'load' as proxy)."""
+    return Ok(float(getattr(component, "load", 0.0)))
+
+
+@getter
+def get_region_peak_reactive_power(_: TranslationContext, component: Any) -> Result[float, Any]:
+    """Get the peak reactive power in the area (no direct field, default to 0.0)."""
+    return Ok(float(getattr(component, "peak_reactive_power", 0.0)))
+
+
+@getter
+def get_region_load_response(_: TranslationContext, component: Any) -> Result[float, Any]:
+    """Get the load-frequency damping parameter (use 'load_responce' as proxy)."""
+    return Ok(float(getattr(component, "load_responce", 0.0)))
+
+
+@getter
+def get_storage_technology_type(
+    _: TranslationContext, component: PLEXOSGenerator
+) -> Result[StorageTechs, Any]:
+    """Get the storage technology type. Defaults to StorageTechs.OTHER_CHEM."""
+    return Ok(StorageTechs.OTHER_CHEM)
+
+
+@getter
+def get_initial_storage_capacity_level(
+    _: TranslationContext, component: PLEXOSGenerator
+) -> Result[float, Any]:
+    """Get the initial storage capacity level (initial_soc), converting percent to decimal if needed."""
+    value = float(getattr(component, "initial_soc", 0.0))
+    if value > 1.0:
+        value = value / 100.0
+    return Ok(value)
+
+
+@getter
+def get_storage_capacity(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+    """Get the storage capacity (max_volume)."""
+    return Ok(float(getattr(component, "max_volume", 0.0)))
+
+
+@getter
+def get_storage_level_limits(_: TranslationContext, component: PLEXOSGenerator) -> Result[MinMax, Any]:
+    """Get the storage level limits (min_volume, max_volume)."""
+    min_vol = float(getattr(component, "min_volume", 0.0))
+    max_vol = float(getattr(component, "max_volume", 0.0))
+    return Ok(MinMax(min=min_vol, max=max_vol))
+
+
+@getter
+def get_storage_charge_power_limits(_: TranslationContext, component: PLEXOSGenerator) -> Result[MinMax, Any]:
+    """Get the input (charge) active power limits."""
+    min_charge = float(getattr(component, "min_release", 0.0))
+    max_charge = float(getattr(component, "max_release", 0.0))
+    return Ok(MinMax(min=min_charge, max=max_charge))
+
+
+@getter
+def get_storage_discharge_power_limits(
+    _: TranslationContext, component: PLEXOSGenerator
+) -> Result[MinMax, Any]:
+    """Get the output (discharge) active power limits."""
+    min_discharge = float(getattr(component, "min_release", 0.0))
+    max_discharge = float(getattr(component, "max_release", 0.0))
+    return Ok(MinMax(min=min_discharge, max=max_discharge))
+
+
+@getter
+def get_storage_efficiency(_: TranslationContext, component: PLEXOSGenerator) -> Result[InputOutput, Any]:
+    """Get the storage efficiency as InputOutput (in/out)."""
+    eff = float(getattr(component, "efficiency", 1.0))
+    return Ok(InputOutput(input=eff, output=eff))
+
+
+@getter
+def get_storage_operation_cost(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+    """Get the operation cost (use energy_value as proxy)."""
+    return Ok(float(getattr(component, "energy_value", 0.0)))
+
+
+@getter
+def get_storage_conversion_factor(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+    """Get the conversion factor (use capacity_coefficient as proxy)."""
+    return Ok(float(getattr(component, "capacity_coefficient", 1.0)))
+
+
+@getter
+def get_storage_target(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+    """Get the storage target (target_level or target)."""
+    return Ok(float(getattr(component, "target_level", getattr(component, "target", 0.0))))
+
+
+@getter
+def get_storage_cycle_limits(_: TranslationContext, component: PLEXOSGenerator) -> Result[int, Any]:
+    """Get the cycle limits as an integer (use 'cycle_limits' if available, else 0)."""
+    value = getattr(component, "cycle_limits", 10000)
+    return Ok(int(value))
+
+
+@getter
+def get_reserve_time_frame(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+    """Get the timeframe in which the reserve is required (seconds)."""
+    return Ok(float(getattr(component, "timeframe", 0.0)))
+
+
+@getter
+def get_reserve_requirement(_: TranslationContext, component: PLEXOSGenerator) -> Result[float | None, Any]:
+    """Get the value of required reserves in p.u (SYSTEM_BASE)."""
+    return Ok(getattr(component, "requirement", 0.0))
+
+
+@getter
+def get_reserve_sustained_time(_: TranslationContext, component: PLEXOSReserve) -> Result[float, Any]:
+    """Get the time in seconds reserve contribution must be sustained."""
+    return Ok(float(getattr(component, "duration", 3600.0)))
+
+
+@getter
+def get_reserve_max_participation_factor(
+    _: TranslationContext, component: PLEXOSReserve
+) -> Result[float, Any]:
+    """Get the maximum portion [0, 1.0] of the reserve that can be contributed per device."""
+    return Ok(float(getattr(component, "max_participation_factor", 1.0)))
+
+
+@getter
+def get_reserve_max_output_fraction(_: TranslationContext, component: PLEXOSReserve) -> Result[float, Any]:
+    """Get the max output fraction (default 1.0)."""
+    return Ok(float(getattr(component, "max_output_fraction", 1.0)))
+
+
+@getter
+def get_reserve_deployed_fraction(_: TranslationContext, component: PLEXOSReserve) -> Result[float, Any]:
+    """Get the fraction of service procurement assumed to be actually deployed."""
+    return Ok(float(getattr(component, "deployed_fraction", 1.0)))
+
+
+@getter
+def get_interface_active_power_flow_limits(
+    _: TranslationContext, component: PLEXOSInterface
+) -> Result[MinMax, Any]:
+    """Get the min/max active power flow limits for a TransmissionInterface."""
+    min_flow = float(getattr(component, "min_flow", 0.0))
+    max_flow = float(getattr(component, "max_flow", 0.0))
+    return Ok(MinMax(min=min_flow, max=max_flow))
+
+
+@getter
+def get_interface_direction_mapping(
+    _: TranslationContext, component: PLEXOSInterface
+) -> Result[dict[str, int], Any]:
+    """
+    Get the direction mapping for a TransmissionInterface.
+    This is a placeholder; actual mapping logic depends on your data model.
+    """
+    direction_mapping = getattr(component, "direction_mapping", {})
+    return Ok(direction_mapping)

@@ -40,8 +40,6 @@
       "b": "get_line_susceptance",
       "g": "get_line_conductance",
       "arc": "get_line_arc",
-      "rating_b": "get_line_rating_b",
-      "rating_c": "get_line_rating_c",
       "reactive_power_flow": "get_reactive_power_flow",
       "angle_limits": "get_line_angle_limits"
     },
@@ -67,12 +65,15 @@
       "g": "get_line_conductance",
       "arc": "get_line_arc",
       "rating": "get_line_rating",
-      "rating_b": "get_line_rating_b",
-      "rating_c": "get_line_rating_c",
       "reactive_power_flow": "get_reactive_power_flow",
       "angle_limits": "get_line_angle_limits",
       "flow_limits": "get_line_flow_limits",
       "losses": "get_line_losses"
+    },
+    "filter": {
+      "field": "category",
+      "op": "eq",
+      "values": ["monitored-line"]
     },
     "source_type": "PLEXOSLine",
     "target_type": "MonitoredLine",
@@ -80,7 +81,6 @@
   },
   {
     "defaults": {
-      "ac_line_charging_susceptance": 0.0,
       "category": "two-terminal-hvdc-line",
       "reactance": 0.0,
       "resistance": 0.0
@@ -97,6 +97,11 @@
       "reactive_power_limits_from": "get_reactive_power_limits_from",
       "reactive_power_limits_to": "get_reactive_power_limits_to",
       "loss": "get_hvdc_line_loss"
+    },
+    "filter": {
+      "field": "category",
+      "op": "eq",
+      "values": ["two-terminal-hvdc-line"]
     },
     "source_type": "PLEXOSLine",
     "target_type": "TwoTerminalHVDCLine",
@@ -115,6 +120,7 @@
       "r": "resistance"
     },
     "getters": {
+      "arc": "get_line_arc",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
@@ -143,12 +149,11 @@
       "r": "resistance"
     },
     "getters": {
+      "arc": "get_line_arc",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
       "base_power": "get_trf_base_power",
-      "base_voltage_primary": "get_trf_base_voltage_primary",
-      "base_voltage_secondary": "get_trf_base_voltage_secondary",
       "winding_group_number": "get_trf_winding_group_number",
       "control_objective": "get_trf_control_objective"
     },
@@ -175,9 +180,6 @@
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
-      "base_power": "get_trf_base_power",
-      "base_voltage_primary": "get_trf_base_voltage_primary",
-      "base_voltage_secondary": "get_trf_base_voltage_secondary",
       "winding_group_number": "get_trf_winding_group_number",
       "control_objective": "get_trf_control_objective"
     },
@@ -194,22 +196,43 @@
     "field_map": {
       "name": "name",
       "uuid": "uuid",
-      "category": "category"
+      "rating": "rating",
+      "category": "category",
+      "available": "units",
+      "status": "units"
     },
     "getters": {
+      "bus": "get_gen_bus",
       "active_power": "get_gen_active_power",
       "reactive_power": "get_gen_reactive_power",
-      "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
       "active_power_limits": "get_gen_active_power_limits",
       "reactive_power_limits": "get_gen_reactive_power_limits",
       "must_run": "get_gen_must_run",
       "prime_mover_type": "get_prime_mover_type",
-      "ramp_limits": "get_gen_ramp_limits",
       "status": "get_gen_status",
       "time_at_status": "get_time_at_status",
       "operation_cost": "get_thermal_operation_cost",
       "fuel": "get_fuel_type"
+    },
+    "filter": {
+      "field": "category",
+      "op": "in",
+      "values": [
+        "thermal",
+        "coal",
+        "coal-ccs",
+        "coal-igcc",
+        "gas-cc",
+        "gas-ct",
+        "oil-ct",
+        "lfill-gas",
+        "nuclear",
+        "nuclear-smr",
+        "o-g-s",
+        "biopower",
+        "beccs"
+      ]
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "ThermalStandard",
@@ -227,23 +250,29 @@
       "uuid": "uuid"
     },
     "getters": {
+      "bus": "get_gen_bus",
       "active_power": "get_gen_active_power",
       "reactive_power": "get_gen_reactive_power",
       "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
       "active_power_limits": "get_gen_active_power_limits",
       "reactive_power_limits": "get_gen_reactive_power_limits",
-      "ramp_limits": "get_gen_ramp_limits",
       "power_trajectory": "get_gen_power_trajectory",
       "must_run": "get_gen_must_run",
       "prime_mover_type": "get_prime_mover_type",
       "status": "get_gen_status",
-      "time_limits": "get_time_limits",
       "start_time_limits": "get_start_time_limits",
       "time_at_status": "get_time_at_status",
       "operation_cost": "get_thermal_operation_cost",
       "fuel": "get_fuel_type",
       "start_types": "get_gen_start_types"
+    },
+    "filter": {
+      "field": "category",
+      "op": "in",
+      "values": [
+        "thermal-multi-start"
+      ]
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "ThermalMultiStart",
@@ -261,17 +290,31 @@
       "uuid": "uuid"
     },
     "getters": {
+      "bus": "get_gen_bus",
       "active_power": "get_gen_active_power",
       "reactive_power": "get_gen_reactive_power",
       "prime_mover_type": "get_prime_mover_type",
-      "ramp_limits": "get_gen_ramp_limits",
       "active_power_limits": "get_gen_active_power_limits",
       "reactive_power_limits": "get_gen_reactive_power_limits",
-      "time_limits": "get_time_limits",
       "base_power": "get_gen_base_power",
       "time_at_status": "get_time_at_status",
       "status": "get_gen_status",
-      "operation_cost": "get_gen_operation_cost"
+      "operation_cost": "get_hydro_gen_operation_cost"
+    },
+    "filter": {
+      "field": "category",
+      "op": "in",
+      "values": [
+        "hydro-dispatch",
+        "hydro",
+        "hyded",
+        "hydend",
+        "hydund",
+        "hydnd",
+        "hydnpnd",
+        "hydsnd",
+        "hydud"
+      ]
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "HydroDispatch",
@@ -289,19 +332,23 @@
       "uuid": "uuid"
     },
     "getters": {
-      "fuel_price": "get_fuel_price",
-      "heat_rate": "get_heat_rate",
-      "heat_rate_base": "get_heat_rate_base",
-      "heat_rate_incr": "get_heat_rate_incr",
-      "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point",
-      "max_capacity": "get_max_capacity"
+      "bus": "get_gen_bus",
+      "active_power": "get_gen_active_power",
+      "reactive_power": "get_gen_reactive_power",
+      "active_power_limits": "get_gen_active_power_limits",
+      "reactive_power_limits": "get_gen_reactive_power_limits",
+      "base_power": "get_gen_base_power",
+      "operation_cost": "get_hydro_gen_operation_cost"
+    },
+    "filter": {
+      "field": "category",
+      "op": "in",
+      "values": [
+        "pumped-hydro"
+      ]
     },
     "source_type": "PLEXOSGenerator",
-    "target_type": "HydroEnergyReservoir",
+    "target_type": "HydroTurbine",
     "version": 4
   },
   {
@@ -311,40 +358,24 @@
     },
     "field_map": {
       "initial_storage": "initial_level",
-      "name": "name",
-      "uuid": "uuid"
-    },
-    "getters": {},
-    "source_type": "PLEXOSStorage",
-    "target_type": "HydroPumpedStorage",
-    "version": 5
-  },
-  {
-    "defaults": {
-      "category": "hydro-pumped-storage",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
-    },
-    "field_map": {
-      "name": "name",
       "rating": "rating",
+      "name": "name",
       "uuid": "uuid"
     },
     "getters": {
-      "fuel_price": "get_fuel_price",
-      "heat_rate": "get_heat_rate",
-      "heat_rate_base": "get_heat_rate_base",
-      "heat_rate_incr": "get_heat_rate_incr",
-      "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point",
-      "max_capacity": "get_max_capacity"
+      "bus": "get_gen_bus",
+      "operation_cost": "get_hydro_reservoir_operation_cost"
     },
-    "source_type": "PLEXOSGenerator",
-    "target_type": "HydroPumpedStorage",
-    "version": 6
+    "filter": {
+      "field": "category",
+      "op": "in",
+      "values": [
+        "pumped-hydro"
+      ]
+    },
+    "source_type": "PLEXOSStorage",
+    "target_type": "HydroReservoir",
+    "version": 5
   },
   {
     "defaults": {
@@ -358,15 +389,24 @@
       "uuid": "uuid"
     },
     "getters": {
-      "fuel_price": "get_fuel_price",
-      "heat_rate": "get_heat_rate",
-      "heat_rate_base": "get_heat_rate_base",
-      "heat_rate_incr": "get_heat_rate_incr",
-      "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point"
+      "bus": "get_gen_bus",
+      "operation_cost": "get_renewable_operation_cost",
+      "active_power": "get_gen_active_power",
+      "reactive_power": "get_gen_reactive_power",
+      "base_power": "get_gen_base_power",
+      "reactive_power_limits": "get_gen_reactive_power_limits",
+      "prime_mover_type": "get_prime_mover_type",
+      "power_factor": "get_gen_power_factor"
+    },
+    "filter": {
+      "field": "category",
+      "op": "in",
+      "values": [
+        "renewable-dispatch",
+        "upv",
+        "wind-ons",
+        "wind-ofs"
+      ]
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "RenewableDispatch",
@@ -384,15 +424,20 @@
       "uuid": "uuid"
     },
     "getters": {
-      "fuel_price": "get_fuel_price",
-      "heat_rate": "get_heat_rate",
-      "heat_rate_base": "get_heat_rate_base",
-      "heat_rate_incr": "get_heat_rate_incr",
-      "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point"
+      "bus": "get_gen_bus",
+      "active_power": "get_gen_active_power",
+      "reactive_power": "get_gen_reactive_power",
+      "base_power": "get_gen_base_power",
+      "power_factor": "get_gen_power_factor",
+      "prime_mover_type": "get_prime_mover_type"
+    },
+    "filter": {
+      "field": "category",
+      "op": "in",
+      "values": [
+        "renewable-non-dispatch",
+        "distpv"
+      ]
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "RenewableNonDispatch",
@@ -410,15 +455,19 @@
       "uuid": "uuid"
     },
     "getters": {
-      "fuel_price": "get_fuel_price",
-      "heat_rate": "get_heat_rate",
-      "heat_rate_base": "get_heat_rate_base",
-      "heat_rate_incr": "get_heat_rate_incr",
-      "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point"
+      "bus": "get_gen_bus",
+      "reactive_power": "get_gen_reactive_power",
+      "rating": "get_gen_rating",
+      "base_power": "get_gen_base_power",
+      "reactive_power_limits": "get_gen_reactive_power_limits",
+      "active_power_losses": "get_gen_active_power_losses"
+    },
+    "filter": {
+      "field": "category",
+      "op": "in",
+      "values": [
+        "synchronous-condenser"
+      ]
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "SynchronousCondenser",
@@ -432,7 +481,11 @@
       "name": "name",
       "uuid": "uuid"
     },
-    "getters": {},
+    "getters": {
+      "peak_active_power": "get_region_peak_active_power",
+      "peak_reactive_power": "get_region_peak_reactive_power",
+      "load_response" : "get_region_load_response"
+    },
     "source_type": "PLEXOSRegion",
     "target_type": "Area",
     "version": 1
@@ -445,7 +498,11 @@
       "name": "name",
       "uuid": "uuid"
     },
-    "getters": {},
+    "getters": {
+      "peak_active_power": "get_zone_peak_active_power",
+      "peak_reactive_power": "get_zone_peak_reactive_power",
+      "ext": "create_ext_field"
+    },
     "source_type": "PLEXOSZone",
     "target_type": "LoadZone",
     "version": 1
@@ -456,9 +513,17 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "available":"units"
     },
-    "getters": {},
+    "getters": {
+      "time_frame": "get_reserve_time_frame",
+      "requirement": "get_reserve_requirement",
+      "sustained_time": "get_reserve_sustained_time",
+      "max_participation_factor": "get_reserve_max_participation_factor",
+      "max_output_fraction": "get_reserve_max_output_fraction",
+      "deployed_fraction": "get_reserve_deployed_fraction"
+    },
     "source_type": "PLEXOSReserve",
     "target_type": "VariableReserve",
     "version": 1
@@ -469,9 +534,13 @@
     },
     "field_map": {
       "name": "name",
+      "available": "units",
       "uuid": "uuid"
     },
-    "getters": {},
+    "getters": {
+      "active_power_flow_limits": "get_interface_active_power_flow_limits",
+      "direction_mapping": "get_interface_direction_mapping"
+    },
     "source_type": "PLEXOSInterface",
     "target_type": "TransmissionInterface",
     "version": 1
@@ -481,16 +550,27 @@
       "category": "battery"
     },
     "field_map": {
-      "initial_storage_capacity_level": "initial_soc",
+      "available": "units",
       "name": "name",
       "uuid": "uuid"
     },
     "getters": {
-      "capacity": "get_storage_capacity",
-      "charge_efficiency": "get_storage_charge_efficiency",
-      "max_cycles": "get_storage_cycles",
-      "discharge_efficiency": "get_storage_discharge_efficiency",
-      "max_power": "get_storage_max_power"
+      "bus": "get_gen_bus",
+      "initial_storage_capacity_level": "get_initial_storage_capacity_level",
+      "prime_mover_type": "get_prime_mover_type",
+      "storage_technology_type": "get_storage_technology_type",
+      "storage_capacity": "get_storage_capacity",
+      "storage_level_limits": "get_storage_level_limits",
+      "rating": "get_gen_rating",
+      "active_power":"get_gen_active_power",
+      "input_active_power_limits": "get_storage_charge_power_limits",
+      "output_active_power_limits": "get_storage_discharge_power_limits",
+      "efficiency": "get_storage_efficiency",
+      "reactive_power": "get_gen_reactive_power",
+      "base_power": "get_gen_base_power",
+      "conversion_factor": "get_storage_conversion_factor",
+      "storage_target": "get_storage_target",
+      "cycle_limits": "get_storage_cycle_limits"
     },
     "source_type": "PLEXOSBattery",
     "target_type": "EnergyReservoirStorage",
