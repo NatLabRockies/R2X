@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
+import json
 import re
+from importlib.resources import files
 from typing import Any
 
 from infrasys.cost_curves import CostCurve, FuelCurve
 from infrasys.value_curves import InputOutputCurve, LinearCurve
+from plexosdb import CollectionEnum
 from r2x_plexos.models import (  # type: ignore
+    PLEXOSBattery,
     PLEXOSGenerator,
     PLEXOSInterface,
     PLEXOSLine,
     PLEXOSNode,
     PLEXOSReserve,
+    PLEXOSStorage,
 )
-from r2x_sienna.models import ACBus, Arc
+from r2x_sienna.models import ACBus, Arc, Area, LoadZone
 from r2x_sienna.models.costs import (
     HydroGenerationCost,
     HydroReservoirCost,
@@ -36,6 +41,14 @@ def extract_number_from_name(name: str) -> int | None:
     return None
 
 
+def _get_prime_mover_type(category: str) -> PrimeMoversType:
+    defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
+    with defaults_path.open() as f:
+        defaults = json.load(f)
+    code = defaults.get("prime_mover_types", {}).get(category, "OT")
+    return getattr(PrimeMoversType, code, PrimeMoversType.OT)
+
+
 @getter
 def get_zone_peak_active_power(_: TranslationContext, component: Any) -> Result[float, Any]:
     """Get the peak active power for a zone."""
@@ -48,6 +61,52 @@ def get_zone_peak_reactive_power(_: TranslationContext, component: Any) -> Resul
     """Get the peak reactive power for a zone."""
     value = getattr(component, "peak_reactive_power", 0.0)
     return Ok(float(value))
+
+
+@getter
+def get_node_area(context: TranslationContext, component: PLEXOSNode) -> Result[Any, Any]:
+    """Get the Area object of a node from its memberships (Region collection), matching by name in the target system."""
+    memberships = context.source_system.get_supplemental_attributes_with_component(component)
+    area_name = None
+    for m in memberships:
+        if (
+            hasattr(m, "collection")
+            and m.collection == CollectionEnum.Region
+            and hasattr(m, "child_object")
+            and hasattr(m.child_object, "name")
+        ):
+            area_name = m.child_object.name
+            break
+    if area_name:
+        areas = list(context.target_system.get_components(Area))
+        area_obj = next((a for a in areas if getattr(a, "name", None) == area_name), None)
+        if area_obj:
+            return Ok(area_obj)
+    value = getattr(component, "area", None)
+    return Ok(value)
+
+
+@getter
+def get_node_zone(context: TranslationContext, component: PLEXOSNode) -> Result[Any, Any]:
+    """Get the LoadZone object of a node from its memberships (Zone collection), matching by name in the target system."""
+    memberships = context.source_system.get_supplemental_attributes_with_component(component)
+    zone_name = None
+    for m in memberships:
+        if (
+            hasattr(m, "collection")
+            and m.collection == CollectionEnum.Zone
+            and hasattr(m, "child_object")
+            and hasattr(m.child_object, "name")
+        ):
+            zone_name = m.child_object.name
+            break
+    if zone_name:
+        zones = list(context.target_system.get_components(LoadZone))
+        zone_obj = next((z for z in zones if getattr(z, "name", None) == zone_name), None)
+        if zone_obj:
+            return Ok(zone_obj)
+    value = getattr(component, "zone", None)
+    return Ok(value)
 
 
 @getter
@@ -87,10 +146,7 @@ def get_node_number(_: TranslationContext, component: PLEXOSNode) -> Result[int,
         extracted = extract_number_from_name(component.name)
         if extracted is not None:
             return Ok(extracted)
-    # Fallback: use object_id if available
-    if hasattr(component, "object_id"):
-        return Ok(int(component.object_id))
-    return Ok(-1)
+    return Ok(1)
 
 
 @getter
@@ -110,9 +166,9 @@ def get_line_arc(context: TranslationContext, component: PLEXOSLine) -> Result[A
 
     for m in memberships:
         if getattr(m, "collection", None) is not None:
-            if str(m.collection) == "CollectionEnum.NodeFrom" or str(m.collection) == "NodeFrom":
+            if m.collection == CollectionEnum.NodeFrom:
                 from_node = getattr(m.child_object, "name", None)
-            elif str(m.collection) == "CollectionEnum.NodeTo" or str(m.collection) == "NodeTo":
+            elif m.collection == CollectionEnum.NodeTo:
                 to_node = getattr(m.child_object, "name", None)
         if from_node and to_node:
             break
@@ -251,7 +307,28 @@ def get_gen_active_power(_: TranslationContext, component: PLEXOSGenerator) -> R
 
 
 @getter
-def get_gen_bus(context: TranslationContext, component: Any) -> Result[ACBus | None, Any]:
+def get_device_services(
+    context: TranslationContext, component: PLEXOSGenerator | PLEXOSBattery
+) -> Result[list[Any], Any]:
+    """
+    Get the services provided by a device (generator, battery, etc.), including linked reserve objects.
+    Handles both Generators and Batteries collections.
+    """
+    services = []
+    memberships = context.source_system.get_supplemental_attributes_with_component(component)
+    valid_collections = {CollectionEnum.Generators, CollectionEnum.Batteries}
+    for m in memberships:
+        if hasattr(m, "collection") and m.collection in valid_collections and hasattr(m, "parent_object"):
+            reserve_obj = m.parent_object
+            if reserve_obj not in services:
+                services.append(reserve_obj)
+    return Ok(services)
+
+
+@getter
+def get_gen_bus(
+    context: TranslationContext, component: PLEXOSGenerator | PLEXOSBattery
+) -> Result[ACBus | None, Any]:
     """
     Get the ACBus object for a generator by finding the connected node via memberships,
     then matching the node name to the ACBus in the target system.
@@ -261,7 +338,7 @@ def get_gen_bus(context: TranslationContext, component: Any) -> Result[ACBus | N
     for m in memberships:
         if (
             hasattr(m, "collection")
-            and (str(m.collection) == "CollectionEnum.Nodes" or str(m.collection) == "Nodes")
+            and m.collection == CollectionEnum.Nodes
             and hasattr(m, "child_object")
             and m.child_object is not None
             and hasattr(m.child_object, "name")
@@ -378,10 +455,13 @@ def get_gen_power_factor(_: TranslationContext, component: PLEXOSGenerator) -> R
 
 
 @getter
-def get_prime_mover_type(_: TranslationContext, component: PLEXOSGenerator) -> Result[str, Any]:
-    """Get the prime mover type of a generator. If thermal, set to PrimeMoversType.CC."""
-    value = PrimeMoversType.CC if getattr(component, "category", None) == "thermal" else PrimeMoversType.HY
-    return Ok(str(value))
+def get_prime_mover_type(
+    _: TranslationContext, component: PLEXOSGenerator | PLEXOSBattery | PLEXOSStorage
+) -> Result[str, Any]:
+    """Get the prime mover type of a generator by mapping file."""
+    category = getattr(component, "category", None)
+    value = _get_prime_mover_type(str(category))
+    return Ok(value)
 
 
 @getter
