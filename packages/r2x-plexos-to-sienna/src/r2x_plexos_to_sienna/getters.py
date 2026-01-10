@@ -10,14 +10,16 @@ from typing import Any
 from infrasys.cost_curves import CostCurve, FuelCurve
 from infrasys.value_curves import InputOutputCurve, LinearCurve
 from plexosdb import CollectionEnum
-from r2x_plexos.models import (  # type: ignore
+from r2x_plexos.models import (
     PLEXOSBattery,
     PLEXOSGenerator,
     PLEXOSInterface,
     PLEXOSLine,
     PLEXOSNode,
+    PLEXOSRegion,
     PLEXOSReserve,
     PLEXOSStorage,
+    PLEXOSZone,
 )
 from r2x_sienna.models import ACBus, Arc, Area, LoadZone
 from r2x_sienna.models.costs import (
@@ -26,8 +28,15 @@ from r2x_sienna.models.costs import (
     RenewableGenerationCost,
     ThermalGenerationCost,
 )
-from r2x_sienna.models.enums import ACBusTypes, PrimeMoversType, StorageTechs, ThermalFuels
-from r2x_sienna.models.named_tuples import FromTo_ToFrom, InputOutput, MinMax
+from r2x_sienna.models.enums import (
+    ACBusTypes,
+    PrimeMoversType,
+    StorageTechs,
+    ThermalFuels,
+    TransformerControlObjective,
+    WindingGroupNumber,
+)
+from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput, MinMax
 
 from r2x_core import Ok, Result, TranslationContext, UnitSystem
 from r2x_core.getters import getter
@@ -50,16 +59,85 @@ def _get_prime_mover_type(category: str) -> PrimeMoversType:
 
 
 @getter
-def get_zone_peak_active_power(_: TranslationContext, component: Any) -> Result[float, Any]:
+def get_load_bus(context: TranslationContext, component: PLEXOSRegion) -> Result[ACBus | None, Any]:
+    """
+    Get the bus (ACBus) associated with the load region.
+
+    Looks for a PLEXOSNode membership (collection=Region) and matches the node name to an ACBus.
+    """
+    breakpoint()
+    memberships = context.source_system.get_supplemental_attributes_with_component(component)
+    node_name = None
+    for m in memberships:
+        if (
+            hasattr(m, "collection")
+            and m.collection == CollectionEnum.Region
+            and hasattr(m, "parent_object")
+            and hasattr(m.parent_object, "name")
+        ):
+            node_name = m.parent_object.name
+            break
+    if node_name:
+        acbuses = list(context.target_system.get_components(ACBus))
+        bus = next((b for b in acbuses if getattr(b, "name", None) == node_name), None)
+        return Ok(bus)
+    return Ok(None)
+
+
+@getter
+def get_load_active_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+    """Get the initial steady-state active power demand of the load in the region."""
+    return getattr(component, "load", 0.0)
+
+
+@getter
+def get_load_reactive_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+    """Get the reactive power of load at the bus (if available)."""
+    return getattr(component, "reactive_power", 0.0)
+
+
+@getter
+def get_load_max_active_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+    """Get the maximum active power demand of the load at the bus (if available)."""
+    return getattr(component, "max_load", 0.0)
+
+
+@getter
+def get_load_max_reactive_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+    """Get the maximum reactive power demand of the load at the bus (if available)."""
+    return getattr(component, "max_reactive_power", 0.0)
+
+
+@getter
+def get_load_base_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+    """Get the base power of the load at the bus (if available)."""
+    return getattr(component, "base_power", 100.0)
+
+
+@getter
+def get_load_operation_cost(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+    """Get the operation cost of the load at the bus (if available)."""
+    return getattr(component, "operation_cost", None)
+
+
+@getter
+def get_zone_peak_active_power(_: TranslationContext, component: PLEXOSZone) -> Result[float, Any]:
     """Get the peak active power for a zone."""
     value = getattr(component, "peak_active_power", 0.0)
     return Ok(float(value))
 
 
 @getter
-def get_zone_peak_reactive_power(_: TranslationContext, component: Any) -> Result[float, Any]:
+def get_zone_peak_reactive_power(_: TranslationContext, component: PLEXOSZone) -> Result[float, Any]:
     """Get the peak reactive power for a zone."""
     value = getattr(component, "peak_reactive_power", 0.0)
+    return Ok(float(value))
+
+
+@getter
+def get_node_angle(_: TranslationContext, component: PLEXOSNode) -> Result[float, Any]:
+    """Get the angle of a node."""
+    value = getattr(component, "angle", 0.0)
     return Ok(float(value))
 
 
@@ -127,13 +205,6 @@ def get_node_ext(_: TranslationContext, component: PLEXOSNode) -> Result[dict[st
     value = {
         "load_participation_factor": getattr(component, "load_participation_factor", None),
     }
-    return Ok(value)
-
-
-@getter
-def create_ext_field(_: TranslationContext, component: Any) -> Result[dict[str, Any], Any]:
-    """Create an ext dictionary with no fields."""
-    value = {}
     return Ok(value)
 
 
@@ -503,19 +574,19 @@ def get_fuel_type(_: TranslationContext, component: PLEXOSGenerator) -> Result[s
 
 
 @getter
-def get_region_peak_active_power(_: TranslationContext, component: Any) -> Result[float, Any]:
+def get_region_peak_active_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
     """Get the peak active power in the area (use 'load' as proxy)."""
     return Ok(float(getattr(component, "load", 0.0)))
 
 
 @getter
-def get_region_peak_reactive_power(_: TranslationContext, component: Any) -> Result[float, Any]:
+def get_region_peak_reactive_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
     """Get the peak reactive power in the area (no direct field, default to 0.0)."""
     return Ok(float(getattr(component, "peak_reactive_power", 0.0)))
 
 
 @getter
-def get_region_load_response(_: TranslationContext, component: Any) -> Result[float, Any]:
+def get_region_load_response(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
     """Get the load-frequency damping parameter (use 'load_responce' as proxy)."""
     return Ok(float(getattr(component, "load_responce", 0.0)))
 
@@ -661,3 +732,48 @@ def get_interface_direction_mapping(
     """
     direction_mapping = getattr(component, "direction_mapping", {})
     return Ok(direction_mapping)
+
+
+@getter
+def get_trf_active_power_flow(_: TranslationContext, component) -> Result[float, Any]:
+    """Get the active power flow through the transformer."""
+    return Ok(getattr(component, "active_power_flow", 0.0))
+
+
+@getter
+def get_trf_reactive_power_flow(_: TranslationContext, component) -> Result[float, Any]:
+    """Get the reactive power flow through the transformer."""
+    return Ok(getattr(component, "reactive_power_flow", 0.0))
+
+
+@getter
+def get_trf_primary_shunt(_: TranslationContext, component) -> Result[Complex | float | None, Any]:
+    """Get the primary shunt admittance of the transformer (complex or None)."""
+    value = getattr(component, "primary_shunt", None)
+    if value is None:
+        return Ok(None)
+    if isinstance(value, Complex):
+        return Ok(value)
+    return Ok(Complex(real=0.0, imag=0.0))
+
+
+@getter
+def get_trf_base_power(_: TranslationContext, component) -> Result[float, Any]:
+    """Get the base power of the transformer."""
+    return Ok(getattr(component, "base_power", 100.0))
+
+
+@getter
+def get_trf_winding_group_number(_: TranslationContext, component) -> Result[WindingGroupNumber, Any]:
+    """Get the winding group number of the transformer as a WindingGroupNumber enum."""
+    value = getattr(component, "winding_group_number", None)
+    if value is None:
+        return Ok(WindingGroupNumber.UNDEFINED)
+
+
+@getter
+def get_trf_control_objective(_: TranslationContext, component) -> Result[TransformerControlObjective, Any]:
+    """Get the control objective of the transformer as a TransformerControlObjective enum."""
+    value = getattr(component, "control_objective", None)
+    if value is None:
+        return Ok(TransformerControlObjective.UNDEFINED)

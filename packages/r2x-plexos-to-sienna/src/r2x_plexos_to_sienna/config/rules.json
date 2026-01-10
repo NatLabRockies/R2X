@@ -15,7 +15,7 @@
     },
     "source_type": "PLEXOSRegion",
     "target_type": "Area",
-    "version": 1
+    "version": 2
   },
   {
     "defaults": {
@@ -28,8 +28,7 @@
     },
     "getters": {
       "peak_active_power": "get_zone_peak_active_power",
-      "peak_reactive_power": "get_zone_peak_reactive_power",
-      "ext": "create_ext_field"
+      "peak_reactive_power": "get_zone_peak_reactive_power"
     },
     "source_type": "PLEXOSZone",
     "target_type": "LoadZone",
@@ -59,6 +58,29 @@
     },
     "source_type": "PLEXOSNode",
     "target_type": "ACBus",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "power-load"
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "available": "units",
+      "category": "category"
+    },
+    "getters": {
+      "bus": "get_load_bus",
+      "active_power": "get_load_active_power",
+      "reactive_power": "get_load_reactive_power",
+      "max_active_power" : "get_load_max_active_power",
+      "max_reactive_power" : "get_load_max_reactive_power",
+      "base_power" : "get_load_base_power",
+      "operation_cost": "get_load_operation_cost"
+    },
+    "source_type": "PLEXOSRegion",
+    "target_type": "PowerLoad",
     "version": 1
   },
   {
@@ -94,6 +116,7 @@
     },
     "field_map": {
       "active_power_flow": "fixed_flow",
+      "rating": "max_flow",
       "name": "name",
       "uuid": "uuid",
       "x": "reactance",
@@ -104,7 +127,6 @@
       "b": "get_line_susceptance",
       "g": "get_line_conductance",
       "arc": "get_line_arc",
-      "rating": "get_line_rating",
       "reactive_power_flow": "get_reactive_power_flow",
       "angle_limits": "get_line_angle_limits",
       "flow_limits": "get_line_flow_limits",
@@ -201,8 +223,6 @@
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
       "base_power": "get_trf_base_power",
-      "base_voltage_primary": "get_trf_base_voltage_primary",
-      "base_voltage_secondary": "get_trf_base_voltage_secondary",
       "winding_group_number": "get_trf_winding_group_number",
       "control_objective": "get_trf_control_objective"
     },
@@ -291,7 +311,7 @@
       "status": "get_gen_status",
       "time_at_status": "get_time_at_status",
       "operation_cost": "get_thermal_operation_cost",
-      "services": "get_gen_services",
+      "services": "get_device_services",
       "fuel": "get_fuel_type"
     },
     "filter": {
@@ -339,16 +359,14 @@
       "base_power": "get_gen_base_power",
       "active_power_limits": "get_gen_active_power_limits",
       "reactive_power_limits": "get_gen_reactive_power_limits",
-      "power_trajectory": "get_gen_power_trajectory",
       "must_run": "get_gen_must_run",
       "prime_mover_type": "get_prime_mover_type",
       "status": "get_gen_status",
-      "start_time_limits": "get_start_time_limits",
       "time_at_status": "get_time_at_status",
       "operation_cost": "get_thermal_operation_cost",
       "fuel": "get_fuel_type",
       "start_types": "get_gen_start_types",
-      "services": "get_gen_services"
+      "services": "get_device_services"
     },
     "filter": {
       "field": "category",
@@ -383,7 +401,7 @@
       "base_power": "get_gen_base_power",
       "time_at_status": "get_time_at_status",
       "status": "get_gen_status",
-      "services": "get_gen_services",
+      "services": "get_device_services",
       "operation_cost": "get_hydro_gen_operation_cost"
     },
     "filter": {
@@ -430,7 +448,7 @@
       "active_power_limits": "get_gen_active_power_limits",
       "reactive_power_limits": "get_gen_reactive_power_limits",
       "base_power": "get_gen_base_power",
-      "services": "get_gen_services",
+      "services": "get_device_services",
       "operation_cost": "get_hydro_gen_operation_cost"
     },
     "filter": {
@@ -461,7 +479,7 @@
     },
     "getters": {
       "bus": "get_gen_bus",
-      "services": "get_gen_services",
+      "services": "get_device_services",
       "operation_cost": "get_hydro_reservoir_operation_cost"
     },
     "filter": {
@@ -495,7 +513,7 @@
       "base_power": "get_gen_base_power",
       "reactive_power_limits": "get_gen_reactive_power_limits",
       "prime_mover_type": "get_prime_mover_type",
-      "services": "get_gen_services",
+      "services": "get_device_services",
       "power_factor": "get_gen_power_factor"
     },
     "filter": {
@@ -532,7 +550,7 @@
       "active_power": "get_gen_active_power",
       "reactive_power": "get_gen_reactive_power",
       "base_power": "get_gen_base_power",
-      "services": "get_gen_services",
+      "services": "get_device_services",
       "power_factor": "get_gen_power_factor",
       "prime_mover_type": "get_prime_mover_type"
     },
@@ -565,7 +583,7 @@
       "reactive_power": "get_gen_reactive_power",
       "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
-      "services": "get_gen_services",
+      "services": "get_device_services",
       "reactive_power_limits": "get_gen_reactive_power_limits",
       "active_power_losses": "get_gen_active_power_losses"
     },
@@ -587,8 +605,7 @@
     "field_map": {
       "name": "name",
       "category": "category",
-      "uuid": "uuid",
-      "available":"units"
+      "uuid": "uuid"
     },
     "getters": {
       "time_frame": "get_reserve_time_frame",
@@ -637,7 +654,7 @@
       "storage_capacity": "get_storage_capacity",
       "storage_level_limits": "get_storage_level_limits",
       "rating": "get_gen_rating",
-      "services": "get_battery_services",
+      "services": "get_device_services",
       "active_power":"get_gen_active_power",
       "input_active_power_limits": "get_storage_charge_power_limits",
       "output_active_power_limits": "get_storage_discharge_power_limits",
