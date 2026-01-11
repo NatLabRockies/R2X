@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from importlib.resources import files
 from typing import Any
 
@@ -19,9 +20,10 @@ from r2x_plexos.models import (
     PLEXOSRegion,
     PLEXOSReserve,
     PLEXOSStorage,
+    PLEXOSTransformer,
     PLEXOSZone,
 )
-from r2x_sienna.models import ACBus, Arc, Area, LoadZone
+from r2x_sienna.models import ACBus, Arc, Area, LoadZone, VariableReserve
 from r2x_sienna.models.costs import (
     HydroGenerationCost,
     HydroReservoirCost,
@@ -31,6 +33,8 @@ from r2x_sienna.models.costs import (
 from r2x_sienna.models.enums import (
     ACBusTypes,
     PrimeMoversType,
+    ReserveDirection,
+    ReserveType,
     StorageTechs,
     ThermalFuels,
     TransformerControlObjective,
@@ -59,13 +63,17 @@ def _get_prime_mover_type(category: str) -> PrimeMoversType:
 
 
 @getter
+def get_power_load_uuid(_: TranslationContext, component: PLEXOSRegion) -> Result[str, Any]:
+    return Ok(str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{component.uuid}_load")))
+
+
+@getter
 def get_load_bus(context: TranslationContext, component: PLEXOSRegion) -> Result[ACBus | None, Any]:
     """
     Get the bus (ACBus) associated with the load region.
 
     Looks for a PLEXOSNode membership (collection=Region) and matches the node name to an ACBus.
     """
-    breakpoint()
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     node_name = None
     for m in memberships:
@@ -382,17 +390,29 @@ def get_device_services(
     context: TranslationContext, component: PLEXOSGenerator | PLEXOSBattery
 ) -> Result[list[Any], Any]:
     """
-    Get the services provided by a device (generator, battery, etc.), including linked reserve objects.
-    Handles both Generators and Batteries collections.
+    Get the services provided by a device (generator, battery, etc.), returning VariableReserve objects from the target system.
     """
     services = []
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     valid_collections = {CollectionEnum.Generators, CollectionEnum.Batteries}
+    variable_reserves = list(context.target_system.get_components(VariableReserve))
     for m in memberships:
         if hasattr(m, "collection") and m.collection in valid_collections and hasattr(m, "parent_object"):
             reserve_obj = m.parent_object
-            if reserve_obj not in services:
-                services.append(reserve_obj)
+            reserve_uuid = getattr(reserve_obj, "uuid", None)
+            reserve_name = getattr(reserve_obj, "name", None)
+            match = next(
+                (
+                    vr
+                    for vr in variable_reserves
+                    if (
+                        getattr(vr, "uuid", None) == reserve_uuid or getattr(vr, "name", None) == reserve_name
+                    )
+                ),
+                None,
+            )
+            if match and match not in services:
+                services.append(match)
     return Ok(services)
 
 
@@ -687,6 +707,95 @@ def get_reserve_requirement(_: TranslationContext, component: PLEXOSGenerator) -
 
 
 @getter
+def get_interface_active_power_flow_limits(
+    _: TranslationContext, component: PLEXOSInterface
+) -> Result[MinMax, Any]:
+    """Get the min/max active power flow limits for a TransmissionInterface."""
+    min_flow = float(getattr(component, "min_flow", 0.0))
+    max_flow = float(getattr(component, "max_flow", 0.0))
+    return Ok(MinMax(min=min_flow, max=max_flow))
+
+
+@getter
+def get_interface_direction_mapping(
+    _: TranslationContext, component: PLEXOSInterface
+) -> Result[dict[str, int], Any]:
+    """
+    Get the direction mapping for a TransmissionInterface.
+    This is a placeholder; actual mapping logic depends on your data model.
+    """
+    direction_mapping = getattr(component, "direction_mapping", {})
+    return Ok(direction_mapping)
+
+
+@getter
+def get_trf_active_power_flow(_: TranslationContext, component: PLEXOSTransformer) -> Result[float, Any]:
+    """Get the active power flow through the transformer."""
+    return Ok(getattr(component, "active_power_flow", 0.0))
+
+
+@getter
+def get_trf_reactive_power_flow(_: TranslationContext, component: PLEXOSTransformer) -> Result[float, Any]:
+    """Get the reactive power flow through the transformer."""
+    return Ok(getattr(component, "reactive_power_flow", 0.0))
+
+
+@getter
+def get_trf_primary_shunt(
+    _: TranslationContext, component: PLEXOSTransformer
+) -> Result[Complex | float | None, Any]:
+    """Get the primary shunt admittance of the transformer (complex or None)."""
+    value = getattr(component, "primary_shunt", None)
+    if value is None:
+        return Ok(None)
+    if isinstance(value, Complex):
+        return Ok(value)
+    return Ok(Complex(real=0.0, imag=0.0))
+
+
+@getter
+def get_trf_base_power(_: TranslationContext, component: PLEXOSTransformer) -> Result[float, Any]:
+    """Get the base power of the transformer."""
+    return Ok(getattr(component, "base_power", 100.0))
+
+
+@getter
+def get_trf_winding_group_number(
+    _: TranslationContext, component: PLEXOSTransformer
+) -> Result[WindingGroupNumber, Any]:
+    """Get the winding group number of the transformer as a WindingGroupNumber enum."""
+    return Ok(WindingGroupNumber.UNDEFINED)
+
+
+@getter
+def get_trf_control_objective(
+    _: TranslationContext, component: PLEXOSTransformer
+) -> Result[TransformerControlObjective, Any]:
+    """Get the control objective of the transformer as a TransformerControlObjective enum."""
+    return Ok(TransformerControlObjective.UNDEFINED)
+
+
+@getter
+def get_reserve_type(_: TranslationContext, component: PLEXOSReserve) -> Result[ReserveType, Any]:
+    """Get the reserve type for a PLEXOSReserve component as a ReserveType enum."""
+    value = getattr(component, "reserve_type", None)
+    try:
+        return Ok(ReserveType(value))
+    except Exception:
+        return Ok(ReserveType.SPINNING)
+
+
+@getter
+def get_reserve_direction(_: TranslationContext, component: PLEXOSReserve) -> Result[ReserveDirection, Any]:
+    """Get the reserve direction for a PLEXOSReserve component as a ReserveDirection enum."""
+    value = getattr(component, "direction", None)
+    try:
+        return Ok(ReserveDirection(value))
+    except Exception:
+        return Ok(ReserveDirection.UP)
+
+
+@getter
 def get_reserve_sustained_time(_: TranslationContext, component: PLEXOSReserve) -> Result[float, Any]:
     """Get the time in seconds reserve contribution must be sustained."""
     return Ok(float(getattr(component, "duration", 3600.0)))
@@ -710,70 +819,3 @@ def get_reserve_max_output_fraction(_: TranslationContext, component: PLEXOSRese
 def get_reserve_deployed_fraction(_: TranslationContext, component: PLEXOSReserve) -> Result[float, Any]:
     """Get the fraction of service procurement assumed to be actually deployed."""
     return Ok(float(getattr(component, "deployed_fraction", 1.0)))
-
-
-@getter
-def get_interface_active_power_flow_limits(
-    _: TranslationContext, component: PLEXOSInterface
-) -> Result[MinMax, Any]:
-    """Get the min/max active power flow limits for a TransmissionInterface."""
-    min_flow = float(getattr(component, "min_flow", 0.0))
-    max_flow = float(getattr(component, "max_flow", 0.0))
-    return Ok(MinMax(min=min_flow, max=max_flow))
-
-
-@getter
-def get_interface_direction_mapping(
-    _: TranslationContext, component: PLEXOSInterface
-) -> Result[dict[str, int], Any]:
-    """
-    Get the direction mapping for a TransmissionInterface.
-    This is a placeholder; actual mapping logic depends on your data model.
-    """
-    direction_mapping = getattr(component, "direction_mapping", {})
-    return Ok(direction_mapping)
-
-
-@getter
-def get_trf_active_power_flow(_: TranslationContext, component) -> Result[float, Any]:
-    """Get the active power flow through the transformer."""
-    return Ok(getattr(component, "active_power_flow", 0.0))
-
-
-@getter
-def get_trf_reactive_power_flow(_: TranslationContext, component) -> Result[float, Any]:
-    """Get the reactive power flow through the transformer."""
-    return Ok(getattr(component, "reactive_power_flow", 0.0))
-
-
-@getter
-def get_trf_primary_shunt(_: TranslationContext, component) -> Result[Complex | float | None, Any]:
-    """Get the primary shunt admittance of the transformer (complex or None)."""
-    value = getattr(component, "primary_shunt", None)
-    if value is None:
-        return Ok(None)
-    if isinstance(value, Complex):
-        return Ok(value)
-    return Ok(Complex(real=0.0, imag=0.0))
-
-
-@getter
-def get_trf_base_power(_: TranslationContext, component) -> Result[float, Any]:
-    """Get the base power of the transformer."""
-    return Ok(getattr(component, "base_power", 100.0))
-
-
-@getter
-def get_trf_winding_group_number(_: TranslationContext, component) -> Result[WindingGroupNumber, Any]:
-    """Get the winding group number of the transformer as a WindingGroupNumber enum."""
-    value = getattr(component, "winding_group_number", None)
-    if value is None:
-        return Ok(WindingGroupNumber.UNDEFINED)
-
-
-@getter
-def get_trf_control_objective(_: TranslationContext, component) -> Result[TransformerControlObjective, Any]:
-    """Get the control objective of the transformer as a TransformerControlObjective enum."""
-    value = getattr(component, "control_objective", None)
-    if value is None:
-        return Ok(TransformerControlObjective.UNDEFINED)
