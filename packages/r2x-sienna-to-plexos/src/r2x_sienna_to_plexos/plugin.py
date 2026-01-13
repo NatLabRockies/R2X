@@ -2,17 +2,14 @@
 
 from r2x_core import PluginManifest, PluginSpec
 
-from .plugin_config import SiennaToPlexosConfig
-from .translation import SiennaToPlexosTranslation
+from .translation import perform_translation
 
 manifest = PluginManifest(package="r2x-sienna-to-plexos")
 
 manifest.add(
     PluginSpec.translation(
-        name="r2x-sienna-to-plexos.translation",
-        entry=SiennaToPlexosTranslation,
-        config=SiennaToPlexosConfig,
-        method="run",
+        name="r2x_sienna_to_plexos.translation",
+        entry=perform_translation,
         description="Translate Sienna system to PLEXOS system.",
     )
 )
