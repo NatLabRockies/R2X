@@ -423,6 +423,18 @@ def base_voltage_default(_: TranslationContext, __: object) -> Result[float | in
 
 
 @getter
+def get_default_magnitude(_: TranslationContext, __: object) -> Result[float | int, ValueError]:
+    """Default bus voltage magnitude."""
+    return _ok_num(1.0)
+
+
+@getter
+def get_default_angle(_: TranslationContext, __: object) -> Result[float | int, ValueError]:
+    """Default bus voltage angle."""
+    return _ok_num(0.0)
+
+
+@getter
 def bustype_default(_: TranslationContext, __: object) -> Result[ACBusTypes, ValueError]:
     """Default bus type."""
     return Ok(ACBusTypes.PQ)

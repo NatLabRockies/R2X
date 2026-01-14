@@ -14,6 +14,8 @@
       "number": "get_bus_number",
       "name": "bus_name_from_region",
       "area": "get_area_for_region",
+      "magnitude": "get_default_magnitude",
+      "angle": "get_default_angle",
       "bustype": "bustype_default",
       "base_voltage": "base_voltage_default"
     },
