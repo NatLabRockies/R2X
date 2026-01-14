@@ -29,9 +29,23 @@ if TYPE_CHECKING:
     from r2x_core import TranslationContext
 
 
+_NON_NUMERIC_REGION_BUS_NUMBERS: dict[str, int] = {}
+_NEXT_AVAILABLE_BUS_NUMBER = 999999
+
+
 def _ok_num(val: float | int) -> Result[float | int, ValueError]:
     """Typed Ok wrapper for numeric Result returns."""
     return cast(Result[float | int, ValueError], Ok(val))
+
+
+def _lookup_area(context: TranslationContext, name: str | None) -> Area | None:  # type: ignore[name-defined]
+    """Helper to find a target Area by name."""
+    from r2x_sienna.models import Area
+
+    for area in context.target_system.get_components(Area):
+        if getattr(area, "name", None) == name:
+            return area
+    return None
 
 
 @getter
@@ -322,16 +336,6 @@ def get_zero_flow(_: TranslationContext, __: ReEDSInterface) -> Result[float | i
     return _ok_num(0.0)
 
 
-def _lookup_area(context: TranslationContext, name: str | None) -> Area | None:  # type: ignore[name-defined]
-    """Helper to find a target Area by name."""
-    from r2x_sienna.models import Area
-
-    for area in context.target_system.get_components(Area):
-        if getattr(area, "name", None) == name:
-            return area
-    return None
-
-
 @getter
 def get_area_for_region(context: TranslationContext, component: ReEDSRegion) -> Result[Area, ValueError]:
     """Resolve Area for a region."""
@@ -379,14 +383,37 @@ def get_bus_for_region(context: TranslationContext, component: object) -> Result
 
 @getter
 def get_bus_number(_: TranslationContext, component: ReEDSRegion) -> Result[int, ValueError]:
-    """Extract and return the bus number as an integer from the region name (e.g., 'p60' -> 60)."""
+    """
+    Extract and return the bus number as an integer from the region name.
+
+    - For regions like 'p60': extracts the number (60)
+    - For non-numeric regions like 'otx', 'oms', 'ola': assigns a sequential number starting at 999999
+    """
+    global _NEXT_AVAILABLE_BUS_NUMBER
     import re
 
     name = getattr(component, "name", "")
+
     match = re.match(r"p(\d+)", name)
     if match:
         return Ok(int(match.group(1)))
-    return Err(ValueError(f"Could not extract bus number from region name '{name}'"))
+
+    match = re.match(r"z(\d+)", name)
+    if match:
+        return Ok(int(match.group(1)))
+
+    if name not in _NON_NUMERIC_REGION_BUS_NUMBERS:
+        _NON_NUMERIC_REGION_BUS_NUMBERS[name] = _NEXT_AVAILABLE_BUS_NUMBER
+        _NEXT_AVAILABLE_BUS_NUMBER += 1
+
+    return Ok(_NON_NUMERIC_REGION_BUS_NUMBERS[name])
+
+
+@getter
+def get_area_category(_: TranslationContext, component: ReEDSRegion) -> Result[str, ValueError]:
+    """Get category for Area, defaulting to 'region'."""
+    category = getattr(component, "category", None)
+    return Ok(category if category else "region")
 
 
 @getter

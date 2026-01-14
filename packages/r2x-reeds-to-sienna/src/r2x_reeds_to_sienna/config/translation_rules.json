@@ -1,21 +1,5 @@
 [
   {
-    "defaults": {
-      "peak_reactive_power": 0.0,
-      "load_response": 0.0,
-      "peak_active_power": 0.0
-    },
-    "field_map": {
-      "name": "name",
-      "uuid": "uuid",
-      "category": "category",
-      "peak_active_power": "max_active_power"
-    },
-    "source_type": "ReEDSRegion",
-    "target_type": "Area",
-    "version": 1
-  },
-  {
     "name": "region_bus",
     "defaults": {
       "available": true,
@@ -24,17 +8,36 @@
       "angle": 0.0,
       "category": "bus"
     },
-    "field_map": {},
+    "field_map": {
+    },
     "getters": {
+      "number": "get_bus_number",
       "name": "bus_name_from_region",
       "area": "get_area_for_region",
       "bustype": "bustype_default",
-      "base_voltage": "base_voltage_default",
-      "number": "get_bus_number"
+      "base_voltage": "base_voltage_default"
     },
     "source_type": "ReEDSRegion",
     "target_type": "ACBus",
     "version": 1
+  },
+  {
+    "defaults": {
+      "peak_reactive_power": 0.0,
+      "load_response": 0.0,
+      "peak_active_power": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "peak_active_power": "max_active_power"
+    },
+    "getters": {
+      "category": "get_area_category"
+    },
+    "source_type": "ReEDSRegion",
+    "target_type": "Area",
+    "version": 2
   },
   {
     "name": "variable_reserve",
