@@ -29,41 +29,55 @@ def test_basic_getters_return_values() -> None:
     )
 
     region = ReEDSRegion(name="REG1")
+    context.source_system.add_component(region)
+
     area = Area(name="REG1")
     context.target_system.add_component(area)
     bus = ACBus(name="REG1_BUS", area=area, number=1, base_voltage=Voltage(115.0, "kV"))
     context.target_system.add_component(bus)
+
     thermal = ReEDSThermalGenerator(
-        name="THERM",
+        name="REG1_THERM",  # Include region prefix
         region=region,
         technology="coal-new",
         capacity=10.0,
         heat_rate=7.5,
         fuel_type="coal",
     )
+    context.source_system.add_component(thermal)
+
     variable = ReEDSVariableGenerator(
-        name="WIND",
+        name="REG1_WIND",  # Include region prefix
         region=region,
         technology="wind-ons",
         capacity=5.0,
     )
+    context.source_system.add_component(variable)
+
     hydro = ReEDSHydroGenerator(
-        name="HYDRO",
+        name="REG1_HYDRO",  # Include region prefix
         region=region,
         technology="hydro",
         capacity=8.0,
         is_dispatchable=True,
     )
+    context.source_system.add_component(hydro)
+
     storage = ReEDSStorage(
-        name="STORE",
+        name="REG1_STORE",  # Include region prefix
         region=region,
         technology="battery",
         capacity=4.0,
         storage_duration=2.0,
         round_trip_efficiency=0.9,
     )
-    demand = ReEDSDemand(name="LOAD", region=region, max_active_power=3.0)
+    context.source_system.add_component(storage)
+
+    demand = ReEDSDemand(name="REG1_LOAD", region=region, max_active_power=3.0)  # Include region prefix
+    context.source_system.add_component(demand)
+
     interface = ReEDSInterface(name="IFACE", from_region=region, to_region=region)
+    context.source_system.add_component(interface)
 
     assert getters.get_capacity_as_rating(context, thermal).unwrap() == 10.0
     assert getters.get_capacity_as_base_power(context, thermal).unwrap() == 10.0

@@ -351,25 +351,30 @@ def bus_name_from_region(_: TranslationContext, component: ReEDSRegion) -> Resul
 def get_bus_for_region(context: TranslationContext, component: object) -> Result[ACBus, ValueError]:
     """
     Find the bus corresponding to the component's region.
-    Extract region name from the component's name (e.g., 'wind-ons_7_p62' -> 'p62').
+    First tries to use the region attribute, then falls back to name extraction.
     """
-    import re
-
     from r2x_sienna.models import ACBus
 
-    # Try to extract region name (e.g., p62) from the component's name
-    name = getattr(component, "name", "")
-    match = re.search(r"(p\d+)", name)
-    region_name = match.group(1) if match else None
-    bus_name = f"{region_name}_BUS" if region_name else None
+    # Try to get region directly from component
+    region = getattr(component, "region", None)
+    if region:
+        region_name = getattr(region, "name", None)
+        bus_name = f"{region_name}_BUS"
+    else:
+        import re
+
+        name = getattr(component, "name", "")
+        match = re.search(r"(p\d+)", name)
+        region_name = match.group(1) if match else None
+        bus_name = f"{region_name}_BUS" if region_name else None
 
     if not bus_name:
-        return Err(ValueError(f"Could not extract region from component name '{name}'"))
+        return Err(ValueError("Could not determine region for component"))
 
     for bus in context.target_system.get_components(ACBus):
         if getattr(bus, "name", "") == bus_name:
             return Ok(bus)
-    return Err(ValueError(f"No bus found for region {region_name}"))
+    return Err(ValueError(f"No bus found with name {bus_name}"))
 
 
 @getter

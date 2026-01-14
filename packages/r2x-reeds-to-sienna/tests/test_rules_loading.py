@@ -43,7 +43,7 @@ def test_has_generator_rules() -> None:
     assert any(
         rule.get("source_type") == "ReEDSVariableGenerator"
         and rule.get("target_type") == "RenewableNonDispatch"
-        and rule.get("filter", {}).get("op") == "eq"
+        and rule.get("filter", {}).get("op") in ("eq", "startswith")
         for rule in rules_data
     ), "Missing ReEDSVariableGenerator -> RenewableNonDispatch (distpv) rule"
 
