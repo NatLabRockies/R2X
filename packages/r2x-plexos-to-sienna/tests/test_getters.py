@@ -35,7 +35,9 @@ def test_basic_node_getters() -> None:
     context = TranslationContext(
         source_system=System(name="source"),
         target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models", "r2x_plexos_to_sienna.getters")),
+        config=PluginConfig(
+            models=("r2x_plexos.models", "r2x_sienna.models", "r2x_plexos_to_sienna.getters")
+        ),
         rules=[],
     )
 
