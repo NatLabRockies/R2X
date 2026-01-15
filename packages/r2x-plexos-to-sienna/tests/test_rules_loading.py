@@ -43,8 +43,7 @@ def test_has_node_to_acbus_rule() -> None:
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
-        rule.get("source_type") == "PLEXOSNode" and rule.get("target_type") == "ACBus"
-        for rule in rules_data
+        rule.get("source_type") == "PLEXOSNode" and rule.get("target_type") == "ACBus" for rule in rules_data
     ), "Missing PLEXOSNode -> ACBus rule"
 
 
@@ -54,8 +53,7 @@ def test_has_region_to_area_rule() -> None:
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
-        rule.get("source_type") == "PLEXOSRegion" and rule.get("target_type") == "Area"
-        for rule in rules_data
+        rule.get("source_type") == "PLEXOSRegion" and rule.get("target_type") == "Area" for rule in rules_data
     ), "Missing PLEXOSRegion -> Area rule"
 
 
@@ -154,8 +152,7 @@ def test_has_line_rules() -> None:
 
     # AC Line
     assert any(
-        rule.get("source_type") == "PLEXOSLine" and rule.get("target_type") == "Line"
-        for rule in rules_data
+        rule.get("source_type") == "PLEXOSLine" and rule.get("target_type") == "Line" for rule in rules_data
     ), "Missing PLEXOSLine -> Line rule"
 
     # Monitored Line
@@ -196,7 +193,8 @@ def test_has_transformer_rules() -> None:
 
     # Phase Shifting Transformer
     assert any(
-        rule.get("source_type") == "PLEXOSTransformer" and rule.get("target_type") == "PhaseShiftingTransformer"
+        rule.get("source_type") == "PLEXOSTransformer"
+        and rule.get("target_type") == "PhaseShiftingTransformer"
         for rule in rules_data
     ), "Missing PLEXOSTransformer -> PhaseShiftingTransformer rule"
 
@@ -248,8 +246,16 @@ def test_prime_mover_mappings_exist() -> None:
 
     # Check some key mappings exist
     expected_categories = [
-        "battery", "coal", "gas-cc", "gas-ct", "nuclear", "hydro-dispatch",
-        "wind-ons", "upv", "distpv", "pumped-hydro"
+        "battery",
+        "coal",
+        "gas-cc",
+        "gas-ct",
+        "nuclear",
+        "hydro-dispatch",
+        "wind-ons",
+        "upv",
+        "distpv",
+        "pumped-hydro",
     ]
 
     for category in expected_categories:

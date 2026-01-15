@@ -297,6 +297,7 @@ def test_plexos_generators_translate_to_sienna_types() -> None:
     assert pv_gen.bus is not None
     assert pv_gen.bus.name == "NODE1"
 
+
 def test_plexos_battery_translates_to_energy_reservoir() -> None:
     """Ensure PLEXOSBattery translates to EnergyReservoirStorage."""
     from plexosdb import CollectionEnum
