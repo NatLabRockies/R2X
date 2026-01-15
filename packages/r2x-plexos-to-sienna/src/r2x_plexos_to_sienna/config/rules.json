@@ -189,42 +189,12 @@
       "op": "eq",
       "values": [
         "two-terminal-hvdc-line",
+        "lcc",
         "b2b"
       ]
     },
     "source_type": "PLEXOSLine",
-    "target_type": "TwoTerminalHVDCLine",
-    "version": 3
-  },
-  {
-    "defaults": {
-      "category": "lcc",
-      "reactance": 0.0,
-      "resistance": 0.0
-    },
-    "field_map": {
-      "active_power_flow": "fixed_flow",
-      "category": "category",
-      "name": "name",
-      "uuid": "uuid"
-    },
-    "getters": {
-      "arc": "get_line_arc",
-      "active_power_limits_from": "get_active_power_limits_from",
-      "active_power_limits_to": "get_active_power_limits_to",
-      "reactive_power_limits_from": "get_reactive_power_limits_from",
-      "reactive_power_limits_to": "get_reactive_power_limits_to",
-      "loss": "get_hvdc_line_loss"
-    },
-    "filter": {
-      "field": "category",
-      "op": "eq",
-      "values": [
-        "lcc"
-      ]
-    },
-    "source_type": "PLEXOSLine",
-    "target_type": "TwoTerminalLCCLine",
+    "target_type": "TwoTerminalGenericHVDCLine",
     "version": 3
   },
   {
