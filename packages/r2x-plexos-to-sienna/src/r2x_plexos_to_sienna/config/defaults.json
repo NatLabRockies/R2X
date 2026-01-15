@@ -21,6 +21,7 @@
         "hydro-d": "HY",
         "can-imports": "HY",
         "hydro-and": "HY",
+        "hydro-dispatch": "HY",
         "pumped-hydro": "PS",
         "upv": "PVe",
         "distpv": "PVe",

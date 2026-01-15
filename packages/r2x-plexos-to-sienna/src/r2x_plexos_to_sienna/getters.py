@@ -95,37 +95,37 @@ def get_load_bus(context: TranslationContext, component: PLEXOSRegion) -> Result
 @getter
 def get_load_active_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
     """Get the initial steady-state active power demand of the load in the region."""
-    return getattr(component, "load", 0.0)
+    return Ok(getattr(component, "load", 0.0))
 
 
 @getter
 def get_load_reactive_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
     """Get the reactive power of load at the bus (if available)."""
-    return getattr(component, "reactive_power", 0.0)
+    return Ok(getattr(component, "reactive_power", 0.0))
 
 
 @getter
 def get_load_max_active_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
     """Get the maximum active power demand of the load at the bus (if available)."""
-    return getattr(component, "max_load", 0.0)
+    return Ok(getattr(component, "max_load", 0.0))
 
 
 @getter
 def get_load_max_reactive_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
     """Get the maximum reactive power demand of the load at the bus (if available)."""
-    return getattr(component, "max_reactive_power", 0.0)
+    return Ok(getattr(component, "max_reactive_power", 0.0))
 
 
 @getter
 def get_load_base_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
     """Get the base power of the load at the bus (if available)."""
-    return getattr(component, "base_power", 100.0)
+    return Ok(getattr(component, "base_power", 100.0))
 
 
 @getter
 def get_load_operation_cost(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
     """Get the operation cost of the load at the bus (if available)."""
-    return getattr(component, "operation_cost", None)
+    return Ok(getattr(component, "operation_cost", None))
 
 
 @getter
@@ -375,7 +375,8 @@ def get_reactive_power_limits_to(_: TranslationContext, component: PLEXOSLine) -
 @getter
 def get_hvdc_line_loss(_: TranslationContext, component: PLEXOSLine) -> Result[InputOutputCurve, Any]:
     """Get the losses of an HVDC line as an InputOutputCurve (if available)."""
-    return Ok(LinearCurve(0.0))
+    loss_incr = getattr(component, "loss_incr", 0.0)
+    return Ok(LinearCurve(loss_incr))
 
 
 @getter

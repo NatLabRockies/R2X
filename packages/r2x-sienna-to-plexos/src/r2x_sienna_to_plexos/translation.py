@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from importlib.resources import files
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from infrasys.time_series_manager import TimeSeriesManager
@@ -41,14 +42,14 @@ def perform_translation(system: System) -> System:
     rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
 
-    # Get time series directory from source system
-    source_ts_dir = system.time_series_manager.time_series_directory
+    tmp_ts_dir = Path(__file__).parent / "tmp"
+    tmp_ts_dir.mkdir(exist_ok=True)
 
     # Create time series manager for target system
     connection = create_in_memory_db()
     ts_manager = TimeSeriesManager(
         connection,
-        time_series_directory=source_ts_dir,
+        time_series_directory=tmp_ts_dir,
         time_series_storage_type=TimeSeriesStorageType.ARROW,
         permanent=True,
     )

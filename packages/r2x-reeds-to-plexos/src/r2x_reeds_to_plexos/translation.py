@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import json
 from importlib.resources import files
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+from infrasys.time_series_manager import TimeSeriesManager
+from infrasys.time_series_models import TimeSeriesStorageType
+from infrasys.utils.sqlite import create_in_memory_db
 
 from r2x_core import Rule, System, TranslationContext, apply_rules_to_context
 
@@ -30,7 +35,19 @@ def perform_translation(system: System):
     rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
 
-    plexos_system = System(name="PLEXOS", auto_add_composed_components=True)
+    tmp_ts_dir = Path(__file__).parent / "tmp"
+    tmp_ts_dir.mkdir(exist_ok=True)
+
+    connection = create_in_memory_db()
+    ts_manager = TimeSeriesManager(
+        connection,
+        time_series_directory=tmp_ts_dir,
+        time_series_storage_type=TimeSeriesStorageType.ARROW,
+        permanent=True,
+    )
+
+    plexos_system = System(name="PLEXOS", auto_add_composed_components=True, time_series_manager=ts_manager)
+
     context = TranslationContext(
         source_system=system,
         target_system=plexos_system,
