@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+from importlib.resources import files
+
 from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
 
-from r2x_core import PluginContext, System, apply_rules_to_context
+from r2x_core import PluginContext, Rule, System, apply_rules_to_context
 
 from .getters_utils import (
     attach_region_load_time_series,
@@ -23,6 +26,10 @@ def perform_translation(context: PluginContext) -> System:
     Returns:
         The translated PLEXOS system.
     """
+    rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
+    rules = Rule.from_records(json.loads(rules_path.read_text()))
+    context.rules = rules
+
     tmp_ts_dir = context.source_system.get_time_series_directory()
     connection = create_in_memory_db()
     ts_manager = TimeSeriesManager(
