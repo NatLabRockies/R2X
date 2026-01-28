@@ -321,19 +321,27 @@
   },
   {
     "defaults": {
-      "category": "hydro-dispatch",
+      "category": "pumped-hydro",
       "load_point": 0.0,
       "mark_up_point": 0.0
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
+      "rating": "get_turbine_rating",
       "max_ramp_up": "get_turbine_max_ramp_up",
-      "max_ramp_down": "get_turbine_max_ramp_down"
+      "max_ramp_down": "get_turbine_max_ramp_down",
+      "min_stable_level": "get_min_stable_level",
+      "forced_outage_rate": "get_turbine_forced_outage_rate",
+      "maintenance_rate": "get_turbine_maintenance_rate",
+      "mean_time_to_repair": "get_turbine_mean_time_to_repair",
+      "pump_load": "get_turbine_pump_load",
+      "pump_efficiency": "get_turbine_pump_efficiency",
+      "vom_charge": "get_vom_cost",
+      "max_capacity": "get_max_capacity"
     },
     "source_type": "HydroTurbine",
     "target_type": "PLEXOSGenerator",
@@ -341,7 +349,7 @@
   },
   {
     "defaults": {
-      "category": "hydro-pumped-storage",
+      "category": "storage",
       "initial_level": 0.5
     },
     "field_map": {
@@ -357,7 +365,7 @@
   },
   {
     "defaults": {
-      "category": "hydro-pumped-storage",
+      "category": "pumped-hydro",
       "load_point": 0.0,
       "mark_up_point": 0.0
     },
@@ -522,7 +530,8 @@
   },
   {
     "defaults": {
-      "category": "interface"
+      "category": "interface",
+      "is_enabled": -1
     },
     "field_map": {
       "name": "name",
@@ -636,9 +645,9 @@
     "target_type": "PLEXOSMembership",
     "version": 2,
     "filter": {
-      "field": "name",
-      "op": "endswith",
-      "values": ["_Turbine"]
+      "field": "category",
+      "op": "in",
+      "values": ["pumped-hydro"]
     }
   },
   {
@@ -653,9 +662,9 @@
     "target_type": "PLEXOSMembership",
     "version": 3,
     "filter": {
-      "field": "name",
-      "op": "endswith",
-      "values": ["_Turbine"]
+      "field": "category",
+      "op": "in",
+      "values": ["pumped-hydro"]
     }
   },
   {

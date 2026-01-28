@@ -17,6 +17,7 @@ from .getters import (
     membership_region_parent_node,
     membership_reserve_child_battery,
     membership_reserve_child_generator,
+    membership_tail_storage_generator,
     membership_transformer_from_parent_node,
     membership_transformer_to_parent_node,
 )
@@ -64,4 +65,6 @@ __all__ = [
     "membership_interface_child_line",
     "membership_transformer_from_parent_node",
     "membership_transformer_to_parent_node",
+    "membership_head_storage_generator",
+    "membership_tail_storage_generator",
 ]

@@ -104,8 +104,7 @@
       "category": "technology",
       "name": "name",
       "vom_charge": "vom_cost",
-      "fom_charge": "fom_cost",
-      "build_cost": "capital_cost"
+      "fom_charge": "fom_cost"
     },
     "getters": {
       "max_capacity": "consuming_tech_load_mw",

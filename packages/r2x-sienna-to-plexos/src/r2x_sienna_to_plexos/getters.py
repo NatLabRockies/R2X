@@ -266,7 +266,6 @@ def _attach_reservoir_time_series_to_storage(
     storage_name: str,
     target_storage: Any,
 ) -> None:
-    """Attach time series from source HydroReservoir to translated PLEXOSStorage, mapping inflow to natural_inflow."""
     from r2x_sienna.models import HydroReservoir
 
     base_name = storage_name[:-5] if storage_name.endswith(("_head", "_tail")) else storage_name
@@ -282,6 +281,10 @@ def _attach_reservoir_time_series_to_storage(
             if base_name in r.name:
                 source_reservoir = r
                 break
+
+    if source_reservoir is None:
+        logger.warning(f"No source HydroReservoir found for '{base_name}', skipping time series attachment.")
+        return
 
     plexos_ts_list: list[Any] | None
     if context.source_system.time_series.has_time_series(source_reservoir):
@@ -752,16 +755,30 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
 
 
 @getter
+def get_turbine_rating(source_component: HydroTurbine, context: PluginContext) -> Result[float, ValueError]:
+    """Extract turbine rating (in MW) from the HydroTurbine."""
+    rating = getattr(source_component, "rating", None)
+    if rating is not None:
+        magnitude = get_magnitude(rating)
+        if magnitude is not None:
+            return Ok(float(magnitude) * resolve_base_power(source_component))
+    return Ok(0.0)
+
+
+@getter
 def get_turbine_max_ramp_up(
     source_component: HydroTurbine, context: PluginContext
 ) -> Result[float, ValueError]:
     """Extract max ramp up (in MW/h) from the HydroTurbine, converting from per-unit if needed."""
     ramp_limits = getattr(source_component, "ramp_limits", None)
     base_power = resolve_base_power(source_component)
-    if ramp_limits and base_power is not None:
-        up = getattr(ramp_limits, "up", None)
-        if up is not None:
-            return Ok(float(get_magnitude(up)) * float(base_power))
+    if ramp_limits is not None and base_power is not None:
+        try:
+            up = getattr(ramp_limits, "up", None)
+            if up is not None:
+                return Ok(float(get_magnitude(up)) * float(base_power))
+        except AttributeError:
+            pass
     return Ok(0.0)
 
 
@@ -772,11 +789,89 @@ def get_turbine_max_ramp_down(
     """Extract max ramp down (in MW/h) from the HydroTurbine, converting from per-unit if needed."""
     ramp_limits = getattr(source_component, "ramp_limits", None)
     base_power = resolve_base_power(source_component)
-    if ramp_limits and base_power is not None:
-        down = getattr(ramp_limits, "down", None)
-        if down is not None:
-            return Ok(float(get_magnitude(down)) * float(base_power))
+    if ramp_limits is not None and base_power is not None:
+        try:
+            down = getattr(ramp_limits, "down", None)
+            if down is not None:
+                return Ok(float(get_magnitude(down)) * float(base_power))
+        except AttributeError:
+            pass
     return Ok(0.0)
+
+
+@getter
+def get_vom_cost(source_component: object, context: PluginContext) -> Result[float, ValueError]:
+    """Extract variable operating and maintenance cost ($/MWh) from a Generator."""
+    try:
+        value = (
+            getattr(source_component, "operation_cost", None)
+            and getattr(source_component.operation_cost, "variable", None)
+            and getattr(source_component.operation_cost.variable, "vom_cost", None)
+            and getattr(source_component.operation_cost.variable.vom_cost, "function_data", None)
+            and getattr(
+                source_component.operation_cost.variable.vom_cost.function_data, "constant_term", None
+            )
+        )
+        if value is not None:
+            return Ok(float(value))
+    except Exception:
+        pass
+    return Ok(0.0)
+
+
+@getter
+def get_turbine_pump_load(
+    source_component: HydroTurbine, context: PluginContext
+) -> Result[float, ValueError]:
+    """Extract pump load (MW) from the HydroTurbine."""
+    pump_load = getattr(source_component, "rating", None)
+    if pump_load is not None:
+        magnitude = get_magnitude(pump_load)
+        if magnitude is not None:
+            return Ok(float(magnitude) * resolve_base_power(source_component))
+    return Ok(0.0)
+
+
+@getter
+def get_turbine_pump_efficiency(
+    source_component: HydroTurbine, context: PluginContext
+) -> Result[float, ValueError]:
+    """Extract pump efficiency (%) from the HydroTurbine."""
+    pump_efficiency = getattr(source_component, "efficiency", None)
+    if pump_efficiency is not None and pump_efficiency <= 1.0:
+        magnitude = get_magnitude(pump_efficiency)
+        return Ok(float(magnitude) * 100)
+    return Ok(100.0)
+
+
+@getter
+def get_turbine_forced_outage_rate(
+    source_component: HydroTurbine, context: PluginContext
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "forced_outage_rate", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_defaults("pumped-hydro", "forced_outage_rate"))
+
+
+@getter
+def get_turbine_maintenance_rate(
+    source_component: HydroTurbine, context: PluginContext
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "maintenance_rate", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_defaults("pumped-hydro", "maintenance_rate"))
+
+
+@getter
+def get_turbine_mean_time_to_repair(
+    source_component: HydroTurbine, context: PluginContext
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "mean_time_to_repair", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_defaults("pumped-hydro", "mean_time_to_repair"))
 
 
 @getter
@@ -1125,7 +1220,12 @@ def get_head_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the head reservoir (appends _head)."""
-    return Ok(f"{source_component.name}_head")
+    base_name = source_component.name
+    if base_name.endswith("_head"):
+        base_name = base_name[:-5]
+    if base_name.endswith("_tail"):
+        base_name = base_name[:-5]
+    return Ok(f"{base_name}_head")
 
 
 @getter
@@ -1133,7 +1233,12 @@ def get_tail_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the tail reservoir (appends _tail)."""
-    return Ok(f"{source_component.name}_tail")
+    base_name = source_component.name
+    if base_name.endswith("_head"):
+        base_name = base_name[:-5]
+    if base_name.endswith("_tail"):
+        base_name = base_name[:-5]
+    return Ok(f"{base_name}_tail")
 
 
 @getter
@@ -1419,19 +1524,20 @@ def membership_transformer_to_parent_node(
 def membership_head_storage_generator(
     generator: HydroTurbine, context: PluginContext
 ) -> Result[Any, ValueError]:
-    """Resolve a generator's head storage by matching base name and attach time series."""
     gen_name = getattr(generator, "name", "")
-    if not gen_name.endswith("_Turbine"):
-        return Err(ValueError(f"Generator '{gen_name}' is not a hydro turbine (missing _Turbine suffix)"))
-    storage_name = gen_name.replace("_Turbine", "_Reservoir_head")
-
+    if gen_name.endswith("_Turbine"):
+        storage_name = gen_name.replace("_Turbine", "_Reservoir_head")
+    else:
+        storage_name = f"{gen_name}_Reservoir_head"
+    storage_name_lc = storage_name.lower()
     target_storage = None
     for storage in context.target_system.get_components(PLEXOSStorage):
-        if storage.name == storage_name:
+        if storage.name.lower() == storage_name_lc:
             target_storage = storage
             break
 
     if target_storage is None:
+        logger.warning(f"No PLEXOSStorage found for '{storage_name}', skipping membership.")
         return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
 
     _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
@@ -1442,19 +1548,21 @@ def membership_head_storage_generator(
 def membership_tail_storage_generator(
     generator: HydroTurbine, context: PluginContext
 ) -> Result[Any, ValueError]:
-    """Resolve a generator's tail storage by matching base name and attach time series."""
     gen_name = getattr(generator, "name", "")
-    if not gen_name.endswith("_Turbine"):
-        return Err(ValueError(f"Generator '{gen_name}' is not a hydro turbine (missing _Turbine suffix)"))
-    storage_name = gen_name.replace("_Turbine", "_Reservoir_tail")
+    if gen_name.endswith("_Turbine"):
+        storage_name = gen_name.replace("_Turbine", "_Reservoir_tail")
+    else:
+        storage_name = f"{gen_name}_Reservoir_tail"
 
+    storage_name_lc = storage_name.lower()
     target_storage = None
     for storage in context.target_system.get_components(PLEXOSStorage):
-        if storage.name == storage_name:
+        if storage.name.lower() == storage_name_lc:
             target_storage = storage
             break
 
     if target_storage is None:
+        logger.warning(f"No PLEXOSStorage found for '{storage_name}', skipping membership.")
         return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
 
     _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
