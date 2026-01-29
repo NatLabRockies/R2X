@@ -495,10 +495,10 @@ def get_line_min_flow(
 
     magnitude = get_magnitude(min_flow)
     if magnitude is not None:
-        return Ok(float(-abs(magnitude)))
+        return Ok(float(-abs(magnitude)) * 100)
 
     if isinstance(min_flow, int | float):
-        return Ok(float(-abs(min_flow)))
+        return Ok(float(-abs(min_flow)) * 100)
 
     return Ok(0.0)
 
@@ -518,10 +518,10 @@ def get_line_max_flow(
 
     magnitude = get_magnitude(max_flow)
     if magnitude is not None:
-        return Ok(float(abs(magnitude)))
+        return Ok(float(abs(magnitude)) * 100)
 
     if isinstance(max_flow, int | float):
-        return Ok(float(abs(max_flow)))
+        return Ok(float(abs(max_flow)) * 100)
 
     return Ok(0.0)
 
@@ -755,47 +755,11 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
 
 
 @getter
-def get_turbine_rating(source_component: HydroTurbine, context: PluginContext) -> Result[float, ValueError]:
+def get_component_rating(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract turbine rating (in MW) from the HydroTurbine."""
     rating = getattr(source_component, "rating", None)
     if rating is not None:
-        magnitude = get_magnitude(rating)
-        if magnitude is not None:
-            return Ok(float(magnitude) * resolve_base_power(source_component))
-    return Ok(0.0)
-
-
-@getter
-def get_turbine_max_ramp_up(
-    source_component: HydroTurbine, context: PluginContext
-) -> Result[float, ValueError]:
-    """Extract max ramp up (in MW/h) from the HydroTurbine, converting from per-unit if needed."""
-    ramp_limits = getattr(source_component, "ramp_limits", None)
-    base_power = resolve_base_power(source_component)
-    if ramp_limits is not None and base_power is not None:
-        try:
-            up = getattr(ramp_limits, "up", None)
-            if up is not None:
-                return Ok(float(get_magnitude(up)) * float(base_power))
-        except AttributeError:
-            pass
-    return Ok(0.0)
-
-
-@getter
-def get_turbine_max_ramp_down(
-    source_component: HydroTurbine, context: PluginContext
-) -> Result[float, ValueError]:
-    """Extract max ramp down (in MW/h) from the HydroTurbine, converting from per-unit if needed."""
-    ramp_limits = getattr(source_component, "ramp_limits", None)
-    base_power = resolve_base_power(source_component)
-    if ramp_limits is not None and base_power is not None:
-        try:
-            down = getattr(ramp_limits, "down", None)
-            if down is not None:
-                return Ok(float(get_magnitude(down)) * float(base_power))
-        except AttributeError:
-            pass
+        return Ok(float(rating) * source_component.base_power)
     return Ok(0.0)
 
 
@@ -845,6 +809,36 @@ def get_turbine_pump_efficiency(
 
 
 @getter
+def get_thermal_forced_outage_rate(
+    source_component: HydroTurbine, context: PluginContext
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "forced_outage_rate", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_defaults("gas-ct", "forced_outage_rate"))
+
+
+@getter
+def get_thermal_maintenance_rate(
+    source_component: HydroTurbine, context: PluginContext
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "maintenance_rate", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_defaults("gas-ct", "maintenance_rate"))
+
+
+@getter
+def get_thermal_mean_time_to_repair(
+    source_component: HydroTurbine, context: PluginContext
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "mean_time_to_repair", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_defaults("gas-ct", "mean_time_to_repair"))
+
+
+@getter
 def get_turbine_forced_outage_rate(
     source_component: HydroTurbine, context: PluginContext
 ) -> Result[float, ValueError]:
@@ -865,6 +859,16 @@ def get_turbine_maintenance_rate(
 
 
 @getter
+def get_hydro_mean_time_to_repair(
+    source_component: HydroDispatch, context: PluginContext
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "mean_time_to_repair", None)
+    if value is not None:
+        return Ok(float(value))
+    return Ok(_get_defaults("hydro", "mean_time_to_repair"))
+
+
+@getter
 def get_turbine_mean_time_to_repair(
     source_component: HydroTurbine, context: PluginContext
 ) -> Result[float, ValueError]:
@@ -875,7 +879,7 @@ def get_turbine_mean_time_to_repair(
 
 
 @getter
-def get_max_ramp_up(source_component: ThermalStandard, context: PluginContext) -> Result[float, ValueError]:
+def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     try:
         limits = sienna_get_ramp_limits(source_component)
     except (KeyError, TypeError) as err:
@@ -884,7 +888,7 @@ def get_max_ramp_up(source_component: ThermalStandard, context: PluginContext) -
 
 
 @getter
-def get_max_ramp_down(source_component: ThermalStandard, context: PluginContext) -> Result[float, ValueError]:
+def get_max_ramp_down(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     try:
         limits = sienna_get_ramp_limits(source_component)
     except (KeyError, TypeError) as err:
@@ -1018,14 +1022,20 @@ def get_battery_mean_time_to_repair(
 def get_storage_charge_efficiency(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    return Ok(float(source_component.efficiency.input))
+    value = float(source_component.efficiency.input)
+    if value <= 1.0:
+        value *= 100
+    return Ok(value)
 
 
 @getter
 def get_storage_discharge_efficiency(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    return Ok(float(source_component.efficiency.output))
+    value = float(source_component.efficiency.output)
+    if value <= 1.0:
+        value *= 100
+    return Ok(value)
 
 
 @getter
@@ -1039,7 +1049,9 @@ def get_storage_cycles(
 def get_storage_max_power(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    value = get_magnitude(source_component.output_active_power_limits.max)
+    value = get_magnitude(
+        source_component.output_active_power_limits.max * resolve_base_power(source_component)
+    )
     return Ok(float(value) if value is not None else 0.0)
 
 
@@ -1047,7 +1059,7 @@ def get_storage_max_power(
 def get_storage_capacity(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    return Ok(float(source_component.storage_capacity))
+    return Ok(float(source_component.storage_capacity) * resolve_base_power(source_component))
 
 
 @getter

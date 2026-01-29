@@ -78,14 +78,14 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "reactance": "x",
       "resistance": "r",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
-      "susceptance": "get_susceptance"
+      "susceptance": "get_susceptance",
+      "rating": "get_component_rating"
     },
     "source_type": "Transformer2W",
     "target_type": "PLEXOSTransformer",
@@ -186,6 +186,9 @@
       "max_ramp_up": "get_max_ramp_up",
       "min_down_time": "get_min_down_time",
       "min_stable_level": "get_min_stable_level",
+      "forced_outage_rate": "get_thermal_forced_outage_rate",
+      "maintenance_rate": "get_thermal_maintenance_rate",
+      "mean_time_to_repair": "get_thermal_mean_time_to_repair",
       "min_up_time": "get_min_up_time",
       "running_cost": "get_running_cost",
       "shutdown_cost": "get_shutdown_cost",
@@ -203,18 +206,25 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
+      "rating": "get_component_rating",
+      "max_capacity": "get_component_rating",
+      "min_stable_level": "get_min_stable_level",
       "heat_rate_base": "get_heat_rate_base",
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
       "heat_rate_incr3": "get_heat_rate_incr3",
+      "forced_outage_rate": "get_thermal_forced_outage_rate",
+      "maintenance_rate": "get_thermal_maintenance_rate",
+      "mean_time_to_repair": "get_thermal_mean_time_to_repair",
       "load_point": "get_heat_rate_load_point",
+      "max_ramp_down": "get_max_ramp_down",
+      "max_ramp_up": "get_max_ramp_up",
       "mark_up": "get_mark_up",
       "mark_up_point": "get_mark_up_point"
     },
@@ -230,17 +240,20 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
+      "max_ramp_down": "get_max_ramp_down",
+      "max_ramp_up": "get_max_ramp_up",
+      "rating": "get_component_rating",
+      "max_capacity": "get_component_rating",
+      "min_stable_level": "get_min_stable_level",
+      "vom_charge": "get_vom_cost",
+      "mean_time_to_repair": "get_hydro_mean_time_to_repair",
       "heat_rate_base": "get_heat_rate_base",
-      "heat_rate_incr": "get_heat_rate_incr",
-      "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
       "load_point": "get_heat_rate_load_point",
       "mark_up": "get_mark_up",
       "mark_up_point": "get_mark_up_point"
@@ -331,9 +344,9 @@
       "category": "category"
     },
     "getters": {
-      "rating": "get_turbine_rating",
-      "max_ramp_up": "get_turbine_max_ramp_up",
-      "max_ramp_down": "get_turbine_max_ramp_down",
+      "rating": "get_component_rating",
+      "max_ramp_up": "get_max_ramp_up",
+      "max_ramp_down": "get_max_ramp_down",
       "min_stable_level": "get_min_stable_level",
       "forced_outage_rate": "get_turbine_forced_outage_rate",
       "maintenance_rate": "get_turbine_maintenance_rate",
@@ -399,13 +412,15 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
+      "rating": "get_component_rating",
+      "max_capacity": "get_component_rating",
       "heat_rate": "get_heat_rate",
+      "min_stable_level": "get_min_stable_level",
       "heat_rate_base": "get_heat_rate_base",
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
@@ -426,13 +441,15 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
+      "rating": "get_component_rating",
+      "max_capacity": "get_component_rating",
+      "min_stable_level": "get_min_stable_level",
       "heat_rate_base": "get_heat_rate_base",
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
@@ -453,13 +470,20 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
+      "rating": "get_component_rating",
+      "min_down_time": "get_min_down_time",
+      "min_stable_level": "get_min_stable_level",
+      "forced_outage_rate": "get_thermal_forced_outage_rate",
+      "maintenance_rate": "get_thermal_maintenance_rate",
+      "mean_time_to_repair": "get_thermal_mean_time_to_repair",
+      "min_up_time": "get_min_up_time",
+      "max_capacity": "get_component_rating",
       "heat_rate_base": "get_heat_rate_base",
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
