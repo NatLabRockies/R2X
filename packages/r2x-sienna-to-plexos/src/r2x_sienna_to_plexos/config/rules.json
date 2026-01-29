@@ -506,7 +506,6 @@
   {
     "defaults": {
       "category": "variable-reserve",
-      "is_enabled": -1,
       "include_in_lt_plan": -1,
       "include_in_mt_schedule": -1,
       "include_in_st_schedule": -1
@@ -530,8 +529,7 @@
   },
   {
     "defaults": {
-      "category": "interface",
-      "is_enabled": -1
+      "category": "interface"
     },
     "field_map": {
       "name": "name",
