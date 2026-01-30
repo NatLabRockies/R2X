@@ -342,30 +342,6 @@ def _attach_region_node_load_time_series(
         logger.debug("No loads found for region {}", region_name)
         return
 
-    # Aggregate static load values
-    total_load = 0.0
-    for load in all_loads:
-        load_value = getattr(load, "max_active_power", None)
-        if load_value is not None:
-            magnitude = get_magnitude(load_value)
-            if magnitude is not None:
-                total_load += float(magnitude)
-
-    if total_load > 0.0:
-        try:
-            node.load = total_load
-            logger.debug("Set node.load = {} for {}", total_load, node.name)
-        except Exception as exc:
-            logger.debug("Could not set node.load for {}: {}", node.name, exc)
-
-        if region_component is not None:
-            try:
-                region_component.load = total_load
-                logger.debug("Set load = {} for region {}", total_load, region_name)
-            except Exception as exc:
-                logger.debug("Could not set load for region {}: {}", region_name, exc)
-
-    # Aggregate time series for the region's load property
     aggregated_ts = None
     for load in all_loads:
         if context.source_system.time_series.has_time_series(load):
@@ -1209,35 +1185,9 @@ def get_area_units(source_component: Area, context: PluginContext) -> Result[flo
 @getter
 def get_area_load(source_component: Area, context: PluginContext) -> Result[float, ValueError]:
     """
-    Aggregate static load for the region.
-    Supports both StandardLoad and PowerLoad.
+    Aggregate static load for the region. Supports both StandardLoad and PowerLoad.
     """
-    buses_in_area = [
-        bus
-        for bus in context.source_system.get_components(ACBus)
-        if getattr(bus, "area", None) == source_component
-    ]
-    if not buses_in_area:
-        return Ok(0.0)
-
-    all_loads = [
-        load
-        for load in (
-            list(context.source_system.get_components(StandardLoad))
-            + list(context.source_system.get_components(PowerLoad))
-        )
-        if getattr(load, "bus", None) in buses_in_area
-    ]
-
-    total_load = 0.0
-    for load in all_loads:
-        load_value = getattr(load, "constant_active_power", 0.0) * resolve_base_power(load)
-        if load_value is not None:
-            magnitude = get_magnitude(load_value)
-            if magnitude is not None:
-                total_load += float(magnitude)
-    # Do NOT try to attach the time series here!
-    return Ok(total_load)
+    return Ok(0.0)
 
 
 @getter
