@@ -755,6 +755,19 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
 
 
 @getter
+def get_load_subtracter(
+    source_component: RenewableDispatch | RenewableNonDispatch, context: PluginContext
+) -> Result[float, ValueError]:
+    """Extract load subtracter (in MW) from the Generator."""
+    load_subtracter = getattr(source_component, "load_subtracter", None)
+    if load_subtracter is not None:
+        magnitude = get_magnitude(load_subtracter)
+        if magnitude is not None:
+            return Ok(float(magnitude) * resolve_base_power(source_component))
+    return Ok(0.0)
+
+
+@getter
 def get_component_rating(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract turbine rating (in MW) from the HydroTurbine."""
     rating = getattr(source_component, "rating", None)
