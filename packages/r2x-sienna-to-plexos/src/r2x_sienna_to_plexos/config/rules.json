@@ -100,14 +100,14 @@
     "field_map": {
       "ac_tap_ratio": "tap",
       "name": "name",
-      "rating": "rating",
       "reactance": "x",
       "resistance": "r",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
-      "susceptance": "get_susceptance"
+      "susceptance": "get_susceptance",
+      "rating": "get_component_rating"
     },
     "source_type": "TapTransformer",
     "target_type": "PLEXOSTransformer",
@@ -123,14 +123,14 @@
       "ac_fixed_shift_angle": "α",
       "ac_tap_ratio": "tap",
       "name": "name",
-      "rating": "rating",
       "reactance": "x",
       "resistance": "r",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
-      "susceptance": "get_susceptance"
+      "susceptance": "get_susceptance",
+      "rating": "get_component_rating"
     },
     "source_type": "PhaseShiftingTransformer",
     "target_type": "PLEXOSTransformer",
@@ -270,7 +270,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "uuid": "uuid",
       "category": "category"
     },
@@ -282,6 +281,7 @@
       "heat_rate_incr2": "get_heat_rate_incr2",
       "heat_rate_incr3": "get_heat_rate_incr3",
       "load_point": "get_heat_rate_load_point",
+      "rating": "get_component_rating",
       "mark_up": "get_mark_up",
       "mark_up_point": "get_mark_up_point",
       "max_capacity": "get_max_capacity"
@@ -384,18 +384,20 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
+      "rating": "get_component_rating",
       "heat_rate_base": "get_heat_rate_base",
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
       "heat_rate_incr3": "get_heat_rate_incr3",
       "load_point": "get_heat_rate_load_point",
+      "max_ramp_down": "get_max_ramp_down",
+      "max_ramp_up":"get_max_ramp_up",
       "mark_up": "get_mark_up",
       "mark_up_point": "get_mark_up_point",
       "max_capacity": "get_max_capacity"
