@@ -369,8 +369,13 @@
     "version": 1
   },
   {
+    "defaults": {
+      "name": "name",
+      "category": "reeds-interface"
+    },
     "field_map": {
-      "name": "name"
+      "name": "name",
+      "category": "category"
     },
     "getters": {
       "min_flow": "interface_min_flow",
