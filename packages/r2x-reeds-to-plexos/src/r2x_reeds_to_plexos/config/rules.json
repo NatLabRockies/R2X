@@ -313,11 +313,27 @@
       "category": "category"
     },
     "getters": {
-      "load": "region_load"
+      "load": "region_load",
+      "units": "get_component_units"
     },
     "source_type": "ReEDSRegion",
     "target_type": "PLEXOSRegion",
     "version": 1
+  },
+  {
+    "defaults": {
+      "category": "reeds-zone"
+    },
+    "field_map": {
+      "name": "nerc_region",
+      "category": "category"
+    },
+    "getters": {
+      "units": "get_component_units"
+    },
+    "source_type": "ReEDSRegion",
+    "target_type": "PLEXOSZone",
+    "version": 2
   },
   {
     "defaults": {
@@ -394,6 +410,18 @@
       "collection": "reeds_membership_collection_region"
     },
     "source_type": "PLEXOSRegion",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
+    "name": "node_zone_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_parent_component",
+      "child_object": "reeds_membership_node_parent_zone",
+      "collection": "reeds_membership_collection_zone"
+    },
+    "source_type": "PLEXOSNode",
     "target_type": "PLEXOSMembership",
     "version": 1
   },

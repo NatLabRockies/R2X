@@ -60,12 +60,23 @@ def _lookup_target_node(context: PluginContext, region_name: str) -> Result[PLEX
 
 def _lookup_source_generator(context: PluginContext, name: str) -> Any | None:
     """Find a ReEDS generator-like component by name."""
-    from r2x_reeds.models import ReEDSGenerator
+    from r2x_reeds.models import ReEDSConsumingTechnology, ReEDSGenerator
 
     for gen in context.source_system.get_components(ReEDSGenerator):
         if gen.name == name:
             return gen
+
+    for consuming_tech in context.source_system.get_components(ReEDSConsumingTechnology):
+        if consuming_tech.name == name:
+            return consuming_tech
+
     return None
+
+
+@getter
+def get_component_units(component: object, context: PluginContext) -> Result[str, ValueError]:
+    """Return the units/availability for a given component."""
+    return Ok(1)
 
 
 @getter
@@ -154,9 +165,7 @@ def reserve_type(component: ReEDSReserve, context: PluginContext) -> Result[int,
 
 
 @getter
-def forced_outage_rate_percent(
-    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
-) -> Result[float, ValueError]:
+def forced_outage_rate_percent(component: object, context: PluginContext) -> Result[float, ValueError]:
     """Convert forced outage fraction (0-1) to percent expected by PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
     rate = getattr(component, "forced_outage_rate", None)
@@ -169,7 +178,7 @@ def forced_outage_rate_percent(
 
 
 @getter
-def maintenance_rate_percent(component: ReEDSGenerator, context: PluginContext) -> Result[float, ValueError]:
+def maintenance_rate_percent(component: object, context: PluginContext) -> Result[float, ValueError]:
     """Convert maintenance rate fraction (0-1) to percent expected by PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
     rate = getattr(component, "maintenance_rate", None)
@@ -182,7 +191,9 @@ def maintenance_rate_percent(component: ReEDSGenerator, context: PluginContext) 
 
 
 @getter
-def charge_efficiency_percent(component: ReEDSGenerator, context: PluginContext) -> Result[float, ValueError]:
+def charge_efficiency_percent(
+    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
+) -> Result[float, ValueError]:
     """Convert charge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
     efficiency = getattr(component, "charge_efficiency", None)
@@ -196,7 +207,7 @@ def charge_efficiency_percent(component: ReEDSGenerator, context: PluginContext)
 
 @getter
 def discharge_efficiency_percent(
-    component: ReEDSGenerator, context: PluginContext
+    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
 ) -> Result[float, ValueError]:
     """Convert discharge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
@@ -210,7 +221,7 @@ def discharge_efficiency_percent(
 
 
 @getter
-def mean_time_to_repair_hours(component: ReEDSGenerator, context: PluginContext) -> Result[float, ValueError]:
+def mean_time_to_repair_hours(component: object, context: PluginContext) -> Result[float, ValueError]:
     """Return mean time to repair in hours, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
     mttr = getattr(component, "mean_time_to_repair", None)
@@ -223,19 +234,25 @@ def mean_time_to_repair_hours(component: ReEDSGenerator, context: PluginContext)
 
 
 @getter
-def battery_max_soc(component: ReEDSGenerator, context: PluginContext) -> Result[float, ValueError]:
+def battery_max_soc(
+    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
+) -> Result[float, ValueError]:
     """Return maximum state of charge (percent)."""
     return Ok(100.0)
 
 
 @getter
-def battery_initial_soc(component: ReEDSGenerator, context: PluginContext) -> Result[float, ValueError]:
+def battery_initial_soc(
+    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
+) -> Result[float, ValueError]:
     """Return initial state of charge (percent)."""
     return Ok(50.0)
 
 
 @getter
-def battery_min_soc(component: ReEDSGenerator, context: PluginContext) -> Result[float, ValueError]:
+def battery_min_soc(
+    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
+) -> Result[float, ValueError]:
     """Return minimum state of charge (percent)."""
     return Ok(0.0)
 
@@ -497,6 +514,14 @@ def reeds_membership_collection_region(
 
 
 @getter
+def reeds_membership_collection_zone(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
+    """Return the Zone collection enum."""
+    return Ok(CollectionEnum.Zone)
+
+
+@getter
 def reeds_membership_collection_lines(
     component: Any, context: PluginContext
 ) -> Result[CollectionEnum, ValueError]:
@@ -567,6 +592,33 @@ def reeds_membership_component_child_node(
         return Err(ValueError(f"Source generator '{source_gen.name}' is missing region data"))
 
     return _lookup_target_node(context, region.name)
+
+
+@getter
+def reeds_membership_node_parent_zone(node: PLEXOSNode, context: PluginContext) -> Result[Any, ValueError]:
+    """Find the zone that this node belongs to based on NERC region."""
+    from r2x_plexos.models import PLEXOSZone
+    from r2x_reeds.models import ReEDSRegion
+
+    node_name = getattr(node, "name", "")
+
+    source_region = next(
+        (r for r in context.source_system.get_components(ReEDSRegion) if r.name == node_name),
+        None,
+    )
+
+    if source_region is None:
+        return Err(ValueError(f"No source region found for node '{node_name}'"))
+
+    nerc_region = getattr(source_region, "nerc_region", None)
+    if nerc_region is None:
+        return Err(ValueError(f"Source region '{node_name}' has no NERC region"))
+
+    for zone in context.target_system.get_components(PLEXOSZone):
+        if zone.name == nerc_region:
+            return Ok(zone)
+
+    return Err(ValueError(f"No PLEXOSZone found for NERC region '{nerc_region}'"))
 
 
 @getter
