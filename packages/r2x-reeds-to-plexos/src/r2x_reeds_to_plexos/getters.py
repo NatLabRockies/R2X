@@ -128,7 +128,7 @@ def storage_max_volume(component: ReEDSStorage, context: PluginContext) -> Resul
     """Return the maximum volume for storage."""
     capacity = getattr(component, "capacity", 0.0)
     duration = getattr(component, "storage_duration", 0.0)
-    max_volume = float(capacity) * float(duration)
+    max_volume = round(float(capacity) * float(duration), 1)
     return Ok(float(max_volume))
 
 
@@ -290,6 +290,19 @@ def interface_min_flow(component: ReEDSInterface, context: PluginContext) -> Res
 def interface_max_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
     """Return the maximum flow for an interface."""
     return Ok(0.0)
+
+
+@getter
+def get_interface_name(component: ReEDSInterface, context: PluginContext) -> Result[str, ValueError]:
+    """Return the name for an interface, with a NERC region prefix."""
+    from_region = getattr(component, "from_region", "")
+    from_nerc_region = getattr(from_region, "nerc_region", "")
+    to_region = getattr(component, "to_region", "")
+    to_nerc_region = getattr(to_region, "nerc_region", "")
+    name = getattr(component, "name", "")
+
+    interface_name = f"{from_nerc_region}-{to_nerc_region}_{name}"
+    return Ok(interface_name)
 
 
 @getter
@@ -608,6 +621,14 @@ def reeds_membership_collection_batteries(
 
 
 @getter
+def reeds_membership_collection_generators(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
+    """Return the Generators collection enum."""
+    return Ok(CollectionEnum.Generators)
+
+
+@getter
 def reeds_membership_storage_generator_parent(
     component: Any, context: PluginContext
 ) -> Result[Any, ValueError]:
@@ -764,31 +785,147 @@ def reeds_membership_storage_child_tail_storage(
 
 
 @getter
-def reeds_membership_battery_parent_reserve(battery: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Find first reserve linked to this battery from ext['reserves']."""
+def reeds_membership_battery_parent_spinning_reserve(
+    battery: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find SPINNING reserve for this battery."""
+    return _find_battery_reserve_by_type(battery, context, "SPINNING")
+
+
+@getter
+def reeds_membership_battery_parent_flexibility_reserve(
+    battery: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find FLEXIBILITY reserve for this battery."""
+    return _find_battery_reserve_by_type(battery, context, "FLEXIBILITY")
+
+
+@getter
+def reeds_membership_battery_parent_regulation_reserve(
+    battery: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find REGULATION reserve for this battery."""
+    return _find_battery_reserve_by_type(battery, context, "REGULATION")
+
+
+@getter
+def _find_battery_reserve_by_type(
+    battery: Any, context: PluginContext, reserve_type: str
+) -> Result[Any, ValueError]:
+    """Helper to find a specific reserve type for a battery."""
     from r2x_plexos.models import PLEXOSReserve
     from r2x_reeds.models import ReEDSStorage
 
     battery_name = getattr(battery, "name", "")
-
     source_storage = next(
         (s for s in context.source_system.get_components(ReEDSStorage) if s.name == battery_name),
         None,
     )
 
     if source_storage is None:
-        return Err(ValueError(f"No source storage found for battery '{battery_name}'"))
+        logger.debug(f"No source storage found for battery '{battery_name}'")
+        return Err(ValueError("Skip Generator with no source."))
 
     ext_data = getattr(source_storage, "ext", {})
     reserve_names = ext_data.get("reserves", [])
 
     if not reserve_names:
-        return Err(ValueError(f"Battery '{battery_name}' has no reserves in ext data"))
+        logger.debug(f"Battery '{battery_name}' has no reserves in ext data")
+        return Err(ValueError("Skip Generator with no source."))
 
-    # Find first reserve only
-    first_reserve_name = reserve_names[0]
-    for reserve in context.target_system.get_components(PLEXOSReserve):
-        if reserve.name == first_reserve_name:
+    matching_reserve_name = None
+    for res_name in reserve_names:
+        if reserve_type in res_name:
+            matching_reserve_name = res_name
+            break
+
+    if matching_reserve_name is None:
+        logger.debug(f"Battery '{battery_name}' has no {reserve_type} reserve")
+        return Err(ValueError("Skip Generator with no source."))
+
+    all_reserves = list(context.target_system.get_components(PLEXOSReserve))
+
+    for reserve in all_reserves:
+        if reserve.name == matching_reserve_name:
             return Ok(reserve)
 
-    return Err(ValueError(f"No PLEXOSReserve found for '{first_reserve_name}'"))
+    logger.error(f"No PLEXOSReserve found for '{matching_reserve_name}'")
+    return Err(ValueError(f"No PLEXOSReserve found for '{matching_reserve_name}'"))
+
+
+@getter
+def reeds_membership_generator_parent_spinning_reserve(
+    generator: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find SPINNING reserve for this generator."""
+    return _find_generator_reserve_by_type(generator, context, "SPINNING")
+
+
+@getter
+def reeds_membership_generator_parent_flexibility_reserve(
+    generator: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find FLEXIBILITY reserve for this generator."""
+    return _find_generator_reserve_by_type(generator, context, "FLEXIBILITY")
+
+
+@getter
+def reeds_membership_generator_parent_regulation_reserve(
+    generator: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find REGULATION reserve for this generator."""
+    return _find_generator_reserve_by_type(generator, context, "REGULATION")
+
+
+def _find_generator_reserve_by_type(
+    generator: Any, context: PluginContext, reserve_type: str
+) -> Result[Any, ValueError]:
+    """Helper to find a specific reserve type for a generator."""
+    from r2x_plexos.models import PLEXOSReserve
+    from r2x_reeds.models import (
+        ReEDSGenerator,
+        ReEDSHydroGenerator,
+        ReEDSThermalGenerator,
+        ReEDSVariableGenerator,
+    )
+
+    generator_name = getattr(generator, "name", "")
+    source_generator = None
+    for generator_type in [
+        ReEDSGenerator,
+        ReEDSThermalGenerator,
+        ReEDSVariableGenerator,
+        ReEDSHydroGenerator,
+    ]:
+        source_generator = next(
+            (g for g in context.source_system.get_components(generator_type) if g.name == generator_name),
+            None,
+        )
+        if source_generator is not None:
+            break
+
+    if source_generator is None:
+        return Err(ValueError("Skip Generator with no source."))
+
+    ext_data = getattr(source_generator, "ext", {})
+    reserve_names = ext_data.get("reserves", [])
+
+    if not reserve_names:
+        return Err(ValueError("Skip Generator with no source."))
+
+    matching_reserve_name = None
+    for res_name in reserve_names:
+        if reserve_type in res_name:
+            matching_reserve_name = res_name
+            break
+
+    if matching_reserve_name is None:
+        return Err(ValueError("Skip Generator with no source."))
+
+    all_reserves = list(context.target_system.get_components(PLEXOSReserve))
+
+    for reserve in all_reserves:
+        if reserve.name == matching_reserve_name:
+            return Ok(reserve)
+
+    return Err(ValueError(f"No PLEXOSReserve found for '{matching_reserve_name}'"))

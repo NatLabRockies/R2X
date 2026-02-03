@@ -152,10 +152,10 @@
     "filter": {
       "casefold": true,
       "field": "technology",
-      "op": "not_in",
+      "op": "in",
       "values": [
-        "pumped-hydro",
-        "pumped_storage"
+        "battery",
+        "battery_li"
       ]
     },
     "source_type": "ReEDSStorage",
@@ -215,8 +215,7 @@
       "field": "technology",
       "op": "in",
       "values": [
-        "pumped-hydro",
-        "pumped_storage"
+        "pumped-hydro"
       ]
     },
     "getters": {
@@ -244,8 +243,7 @@
       "field": "technology",
       "op": "in",
       "values": [
-        "pumped-hydro",
-        "pumped_storage"
+        "pumped-hydro"
       ]
     },
     "getters": {
@@ -261,19 +259,19 @@
   },
   {
     "defaults": {
-      "category": "pumped-hydro"
+      "category": "technology"
     },
     "field_map": {
-      "category": "category",
+      "category": "technology",
       "max_capacity": "capacity",
       "name": "name"
     },
     "filter": {
       "casefold": true,
-      "field": "category",
-      "op": "eq",
+      "field": "technology",
+      "op": "in",
       "values": [
-        "pumped_storage"
+        "pumped-hydro"
       ]
     },
     "getters": {
@@ -352,13 +350,11 @@
   },
   {
     "defaults": {
-      "category": "reeds-zone",
-      "units": 1
+      "category": "reeds-zone"
     },
     "field_map": {
       "name": "nerc_region",
-      "category": "category",
-      "units": "units"
+      "category": "category"
     },
     "getters": {
       "units": "get_component_units"
@@ -426,11 +422,11 @@
       "category": "reeds-interface"
     },
     "field_map": {
-      "name": "name",
       "category": "category"
     },
     "getters": {
       "units": "get_component_units",
+      "name": "get_interface_name",
       "min_flow": "interface_min_flow",
       "max_flow": "interface_max_flow"
     },
@@ -523,9 +519,9 @@
     },
     "filter": {
       "casefold": true,
-      "field": "category",
-      "op": "eq",
-      "values": ["pumped_storage"]
+      "field": "technology",
+      "op": "in",
+      "values": ["pumped-hydro"]
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
@@ -541,24 +537,120 @@
     },
     "filter": {
       "casefold": true,
-      "field": "category",
-      "op": "eq",
-      "values": ["pumped_storage"]
+      "field": "technology",
+      "op": "in",
+      "values": ["pumped-hydro"]
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
     "version": 3
   },
   {
-    "name": "reserve_battery_membership",
+    "name": "reserve_battery_spinning_membership",
     "system": "target",
     "getters": {
-      "parent_object": "reeds_membership_battery_parent_reserve",
+      "parent_object": "reeds_membership_battery_parent_spinning_reserve",
       "child_object": "reeds_membership_parent_component",
       "collection": "reeds_membership_collection_batteries"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "ext",
+      "op": "in",
+      "values": ["reserves"]
     },
     "source_type": "PLEXOSBattery",
     "target_type": "PLEXOSMembership",
     "version": 1
+  },
+  {
+    "name": "reserve_battery_flexibility_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_battery_parent_flexibility_reserve",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_batteries"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "ext",
+      "op": "in",
+      "values": ["reserves"]
+    },
+    "source_type": "PLEXOSBattery",
+    "target_type": "PLEXOSMembership",
+    "version": 2
+  },
+  {
+    "name": "reserve_battery_regulation_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_battery_parent_regulation_reserve",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_batteries"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "ext",
+      "op": "in",
+      "values": ["reserves"]
+    },
+    "source_type": "PLEXOSBattery",
+    "target_type": "PLEXOSMembership",
+    "version": 3
+  },
+  {
+    "name": "reserve_generator_spinning_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_generator_parent_spinning_reserve",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_generators"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "ext",
+      "op": "in",
+      "values": ["reserves"]
+    },
+    "source_type": "PLEXOSGenerator",
+    "target_type": "PLEXOSMembership",
+    "version": 10
+  },
+  {
+    "name": "reserve_generator_flexibility_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_generator_parent_flexibility_reserve",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_generators"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "ext",
+      "op": "in",
+      "values": ["reserves"]
+    },
+    "source_type": "PLEXOSGenerator",
+    "target_type": "PLEXOSMembership",
+    "version": 11
+  },
+  {
+    "name": "reserve_generator_regulation_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_generator_parent_regulation_reserve",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_generators"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "ext",
+      "op": "in",
+      "values": ["reserves"]
+    },
+    "source_type": "PLEXOSGenerator",
+    "target_type": "PLEXOSMembership",
+    "version": 12
   }
 ]
