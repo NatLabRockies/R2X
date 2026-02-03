@@ -22,8 +22,11 @@
       "start_cost": "startup_cost"
     },
     "getters": {
+      "units": "get_component_units",
       "forced_outage_rate": "forced_outage_rate_percent",
       "min_capacity_factor": "min_capacity_factor_percent",
+      "maintenance_rate": "maintenance_rate_percent",
+      "mean_time_to_repair": "mean_time_to_repair_hours",
       "max_ramp_up": "ramp_rate_mw_per_hour",
       "max_ramp_down": "ramp_rate_mw_per_hour",
       "min_stable_level": "min_stable_level_mw",
@@ -51,11 +54,17 @@
       "fom_charge": "fom_cost"
     },
     "getters": {
+      "units": "get_component_units",
       "forced_outage_rate": "forced_outage_rate_percent",
       "category": "vre_category_with_resource_class",
       "build_cost": "supply_curve_cost_getter",
+      "mean_time_to_repair": "mean_time_to_repair_hours",
       "rating": "rating",
-      "load_subtracter": "load_subtracter"
+      "load_subtracter": "load_subtracter",
+      "min_stable_level": "min_stable_level_mw",
+      "maintenance_rate": "maintenance_rate_percent",
+      "max_ramp_up": "ramp_rate_mw_per_hour",
+      "max_ramp_down": "ramp_rate_mw_per_hour"
     },
     "source_type": "ReEDSVariableGenerator",
     "target_type": "PLEXOSGenerator",
@@ -78,6 +87,7 @@
       "fom_charge": "fom_cost"
     },
     "getters": {
+      "units": "get_component_units",
       "forced_outage_rate": "forced_outage_rate_percent",
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
@@ -107,8 +117,13 @@
       "fom_charge": "fom_cost"
     },
     "getters": {
+      "units": "get_component_units",
       "max_capacity": "consuming_tech_load_mw",
-      "heat_rate": "consuming_tech_efficiency_to_heat_rate"
+      "heat_rate": "consuming_tech_efficiency_to_heat_rate",
+      "min_stable_level": "min_stable_level_mw",
+      "forced_outage_rate": "forced_outage_rate_percent",
+      "maintenance_rate": "maintenance_rate_percent",
+      "mean_time_to_repair": "mean_time_to_repair_hours"
     },
     "source_type": "ReEDSConsumingTechnology",
     "target_type": "PLEXOSGenerator",
@@ -121,11 +136,13 @@
       "name": "name"
     },
     "getters": {
+      "units": "get_component_units",
       "build_cost": "storage_capital_cost_power",
       "fom_charge": "storage_fom_cost_power",
-      "max_soc": "battery_max_soc",
-      "min_soc": "battery_min_soc",
-      "initial_soc": "battery_initial_soc",
+      "max_soc": "get_battery_max_soc",
+      "min_soc": "get_battery_min_soc",
+      "vom_charge": "storage_vom_cost_energy",
+      "initial_soc": "get_battery_initial_soc",
       "charge_efficiency": "charge_efficiency_percent",
       "discharge_efficiency": "discharge_efficiency_percent",
       "forced_outage_rate": "forced_outage_rate_percent",
@@ -171,8 +188,14 @@
     ]
   },
   "getters": {
+      "units": "get_component_units",
       "forced_outage_rate": "forced_outage_rate_percent",
-      "min_capacity_factor": "min_capacity_factor_percent"
+      "min_capacity_factor": "min_capacity_factor_percent",
+      "maintenance_rate": "maintenance_rate_percent",
+      "mean_time_to_repair": "mean_time_to_repair_hours",
+      "max_ramp_up": "ramp_rate_mw_per_hour",
+      "max_ramp_down": "ramp_rate_mw_per_hour",
+      "min_stable_level": "min_stable_level_mw"
     },
     "source_type": "ReEDSGenerator",
     "target_type": "PLEXOSGenerator",
@@ -180,11 +203,11 @@
   },
   {
     "defaults": {
-      "category": "storage",
+      "category": "head",
       "storage_type": "head"
     },
     "field_map": {
-      "category": "technology",
+      "category": "head",
       "name": "name"
     },
     "filter": {
@@ -198,6 +221,7 @@
     },
     "getters": {
       "name": "add_head_suffix",
+      "units": "get_component_units",
       "max_volume": "storage_max_volume",
       "initial_volume": "storage_initial_volume",
       "natural_inflow": "storage_natural_inflow"
@@ -208,11 +232,11 @@
   },
   {
     "defaults": {
-      "category": "storage",
+      "category": "tail",
       "storage_type": "tail"
     },
     "field_map": {
-      "category": "technology",
+      "category": "tail",
       "name": "name"
     },
     "filter": {
@@ -226,6 +250,7 @@
     },
     "getters": {
       "name": "add_tail_suffix",
+      "units": "get_component_units",
       "max_volume": "storage_max_volume",
       "initial_volume": "storage_initial_volume",
       "natural_inflow": "storage_natural_inflow"
@@ -252,9 +277,11 @@
       ]
     },
     "getters": {
+      "units": "get_component_units",
       "forced_outage_rate": "forced_outage_rate_percent",
       "maintenance_rate": "maintenance_rate_percent",
-      "mean_time_to_repair": "mean_time_to_repair_hours"
+      "mean_time_to_repair": "mean_time_to_repair_hours",
+      "min_stable_level": "min_stable_level_mw"
     },
     "source_type": "ReEDSStorage",
     "target_type": "PLEXOSGenerator",
@@ -291,9 +318,12 @@
       ]
     },
     "getters": {
-      "max_soc": "battery_max_soc",
-      "min_soc": "battery_min_soc",
-      "initial_soc": "battery_initial_soc",
+      "units": "get_component_units",
+      "max_soc": "get_battery_max_soc",
+      "min_soc": "get_battery_min_soc",
+      "fom_charge": "storage_fom_cost_energy",
+      "vom_charge": "storage_vom_cost_energy",
+      "initial_soc": "get_battery_initial_soc",
       "charge_efficiency": "charge_efficiency_percent",
       "discharge_efficiency": "discharge_efficiency_percent",
       "forced_outage_rate": "forced_outage_rate_percent",
@@ -322,11 +352,13 @@
   },
   {
     "defaults": {
-      "category": "reeds-zone"
+      "category": "reeds-zone",
+      "units": 1
     },
     "field_map": {
       "name": "nerc_region",
-      "category": "category"
+      "category": "category",
+      "units": "units"
     },
     "getters": {
       "units": "get_component_units"
@@ -346,6 +378,9 @@
       "name": "name",
       "category": "category"
     },
+    "getters": {
+      "units": "get_component_units"
+    },
     "source_type": "ReEDSRegion",
     "target_type": "PLEXOSNode",
     "version": 1
@@ -356,6 +391,7 @@
       "category": "category"
     },
     "getters": {
+      "units": "get_component_units",
       "max_flow": "line_max_flow",
       "min_flow": "line_min_flow"
     },
@@ -394,6 +430,7 @@
       "category": "category"
     },
     "getters": {
+      "units": "get_component_units",
       "min_flow": "interface_min_flow",
       "max_flow": "interface_max_flow"
     },
@@ -511,5 +548,17 @@
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
     "version": 3
+  },
+  {
+    "name": "reserve_battery_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_battery_parent_reserve",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_batteries"
+    },
+    "source_type": "PLEXOSBattery",
+    "target_type": "PLEXOSMembership",
+    "version": 1
   }
 ]

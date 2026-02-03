@@ -230,31 +230,54 @@ def mean_time_to_repair_hours(component: object, context: PluginContext) -> Resu
         return Ok(_float_or_zero(mttr))
 
     default_mttr = _get_defaults(gen_technology, "mean_time_to_repair")
+    if default_mttr is None:
+        return Ok(24)
     return Ok(float(default_mttr))
 
 
 @getter
-def battery_max_soc(
+def get_battery_max_soc(
     component: ReEDSGenerator | ReEDSStorage, context: PluginContext
 ) -> Result[float, ValueError]:
     """Return maximum state of charge (percent)."""
-    return Ok(100.0)
+    gen_technology = getattr(component, "technology", "")
+    max_soc = getattr(component, "max_soc", None)
+
+    if max_soc is not None:
+        return Ok(_float_or_zero(max_soc))
+
+    default_max_soc = _get_defaults(gen_technology, "max_soc")
+    return Ok(float(default_max_soc))
 
 
 @getter
-def battery_initial_soc(
+def get_battery_initial_soc(
     component: ReEDSGenerator | ReEDSStorage, context: PluginContext
 ) -> Result[float, ValueError]:
     """Return initial state of charge (percent)."""
-    return Ok(50.0)
+    gen_technology = getattr(component, "technology", "")
+    initial_soc = getattr(component, "initial_soc", None)
+
+    if initial_soc is not None:
+        return Ok(_float_or_zero(initial_soc))
+
+    default_initial_soc = _get_defaults(gen_technology, "initial_soc")
+    return Ok(float(default_initial_soc))
 
 
 @getter
-def battery_min_soc(
+def get_battery_min_soc(
     component: ReEDSGenerator | ReEDSStorage, context: PluginContext
 ) -> Result[float, ValueError]:
     """Return minimum state of charge (percent)."""
-    return Ok(0.0)
+    gen_technology = getattr(component, "technology", "")
+    min_soc = getattr(component, "min_soc", None)
+
+    if min_soc is not None:
+        return Ok(_float_or_zero(min_soc))
+
+    default_min_soc = _get_defaults(gen_technology, "min_soc")
+    return Ok(float(default_min_soc))
 
 
 @getter
@@ -298,9 +321,30 @@ def line_min_flow(component: ReEDSTransmissionLine, context: PluginContext) -> R
 
 
 @getter
+def storage_fom_cost_energy(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
+    """Return energy-based FOM cost."""
+    fom_cost = getattr(component, "fom_cost", None)
+
+    if fom_cost is None:
+        return Ok(0.0)
+    return Ok(_float_or_zero(fom_cost))
+
+
+@getter
+def storage_vom_cost_energy(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
+    """Return energy-based VOM cost."""
+    vom_cost = getattr(component, "vom_cost", None)
+
+    if vom_cost is None:
+        return Ok(0.0)
+    return Ok(_float_or_zero(vom_cost))
+
+
+@getter
 def reserve_vors_percent(component: ReEDSReserve, context: PluginContext) -> Result[float, ValueError]:
     """Get reserve VORS or -1.0 default value."""
-    vors = getattr(component, "vors", -1.0)
+    vors = getattr(component, "vors", None)
+    vors = vors / 100.0 if vors is not None else -1
     return Ok(vors)
 
 
@@ -329,8 +373,14 @@ def ramp_rate_mw_per_hour(
 ) -> Result[float, ValueError]:
     """Convert ramp rate from MW/min to MW/hour for PLEXOS."""
     ramp_rate = getattr(component, "ramp_rate", None)
+
     if ramp_rate is None:
+        technology = getattr(component, "technology", "")
+        default_ramp_up = _get_defaults(technology, "ramp_rate_up")
+        if default_ramp_up > 0.0:
+            return Ok(float(default_ramp_up))
         return Ok(0.0)
+
     return Ok(float(ramp_rate) * 60.0)
 
 
@@ -368,14 +418,18 @@ def min_down_time_hours(
 def vre_category_with_resource_class(
     component: ReEDSVariableGenerator, context: PluginContext
 ) -> Result[str, ValueError]:
-    """Combine technology and resource_class for VRE category."""
+    """Return the VRE category without resource class suffix."""
     technology = getattr(component, "technology", "")
-    resource_class = getattr(component, "resource_class", None)
 
-    if resource_class is None:
-        return Ok(technology)
+    if not technology:
+        return Err(ValueError(f"Component {component.name} has no technology"))
 
-    return Ok(f"{technology}-{resource_class}")
+    # Remove resource class suffix (e.g., "_1", "_2", etc.)
+    # Split by underscore and remove last part if it's a number
+    parts = technology.rsplit("_", 1)
+    base_technology = parts[0] if len(parts) == 2 and parts[1].isdigit() else technology
+
+    return Ok(base_technology)
 
 
 @getter
@@ -546,6 +600,14 @@ def reeds_membership_collection_tail_storage(
 
 
 @getter
+def reeds_membership_collection_batteries(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
+    """Return the Batteries collection enum."""
+    return Ok(CollectionEnum.Batteries)
+
+
+@getter
 def reeds_membership_storage_generator_parent(
     component: Any, context: PluginContext
 ) -> Result[Any, ValueError]:
@@ -699,3 +761,34 @@ def reeds_membership_storage_child_tail_storage(
         if storage.name == storage_name:
             return Ok(storage)
     return Err(ValueError(f"No tail storage found for generator '{base_name}'"))
+
+
+@getter
+def reeds_membership_battery_parent_reserve(battery: Any, context: PluginContext) -> Result[Any, ValueError]:
+    """Find first reserve linked to this battery from ext['reserves']."""
+    from r2x_plexos.models import PLEXOSReserve
+    from r2x_reeds.models import ReEDSStorage
+
+    battery_name = getattr(battery, "name", "")
+
+    source_storage = next(
+        (s for s in context.source_system.get_components(ReEDSStorage) if s.name == battery_name),
+        None,
+    )
+
+    if source_storage is None:
+        return Err(ValueError(f"No source storage found for battery '{battery_name}'"))
+
+    ext_data = getattr(source_storage, "ext", {})
+    reserve_names = ext_data.get("reserves", [])
+
+    if not reserve_names:
+        return Err(ValueError(f"Battery '{battery_name}' has no reserves in ext data"))
+
+    # Find first reserve only
+    first_reserve_name = reserve_names[0]
+    for reserve in context.target_system.get_components(PLEXOSReserve):
+        if reserve.name == first_reserve_name:
+            return Ok(reserve)
+
+    return Err(ValueError(f"No PLEXOSReserve found for '{first_reserve_name}'"))
