@@ -353,7 +353,7 @@
       "category": "reeds-zone"
     },
     "field_map": {
-      "name": "nerc_region",
+      "name": "transmission_region",
       "category": "category"
     },
     "getters": {
@@ -422,11 +422,11 @@
       "category": "reeds-interface"
     },
     "field_map": {
-      "category": "category"
+      "category": "category",
+      "name": "name"
     },
     "getters": {
       "units": "get_component_units",
-      "name": "get_interface_name",
       "min_flow": "interface_min_flow",
       "max_flow": "interface_max_flow"
     },

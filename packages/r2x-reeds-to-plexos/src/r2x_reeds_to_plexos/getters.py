@@ -293,19 +293,6 @@ def interface_max_flow(component: ReEDSInterface, context: PluginContext) -> Res
 
 
 @getter
-def get_interface_name(component: ReEDSInterface, context: PluginContext) -> Result[str, ValueError]:
-    """Return the name for an interface, with a NERC region prefix."""
-    from_region = getattr(component, "from_region", "")
-    from_nerc_region = getattr(from_region, "nerc_region", "")
-    to_region = getattr(component, "to_region", "")
-    to_nerc_region = getattr(to_region, "nerc_region", "")
-    name = getattr(component, "name", "")
-
-    interface_name = f"{from_nerc_region}-{to_nerc_region}_{name}"
-    return Ok(interface_name)
-
-
-@getter
 def min_capacity_factor_percent(
     component: ReEDSGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
@@ -679,7 +666,7 @@ def reeds_membership_component_child_node(
 
 @getter
 def reeds_membership_node_parent_zone(node: PLEXOSNode, context: PluginContext) -> Result[Any, ValueError]:
-    """Find the zone that this node belongs to based on NERC region."""
+    """Find the zone that this node belongs to based on transmission region."""
     from r2x_plexos.models import PLEXOSZone
     from r2x_reeds.models import ReEDSRegion
 
@@ -693,15 +680,15 @@ def reeds_membership_node_parent_zone(node: PLEXOSNode, context: PluginContext) 
     if source_region is None:
         return Err(ValueError(f"No source region found for node '{node_name}'"))
 
-    nerc_region = getattr(source_region, "nerc_region", None)
-    if nerc_region is None:
-        return Err(ValueError(f"Source region '{node_name}' has no NERC region"))
+    transmission_region = getattr(source_region, "transmission_region", None)
+    if transmission_region is None:
+        return Err(ValueError(f"Source region '{node_name}' has no transmission region"))
 
     for zone in context.target_system.get_components(PLEXOSZone):
-        if zone.name == nerc_region:
+        if zone.name == transmission_region:
             return Ok(zone)
 
-    return Err(ValueError(f"No PLEXOSZone found for NERC region '{nerc_region}'"))
+    return Err(ValueError(f"No PLEXOSZone found for transmission region '{transmission_region}'"))
 
 
 @getter
