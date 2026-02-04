@@ -19,7 +19,8 @@
       "name": "name",
       "vom_charge": "vom_cost",
       "fom_charge": "fom_cost",
-      "start_cost": "startup_cost"
+      "start_cost": "startup_cost",
+      "ext": "ext"
     },
     "getters": {
       "units": "get_component_units",
@@ -51,7 +52,8 @@
       "max_capacity": "capacity",
       "name": "name",
       "vom_charge": "vom_cost",
-      "fom_charge": "fom_cost"
+      "fom_charge": "fom_cost",
+      "ext": "ext"
     },
     "getters": {
       "units": "get_component_units",
@@ -84,7 +86,8 @@
       "max_capacity": "capacity",
       "name": "name",
       "vom_charge": "vom_cost",
-      "fom_charge": "fom_cost"
+      "fom_charge": "fom_cost",
+      "ext": "ext"
     },
     "getters": {
       "units": "get_component_units",
@@ -114,7 +117,8 @@
       "category": "technology",
       "name": "name",
       "vom_charge": "vom_cost",
-      "fom_charge": "fom_cost"
+      "fom_charge": "fom_cost",
+      "ext": "ext"
     },
     "getters": {
       "units": "get_component_units",
@@ -133,7 +137,8 @@
     "field_map": {
       "category": "technology",
       "max_power": "capacity",
-      "name": "name"
+      "name": "name",
+      "ext": "ext"
     },
     "getters": {
       "units": "get_component_units",
@@ -177,7 +182,8 @@
     "heat_rate": "heat_rate",
     "max_capacity": "capacity",
     "name": "name",
-    "vom_charge": "vom_cost"
+    "vom_charge": "vom_cost",
+    "ext": "ext"
   },
   "filter": {
     "casefold": true,
@@ -208,7 +214,8 @@
     },
     "field_map": {
       "category": "head",
-      "name": "name"
+      "name": "name",
+      "ext": "ext"
     },
     "filter": {
       "casefold": true,
@@ -236,7 +243,8 @@
     },
     "field_map": {
       "category": "tail",
-      "name": "name"
+      "name": "name",
+      "ext": "ext"
     },
     "filter": {
       "casefold": true,
@@ -264,7 +272,8 @@
     "field_map": {
       "category": "technology",
       "max_capacity": "capacity",
-      "name": "name"
+      "name": "name",
+      "ext": "ext"
     },
     "filter": {
       "casefold": true,
@@ -293,7 +302,8 @@
       "category": "category",
       "capacity": "capacity",
       "max_power": "capacity",
-      "name": "name"
+      "name": "name",
+      "ext": "ext"
     },
     "filter": {
       "all_of": [
@@ -338,7 +348,8 @@
     },
     "field_map": {
       "name": "name",
-      "category": "category"
+      "category": "category",
+      "ext": "ext"
     },
     "getters": {
       "load": "region_load",
@@ -372,7 +383,8 @@
     },
     "field_map": {
       "name": "name",
-      "category": "category"
+      "category": "category",
+      "ext": "ext"
     },
     "getters": {
       "units": "get_component_units"
@@ -403,7 +415,8 @@
     },
     "field_map": {
       "name": "name",
-      "category": "category"
+      "category": "category",
+      "ext": "ext"
     },
     "getters": {
       "duration": "reserve_duration",
@@ -423,7 +436,8 @@
     },
     "field_map": {
       "category": "category",
-      "name": "name"
+      "name": "name",
+      "ext": "ext"
     },
     "getters": {
       "units": "get_component_units",
@@ -519,7 +533,7 @@
     },
     "filter": {
       "casefold": true,
-      "field": "technology",
+      "field": "category",
       "op": "in",
       "values": ["pumped-hydro"]
     },
@@ -537,7 +551,7 @@
     },
     "filter": {
       "casefold": true,
-      "field": "technology",
+      "field": "category",
       "op": "in",
       "values": ["pumped-hydro"]
     },
@@ -553,12 +567,6 @@
       "child_object": "reeds_membership_parent_component",
       "collection": "reeds_membership_collection_batteries"
     },
-    "filter": {
-      "casefold": true,
-      "field": "ext",
-      "op": "in",
-      "values": ["reserves"]
-    },
     "source_type": "PLEXOSBattery",
     "target_type": "PLEXOSMembership",
     "version": 1
@@ -570,12 +578,6 @@
       "parent_object": "reeds_membership_battery_parent_flexibility_reserve",
       "child_object": "reeds_membership_parent_component",
       "collection": "reeds_membership_collection_batteries"
-    },
-    "filter": {
-      "casefold": true,
-      "field": "ext",
-      "op": "in",
-      "values": ["reserves"]
     },
     "source_type": "PLEXOSBattery",
     "target_type": "PLEXOSMembership",
@@ -589,12 +591,6 @@
       "child_object": "reeds_membership_parent_component",
       "collection": "reeds_membership_collection_batteries"
     },
-    "filter": {
-      "casefold": true,
-      "field": "ext",
-      "op": "in",
-      "values": ["reserves"]
-    },
     "source_type": "PLEXOSBattery",
     "target_type": "PLEXOSMembership",
     "version": 3
@@ -606,12 +602,6 @@
       "parent_object": "reeds_membership_generator_parent_spinning_reserve",
       "child_object": "reeds_membership_parent_component",
       "collection": "reeds_membership_collection_generators"
-    },
-    "filter": {
-      "casefold": true,
-      "field": "ext",
-      "op": "in",
-      "values": ["reserves"]
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
@@ -625,12 +615,6 @@
       "child_object": "reeds_membership_parent_component",
       "collection": "reeds_membership_collection_generators"
     },
-    "filter": {
-      "casefold": true,
-      "field": "ext",
-      "op": "in",
-      "values": ["reserves"]
-    },
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
     "version": 11
@@ -642,12 +626,6 @@
       "parent_object": "reeds_membership_generator_parent_regulation_reserve",
       "child_object": "reeds_membership_parent_component",
       "collection": "reeds_membership_collection_generators"
-    },
-    "filter": {
-      "casefold": true,
-      "field": "ext",
-      "op": "in",
-      "values": ["reserves"]
     },
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
