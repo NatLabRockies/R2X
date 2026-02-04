@@ -2,22 +2,15 @@ from __future__ import annotations
 
 import json
 from importlib.resources import files
-from pathlib import Path
-from typing import TYPE_CHECKING
 
 from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
 
-from r2x_core import Rule, System, TranslationContext, apply_rules_to_context
-
-from .plugin_config import PlexosToSiennaConfig
-
-if TYPE_CHECKING:
-    from r2x_core import TranslationContext
+from r2x_core import PluginContext, Rule, System, apply_rules_to_context
 
 
-def perform_translation(system: System) -> System:
+def perform_translation(context: PluginContext) -> System:
     """
     Perform the PLEXOS to Sienna translation.
 
@@ -29,10 +22,9 @@ def perform_translation(system: System) -> System:
     """
     rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
+    context.rules = rules
 
-    tmp_ts_dir = Path(__file__).parent / "tmp"
-    tmp_ts_dir.mkdir(exist_ok=True)
-
+    tmp_ts_dir = context.source_system.get_time_series_directory()
     connection = create_in_memory_db()
     ts_manager = TimeSeriesManager(
         connection,
@@ -41,14 +33,13 @@ def perform_translation(system: System) -> System:
         permanent=True,
     )
 
-    sienna_system = System(name="Sienna", auto_add_composed_components=True, time_series_manager=ts_manager)
-
-    context = TranslationContext(
-        source_system=system,
-        target_system=sienna_system,
-        config=PlexosToSiennaConfig(),
-        rules=rules,
+    sienna_sys = System(
+        name="Sienna",
+        auto_add_composed_components=True,
+        time_series_manager=ts_manager,
     )
+    context.target_system = sienna_sys
+
     apply_rules_to_context(context)
 
     return context.target_system

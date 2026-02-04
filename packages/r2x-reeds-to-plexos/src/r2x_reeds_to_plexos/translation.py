@@ -2,42 +2,35 @@ from __future__ import annotations
 
 import json
 from importlib.resources import files
-from pathlib import Path
-from typing import TYPE_CHECKING
 
 from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
 
-from r2x_core import Rule, System, TranslationContext, apply_rules_to_context
+from r2x_core import PluginContext, Rule, System, apply_rules_to_context
 
 from .getters_utils import (
     attach_region_load_time_series,
     attach_reserve_time_series,
     attach_time_series_to_generators,
 )
-from .plugin_config import ReedsToPlexosConfig
-
-if TYPE_CHECKING:
-    from r2x_core import Rule, TranslationContext
 
 
-def perform_translation(system: System):
+def perform_translation(context: PluginContext) -> System:
     """
     Perform the ReEDS to PLEXOS translation.
 
     Args:
-        reeds_system: The input ReEDS system to be translated.
+        context: PluginContext with source_system, config, and rules set.
 
     Returns:
         The translated PLEXOS system.
     """
     rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
+    context.rules = rules
 
-    tmp_ts_dir = Path(__file__).parent / "tmp"
-    tmp_ts_dir.mkdir(exist_ok=True)
-
+    tmp_ts_dir = context.source_system.get_time_series_directory()
     connection = create_in_memory_db()
     ts_manager = TimeSeriesManager(
         connection,
@@ -47,13 +40,8 @@ def perform_translation(system: System):
     )
 
     plexos_system = System(name="PLEXOS", auto_add_composed_components=True, time_series_manager=ts_manager)
+    context.target_system = plexos_system
 
-    context = TranslationContext(
-        source_system=system,
-        target_system=plexos_system,
-        config=ReedsToPlexosConfig(),
-        rules=rules,
-    )
     apply_rules_to_context(context)
     attach_reserve_time_series(context)
     attach_time_series_to_generators(context)

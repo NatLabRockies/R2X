@@ -27,7 +27,7 @@ if TYPE_CHECKING:
         ReEDSVariableGenerator,
     )
 
-    from r2x_core.context import TranslationContext
+    from r2x_core import PluginContext
 
 
 def _float_or_zero(value: Any | None) -> float:
@@ -48,7 +48,7 @@ def _get_defaults(technology: str, key: str) -> float:
         return 0.0
 
 
-def _lookup_target_node(context: TranslationContext, region_name: str) -> Result[PLEXOSNode, ValueError]:
+def _lookup_target_node(context: PluginContext, region_name: str) -> Result[PLEXOSNode, ValueError]:
     """Return the translated node for a given region name."""
     from r2x_plexos.models import PLEXOSNode
 
@@ -58,18 +58,29 @@ def _lookup_target_node(context: TranslationContext, region_name: str) -> Result
     return Err(ValueError(f"No PLEXOSNode found for region '{region_name}'"))
 
 
-def _lookup_source_generator(context: TranslationContext, name: str) -> Any | None:
+def _lookup_source_generator(context: PluginContext, name: str) -> Any | None:
     """Find a ReEDS generator-like component by name."""
-    from r2x_reeds.models import ReEDSGenerator
+    from r2x_reeds.models import ReEDSConsumingTechnology, ReEDSGenerator
 
     for gen in context.source_system.get_components(ReEDSGenerator):
         if gen.name == name:
             return gen
+
+    for consuming_tech in context.source_system.get_components(ReEDSConsumingTechnology):
+        if consuming_tech.name == name:
+            return consuming_tech
+
     return None
 
 
 @getter
-def region_load(_: TranslationContext, component: ReEDSRegion) -> Result[float | int, ValueError]:
+def get_component_units(component: object, context: PluginContext) -> Result[str, ValueError]:
+    """Return the units/availability for a given component."""
+    return Ok(1)
+
+
+@getter
+def region_load(component: ReEDSRegion, context: PluginContext) -> Result[float | int, ValueError]:
     """Return the load for a region as a PLEXOSPropertyValue with units MW."""
 
     value = _float_or_zero(getattr(component, "load", 0.0))
@@ -77,7 +88,7 @@ def region_load(_: TranslationContext, component: ReEDSRegion) -> Result[float |
 
 
 @getter
-def fixed_load(_: TranslationContext, component: ReEDSGenerator) -> Result[float | int, ValueError]:
+def fixed_load(component: ReEDSGenerator, context: PluginContext) -> Result[float | int, ValueError]:
     """Return the fixed load as a PLEXOSPropertyValue with units MW."""
 
     value = _float_or_zero(getattr(component, "fixed_load", None))
@@ -85,58 +96,58 @@ def fixed_load(_: TranslationContext, component: ReEDSGenerator) -> Result[float
 
 
 @getter
-def rating(_: TranslationContext, component: ReEDSGenerator) -> Result[float | int, ValueError]:
+def rating(component: ReEDSGenerator, context: PluginContext) -> Result[float | int, ValueError]:
     """Return the rating as a PLEXOSPropertyValue with units MW."""
     value = _float_or_zero(getattr(component, "capacity", 0.0))
     return Ok(value)
 
 
 @getter
-def load_subtracter(_: TranslationContext, component: ReEDSGenerator) -> Result[float | int, ValueError]:
+def load_subtracter(component: ReEDSGenerator, context: PluginContext) -> Result[float | int, ValueError]:
     """Return the load subtracter as a PLEXOSPropertyValue with units MW."""
     value = _float_or_zero(getattr(component, "load_subtracter", 0.0))
     return Ok(value)
 
 
 @getter
-def add_head_suffix(_: TranslationContext, component: ReEDSStorage) -> Result[str, ValueError]:
+def add_head_suffix(component: ReEDSStorage, context: PluginContext) -> Result[str, ValueError]:
     """Add '_head' suffix to the storage name."""
     name = getattr(component, "name", "")
     return Ok(f"{name}_head")
 
 
 @getter
-def add_tail_suffix(_: TranslationContext, component: ReEDSStorage) -> Result[str, ValueError]:
+def add_tail_suffix(component: ReEDSStorage, context: PluginContext) -> Result[str, ValueError]:
     """Add '_tail' suffix to the storage name."""
     name = getattr(component, "name", "")
     return Ok(f"{name}_tail")
 
 
 @getter
-def storage_max_volume(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
+def storage_max_volume(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
     """Return the maximum volume for storage."""
     capacity = getattr(component, "capacity", 0.0)
     duration = getattr(component, "storage_duration", 0.0)
-    max_volume = float(capacity) * float(duration)
+    max_volume = round(float(capacity) * float(duration), 1)
     return Ok(float(max_volume))
 
 
 @getter
-def storage_initial_volume(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
+def storage_initial_volume(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
     """Return the initial volume for storage (assumed 50% if not specified)."""
     initial_volume = _float_or_zero(getattr(component, "energy_capacity", 0.0))
     return Ok(float(initial_volume))
 
 
 @getter
-def storage_natural_inflow(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
+def storage_natural_inflow(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
     """Return the natural inflow for storage as a PLEXOSPropertyValue with units MW."""
     value = _float_or_zero(getattr(component, "natural_inflow", 0.0))
     return Ok(value)
 
 
 @getter
-def reserve_type(_: TranslationContext, component: ReEDSReserve) -> Result[int, ValueError]:
+def reserve_type(component: ReEDSReserve, context: PluginContext) -> Result[int, ValueError]:
     """Return the PLEXOS reserve type code for a ReEDSReserve."""
     mapping = {
         "REGULATION": 7,  # Regulation
@@ -154,9 +165,7 @@ def reserve_type(_: TranslationContext, component: ReEDSReserve) -> Result[int, 
 
 
 @getter
-def forced_outage_rate_percent(
-    _: TranslationContext, component: ReEDSGenerator | ReEDSStorage
-) -> Result[float, ValueError]:
+def forced_outage_rate_percent(component: object, context: PluginContext) -> Result[float, ValueError]:
     """Convert forced outage fraction (0-1) to percent expected by PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
     rate = getattr(component, "forced_outage_rate", None)
@@ -169,7 +178,7 @@ def forced_outage_rate_percent(
 
 
 @getter
-def maintenance_rate_percent(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+def maintenance_rate_percent(component: object, context: PluginContext) -> Result[float, ValueError]:
     """Convert maintenance rate fraction (0-1) to percent expected by PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
     rate = getattr(component, "maintenance_rate", None)
@@ -182,7 +191,9 @@ def maintenance_rate_percent(_: TranslationContext, component: ReEDSGenerator) -
 
 
 @getter
-def charge_efficiency_percent(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+def charge_efficiency_percent(
+    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
+) -> Result[float, ValueError]:
     """Convert charge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
     efficiency = getattr(component, "charge_efficiency", None)
@@ -196,7 +207,7 @@ def charge_efficiency_percent(_: TranslationContext, component: ReEDSGenerator) 
 
 @getter
 def discharge_efficiency_percent(
-    _: TranslationContext, component: ReEDSGenerator
+    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
 ) -> Result[float, ValueError]:
     """Convert discharge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
@@ -210,7 +221,7 @@ def discharge_efficiency_percent(
 
 
 @getter
-def mean_time_to_repair_hours(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+def mean_time_to_repair_hours(component: object, context: PluginContext) -> Result[float, ValueError]:
     """Return mean time to repair in hours, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
     mttr = getattr(component, "mean_time_to_repair", None)
@@ -219,42 +230,71 @@ def mean_time_to_repair_hours(_: TranslationContext, component: ReEDSGenerator) 
         return Ok(_float_or_zero(mttr))
 
     default_mttr = _get_defaults(gen_technology, "mean_time_to_repair")
+    if default_mttr is None:
+        return Ok(24)
     return Ok(float(default_mttr))
 
 
 @getter
-def battery_max_soc(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+def get_battery_max_soc(
+    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
+) -> Result[float, ValueError]:
     """Return maximum state of charge (percent)."""
-    return Ok(100.0)
+    gen_technology = getattr(component, "technology", "")
+    max_soc = getattr(component, "max_soc", None)
+
+    if max_soc is not None:
+        return Ok(_float_or_zero(max_soc))
+
+    default_max_soc = _get_defaults(gen_technology, "max_soc")
+    return Ok(float(default_max_soc))
 
 
 @getter
-def battery_initial_soc(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+def get_battery_initial_soc(
+    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
+) -> Result[float, ValueError]:
     """Return initial state of charge (percent)."""
-    return Ok(50.0)
+    gen_technology = getattr(component, "technology", "")
+    initial_soc = getattr(component, "initial_soc", None)
+
+    if initial_soc is not None:
+        return Ok(_float_or_zero(initial_soc))
+
+    default_initial_soc = _get_defaults(gen_technology, "initial_soc")
+    return Ok(float(default_initial_soc))
 
 
 @getter
-def battery_min_soc(_: TranslationContext, component: ReEDSGenerator) -> Result[float, ValueError]:
+def get_battery_min_soc(
+    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
+) -> Result[float, ValueError]:
     """Return minimum state of charge (percent)."""
-    return Ok(0.0)
+    gen_technology = getattr(component, "technology", "")
+    min_soc = getattr(component, "min_soc", None)
+
+    if min_soc is not None:
+        return Ok(_float_or_zero(min_soc))
+
+    default_min_soc = _get_defaults(gen_technology, "min_soc")
+    return Ok(float(default_min_soc))
 
 
 @getter
-def interface_min_flow(_: TranslationContext, component: ReEDSInterface) -> Result[float, ValueError]:
+def interface_min_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
     """Return the minimum flow for an interface (negative of max absolute flow)."""
     return Ok(0.0)
 
 
 @getter
-def interface_max_flow(_: TranslationContext, component: ReEDSInterface) -> Result[float, ValueError]:
+def interface_max_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
     """Return the maximum flow for an interface."""
     return Ok(0.0)
 
 
 @getter
 def min_capacity_factor_percent(
-    _: TranslationContext, component: ReEDSGenerator
+    component: ReEDSGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
     """Convert minimum capacity factor (0-1) to percent."""
     factor = getattr(component, "min_capacity_factor", None)
@@ -262,7 +302,7 @@ def min_capacity_factor_percent(
 
 
 @getter
-def line_max_flow(_: TranslationContext, component: ReEDSTransmissionLine) -> Result[float, ValueError]:
+def line_max_flow(component: ReEDSTransmissionLine, context: PluginContext) -> Result[float, ValueError]:
     """Return the larger of the forward/backward flow limits."""
     limits = getattr(component, "max_active_power", None)
     if limits is None:
@@ -271,7 +311,7 @@ def line_max_flow(_: TranslationContext, component: ReEDSTransmissionLine) -> Re
 
 
 @getter
-def line_min_flow(_: TranslationContext, component: ReEDSTransmissionLine) -> Result[float, ValueError]:
+def line_min_flow(component: ReEDSTransmissionLine, context: PluginContext) -> Result[float, ValueError]:
     """Return the negative of the maximum absolute flow for min_flow."""
     limits = getattr(component, "max_active_power", None)
     if limits is None:
@@ -281,28 +321,47 @@ def line_min_flow(_: TranslationContext, component: ReEDSTransmissionLine) -> Re
 
 
 @getter
-def reserve_vors_percent(
-    context: TranslationContext, source_component: ReEDSReserve
-) -> Result[float, ValueError]:
+def storage_fom_cost_energy(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
+    """Return energy-based FOM cost."""
+    fom_cost = getattr(component, "fom_cost", None)
+
+    if fom_cost is None:
+        return Ok(0.0)
+    return Ok(_float_or_zero(fom_cost))
+
+
+@getter
+def storage_vom_cost_energy(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
+    """Return energy-based VOM cost."""
+    vom_cost = getattr(component, "vom_cost", None)
+
+    if vom_cost is None:
+        return Ok(0.0)
+    return Ok(_float_or_zero(vom_cost))
+
+
+@getter
+def reserve_vors_percent(component: ReEDSReserve, context: PluginContext) -> Result[float, ValueError]:
     """Get reserve VORS or -1.0 default value."""
-    vors = getattr(source_component, "vors", -1.0)
+    vors = getattr(component, "vors", None)
+    vors = vors / 100.0 if vors is not None else -1
     return Ok(vors)
 
 
 @getter
-def reserve_timeframe(_: TranslationContext, component: ReEDSReserve) -> Result[float, ValueError]:
+def reserve_timeframe(component: ReEDSReserve, context: PluginContext) -> Result[float, ValueError]:
     """Return the reserve timeframe in seconds."""
     return Ok(_float_or_zero(getattr(component, "time_frame", None)))
 
 
 @getter
-def reserve_duration(_: TranslationContext, component: ReEDSReserve) -> Result[float, ValueError]:
+def reserve_duration(component: ReEDSReserve, context: PluginContext) -> Result[float, ValueError]:
     """Return the reserve duration in seconds."""
     return Ok(_float_or_zero(getattr(component, "duration", None)))
 
 
 @getter
-def reserve_requirement(_: TranslationContext, component: ReEDSReserve) -> Result[float | int, ValueError]:
+def reserve_requirement(component: ReEDSReserve, context: PluginContext) -> Result[float | int, ValueError]:
     """Return the reserve requirement as a PLEXOSPropertyValue with units MW."""
     value = _float_or_zero(getattr(component, "requirement", None))
     return Ok(value)
@@ -310,17 +369,25 @@ def reserve_requirement(_: TranslationContext, component: ReEDSReserve) -> Resul
 
 @getter
 def ramp_rate_mw_per_hour(
-    _: TranslationContext, component: ReEDSThermalGenerator
+    component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
     """Convert ramp rate from MW/min to MW/hour for PLEXOS."""
     ramp_rate = getattr(component, "ramp_rate", None)
+
     if ramp_rate is None:
+        technology = getattr(component, "technology", "")
+        default_ramp_up = _get_defaults(technology, "ramp_rate_up")
+        if default_ramp_up > 0.0:
+            return Ok(float(default_ramp_up))
         return Ok(0.0)
+
     return Ok(float(ramp_rate) * 60.0)
 
 
 @getter
-def min_stable_level_mw(_: TranslationContext, component: ReEDSThermalGenerator) -> Result[float, ValueError]:
+def min_stable_level_mw(
+    component: ReEDSThermalGenerator, context: PluginContext
+) -> Result[float, ValueError]:
     """Convert min stable level from fraction to MW."""
     min_level_fraction = getattr(component, "min_stable_level", None)
     capacity = getattr(component, "capacity", 0.0)
@@ -332,14 +399,16 @@ def min_stable_level_mw(_: TranslationContext, component: ReEDSThermalGenerator)
 
 
 @getter
-def min_up_time_hours(_: TranslationContext, component: ReEDSThermalGenerator) -> Result[float, ValueError]:
+def min_up_time_hours(component: ReEDSThermalGenerator, context: PluginContext) -> Result[float, ValueError]:
     """Return min up time in hours."""
     min_up = getattr(component, "min_up_time", None)
     return Ok(_float_or_zero(min_up))
 
 
 @getter
-def min_down_time_hours(_: TranslationContext, component: ReEDSThermalGenerator) -> Result[float, ValueError]:
+def min_down_time_hours(
+    component: ReEDSThermalGenerator, context: PluginContext
+) -> Result[float, ValueError]:
     """Return min down time in hours."""
     min_down = getattr(component, "min_down_time", None)
     return Ok(_float_or_zero(min_down))
@@ -347,21 +416,25 @@ def min_down_time_hours(_: TranslationContext, component: ReEDSThermalGenerator)
 
 @getter
 def vre_category_with_resource_class(
-    _: TranslationContext, component: ReEDSVariableGenerator
+    component: ReEDSVariableGenerator, context: PluginContext
 ) -> Result[str, ValueError]:
-    """Combine technology and resource_class for VRE category."""
+    """Return the VRE category without resource class suffix."""
     technology = getattr(component, "technology", "")
-    resource_class = getattr(component, "resource_class", None)
 
-    if resource_class is None:
-        return Ok(technology)
+    if not technology:
+        return Err(ValueError(f"Component {component.name} has no technology"))
 
-    return Ok(f"{technology}-{resource_class}")
+    # Remove resource class suffix (e.g., "_1", "_2", etc.)
+    # Split by underscore and remove last part if it's a number
+    parts = technology.rsplit("_", 1)
+    base_technology = parts[0] if len(parts) == 2 and parts[1].isdigit() else technology
+
+    return Ok(base_technology)
 
 
 @getter
 def supply_curve_cost_getter(
-    _: TranslationContext, component: ReEDSVariableGenerator
+    component: ReEDSVariableGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
     """Return supply curve cost as build cost."""
     cost = getattr(component, "supply_curve_cost", None)
@@ -370,7 +443,7 @@ def supply_curve_cost_getter(
 
 @getter
 def storage_energy_from_duration_or_explicit(
-    _: TranslationContext, component: ReEDSStorage
+    component: ReEDSStorage, context: PluginContext
 ) -> Result[float, ValueError]:
     """Calculate energy capacity from explicit value or duration * power."""
     # First check if explicit energy_capacity is provided
@@ -386,21 +459,21 @@ def storage_energy_from_duration_or_explicit(
 
 
 @getter
-def storage_capital_cost_power(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
+def storage_capital_cost_power(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
     """Return power-based capital cost."""
     cost = getattr(component, "capital_cost", None)
     return Ok(_float_or_zero(cost))
 
 
 @getter
-def storage_fom_cost_power(_: TranslationContext, component: ReEDSStorage) -> Result[float, ValueError]:
+def storage_fom_cost_power(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
     """Return power-based FOM cost."""
     cost = getattr(component, "fom_cost", None)
     return Ok(_float_or_zero(cost))
 
 
 @getter
-def hydro_min_flow(_: TranslationContext, component: ReEDSHydroGenerator) -> Result[float, ValueError]:
+def hydro_min_flow(component: ReEDSHydroGenerator, context: PluginContext) -> Result[float, ValueError]:
     """Extract minimum flow from flow_range tuple."""
     flow_range = getattr(component, "flow_range", None)
     if flow_range is None:
@@ -412,7 +485,7 @@ def hydro_min_flow(_: TranslationContext, component: ReEDSHydroGenerator) -> Res
 
 @getter
 def hydro_ramp_rate_mw_per_hour(
-    _: TranslationContext, component: ReEDSHydroGenerator
+    component: ReEDSHydroGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
     """Convert hydro ramp rate from MW/min to MW/hour."""
     ramp_rate = getattr(component, "ramp_rate", None)
@@ -422,7 +495,7 @@ def hydro_ramp_rate_mw_per_hour(
 
 
 @getter
-def hydro_must_run_flag(_: TranslationContext, component: ReEDSHydroGenerator) -> Result[int, ValueError]:
+def hydro_must_run_flag(component: ReEDSHydroGenerator, context: PluginContext) -> Result[int, ValueError]:
     """Return must_run flag for non-dispatchable hydro."""
     is_dispatchable = getattr(component, "is_dispatchable", True)
 
@@ -435,7 +508,7 @@ def hydro_must_run_flag(_: TranslationContext, component: ReEDSHydroGenerator) -
 
 @getter
 def consuming_tech_load_mw(
-    _: TranslationContext, component: ReEDSConsumingTechnology
+    component: ReEDSConsumingTechnology, context: PluginContext
 ) -> Result[float, ValueError]:
     """Return consumption capacity as load."""
     capacity = getattr(component, "capacity", None)
@@ -444,7 +517,7 @@ def consuming_tech_load_mw(
 
 @getter
 def consuming_tech_efficiency_to_heat_rate(
-    _: TranslationContext, component: ReEDSConsumingTechnology
+    component: ReEDSConsumingTechnology, context: PluginContext
 ) -> Result[float, ValueError]:
     """Convert electricity efficiency to heat rate equivalent."""
     efficiency = getattr(component, "electricity_efficiency", None)
@@ -457,46 +530,62 @@ def consuming_tech_efficiency_to_heat_rate(
 
 
 @getter
-def reeds_membership_parent_component(_: TranslationContext, component: Any) -> Result[Any, ValueError]:
+def reeds_membership_parent_component(component: Any, context: PluginContext) -> Result[Any, ValueError]:
     """Return the component itself for membership parent/child fields."""
     return Ok(component)
 
 
 @getter
-def reeds_membership_collection_nodes(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+def reeds_membership_collection_nodes(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
     """Return the Nodes collection enum."""
     return Ok(CollectionEnum.Nodes)
 
 
 @getter
 def reeds_membership_collection_node_from(
-    _: TranslationContext, __: Any
+    component: Any, context: PluginContext
 ) -> Result[CollectionEnum, ValueError]:
     """Return the NodeFrom collection enum."""
     return Ok(CollectionEnum.NodeFrom)
 
 
 @getter
-def reeds_membership_collection_node_to(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+def reeds_membership_collection_node_to(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
     """Return the NodeTo collection enum."""
     return Ok(CollectionEnum.NodeTo)
 
 
 @getter
-def reeds_membership_collection_region(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+def reeds_membership_collection_region(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
     """Return the Region collection enum."""
     return Ok(CollectionEnum.Region)
 
 
 @getter
-def reeds_membership_collection_lines(_: TranslationContext, __: Any) -> Result[CollectionEnum, ValueError]:
+def reeds_membership_collection_zone(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
+    """Return the Zone collection enum."""
+    return Ok(CollectionEnum.Zone)
+
+
+@getter
+def reeds_membership_collection_lines(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
     """Return the Lines collection enum."""
     return Ok(CollectionEnum.Lines)
 
 
 @getter
 def reeds_membership_collection_head_storage(
-    _: TranslationContext, __: Any
+    component: Any, context: PluginContext
 ) -> Result[CollectionEnum, ValueError]:
     """Return the HeadStorage collection enum."""
     return Ok(CollectionEnum.HeadStorage)
@@ -504,23 +593,45 @@ def reeds_membership_collection_head_storage(
 
 @getter
 def reeds_membership_collection_tail_storage(
-    _: TranslationContext, __: Any
+    component: Any, context: PluginContext
 ) -> Result[CollectionEnum, ValueError]:
     """Return the TailStorage collection enum."""
     return Ok(CollectionEnum.TailStorage)
 
 
 @getter
+def reeds_membership_collection_batteries(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
+    """Return the Batteries collection enum."""
+    return Ok(CollectionEnum.Batteries)
+
+
+@getter
+def reeds_membership_collection_generators(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
+    """Return the Generators collection enum."""
+    return Ok(CollectionEnum.Generators)
+
+
+@getter
 def reeds_membership_storage_generator_parent(
-    _: TranslationContext, generator: Any
+    component: Any, context: PluginContext
 ) -> Result[Any, ValueError]:
     """Return the generator itself as the parent object."""
-    return Ok(generator)
+    return Ok(component)
+
+
+@getter
+def reeds_membership_line_child_line(component: Any, context: PluginContext) -> Result[Any, ValueError]:
+    """Return the line itself as the child object."""
+    return Ok(component)
 
 
 @getter
 def reeds_membership_region_parent_node(
-    context: TranslationContext, region: Any
+    region: Any, context: PluginContext
 ) -> Result[PLEXOSNode, ValueError]:
     """Find the translated node for membership parent links."""
     region_name = getattr(region, "name", "")
@@ -538,7 +649,7 @@ def reeds_membership_region_parent_node(
 
 @getter
 def reeds_membership_component_child_node(
-    context: TranslationContext, component: Any
+    component: Any, context: PluginContext
 ) -> Result[PLEXOSNode, ValueError]:
     """Resolve a component's region to the translated node."""
     comp_name = getattr(component, "name", "")
@@ -554,8 +665,35 @@ def reeds_membership_component_child_node(
 
 
 @getter
+def reeds_membership_node_parent_zone(node: PLEXOSNode, context: PluginContext) -> Result[Any, ValueError]:
+    """Find the zone that this node belongs to based on transmission region."""
+    from r2x_plexos.models import PLEXOSZone
+    from r2x_reeds.models import ReEDSRegion
+
+    node_name = getattr(node, "name", "")
+
+    source_region = next(
+        (r for r in context.source_system.get_components(ReEDSRegion) if r.name == node_name),
+        None,
+    )
+
+    if source_region is None:
+        return Err(ValueError(f"No source region found for node '{node_name}'"))
+
+    transmission_region = getattr(source_region, "transmission_region", None)
+    if transmission_region is None:
+        return Err(ValueError(f"Source region '{node_name}' has no transmission region"))
+
+    for zone in context.target_system.get_components(PLEXOSZone):
+        if zone.name == transmission_region:
+            return Ok(zone)
+
+    return Err(ValueError(f"No PLEXOSZone found for transmission region '{transmission_region}'"))
+
+
+@getter
 def reeds_membership_line_from_parent_node(
-    context: TranslationContext, line: PLEXOSLine
+    line: PLEXOSLine, context: PluginContext
 ) -> Result[PLEXOSNode, ValueError]:
     """Return the from-node for a translated line."""
     from r2x_reeds.models.components import ReEDSTransmissionLine
@@ -572,7 +710,7 @@ def reeds_membership_line_from_parent_node(
 
 @getter
 def reeds_membership_line_to_parent_node(
-    context: TranslationContext, line: PLEXOSLine
+    line: PLEXOSLine, context: PluginContext
 ) -> Result[PLEXOSNode, ValueError]:
     """Return the to-node for a translated line."""
     from r2x_reeds.models.components import ReEDSTransmissionLine
@@ -588,7 +726,7 @@ def reeds_membership_line_to_parent_node(
 
 
 @getter
-def reeds_membership_line_parent_interface(context: TranslationContext, line: Any) -> Result[Any, ValueError]:
+def reeds_membership_line_parent_interface(line: Any, context: PluginContext) -> Result[Any, ValueError]:
     """Return the parent interface for a translated line, matching either direction."""
     from r2x_plexos.models import PLEXOSInterface
 
@@ -604,14 +742,8 @@ def reeds_membership_line_parent_interface(context: TranslationContext, line: An
 
 
 @getter
-def reeds_membership_line_child_line(_: TranslationContext, line: Any) -> Result[Any, ValueError]:
-    """Return the line itself as the child object."""
-    return Ok(line)
-
-
-@getter
 def reeds_membership_storage_child_head_storage(
-    context: TranslationContext, generator: Any
+    generator: Any, context: PluginContext
 ) -> Result[Any, ValueError]:
     """Return the head storage (with _head suffix) for this generator."""
     from r2x_plexos.models import PLEXOSStorage
@@ -626,7 +758,7 @@ def reeds_membership_storage_child_head_storage(
 
 @getter
 def reeds_membership_storage_child_tail_storage(
-    context: TranslationContext, generator: Any
+    generator: Any, context: PluginContext
 ) -> Result[Any, ValueError]:
     """Return the tail storage (with _tail suffix) for this generator."""
     from r2x_plexos.models import PLEXOSStorage
@@ -637,3 +769,150 @@ def reeds_membership_storage_child_tail_storage(
         if storage.name == storage_name:
             return Ok(storage)
     return Err(ValueError(f"No tail storage found for generator '{base_name}'"))
+
+
+@getter
+def reeds_membership_battery_parent_spinning_reserve(
+    battery: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find SPINNING reserve for this battery."""
+    return _find_battery_reserve_by_type(battery, context, "SPINNING")
+
+
+@getter
+def reeds_membership_battery_parent_flexibility_reserve(
+    battery: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find FLEXIBILITY reserve for this battery."""
+    return _find_battery_reserve_by_type(battery, context, "FLEXIBILITY")
+
+
+@getter
+def reeds_membership_battery_parent_regulation_reserve(
+    battery: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find REGULATION reserve for this battery."""
+    return _find_battery_reserve_by_type(battery, context, "REGULATION")
+
+
+@getter
+def _find_battery_reserve_by_type(
+    battery: Any, context: PluginContext, reserve_type: str
+) -> Result[Any, ValueError]:
+    """Helper to find a specific reserve type for a battery."""
+    from r2x_plexos.models import PLEXOSReserve
+    from r2x_reeds.models import ReEDSStorage
+
+    battery_name = getattr(battery, "name", "")
+    source_storage = next(
+        (s for s in context.source_system.get_components(ReEDSStorage) if s.name == battery_name),
+        None,
+    )
+
+    if source_storage is None:
+        logger.debug(f"No source storage found for battery '{battery_name}'")
+        return Err(ValueError("Skip Generator with no source."))
+
+    ext_data = getattr(source_storage, "ext", {})
+    reserve_names = ext_data.get("reserves", [])
+
+    if not reserve_names:
+        logger.debug(f"Battery '{battery_name}' has no reserves in ext data")
+        return Err(ValueError("Skip Generator with no source."))
+
+    matching_reserve_name = None
+    for res_name in reserve_names:
+        if reserve_type in res_name:
+            matching_reserve_name = res_name
+            break
+
+    if matching_reserve_name is None:
+        logger.debug(f"Battery '{battery_name}' has no {reserve_type} reserve")
+        return Err(ValueError("Skip Generator with no source."))
+
+    all_reserves = list(context.target_system.get_components(PLEXOSReserve))
+
+    for reserve in all_reserves:
+        if reserve.name == matching_reserve_name:
+            return Ok(reserve)
+
+    logger.error(f"No PLEXOSReserve found for '{matching_reserve_name}'")
+    return Err(ValueError(f"No PLEXOSReserve found for '{matching_reserve_name}'"))
+
+
+@getter
+def reeds_membership_generator_parent_spinning_reserve(
+    generator: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find SPINNING reserve for this generator."""
+    return _find_generator_reserve_by_type(generator, context, "SPINNING")
+
+
+@getter
+def reeds_membership_generator_parent_flexibility_reserve(
+    generator: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find FLEXIBILITY reserve for this generator."""
+    return _find_generator_reserve_by_type(generator, context, "FLEXIBILITY")
+
+
+@getter
+def reeds_membership_generator_parent_regulation_reserve(
+    generator: Any, context: PluginContext
+) -> Result[Any, ValueError]:
+    """Find REGULATION reserve for this generator."""
+    return _find_generator_reserve_by_type(generator, context, "REGULATION")
+
+
+def _find_generator_reserve_by_type(
+    generator: Any, context: PluginContext, reserve_type: str
+) -> Result[Any, ValueError]:
+    """Helper to find a specific reserve type for a generator."""
+    from r2x_plexos.models import PLEXOSReserve
+    from r2x_reeds.models import (
+        ReEDSGenerator,
+        ReEDSHydroGenerator,
+        ReEDSThermalGenerator,
+        ReEDSVariableGenerator,
+    )
+
+    generator_name = getattr(generator, "name", "")
+    source_generator = None
+    for generator_type in [
+        ReEDSGenerator,
+        ReEDSThermalGenerator,
+        ReEDSVariableGenerator,
+        ReEDSHydroGenerator,
+    ]:
+        source_generator = next(
+            (g for g in context.source_system.get_components(generator_type) if g.name == generator_name),
+            None,
+        )
+        if source_generator is not None:
+            break
+
+    if source_generator is None:
+        return Err(ValueError("Skip Generator with no source."))
+
+    ext_data = getattr(source_generator, "ext", {})
+    reserve_names = ext_data.get("reserves", [])
+
+    if not reserve_names:
+        return Err(ValueError("Skip Generator with no source."))
+
+    matching_reserve_name = None
+    for res_name in reserve_names:
+        if reserve_type in res_name:
+            matching_reserve_name = res_name
+            break
+
+    if matching_reserve_name is None:
+        return Err(ValueError("Skip Generator with no source."))
+
+    all_reserves = list(context.target_system.get_components(PLEXOSReserve))
+
+    for reserve in all_reserves:
+        if reserve.name == matching_reserve_name:
+            return Ok(reserve)
+
+    return Err(ValueError(f"No PLEXOSReserve found for '{matching_reserve_name}'"))

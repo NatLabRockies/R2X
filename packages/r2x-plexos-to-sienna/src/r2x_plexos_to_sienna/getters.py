@@ -42,7 +42,7 @@ from r2x_sienna.models.enums import (
 )
 from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput, MinMax
 
-from r2x_core import Ok, Result, TranslationContext, UnitSystem
+from r2x_core import Ok, PluginContext, Result, UnitSystem
 from r2x_core.getters import getter
 
 
@@ -63,12 +63,12 @@ def _get_prime_mover_type(category: str) -> PrimeMoversType:
 
 
 @getter
-def get_power_load_uuid(_: TranslationContext, component: PLEXOSRegion) -> Result[str, Any]:
+def get_power_load_uuid(component: PLEXOSRegion, context: PluginContext) -> Result[str, Any]:
     return Ok(str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{component.uuid}_load")))
 
 
 @getter
-def get_load_bus(context: TranslationContext, component: PLEXOSRegion) -> Result[ACBus | None, Any]:
+def get_load_bus(component: PLEXOSRegion, context: PluginContext) -> Result[ACBus | None, Any]:
     """
     Get the bus (ACBus) associated with the load region.
 
@@ -93,64 +93,64 @@ def get_load_bus(context: TranslationContext, component: PLEXOSRegion) -> Result
 
 
 @getter
-def get_load_active_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+def get_load_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the initial steady-state active power demand of the load in the region."""
     return Ok(getattr(component, "load", 0.0))
 
 
 @getter
-def get_load_reactive_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+def get_load_reactive_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the reactive power of load at the bus (if available)."""
     return Ok(getattr(component, "reactive_power", 0.0))
 
 
 @getter
-def get_load_max_active_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+def get_load_max_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the maximum active power demand of the load at the bus (if available)."""
     return Ok(getattr(component, "max_load", 0.0))
 
 
 @getter
-def get_load_max_reactive_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+def get_load_max_reactive_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the maximum reactive power demand of the load at the bus (if available)."""
     return Ok(getattr(component, "max_reactive_power", 0.0))
 
 
 @getter
-def get_load_base_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+def get_load_base_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the base power of the load at the bus (if available)."""
     return Ok(getattr(component, "base_power", 100.0))
 
 
 @getter
-def get_load_operation_cost(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+def get_load_operation_cost(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the operation cost of the load at the bus (if available)."""
     return Ok(getattr(component, "operation_cost", None))
 
 
 @getter
-def get_zone_peak_active_power(_: TranslationContext, component: PLEXOSZone) -> Result[float, Any]:
+def get_zone_peak_active_power(component: PLEXOSZone, context: PluginContext) -> Result[float, Any]:
     """Get the peak active power for a zone."""
     value = getattr(component, "peak_active_power", 0.0)
     return Ok(float(value))
 
 
 @getter
-def get_zone_peak_reactive_power(_: TranslationContext, component: PLEXOSZone) -> Result[float, Any]:
+def get_zone_peak_reactive_power(component: PLEXOSZone, context: PluginContext) -> Result[float, Any]:
     """Get the peak reactive power for a zone."""
     value = getattr(component, "peak_reactive_power", 0.0)
     return Ok(float(value))
 
 
 @getter
-def get_node_angle(_: TranslationContext, component: PLEXOSNode) -> Result[float, Any]:
+def get_node_angle(component: PLEXOSNode, context: PluginContext) -> Result[float, Any]:
     """Get the angle of a node."""
     value = getattr(component, "angle", 0.0)
     return Ok(float(value))
 
 
 @getter
-def get_node_area(context: TranslationContext, component: PLEXOSNode) -> Result[Any, Any]:
+def get_node_area(component: PLEXOSNode, context: PluginContext) -> Result[Any, Any]:
     """Get the Area object of a node from its memberships (Region collection), matching by name in the target system."""
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     area_name = None
@@ -173,7 +173,7 @@ def get_node_area(context: TranslationContext, component: PLEXOSNode) -> Result[
 
 
 @getter
-def get_node_zone(context: TranslationContext, component: PLEXOSNode) -> Result[Any, Any]:
+def get_node_zone(component: PLEXOSNode, context: PluginContext) -> Result[Any, Any]:
     """Get the LoadZone object of a node from its memberships (Zone collection), matching by name in the target system."""
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     zone_name = None
@@ -196,7 +196,7 @@ def get_node_zone(context: TranslationContext, component: PLEXOSNode) -> Result[
 
 
 @getter
-def get_base_voltage(_: TranslationContext, component: PLEXOSNode) -> Result[float, Any]:
+def get_base_voltage(component: PLEXOSNode, context: PluginContext) -> Result[float, Any]:
     """Get the voltage of a node. Try 'voltage', then 'ac_voltage_magnitude', else default to 1.0."""
     voltage = getattr(component, "voltage", 0.0)
     if voltage and voltage != 0.0:
@@ -208,7 +208,7 @@ def get_base_voltage(_: TranslationContext, component: PLEXOSNode) -> Result[flo
 
 
 @getter
-def get_node_ext(_: TranslationContext, component: PLEXOSNode) -> Result[dict[str, Any], Any]:
+def get_node_ext(component: PLEXOSNode, context: PluginContext) -> Result[dict[str, Any], Any]:
     """Get the ext dictionary for a node."""
     value = {
         "load_participation_factor": getattr(component, "load_participation_factor", None),
@@ -217,7 +217,7 @@ def get_node_ext(_: TranslationContext, component: PLEXOSNode) -> Result[dict[st
 
 
 @getter
-def get_node_number(_: TranslationContext, component: PLEXOSNode) -> Result[int, Any]:
+def get_node_number(component: PLEXOSNode, context: PluginContext) -> Result[int, Any]:
     """Assign node number from attribute, or extract from name if not present."""
     if hasattr(component, "number") and component.number is not None:
         return Ok(int(component.number))
@@ -229,7 +229,7 @@ def get_node_number(_: TranslationContext, component: PLEXOSNode) -> Result[int,
 
 
 @getter
-def is_slack_bus(_: TranslationContext, component: PLEXOSNode) -> Result[ACBusTypes, Any]:
+def is_slack_bus(component: PLEXOSNode, context: PluginContext) -> Result[ACBusTypes, Any]:
     """Return ACBusTypes.SLACK if component.bustype == 1, else ACBusTypes.PQ."""
     value = getattr(component, "is_slack_bus", 0)
     bustype = ACBusTypes.SLACK if value == 1 else ACBusTypes.PQ
@@ -237,7 +237,7 @@ def is_slack_bus(_: TranslationContext, component: PLEXOSNode) -> Result[ACBusTy
 
 
 @getter
-def get_line_arc(context: TranslationContext, component: PLEXOSLine) -> Result[Arc, Any]:
+def get_line_arc(component: PLEXOSLine, context: PluginContext) -> Result[Arc, Any]:
     """Get the arc of a line by querying PlexosDB for node memberships and matching to ACBus objects."""
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     from_node = None
@@ -270,7 +270,7 @@ def get_line_arc(context: TranslationContext, component: PLEXOSLine) -> Result[A
 
 
 @getter
-def get_line_conductance(_: TranslationContext, component: PLEXOSLine) -> Result[FromTo_ToFrom, Any]:
+def get_line_conductance(component: PLEXOSLine, context: PluginContext) -> Result[FromTo_ToFrom, Any]:
     """Get the conductance of a line as a FromTo_ToFrom namedtuple (g = 1/r)."""
     r = None
     if hasattr(component, "resistance") and component.resistance:
@@ -285,13 +285,13 @@ def get_line_conductance(_: TranslationContext, component: PLEXOSLine) -> Result
 
 
 @getter
-def get_reactive_power_flow(_: TranslationContext, component: PLEXOSLine) -> Result[float, Any]:
+def get_reactive_power_flow(component: PLEXOSLine, context: PluginContext) -> Result[float, Any]:
     """Get the reactive power flow of a line as a FromTo_ToFrom namedtuple."""
     return Ok(0.0)
 
 
 @getter
-def get_line_angle_limits(_: TranslationContext, component: PLEXOSLine) -> Result[MinMax, Any]:
+def get_line_angle_limits(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
     """Get the angle limits of a line. Defaults to MinMax(-90.0, 90.0) if not found."""
     value = getattr(component, "angle_limits", None)
     if value is not None:
@@ -303,7 +303,7 @@ def get_line_angle_limits(_: TranslationContext, component: PLEXOSLine) -> Resul
 
 
 @getter
-def get_line_susceptance(_: TranslationContext, component: PLEXOSLine) -> Result[FromTo_ToFrom, Any]:
+def get_line_susceptance(component: PLEXOSLine, context: PluginContext) -> Result[FromTo_ToFrom, Any]:
     """Get the susceptance of a line as a FromTo_ToFrom namedtuple."""
     value = None
     if hasattr(component, "susceptance") and component.susceptance:
@@ -317,7 +317,7 @@ def get_line_susceptance(_: TranslationContext, component: PLEXOSLine) -> Result
 
 
 @getter
-def get_line_flow_limits(_: TranslationContext, component: PLEXOSLine) -> Result[FromTo_ToFrom, Any]:
+def get_line_flow_limits(component: PLEXOSLine, context: PluginContext) -> Result[FromTo_ToFrom, Any]:
     """Get the flow limits (from_to, to_from) of a line as a FromTo_ToFrom namedtuple."""
     min_flow = getattr(component, "min_flow", -100.0)
     max_flow = getattr(component, "max_flow", None)
@@ -332,7 +332,7 @@ def get_line_flow_limits(_: TranslationContext, component: PLEXOSLine) -> Result
 
 
 @getter
-def get_line_losses(_: TranslationContext, component: PLEXOSLine) -> Result[float, Any]:
+def get_line_losses(component: PLEXOSLine, context: PluginContext) -> Result[float, Any]:
     """Get the losses of a line (if available)."""
     value = getattr(component, "losses", 0.0)
     if hasattr(value, "values") and value.values:
@@ -341,7 +341,7 @@ def get_line_losses(_: TranslationContext, component: PLEXOSLine) -> Result[floa
 
 
 @getter
-def get_active_power_limits_from(_: TranslationContext, component: PLEXOSLine) -> Result[MinMax, Any]:
+def get_active_power_limits_from(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
     """Get the active power limits (min, max) at the 'from' end of an HVDC line."""
     min_limit = getattr(component, "min_active_power_from", 0.0)
     max_limit = getattr(component, "max_active_power_from", 0.0)
@@ -349,7 +349,7 @@ def get_active_power_limits_from(_: TranslationContext, component: PLEXOSLine) -
 
 
 @getter
-def get_active_power_limits_to(_: TranslationContext, component: PLEXOSLine) -> Result[MinMax, Any]:
+def get_active_power_limits_to(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
     """Get the active power limits (min, max) at the 'to' end of an HVDC line."""
     min_limit = getattr(component, "min_active_power_to", 0.0)
     max_limit = getattr(component, "max_active_power_to", 0.0)
@@ -357,7 +357,7 @@ def get_active_power_limits_to(_: TranslationContext, component: PLEXOSLine) -> 
 
 
 @getter
-def get_reactive_power_limits_from(_: TranslationContext, component: PLEXOSLine) -> Result[MinMax, Any]:
+def get_reactive_power_limits_from(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
     """Get the reactive power limits (min, max) at the 'from' end of an HVDC line."""
     min_limit = getattr(component, "min_reactive_power_from", 0.0)
     max_limit = getattr(component, "max_reactive_power_from", 0.0)
@@ -365,7 +365,7 @@ def get_reactive_power_limits_from(_: TranslationContext, component: PLEXOSLine)
 
 
 @getter
-def get_reactive_power_limits_to(_: TranslationContext, component: PLEXOSLine) -> Result[MinMax, Any]:
+def get_reactive_power_limits_to(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
     """Get the reactive power limits (min, max) at the 'to' end of an HVDC line."""
     min_limit = getattr(component, "min_reactive_power_to", 0.0)
     max_limit = getattr(component, "max_reactive_power_to", 0.0)
@@ -373,14 +373,14 @@ def get_reactive_power_limits_to(_: TranslationContext, component: PLEXOSLine) -
 
 
 @getter
-def get_hvdc_line_loss(_: TranslationContext, component: PLEXOSLine) -> Result[InputOutputCurve, Any]:
+def get_hvdc_line_loss(component: PLEXOSLine, context: PluginContext) -> Result[InputOutputCurve, Any]:
     """Get the losses of an HVDC line as an InputOutputCurve (if available)."""
     loss_incr = getattr(component, "loss_incr", 0.0)
     return Ok(LinearCurve(loss_incr))
 
 
 @getter
-def get_gen_active_power(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_gen_active_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the active power of a generator."""
     value = getattr(component, "max_capacity", 0.0)
     return Ok(float(value))
@@ -388,7 +388,7 @@ def get_gen_active_power(_: TranslationContext, component: PLEXOSGenerator) -> R
 
 @getter
 def get_device_services(
-    context: TranslationContext, component: PLEXOSGenerator | PLEXOSBattery
+    component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext
 ) -> Result[list[Any], Any]:
     """
     Get the services provided by a device (generator, battery, etc.), returning VariableReserve objects from the target system.
@@ -419,7 +419,7 @@ def get_device_services(
 
 @getter
 def get_gen_bus(
-    context: TranslationContext, component: PLEXOSGenerator | PLEXOSBattery
+    component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext
 ) -> Result[ACBus | None, Any]:
     """
     Get the ACBus object for a generator by finding the connected node via memberships,
@@ -448,7 +448,7 @@ def get_gen_bus(
 
 @getter
 def get_hydro_gen_operation_cost(
-    _: TranslationContext, __: PLEXOSGenerator
+    component: PLEXOSGenerator, context: PluginContext
 ) -> Result[HydroGenerationCost, ValueError]:
     """Return zeroed hydro operation cost."""
     return Ok(
@@ -463,7 +463,7 @@ def get_hydro_gen_operation_cost(
 
 @getter
 def get_hydro_reservoir_operation_cost(
-    _: TranslationContext, __: PLEXOSGenerator
+    component: PLEXOSGenerator, context: PluginContext
 ) -> Result[HydroReservoirCost, ValueError]:
     """Return zeroed hydro reservoir operation cost."""
     return Ok(HydroReservoirCost(level_shortage_cost=0.0, spillage_cost=0.0, level_surplus_cost=0.0))
@@ -471,7 +471,7 @@ def get_hydro_reservoir_operation_cost(
 
 @getter
 def get_renewable_operation_cost(
-    _: TranslationContext, __: PLEXOSGenerator
+    component: PLEXOSGenerator, context: PluginContext
 ) -> Result[RenewableGenerationCost, ValueError]:
     """Return zeroed renewable operation cost."""
     return Ok(
@@ -482,14 +482,14 @@ def get_renewable_operation_cost(
 
 
 @getter
-def get_gen_reactive_power(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_gen_reactive_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the reactive power of a generator."""
     value = getattr(component, "reactive_power", 0.0)
     return Ok(float(value))
 
 
 @getter
-def get_gen_start_types(_: TranslationContext, component: PLEXOSGenerator) -> Result[int, Any]:
+def get_gen_start_types(component: PLEXOSGenerator, context: PluginContext) -> Result[int, Any]:
     """Get the start type of a generator as an integer: 1=hot, 2=warm, 3=cold."""
     start_type = getattr(component, "start_type", "hot")
     mapping = {"hot": 1, "warm": 2, "cold": 3}
@@ -498,49 +498,49 @@ def get_gen_start_types(_: TranslationContext, component: PLEXOSGenerator) -> Re
 
 
 @getter
-def get_gen_rating(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_gen_rating(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the rating of a generator."""
     value = getattr(component, "max_capacity", 0.0)
     return Ok(float(value))
 
 
 @getter
-def get_gen_base_power(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_gen_base_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the base power of a generator."""
     value = getattr(component, "base_power", 0.0)
     return Ok(float(value))
 
 
 @getter
-def get_gen_active_power_limits(_: TranslationContext, component: PLEXOSGenerator) -> Result[Any, Any]:
+def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[Any, Any]:
     """Get the active power limits of a generator."""
     value = getattr(component, "active_power_limits", MinMax(min=0.0, max=0.0))
     return Ok(value)
 
 
 @getter
-def get_gen_active_power_losses(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_gen_active_power_losses(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the active power losses incurred by having the unit online."""
     value = getattr(component, "active_power_losses", 0.0)
     return Ok(float(value))
 
 
 @getter
-def get_gen_must_run(_: TranslationContext, component: PLEXOSGenerator) -> Result[bool, Any]:
+def get_gen_must_run(component: PLEXOSGenerator, context: PluginContext) -> Result[bool, Any]:
     """Get the must-run status of a generator."""
     value = getattr(component, "must_run", True)
     return Ok(bool(value))
 
 
 @getter
-def get_gen_reactive_power_limits(_: TranslationContext, component: PLEXOSGenerator) -> Result[Any, Any]:
+def get_gen_reactive_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[Any, Any]:
     """Get the reactive power limits of a generator."""
     value = getattr(component, "reactive_power_limits", MinMax(min=0.0, max=0.0))
     return Ok(value)
 
 
 @getter
-def get_gen_power_factor(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_gen_power_factor(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the power factor of a generator."""
     value = getattr(component, "power_factor", 1.0)
     return Ok(float(value))
@@ -548,7 +548,7 @@ def get_gen_power_factor(_: TranslationContext, component: PLEXOSGenerator) -> R
 
 @getter
 def get_prime_mover_type(
-    _: TranslationContext, component: PLEXOSGenerator | PLEXOSBattery | PLEXOSStorage
+    component: PLEXOSGenerator | PLEXOSBattery | PLEXOSStorage, context: PluginContext
 ) -> Result[str, Any]:
     """Get the prime mover type of a generator by mapping file."""
     category = getattr(component, "category", None)
@@ -557,14 +557,14 @@ def get_prime_mover_type(
 
 
 @getter
-def get_gen_status(_: TranslationContext, component: PLEXOSGenerator) -> Result[int, Any]:
+def get_gen_status(component: PLEXOSGenerator, context: PluginContext) -> Result[int, Any]:
     """Get the status of a generator."""
     value = getattr(component, "units", "")
     return Ok(int(value))
 
 
 @getter
-def get_time_at_status(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_time_at_status(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the time at current status of a generator."""
     value = getattr(component, "time_at_status", 0.0)
     return Ok(float(value))
@@ -572,7 +572,7 @@ def get_time_at_status(_: TranslationContext, component: PLEXOSGenerator) -> Res
 
 @getter
 def get_thermal_operation_cost(
-    _: TranslationContext, __: PLEXOSGenerator
+    component: PLEXOSGenerator, context: PluginContext
 ) -> Result[ThermalGenerationCost, ValueError]:
     """Return zeroed thermal operation cost."""
     return Ok(
@@ -588,33 +588,33 @@ def get_thermal_operation_cost(
 
 
 @getter
-def get_fuel_type(_: TranslationContext, component: PLEXOSGenerator) -> Result[str, Any]:
+def get_fuel_type(component: PLEXOSGenerator, context: PluginContext) -> Result[str, Any]:
     """Get the fuel type of a generator."""
     value = ThermalFuels.NATURAL_GAS
     return Ok(str(value))
 
 
 @getter
-def get_region_peak_active_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+def get_region_peak_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the peak active power in the area (use 'load' as proxy)."""
     return Ok(float(getattr(component, "load", 0.0)))
 
 
 @getter
-def get_region_peak_reactive_power(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+def get_region_peak_reactive_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the peak reactive power in the area (no direct field, default to 0.0)."""
     return Ok(float(getattr(component, "peak_reactive_power", 0.0)))
 
 
 @getter
-def get_region_load_response(_: TranslationContext, component: PLEXOSRegion) -> Result[float, Any]:
+def get_region_load_response(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the load-frequency damping parameter (use 'load_responce' as proxy)."""
     return Ok(float(getattr(component, "load_responce", 0.0)))
 
 
 @getter
 def get_storage_technology_type(
-    _: TranslationContext, component: PLEXOSGenerator
+    component: PLEXOSGenerator, context: PluginContext
 ) -> Result[StorageTechs, Any]:
     """Get the storage technology type. Defaults to StorageTechs.OTHER_CHEM."""
     return Ok(StorageTechs.OTHER_CHEM)
@@ -622,7 +622,7 @@ def get_storage_technology_type(
 
 @getter
 def get_initial_storage_capacity_level(
-    _: TranslationContext, component: PLEXOSGenerator
+    component: PLEXOSGenerator, context: PluginContext
 ) -> Result[float, Any]:
     """Get the initial storage capacity level (initial_soc), converting percent to decimal if needed."""
     value = float(getattr(component, "initial_soc", 0.0))
@@ -632,13 +632,13 @@ def get_initial_storage_capacity_level(
 
 
 @getter
-def get_storage_capacity(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_storage_capacity(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the storage capacity (max_volume)."""
     return Ok(float(getattr(component, "max_volume", 0.0)))
 
 
 @getter
-def get_storage_level_limits(_: TranslationContext, component: PLEXOSGenerator) -> Result[MinMax, Any]:
+def get_storage_level_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[MinMax, Any]:
     """Get the storage level limits (min_volume, max_volume)."""
     min_vol = float(getattr(component, "min_volume", 0.0))
     max_vol = float(getattr(component, "max_volume", 0.0))
@@ -646,7 +646,9 @@ def get_storage_level_limits(_: TranslationContext, component: PLEXOSGenerator) 
 
 
 @getter
-def get_storage_charge_power_limits(_: TranslationContext, component: PLEXOSGenerator) -> Result[MinMax, Any]:
+def get_storage_charge_power_limits(
+    component: PLEXOSGenerator, context: PluginContext
+) -> Result[MinMax, Any]:
     """Get the input (charge) active power limits."""
     min_charge = float(getattr(component, "min_release", 0.0))
     max_charge = float(getattr(component, "max_release", 0.0))
@@ -655,7 +657,7 @@ def get_storage_charge_power_limits(_: TranslationContext, component: PLEXOSGene
 
 @getter
 def get_storage_discharge_power_limits(
-    _: TranslationContext, component: PLEXOSGenerator
+    component: PLEXOSGenerator, context: PluginContext
 ) -> Result[MinMax, Any]:
     """Get the output (discharge) active power limits."""
     min_discharge = float(getattr(component, "min_release", 0.0))
@@ -664,52 +666,52 @@ def get_storage_discharge_power_limits(
 
 
 @getter
-def get_storage_efficiency(_: TranslationContext, component: PLEXOSGenerator) -> Result[InputOutput, Any]:
+def get_storage_efficiency(component: PLEXOSGenerator, context: PluginContext) -> Result[InputOutput, Any]:
     """Get the storage efficiency as InputOutput (in/out)."""
     eff = float(getattr(component, "efficiency", 1.0))
     return Ok(InputOutput(input=eff, output=eff))
 
 
 @getter
-def get_storage_operation_cost(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_storage_operation_cost(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the operation cost (use energy_value as proxy)."""
     return Ok(float(getattr(component, "energy_value", 0.0)))
 
 
 @getter
-def get_storage_conversion_factor(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_storage_conversion_factor(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the conversion factor (use capacity_coefficient as proxy)."""
     return Ok(float(getattr(component, "capacity_coefficient", 1.0)))
 
 
 @getter
-def get_storage_target(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_storage_target(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the storage target (target_level or target)."""
     return Ok(float(getattr(component, "target_level", getattr(component, "target", 0.0))))
 
 
 @getter
-def get_storage_cycle_limits(_: TranslationContext, component: PLEXOSGenerator) -> Result[int, Any]:
+def get_storage_cycle_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[int, Any]:
     """Get the cycle limits as an integer (use 'cycle_limits' if available, else 0)."""
     value = getattr(component, "cycle_limits", 10000)
     return Ok(int(value))
 
 
 @getter
-def get_reserve_time_frame(_: TranslationContext, component: PLEXOSGenerator) -> Result[float, Any]:
+def get_reserve_time_frame(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the timeframe in which the reserve is required (seconds)."""
     return Ok(float(getattr(component, "timeframe", 0.0)))
 
 
 @getter
-def get_reserve_requirement(_: TranslationContext, component: PLEXOSGenerator) -> Result[float | None, Any]:
+def get_reserve_requirement(component: PLEXOSGenerator, context: PluginContext) -> Result[float | None, Any]:
     """Get the value of required reserves in p.u (SYSTEM_BASE)."""
     return Ok(getattr(component, "requirement", 0.0))
 
 
 @getter
 def get_interface_active_power_flow_limits(
-    _: TranslationContext, component: PLEXOSInterface
+    component: PLEXOSInterface, context: PluginContext
 ) -> Result[MinMax, Any]:
     """Get the min/max active power flow limits for a TransmissionInterface."""
     min_flow = float(getattr(component, "min_flow", 0.0))
@@ -719,7 +721,7 @@ def get_interface_active_power_flow_limits(
 
 @getter
 def get_interface_direction_mapping(
-    _: TranslationContext, component: PLEXOSInterface
+    component: PLEXOSInterface, context: PluginContext
 ) -> Result[dict[str, int], Any]:
     """
     Get the direction mapping for a TransmissionInterface.
@@ -730,20 +732,20 @@ def get_interface_direction_mapping(
 
 
 @getter
-def get_trf_active_power_flow(_: TranslationContext, component: PLEXOSTransformer) -> Result[float, Any]:
+def get_trf_active_power_flow(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
     """Get the active power flow through the transformer."""
     return Ok(getattr(component, "active_power_flow", 0.0))
 
 
 @getter
-def get_trf_reactive_power_flow(_: TranslationContext, component: PLEXOSTransformer) -> Result[float, Any]:
+def get_trf_reactive_power_flow(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
     """Get the reactive power flow through the transformer."""
     return Ok(getattr(component, "reactive_power_flow", 0.0))
 
 
 @getter
 def get_trf_primary_shunt(
-    _: TranslationContext, component: PLEXOSTransformer
+    component: PLEXOSTransformer, context: PluginContext
 ) -> Result[Complex | float | None, Any]:
     """Get the primary shunt admittance of the transformer (complex or None)."""
     value = getattr(component, "primary_shunt", None)
@@ -755,14 +757,14 @@ def get_trf_primary_shunt(
 
 
 @getter
-def get_trf_base_power(_: TranslationContext, component: PLEXOSTransformer) -> Result[float, Any]:
+def get_trf_base_power(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
     """Get the base power of the transformer."""
     return Ok(getattr(component, "base_power", 100.0))
 
 
 @getter
 def get_trf_winding_group_number(
-    _: TranslationContext, component: PLEXOSTransformer
+    component: PLEXOSTransformer, context: PluginContext
 ) -> Result[WindingGroupNumber, Any]:
     """Get the winding group number of the transformer as a WindingGroupNumber enum."""
     return Ok(WindingGroupNumber.UNDEFINED)
@@ -770,14 +772,14 @@ def get_trf_winding_group_number(
 
 @getter
 def get_trf_control_objective(
-    _: TranslationContext, component: PLEXOSTransformer
+    component: PLEXOSTransformer, context: PluginContext
 ) -> Result[TransformerControlObjective, Any]:
     """Get the control objective of the transformer as a TransformerControlObjective enum."""
     return Ok(TransformerControlObjective.UNDEFINED)
 
 
 @getter
-def get_reserve_type(_: TranslationContext, component: PLEXOSReserve) -> Result[ReserveType, Any]:
+def get_reserve_type(component: PLEXOSReserve, context: PluginContext) -> Result[ReserveType, Any]:
     """Get the reserve type for a PLEXOSReserve component as a ReserveType enum."""
     value = getattr(component, "reserve_type", None)
     try:
@@ -787,7 +789,7 @@ def get_reserve_type(_: TranslationContext, component: PLEXOSReserve) -> Result[
 
 
 @getter
-def get_reserve_direction(_: TranslationContext, component: PLEXOSReserve) -> Result[ReserveDirection, Any]:
+def get_reserve_direction(component: PLEXOSReserve, context: PluginContext) -> Result[ReserveDirection, Any]:
     """Get the reserve direction for a PLEXOSReserve component as a ReserveDirection enum."""
     value = getattr(component, "direction", None)
     try:
@@ -797,26 +799,26 @@ def get_reserve_direction(_: TranslationContext, component: PLEXOSReserve) -> Re
 
 
 @getter
-def get_reserve_sustained_time(_: TranslationContext, component: PLEXOSReserve) -> Result[float, Any]:
+def get_reserve_sustained_time(component: PLEXOSReserve, context: PluginContext) -> Result[float, Any]:
     """Get the time in seconds reserve contribution must be sustained."""
     return Ok(float(getattr(component, "duration", 3600.0)))
 
 
 @getter
 def get_reserve_max_participation_factor(
-    _: TranslationContext, component: PLEXOSReserve
+    component: PLEXOSReserve, context: PluginContext
 ) -> Result[float, Any]:
     """Get the maximum portion [0, 1.0] of the reserve that can be contributed per device."""
     return Ok(float(getattr(component, "max_participation_factor", 1.0)))
 
 
 @getter
-def get_reserve_max_output_fraction(_: TranslationContext, component: PLEXOSReserve) -> Result[float, Any]:
+def get_reserve_max_output_fraction(component: PLEXOSReserve, context: PluginContext) -> Result[float, Any]:
     """Get the max output fraction (default 1.0)."""
     return Ok(float(getattr(component, "max_output_fraction", 1.0)))
 
 
 @getter
-def get_reserve_deployed_fraction(_: TranslationContext, component: PLEXOSReserve) -> Result[float, Any]:
+def get_reserve_deployed_fraction(component: PLEXOSReserve, context: PluginContext) -> Result[float, Any]:
     """Get the fraction of service procurement assumed to be actually deployed."""
     return Ok(float(getattr(component, "deployed_fraction", 1.0)))
