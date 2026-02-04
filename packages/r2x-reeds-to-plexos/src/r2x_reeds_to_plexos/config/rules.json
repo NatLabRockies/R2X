@@ -630,5 +630,59 @@
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
     "version": 12
+  },
+  {
+    "name": "reserve_pumped_hydro_spinning_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_generator_parent_spinning_reserve",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_generators"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "category",
+      "op": "in",
+      "values": ["pumped-hydro"]
+    },
+    "source_type": "PLEXOSGenerator",
+    "target_type": "PLEXOSMembership",
+    "version": 13
+  },
+  {
+    "name": "reserve_pumped_hydro_flexibility_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_generator_parent_flexibility_reserve",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_generators"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "category",
+      "op": "in",
+      "values": ["pumped-hydro"]
+    },
+    "source_type": "PLEXOSGenerator",
+    "target_type": "PLEXOSMembership",
+    "version": 14
+  },
+  {
+    "name": "reserve_pumped_hydro_regulation_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_generator_parent_regulation_reserve",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_generators"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "category",
+      "op": "in",
+      "values": ["pumped-hydro"]
+    },
+    "source_type": "PLEXOSGenerator",
+    "target_type": "PLEXOSMembership",
+    "version": 15
   }
 ]
