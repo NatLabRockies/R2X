@@ -507,11 +507,7 @@ def get_bus_number(component: ReEDSRegion, context: PluginContext) -> Result[int
 
     name = getattr(component, "name", "")
 
-    match = re.match(r"p(\d+)", name)
-    if match:
-        return Ok(int(match.group(1)))
-
-    match = re.match(r"z(\d+)", name)
+    match = re.match(r"[a-z](\d+)", name)
     if match:
         return Ok(int(match.group(1)))
 

@@ -21,18 +21,21 @@ from r2x_sienna.models.enums import ACBusTypes, PrimeMoversType, StorageTechs, T
 from r2x_sienna.models.named_tuples import MinMax
 from r2x_sienna.units import Voltage
 
-from r2x_core import PluginConfig, System, TranslationContext, UnitSystem
+from r2x_core import DataStore, PluginConfig, PluginContext, System, UnitSystem
 
 
-def test_basic_getters_return_values() -> None:
+def make_context(tmp_path) -> PluginContext:
+    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
+    store = DataStore.from_plugin_config(config, path=tmp_path)
+    return PluginContext(config=config, store=store)
+
+
+def test_basic_getters_return_values(tmp_path) -> None:
     """Invoke getters directly to ensure coverage and registration."""
 
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     region = ReEDSRegion(name="p1")
     context.source_system.add_component(region)
@@ -40,7 +43,6 @@ def test_basic_getters_return_values() -> None:
     region2 = ReEDSRegion(name="p2")
     context.source_system.add_component(region2)
 
-    # Test region with no numeric component
     region_non_numeric = ReEDSRegion(name="otx")
     context.source_system.add_component(region_non_numeric)
 
@@ -125,117 +127,114 @@ def test_basic_getters_return_values() -> None:
     context.source_system.add_component(line)
 
     # Test thermal generator getters
-    assert getters.unique_component_name(context, thermal).unwrap() == "p1_THERM"
-    assert getters.get_capacity_as_rating(context, thermal).unwrap() == 10.0
-    assert getters.get_capacity_as_base_power(context, thermal).unwrap() == 10.0
-    limits = getters.get_active_power_limits(context, thermal).unwrap()
+    assert getters.unique_component_name(thermal, context).unwrap() == "p1_THERM"
+    assert getters.get_capacity_as_rating(thermal, context).unwrap() == 10.0
+    assert getters.get_capacity_as_base_power(thermal, context).unwrap() == 10.0
+    limits = getters.get_active_power_limits(thermal, context).unwrap()
     assert limits.max == 10.0
     assert limits.min == 0.0
-    assert getters.get_thermal_operation_cost(context, thermal).unwrap() is not None
-    assert getters.get_prime_mover(context, thermal).unwrap() == PrimeMoversType.ST
-    assert getters.get_fuel_enum(context, thermal).unwrap() == ThermalFuels.COAL
+    assert getters.get_thermal_operation_cost(thermal, context).unwrap() is not None
+    assert getters.get_prime_mover(thermal, context).unwrap() == PrimeMoversType.ST
+    assert getters.get_fuel_enum(thermal, context).unwrap() == ThermalFuels.COAL
 
     # Test renewable generator getters
-    assert getters.get_renewable_operation_cost(context, variable).unwrap() is not None
-    assert getters.get_renewable_prime_mover(context, variable).unwrap() == PrimeMoversType.WT
-    assert getters.get_renewable_prime_mover(context, variable_pv).unwrap() == PrimeMoversType.PVe
-    assert getters.get_zero_active_power(context, variable).unwrap() == 0.0
-    assert getters.get_zero_reactive_power(context, variable).unwrap() == 0.0
-    assert getters.get_default_must_run(context, variable).unwrap() is False
-    assert getters.get_default_status(context, variable).unwrap() is True
-    assert getters.get_default_time_at_status(context, variable).unwrap() == 0.0
+    assert getters.get_renewable_operation_cost(variable, context).unwrap() is not None
+    assert getters.get_renewable_prime_mover(variable, context).unwrap() == PrimeMoversType.WT
+    assert getters.get_renewable_prime_mover(variable_pv, context).unwrap() == PrimeMoversType.PVe
+    assert getters.get_zero_active_power(variable, context).unwrap() == 0.0
+    assert getters.get_zero_reactive_power(variable, context).unwrap() == 0.0
+    assert getters.get_default_must_run(variable, context).unwrap() is False
+    assert getters.get_default_status(variable, context).unwrap() is True
+    assert getters.get_default_time_at_status(variable, context).unwrap() == 0.0
 
     # Test region/bus getters
-    assert getters.get_area_for_region(context, region).unwrap() == area
-    assert getters.bus_name_from_region(context, region).unwrap() == "p1_BUS"
-    assert getters.base_voltage_default(context, region).unwrap() == 115.0
-    assert getters.bustype_default(context, region).unwrap() == ACBusTypes.PQ
-    assert getters.get_bus_for_region(context, thermal).unwrap() == bus
-    assert getters.get_bus_number(context, region).unwrap() == 1
-    assert getters.get_bus_number(context, region_non_numeric).unwrap() == 999999
-    assert getters.get_area_category(context, region).unwrap() == "region"
+    assert getters.get_area_for_region(region, context).unwrap() == area
+    assert getters.bus_name_from_region(region, context).unwrap() == "p1_BUS"
+    assert getters.base_voltage_default(region, context).unwrap() == 115.0
+    assert getters.bustype_default(region, context).unwrap() == ACBusTypes.PQ
+    assert getters.get_bus_for_region(thermal, context).unwrap() == bus
+    assert getters.get_bus_number(region, context).unwrap() == 1
+    assert getters.get_bus_number(region_non_numeric, context).unwrap() == 999999
+    assert getters.get_area_category(region, context).unwrap() == "region"
 
     # Test demand getters
-    assert getters.demand_max_active_power(context, demand).unwrap() == 3.0
-    assert getters.demand_max_reactive_power(context, demand).unwrap() == 0.0
-    assert getters.get_load_base_power(context, demand).unwrap() == 100.0
+    assert getters.demand_max_active_power(demand, context).unwrap() == 3.0
+    assert getters.demand_max_reactive_power(demand, context).unwrap() == 0.0
+    assert getters.get_load_base_power(demand, context).unwrap() == 100.0
 
     # Test hydro getters
-    assert getters.hydro_rating(context, hydro).unwrap() == 8.0
-    assert getters.hydro_operation_cost(context, hydro).unwrap() is not None
-    hydro_limits = getters.hydro_active_power_limits(context, hydro).unwrap()
+    assert getters.hydro_rating(hydro, context).unwrap() == 8.0
+    assert getters.hydro_operation_cost(hydro, context).unwrap() is not None
+    hydro_limits = getters.hydro_active_power_limits(hydro, context).unwrap()
     assert hydro_limits.max == 8.0
     assert hydro_limits.min == 0.0
-    ramp_limits = getters.hydro_ramp_limits(context, hydro).unwrap()
+    ramp_limits = getters.hydro_ramp_limits(hydro, context).unwrap()
     assert ramp_limits.up == 0.8
     assert ramp_limits.down == 0.8
-    time_limits = getters.hydro_time_limits(context, hydro).unwrap()
+    time_limits = getters.hydro_time_limits(hydro, context).unwrap()
     assert time_limits.up == 0.0
     assert time_limits.down == 0.0
 
     # Test storage getters
-    assert getters.storage_rating(context, storage).unwrap() == 4.0
-    assert getters.storage_capacity_mwh(context, storage).unwrap() == 8.0
-    storage_limits = getters.storage_level_limits(context, storage).unwrap()
+    assert getters.storage_rating(storage, context).unwrap() == 4.0
+    assert getters.storage_capacity_mwh(storage, context).unwrap() == 8.0
+    storage_limits = getters.storage_level_limits(storage, context).unwrap()
     assert storage_limits.min == 0.0
     assert storage_limits.max == 1.0
-    power_limits = getters.storage_power_limits(context, storage).unwrap()
+    power_limits = getters.storage_power_limits(storage, context).unwrap()
     assert power_limits.max == 4.0
-    efficiency = getters.storage_efficiency(context, storage).unwrap()
+    efficiency = getters.storage_efficiency(storage, context).unwrap()
     assert efficiency.output == 0.9
-    assert getters.storage_tech(context, storage).unwrap() == StorageTechs.LIB
-    assert getters.storage_prime_mover(context, storage).unwrap() == PrimeMoversType.ES
-    assert getters.storage_initial_level(context, storage).unwrap() == 0.0
-    assert getters.storage_conversion_factor(context, storage).unwrap() == 1.0
+    assert getters.storage_tech(storage, context).unwrap() == StorageTechs.LIB
+    assert getters.storage_prime_mover(storage, context).unwrap() == PrimeMoversType.ES
+    assert getters.storage_initial_level(storage, context).unwrap() == 0.0
+    assert getters.storage_conversion_factor(storage, context).unwrap() == 1.0
 
     # Test interface getters
-    assert getters.get_area_from(context, interface).unwrap() == area
-    assert getters.get_area_to(context, interface).unwrap() == area2
-    flow_limits = getters.get_interface_flow_limits(context, interface).unwrap()
+    assert getters.get_area_from(interface, context).unwrap() == area
+    assert getters.get_area_to(interface, context).unwrap() == area2
+    flow_limits = getters.get_interface_flow_limits(interface, context).unwrap()
     assert flow_limits.from_to == 0.0
-    assert getters.get_zero_flow(context, interface).unwrap() == 0.0
+    assert getters.get_zero_flow(interface, context).unwrap() == 0.0
 
     # Test reserve getters
-    assert getters.get_reserve_type(context, reserve).unwrap() == "REGULATION"
-    assert getters.get_reserve_direction(context, reserve).unwrap() == "UP"
-    assert getters.get_reserve_requirement(context, reserve).unwrap() == 0.0
-    assert getters.get_reserve_time_frame(context, reserve).unwrap() == 300.0
-    assert getters.get_reserve_sustained_time(context, reserve).unwrap() == 3600.0
-    assert getters.get_reserve_max_output_fraction(context, reserve).unwrap() == 1.0
-    assert getters.get_reserve_max_participation_factor(context, reserve).unwrap() == 1.0
-    assert getters.get_reserve_deployed_fraction(context, reserve).unwrap() == 1.0
+    assert getters.get_reserve_type(reserve, context).unwrap() == "REGULATION"
+    assert getters.get_reserve_direction(reserve, context).unwrap() == "UP"
+    assert getters.get_reserve_requirement(reserve, context).unwrap() == 0.0
+    assert getters.get_reserve_time_frame(reserve, context).unwrap() == 300.0
+    assert getters.get_reserve_sustained_time(reserve, context).unwrap() == 3600.0
+    assert getters.get_reserve_max_output_fraction(reserve, context).unwrap() == 1.0
+    assert getters.get_reserve_max_participation_factor(reserve, context).unwrap() == 1.0
+    assert getters.get_reserve_deployed_fraction(reserve, context).unwrap() == 1.0
 
     # Test line getters
-    assert getters.get_line_rating(context, line).unwrap() == 100.0
-    assert getters.get_line_active_power_flow(context, line).unwrap() == 100.0
-    assert getters.get_line_reactive_power_flow(context, line).unwrap() == 0.0
-    assert getters.get_line_resistance(context, line).unwrap() == 0.0
-    assert getters.get_line_reactance(context, line).unwrap() == 0.0
-    susceptance = getters.get_line_susceptance(context, line).unwrap()
+    assert getters.get_line_rating(line, context).unwrap() == 100.0
+    assert getters.get_line_active_power_flow(line, context).unwrap() == 100.0
+    assert getters.get_line_reactive_power_flow(line, context).unwrap() == 0.0
+    assert getters.get_line_resistance(line, context).unwrap() == 0.0
+    assert getters.get_line_reactance(line, context).unwrap() == 0.0
+    susceptance = getters.get_line_susceptance(line, context).unwrap()
     assert susceptance.from_to == 0.0
-    conductance = getters.get_line_conductance(context, line).unwrap()
+    conductance = getters.get_line_conductance(line, context).unwrap()
     assert conductance.from_to == 0.0
-    angle_limits = getters.get_line_angle_limits(context, line).unwrap()
+    angle_limits = getters.get_line_angle_limits(line, context).unwrap()
     assert angle_limits.min == -90.0
     assert angle_limits.max == 90.0
 
     # Test arc getter
-    arc = getters.get_arc_for_line(context, line).unwrap()
+    arc = getters.get_arc_for_line(line, context).unwrap()
     assert isinstance(arc, Arc)
     assert arc.from_to == bus or arc.from_to == bus2
     assert arc.to_from == bus or arc.to_from == bus2
 
 
-def test_unique_component_name_collision() -> None:
+def test_unique_component_name_collision(tmp_path) -> None:
     """Test that unique_component_name handles name collisions."""
     from r2x_sienna.models import ThermalStandard
 
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     region = ReEDSRegion(name="p1")
     area = Area(name="p1", category="region")
@@ -278,19 +277,16 @@ def test_unique_component_name_collision() -> None:
     )
 
     # Should return "COAL_1_1" to avoid collision
-    unique_name = getters.unique_component_name(context, component).unwrap()
+    unique_name = getters.unique_component_name(component, context).unwrap()
     assert unique_name == "COAL_1_1"
 
 
-def test_bus_number_with_z_prefix() -> None:
+def test_bus_number_with_z_prefix(tmp_path) -> None:
     """Test bus number extraction for z-prefixed regions."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     region = ReEDSRegion(name="z122")
-    result = getters.get_bus_number(context, region).unwrap()
+    result = getters.get_bus_number(region, context).unwrap()
     assert result == 122

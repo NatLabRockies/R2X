@@ -7,30 +7,34 @@ from importlib.resources import files
 
 import pytest
 
+from r2x_core import DataStore, PluginConfig, PluginContext, Rule, System, apply_rules_to_context
 
-def test_reeds_region_translates_to_area() -> None:
-    """Ensure ReEDSRegion produces a Sienna Area with mapped fields and defaults."""
+
+def make_context_and_rules(tmp_path):
+    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules = Rule.from_records(json.loads(rules_path.read_text()))
+    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
+    store = DataStore.from_plugin_config(config, path=tmp_path)
+    context = PluginContext(config=config, store=store)
+    return context, rules
+
+
+def test_reeds_region_translates_to_area(tmp_path) -> None:
     from r2x_reeds.models import ReEDSRegion
     from r2x_sienna.models import Area
 
-    from r2x_core import PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
-
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
-
-    source = System(name="source", auto_add_composed_components=True)
-    source.add_component(
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.source_system.add_component(
         ReEDSRegion(name="R_TEST", category="region-cat", max_active_power=123.0, interconnect="west")
     )
-
-    target = System(name="target", auto_add_composed_components=True)
-    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    context = TranslationContext(source_system=source, target_system=target, config=config, rules=rules)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    areas = list(target.get_components(Area))
+    areas = list(context.target_system.get_components(Area))
     assert len(areas) == 1
     area = areas[0]
     assert area.name == "R_TEST"
@@ -40,27 +44,20 @@ def test_reeds_region_translates_to_area() -> None:
     assert pytest.approx(0.0) == area.load_response
 
 
-def test_reeds_region_translates_to_acbus() -> None:
-    """Ensure ReEDSRegion produces a Sienna ACBus with correct defaults."""
+def test_reeds_region_translates_to_acbus(tmp_path) -> None:
     from r2x_reeds.models import ReEDSRegion
     from r2x_sienna.models import ACBus, Area
 
-    from r2x_core import PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
-
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
-
-    source = System(name="source", auto_add_composed_components=True)
-    source.add_component(ReEDSRegion(name="p42", category="region"))
-
-    target = System(name="target", auto_add_composed_components=True)
-    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    context = TranslationContext(source_system=source, target_system=target, config=config, rules=rules)
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.source_system.add_component(ReEDSRegion(name="p42", category="region"))
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    buses = list(target.get_components(ACBus))
+    buses = list(context.target_system.get_components(ACBus))
     assert len(buses) == 1
     bus = buses[0]
     assert bus.name == "p42_BUS"
@@ -70,41 +67,32 @@ def test_reeds_region_translates_to_acbus() -> None:
     assert bus.angle == 0.0
     assert bus.available is True
 
-    # Check bus is associated with correct area
-    areas = list(target.get_components(Area))
+    areas = list(context.target_system.get_components(Area))
     assert len(areas) == 1
     assert bus.area == areas[0]
 
 
-def test_reeds_region_with_non_numeric_name() -> None:
-    """Ensure ReEDSRegion with non-numeric name gets assigned bus number."""
+def test_reeds_region_with_non_numeric_name(tmp_path) -> None:
     from r2x_reeds.models import ReEDSRegion
     from r2x_sienna.models import ACBus
 
-    from r2x_core import PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
-
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
-
-    source = System(name="source", auto_add_composed_components=True)
-    source.add_component(ReEDSRegion(name="otx", category="region"))
-
-    target = System(name="target", auto_add_composed_components=True)
-    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    context = TranslationContext(source_system=source, target_system=target, config=config, rules=rules)
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.source_system.add_component(ReEDSRegion(name="otx", category="region"))
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    buses = list(target.get_components(ACBus))
+    buses = list(context.target_system.get_components(ACBus))
     assert len(buses) == 1
     bus = buses[0]
     assert bus.name == "otx_BUS"
-    assert bus.number >= 10000  # Non-numeric regions start at 10000
+    assert bus.number >= 10000
 
 
-def test_reeds_generators_translate_to_sienna_types() -> None:
-    """Ensure ReEDS thermal/variable generators translate to Sienna components."""
+def test_reeds_generators_translate_to_sienna_types(tmp_path) -> None:
     from r2x_reeds.models import ReEDSRegion, ReEDSThermalGenerator, ReEDSVariableGenerator
     from r2x_sienna.models import (
         ACBus,
@@ -114,15 +102,11 @@ def test_reeds_generators_translate_to_sienna_types() -> None:
         ThermalStandard,
     )
 
-    from r2x_core import PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
-
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
-
-    source = System(name="source", auto_add_composed_components=True)
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
     region = ReEDSRegion(name="p1", category="region")
-    source.add_component(region)
-    source.add_component(
+    context.source_system.add_component(region)
+    context.source_system.add_component(
         ReEDSThermalGenerator(
             name="THERM1",
             region=region,
@@ -132,7 +116,7 @@ def test_reeds_generators_translate_to_sienna_types() -> None:
             fuel_type="gas",
         )
     )
-    source.add_component(
+    context.source_system.add_component(
         ReEDSVariableGenerator(
             name="VRE1",
             region=region,
@@ -140,7 +124,7 @@ def test_reeds_generators_translate_to_sienna_types() -> None:
             capacity=50.0,
         )
     )
-    source.add_component(
+    context.source_system.add_component(
         ReEDSVariableGenerator(
             name="DISTPV",
             region=region,
@@ -148,25 +132,21 @@ def test_reeds_generators_translate_to_sienna_types() -> None:
             capacity=25.0,
         )
     )
-
-    target = System(name="target", auto_add_composed_components=True)
-    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    context = TranslationContext(source_system=source, target_system=target, config=config, rules=rules)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    # Check Area and Bus were created
-    areas = list(target.get_components(Area))
+    areas = list(context.target_system.get_components(Area))
     assert len(areas) == 1
 
-    buses = list(target.get_components(ACBus))
+    buses = list(context.target_system.get_components(ACBus))
     assert len(buses) == 1
 
-    # Check generators
-    thermal_gens = list(target.get_components(ThermalStandard))
-    vre_dispatch = list(target.get_components(RenewableDispatch))
-    vre_nondispatch = list(target.get_components(RenewableNonDispatch))
+    thermal_gens = list(context.target_system.get_components(ThermalStandard))
+    vre_dispatch = list(context.target_system.get_components(RenewableDispatch))
+    vre_nondispatch = list(context.target_system.get_components(RenewableNonDispatch))
 
     assert len(thermal_gens) == 1
     assert len(vre_dispatch) == 1
@@ -191,20 +171,15 @@ def test_reeds_generators_translate_to_sienna_types() -> None:
     assert pv.bus == buses[0]
 
 
-def test_reeds_hydro_translates_to_hydro_dispatch() -> None:
-    """Ensure ReEDSHydroGenerator translates to HydroDispatch."""
+def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
     from r2x_reeds.models import ReEDSHydroGenerator, ReEDSRegion
     from r2x_sienna.models import HydroDispatch
 
-    from r2x_core import PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
-
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
-
-    source = System(name="source", auto_add_composed_components=True)
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
     region = ReEDSRegion(name="p1", category="region")
-    source.add_component(region)
-    source.add_component(
+    context.source_system.add_component(region)
+    context.source_system.add_component(
         ReEDSHydroGenerator(
             name="HYDRO1",
             region=region,
@@ -214,15 +189,13 @@ def test_reeds_hydro_translates_to_hydro_dispatch() -> None:
             ramp_rate=10.0,
         )
     )
-
-    target = System(name="target", auto_add_composed_components=True)
-    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    context = TranslationContext(source_system=source, target_system=target, config=config, rules=rules)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    hydros = list(target.get_components(HydroDispatch))
+    hydros = list(context.target_system.get_components(HydroDispatch))
     assert len(hydros) == 1
 
     hydro = hydros[0]
@@ -235,20 +208,15 @@ def test_reeds_hydro_translates_to_hydro_dispatch() -> None:
     assert hydro.time_limits.down == 0.0
 
 
-def test_reeds_storage_translates_to_energy_reservoir() -> None:
-    """Ensure ReEDSStorage translates to EnergyReservoirStorage."""
+def test_reeds_storage_translates_to_energy_reservoir(tmp_path) -> None:
     from r2x_reeds.models import ReEDSRegion, ReEDSStorage
     from r2x_sienna.models import EnergyReservoirStorage
 
-    from r2x_core import PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
-
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
-
-    source = System(name="source", auto_add_composed_components=True)
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
     region = ReEDSRegion(name="p1", category="region")
-    source.add_component(region)
-    source.add_component(
+    context.source_system.add_component(region)
+    context.source_system.add_component(
         ReEDSStorage(
             name="BATT1",
             region=region,
@@ -258,15 +226,13 @@ def test_reeds_storage_translates_to_energy_reservoir() -> None:
             round_trip_efficiency=0.85,
         )
     )
-
-    target = System(name="target", auto_add_composed_components=True)
-    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    context = TranslationContext(source_system=source, target_system=target, config=config, rules=rules)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    storages = list(target.get_components(EnergyReservoirStorage))
+    storages = list(context.target_system.get_components(EnergyReservoirStorage))
     assert len(storages) == 1
 
     storage = storages[0]
@@ -277,35 +243,28 @@ def test_reeds_storage_translates_to_energy_reservoir() -> None:
     assert storage.efficiency.output == pytest.approx(0.85)
 
 
-def test_reeds_demand_translates_to_power_load() -> None:
-    """Ensure ReEDSDemand translates to PowerLoad."""
+def test_reeds_demand_translates_to_power_load(tmp_path) -> None:
     from r2x_reeds.models import ReEDSDemand, ReEDSRegion
     from r2x_sienna.models import PowerLoad
 
-    from r2x_core import PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
-
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
-
-    source = System(name="source", auto_add_composed_components=True)
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
     region = ReEDSRegion(name="p1", category="region")
-    source.add_component(region)
-    source.add_component(
+    context.source_system.add_component(region)
+    context.source_system.add_component(
         ReEDSDemand(
             name="LOAD1",
             region=region,
             max_active_power=500.0,
         )
     )
-
-    target = System(name="target", auto_add_composed_components=True)
-    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    context = TranslationContext(source_system=source, target_system=target, config=config, rules=rules)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    loads = list(target.get_components(PowerLoad))
+    loads = list(context.target_system.get_components(PowerLoad))
     assert len(loads) == 1
 
     load = loads[0]
@@ -314,31 +273,26 @@ def test_reeds_demand_translates_to_power_load() -> None:
     assert load.base_power.magnitude == 100.0
 
 
-def test_reeds_interface_translates_to_area_interchange() -> None:
-    """Ensure ReEDSInterface translates to AreaInterchange."""
+def test_reeds_interface_translates_to_area_interchange(tmp_path) -> None:
     from r2x_reeds.models import ReEDSInterface, ReEDSRegion
     from r2x_sienna.models import AreaInterchange
 
-    from r2x_core import PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
-
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
-
-    source = System(name="source", auto_add_composed_components=True)
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
     region1 = ReEDSRegion(name="p1", category="region")
     region2 = ReEDSRegion(name="p2", category="region")
-    source.add_component(region1)
-    source.add_component(region2)
-    source.add_component(ReEDSInterface(name="IFACE_1_2", from_region=region1, to_region=region2))
-
-    target = System(name="target", auto_add_composed_components=True)
-    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    context = TranslationContext(source_system=source, target_system=target, config=config, rules=rules)
+    context.source_system.add_component(region1)
+    context.source_system.add_component(region2)
+    context.source_system.add_component(
+        ReEDSInterface(name="IFACE_1_2", from_region=region1, to_region=region2)
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    interchanges = list(target.get_components(AreaInterchange))
+    interchanges = list(context.target_system.get_components(AreaInterchange))
     assert len(interchanges) == 1
 
     interchange = interchanges[0]
@@ -348,18 +302,13 @@ def test_reeds_interface_translates_to_area_interchange() -> None:
     assert interchange.active_power_flow == 0.0
 
 
-def test_reeds_reserve_translates_to_variable_reserve() -> None:
-    """Ensure ReEDSReserve translates to VariableReserve."""
+def test_reeds_reserve_translates_to_variable_reserve(tmp_path) -> None:
     from r2x_reeds.models import ReEDSReserve
     from r2x_sienna.models import VariableReserve
 
-    from r2x_core import PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
-
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
-
-    source = System(name="source", auto_add_composed_components=True)
-    source.add_component(
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.source_system.add_component(
         ReEDSReserve(
             name="REG_UP",
             reserve_type="REGULATION",
@@ -368,15 +317,13 @@ def test_reeds_reserve_translates_to_variable_reserve() -> None:
             duration=3600.0,
         )
     )
-
-    target = System(name="target", auto_add_composed_components=True)
-    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    context = TranslationContext(source_system=source, target_system=target, config=config, rules=rules)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    reserves = list(target.get_components(VariableReserve))
+    reserves = list(context.target_system.get_components(VariableReserve))
     assert len(reserves) == 1
 
     reserve = reserves[0]
@@ -388,37 +335,30 @@ def test_reeds_reserve_translates_to_variable_reserve() -> None:
     assert reserve.deployed_fraction == 1.0
 
 
-def test_reeds_transmission_line_translates_to_line() -> None:
-    """Ensure ReEDSTransmissionLine translates to Line."""
+def test_reeds_transmission_line_translates_to_line(tmp_path) -> None:
     from r2x_reeds.models import ReEDSInterface, ReEDSRegion, ReEDSTransmissionLine
     from r2x_sienna.models import Line
 
-    from r2x_core import PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
-
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
-
-    source = System(name="source", auto_add_composed_components=True)
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
     region1 = ReEDSRegion(name="p1", category="region")
     region2 = ReEDSRegion(name="p2", category="region")
-    source.add_component(region1)
-    source.add_component(region2)
+    context.source_system.add_component(region1)
+    context.source_system.add_component(region2)
     interface = ReEDSInterface(name="IFACE", from_region=region1, to_region=region2)
-    source.add_component(interface)
-    source.add_component(
+    context.source_system.add_component(interface)
+    context.source_system.add_component(
         ReEDSTransmissionLine(
             name="LINE_1_2", interface=interface, max_active_power={"from_to": 150.0, "to_from": 150.0}
         )
     )
-
-    target = System(name="target", auto_add_composed_components=True)
-    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    context = TranslationContext(source_system=source, target_system=target, config=config, rules=rules)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    lines = list(target.get_components(Line))
+    lines = list(context.target_system.get_components(Line))
     assert len(lines) == 1
 
     line = lines[0]
@@ -431,30 +371,23 @@ def test_reeds_transmission_line_translates_to_line() -> None:
     assert line.arc is not None
 
 
-def test_multiple_regions_create_multiple_buses_and_areas() -> None:
-    """Ensure multiple ReEDSRegions create corresponding buses and areas."""
+def test_multiple_regions_create_multiple_buses_and_areas(tmp_path) -> None:
     from r2x_reeds.models import ReEDSRegion
     from r2x_sienna.models import ACBus, Area
 
-    from r2x_core import PluginConfig, Rule, System, TranslationContext, apply_rules_to_context
-
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
-
-    source = System(name="source", auto_add_composed_components=True)
-    source.add_component(ReEDSRegion(name="p1", category="region"))
-    source.add_component(ReEDSRegion(name="p2", category="region"))
-    source.add_component(ReEDSRegion(name="p3", category="region"))
-
-    target = System(name="target", auto_add_composed_components=True)
-    config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    context = TranslationContext(source_system=source, target_system=target, config=config, rules=rules)
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.source_system.add_component(ReEDSRegion(name="p1", category="region"))
+    context.source_system.add_component(ReEDSRegion(name="p2", category="region"))
+    context.source_system.add_component(ReEDSRegion(name="p3", category="region"))
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    areas = list(target.get_components(Area))
-    buses = list(target.get_components(ACBus))
+    areas = list(context.target_system.get_components(Area))
+    buses = list(context.target_system.get_components(ACBus))
 
     assert len(areas) == 3
     assert len(buses) == 3

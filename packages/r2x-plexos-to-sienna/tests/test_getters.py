@@ -27,81 +27,73 @@ from r2x_sienna.models.enums import (
 )
 from r2x_sienna.units import Voltage
 
-from r2x_core import PluginConfig, System, TranslationContext
+from r2x_core import DataStore, PluginConfig, PluginContext, System
 
 
-def test_basic_node_getters() -> None:
+def make_context(tmp_path):
+    config = PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models", "r2x_plexos_to_sienna.getters"))
+    store = DataStore.from_plugin_config(config, path=tmp_path)
+    return PluginContext(config=config, store=store)
+
+
+def test_basic_node_getters(tmp_path) -> None:
     """Test node-related getters."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(
-            models=("r2x_plexos.models", "r2x_sienna.models", "r2x_plexos_to_sienna.getters")
-        ),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     node = PLEXOSNode(name="NODE_123", voltage=115.0, is_slack_bus=0)
     context.source_system.add_component(node)
 
     # Test node getters
-    assert getters.get_node_number(context, node).unwrap() == 123
-    assert getters.get_base_voltage(context, node).unwrap() == 115.0
-    assert getters.get_node_angle(context, node).unwrap() == 0.0
-    assert getters.is_slack_bus(context, node).unwrap() == ACBusTypes.PQ
+    assert getters.get_node_number(node, context).unwrap() == 123
+    assert getters.get_base_voltage(node, context).unwrap() == 115.0
+    assert getters.get_node_angle(node, context).unwrap() == 0.0
+    assert getters.is_slack_bus(node, context).unwrap() == ACBusTypes.PQ
 
     # Test slack bus
     slack_node = PLEXOSNode(name="SLACK_1", is_slack_bus=1)
-    assert getters.is_slack_bus(context, slack_node).unwrap() == ACBusTypes.SLACK
+    assert getters.is_slack_bus(slack_node, context).unwrap() == ACBusTypes.SLACK
 
 
-def test_zone_getters() -> None:
+def test_zone_getters(tmp_path) -> None:
     """Test zone-related getters."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     zone = PLEXOSZone(name="ZONE1")
 
-    assert getters.get_zone_peak_active_power(context, zone).unwrap() == 0.0
-    assert getters.get_zone_peak_reactive_power(context, zone).unwrap() == 0.0
+    assert getters.get_zone_peak_active_power(zone, context).unwrap() == 0.0
+    assert getters.get_zone_peak_reactive_power(zone, context).unwrap() == 0.0
 
 
-def test_region_getters() -> None:
+def test_region_getters(tmp_path) -> None:
     """Test region-related getters for Area and PowerLoad."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     region = PLEXOSRegion(name="REGION1", load=300.0)
 
     # Area getters
-    assert getters.get_region_peak_active_power(context, region).unwrap() == 300.0
-    assert getters.get_region_peak_reactive_power(context, region).unwrap() == 0.0
-    assert getters.get_region_load_response(context, region).unwrap() == 0.0
+    assert getters.get_region_peak_active_power(region, context).unwrap() == 300.0
+    assert getters.get_region_peak_reactive_power(region, context).unwrap() == 0.0
+    assert getters.get_region_load_response(region, context).unwrap() == 0.0
 
     # Load getters
-    assert getters.get_load_active_power(context, region).unwrap() == 300.0
-    assert getters.get_load_reactive_power(context, region).unwrap() == 0.0
-    assert getters.get_load_base_power(context, region).unwrap() == 100.0
-    assert getters.get_load_max_active_power(context, region).unwrap() == 0.0
-    assert getters.get_load_max_reactive_power(context, region).unwrap() == 0.0
+    assert getters.get_load_active_power(region, context).unwrap() == 300.0
+    assert getters.get_load_reactive_power(region, context).unwrap() == 0.0
+    assert getters.get_load_base_power(region, context).unwrap() == 100.0
+    assert getters.get_load_max_active_power(region, context).unwrap() == 0.0
+    assert getters.get_load_max_reactive_power(region, context).unwrap() == 0.0
 
 
-def test_load_bus_getter() -> None:
+def test_load_bus_getter(tmp_path) -> None:
     """Test get_load_bus getter with membership."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     # Create node and add to source
     node = PLEXOSNode(name="NODE1", voltage=115.0)
@@ -126,35 +118,29 @@ def test_load_bus_getter() -> None:
     context.target_system.add_component(bus)
 
     # Test getter
-    result = getters.get_load_bus(context, region).unwrap()
+    result = getters.get_load_bus(region, context).unwrap()
     assert result is not None
     assert result.name == "NODE1"
 
 
-def test_load_bus_getter_no_membership() -> None:
+def test_load_bus_getter_no_membership(tmp_path) -> None:
     """Test get_load_bus returns None when no membership exists."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     region = PLEXOSRegion(name="REGION1", load=100.0)
     context.source_system.add_component(region)
 
-    result = getters.get_load_bus(context, region).unwrap()
+    result = getters.get_load_bus(region, context).unwrap()
     assert result is None
 
 
-def test_generator_getters() -> None:
+def test_generator_getters(tmp_path) -> None:
     """Test generator-related getters."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     gen = PLEXOSGenerator(
         name="GEN1",
@@ -163,32 +149,29 @@ def test_generator_getters() -> None:
         units=1,
     )
 
-    assert getters.get_gen_active_power(context, gen).unwrap() == 100.0
-    assert getters.get_gen_reactive_power(context, gen).unwrap() == 0.0
-    assert getters.get_gen_rating(context, gen).unwrap() == 100.0
-    assert getters.get_gen_base_power(context, gen).unwrap() == 0.0
+    assert getters.get_gen_active_power(gen, context).unwrap() == 100.0
+    assert getters.get_gen_reactive_power(gen, context).unwrap() == 0.0
+    assert getters.get_gen_rating(gen, context).unwrap() == 100.0
+    assert getters.get_gen_base_power(gen, context).unwrap() == 0.0
 
-    limits = getters.get_gen_active_power_limits(context, gen).unwrap()
+    limits = getters.get_gen_active_power_limits(gen, context).unwrap()
     assert limits.min == 0.0
     assert limits.max == 0.0
 
-    reactive_limits = getters.get_gen_reactive_power_limits(context, gen).unwrap()
+    reactive_limits = getters.get_gen_reactive_power_limits(gen, context).unwrap()
     assert reactive_limits.min == 0.0
     assert reactive_limits.max == 0.0
 
-    assert getters.get_gen_status(context, gen).unwrap() == 1
-    assert getters.get_gen_power_factor(context, gen).unwrap() == 1.0
-    assert getters.get_prime_mover_type(context, gen).unwrap() == PrimeMoversType.CC
+    assert getters.get_gen_status(gen, context).unwrap() == 1
+    assert getters.get_gen_power_factor(gen, context).unwrap() == 1.0
+    assert getters.get_prime_mover_type(gen, context).unwrap() == PrimeMoversType.CC
 
 
-def test_generator_bus_getter() -> None:
+def test_generator_bus_getter(tmp_path) -> None:
     """Test get_gen_bus getter with membership."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     # Create node
     node = PLEXOSNode(name="NODE1", voltage=115.0)
@@ -214,35 +197,29 @@ def test_generator_bus_getter() -> None:
     context.target_system.add_component(bus)
 
     # Test getter
-    result = getters.get_gen_bus(context, gen).unwrap()
+    result = getters.get_gen_bus(gen, context).unwrap()
     assert result is not None
     assert result.name == "NODE1"
 
 
-def test_generator_bus_getter_no_membership() -> None:
+def test_generator_bus_getter_no_membership(tmp_path) -> None:
     """Test get_gen_bus returns None when no membership exists."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     gen = PLEXOSGenerator(name="GEN1", category="gas-cc", max_capacity=100.0)
     context.source_system.add_component(gen)
 
-    result = getters.get_gen_bus(context, gen).unwrap()
+    result = getters.get_gen_bus(gen, context).unwrap()
     assert result is None
 
 
-def test_prime_mover_type_mapping() -> None:
+def test_prime_mover_type_mapping(tmp_path) -> None:
     """Test prime mover type mappings from defaults.json."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     test_cases = [
         ("gas-cc", PrimeMoversType.CC),
@@ -267,32 +244,26 @@ def test_prime_mover_type_mapping() -> None:
 
     for category, expected_type in test_cases:
         gen = PLEXOSGenerator(name=f"GEN_{category}", category=category, max_capacity=50.0)
-        result = getters.get_prime_mover_type(context, gen).unwrap()
+        result = getters.get_prime_mover_type(gen, context).unwrap()
         assert result == expected_type, f"Category {category} should map to {expected_type}, got {result}"
 
 
-def test_prime_mover_type_unknown() -> None:
+def test_prime_mover_type_unknown(tmp_path) -> None:
     """Test prime mover type with unknown category."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     gen = PLEXOSGenerator(name="GEN_UNKNOWN", category="unknown-type", max_capacity=50.0)
-    result = getters.get_prime_mover_type(context, gen).unwrap()
+    result = getters.get_prime_mover_type(gen, context).unwrap()
     assert result == PrimeMoversType.OT  # Should default to "other"
 
 
-def test_storage_getters() -> None:
+def test_storage_getters(tmp_path) -> None:
     """Test storage-related getters."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     battery = PLEXOSBattery(
         name="BATT1",
@@ -300,35 +271,32 @@ def test_storage_getters() -> None:
         initial_soc=0.5,
     )
 
-    assert getters.get_initial_storage_capacity_level(context, battery).unwrap() == 0.5
-    assert getters.get_storage_capacity(context, battery).unwrap() == 0.0
+    assert getters.get_initial_storage_capacity_level(battery, context).unwrap() == 0.5
+    assert getters.get_storage_capacity(battery, context).unwrap() == 0.0
 
-    level_limits = getters.get_storage_level_limits(context, battery).unwrap()
+    level_limits = getters.get_storage_level_limits(battery, context).unwrap()
     assert level_limits.min == 0.0
     assert level_limits.max == 0.0
 
-    charge_limits = getters.get_storage_charge_power_limits(context, battery).unwrap()
+    charge_limits = getters.get_storage_charge_power_limits(battery, context).unwrap()
     assert charge_limits.max == 0.0
 
-    discharge_limits = getters.get_storage_discharge_power_limits(context, battery).unwrap()
+    discharge_limits = getters.get_storage_discharge_power_limits(battery, context).unwrap()
     assert discharge_limits.max == 0.0
 
-    efficiency = getters.get_storage_efficiency(context, battery).unwrap()
+    efficiency = getters.get_storage_efficiency(battery, context).unwrap()
     assert efficiency.input == 1.0
     assert efficiency.output == 1.0
 
-    assert getters.get_storage_technology_type(context, battery).unwrap() == StorageTechs.OTHER_CHEM
-    assert getters.get_storage_conversion_factor(context, battery).unwrap() == 1.0
+    assert getters.get_storage_technology_type(battery, context).unwrap() == StorageTechs.OTHER_CHEM
+    assert getters.get_storage_conversion_factor(battery, context).unwrap() == 1.0
 
 
-def test_storage_bus_getter() -> None:
+def test_storage_bus_getter(tmp_path) -> None:
     """Test get_gen_bus getter with membership."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     # Create node
     node = PLEXOSNode(name="NODE1", voltage=115.0)
@@ -354,19 +322,16 @@ def test_storage_bus_getter() -> None:
     context.target_system.add_component(bus)
 
     # Test getter
-    result = getters.get_gen_bus(context, battery).unwrap()
+    result = getters.get_gen_bus(battery, context).unwrap()
     assert result is not None
     assert result.name == "NODE1"
 
 
-def test_hydro_storage_getters() -> None:
+def test_hydro_storage_getters(tmp_path) -> None:
     """Test hydro storage getters."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     storage = PLEXOSStorage(
         name="HYDRO_RES",
@@ -375,22 +340,19 @@ def test_hydro_storage_getters() -> None:
         min_volume=100.0,
     )
 
-    assert getters.get_storage_capacity(context, storage).unwrap() == 1000.0
-    assert getters.get_initial_storage_capacity_level(context, storage).unwrap() == 0.0
+    assert getters.get_storage_capacity(storage, context).unwrap() == 1000.0
+    assert getters.get_initial_storage_capacity_level(storage, context).unwrap() == 0.0
 
-    limits = getters.get_storage_level_limits(context, storage).unwrap()
+    limits = getters.get_storage_level_limits(storage, context).unwrap()
     assert limits.min == 100.0
     assert limits.max == 1000.0
 
 
-def test_line_getters() -> None:
+def test_line_getters(tmp_path) -> None:
     """Test line-related getters."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     # Create nodes and buses
     node1 = PLEXOSNode(name="NODE1", voltage=115.0)
@@ -416,28 +378,25 @@ def test_line_getters() -> None:
     )
 
     # Test basic line getters
-    assert getters.get_reactive_power_flow(context, line).unwrap() == 0.0
+    assert getters.get_reactive_power_flow(line, context).unwrap() == 0.0
 
-    angle_limits = getters.get_line_angle_limits(context, line).unwrap()
+    angle_limits = getters.get_line_angle_limits(line, context).unwrap()
     assert angle_limits.min == -90.0
     assert angle_limits.max == 90.0
 
-    flow_limits = getters.get_line_flow_limits(context, line).unwrap()
+    flow_limits = getters.get_line_flow_limits(line, context).unwrap()
     assert flow_limits.from_to == 100.0
     assert flow_limits.to_from == -100.0
 
-    susceptance = getters.get_line_susceptance(context, line).unwrap()
+    susceptance = getters.get_line_susceptance(line, context).unwrap()
     assert susceptance.from_to == 0.001
 
 
-def test_line_arc_getter() -> None:
+def test_line_arc_getter(tmp_path) -> None:
     """Test get_line_arc getter."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     # Create nodes
     node1 = PLEXOSNode(name="NODE1", voltage=115.0)
@@ -473,20 +432,17 @@ def test_line_arc_getter() -> None:
     context.target_system.add_component(bus2)
 
     # Test getter
-    arc = getters.get_line_arc(context, line).unwrap()
+    arc = getters.get_line_arc(line, context).unwrap()
     assert arc is not None
     assert arc.from_to.name == "NODE1"
     assert arc.to_from.name == "NODE2"
 
 
-def test_reserve_getters() -> None:
+def test_reserve_getters(tmp_path) -> None:
     """Test reserve-related getters."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     reserve = PLEXOSReserve(
         name="SPIN_RES",
@@ -494,54 +450,45 @@ def test_reserve_getters() -> None:
         duration=3600.0,
     )
 
-    assert getters.get_reserve_type(context, reserve).unwrap() == ReserveType.SPINNING
-    assert getters.get_reserve_direction(context, reserve).unwrap() == ReserveDirection.UP
-    assert getters.get_reserve_requirement(context, reserve).unwrap() == 0.0
-    assert getters.get_reserve_time_frame(context, reserve).unwrap() == 300.0
-    assert getters.get_reserve_sustained_time(context, reserve).unwrap() == 3600.0
-    assert getters.get_reserve_max_participation_factor(context, reserve).unwrap() == 1.0
-    assert getters.get_reserve_max_output_fraction(context, reserve).unwrap() == 1.0
-    assert getters.get_reserve_deployed_fraction(context, reserve).unwrap() == 1.0
+    assert getters.get_reserve_type(reserve, context).unwrap() == ReserveType.SPINNING
+    assert getters.get_reserve_direction(reserve, context).unwrap() == ReserveDirection.UP
+    assert getters.get_reserve_requirement(reserve, context).unwrap() == 0.0
+    assert getters.get_reserve_time_frame(reserve, context).unwrap() == 300.0
+    assert getters.get_reserve_sustained_time(reserve, context).unwrap() == 3600.0
+    assert getters.get_reserve_max_participation_factor(reserve, context).unwrap() == 1.0
+    assert getters.get_reserve_max_output_fraction(reserve, context).unwrap() == 1.0
+    assert getters.get_reserve_deployed_fraction(reserve, context).unwrap() == 1.0
 
 
-def test_reserve_type_mapping() -> None:
+def test_reserve_type_mapping(tmp_path) -> None:
     """Test reserve type mappings."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     # Test default behavior when reserve_type is not set
     reserve = PLEXOSReserve(name="RES_DEFAULT")
-    result = getters.get_reserve_type(context, reserve).unwrap()
+    result = getters.get_reserve_type(reserve, context).unwrap()
     assert result == ReserveType.SPINNING  # Default value
 
 
-def test_reserve_direction_mapping() -> None:
+def test_reserve_direction_mapping(tmp_path) -> None:
     """Test reserve direction mappings."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     # Test default behavior when direction is not set
     reserve = PLEXOSReserve(name="RES_DEFAULT")
-    result = getters.get_reserve_direction(context, reserve).unwrap()
+    result = getters.get_reserve_direction(reserve, context).unwrap()
     assert result == ReserveDirection.UP  # Default value
 
 
-def test_interface_getters() -> None:
+def test_interface_getters(tmp_path) -> None:
     """Test interface-related getters."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     interface = PLEXOSInterface(
         name="IFACE1",
@@ -549,19 +496,16 @@ def test_interface_getters() -> None:
         max_flow=200.0,
     )
 
-    flow_limits = getters.get_interface_active_power_flow_limits(context, interface).unwrap()
+    flow_limits = getters.get_interface_active_power_flow_limits(interface, context).unwrap()
     assert flow_limits.min == -200.0
     assert flow_limits.max == 200.0
 
 
-def test_transformer_getters() -> None:
+def test_transformer_getters(tmp_path) -> None:
     """Test transformer-related getters."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     transformer = PLEXOSTransformer(
         name="XFMR1",
@@ -570,19 +514,16 @@ def test_transformer_getters() -> None:
         resistance=0.01,
     )
 
-    assert getters.get_trf_active_power_flow(context, transformer).unwrap() == 0.0
-    assert getters.get_trf_reactive_power_flow(context, transformer).unwrap() == 0.0
-    assert getters.get_trf_base_power(context, transformer).unwrap() == 100.0
+    assert getters.get_trf_active_power_flow(transformer, context).unwrap() == 0.0
+    assert getters.get_trf_reactive_power_flow(transformer, context).unwrap() == 0.0
+    assert getters.get_trf_base_power(transformer, context).unwrap() == 100.0
 
 
-def test_transformer_arc_getter() -> None:
+def test_transformer_arc_getter(tmp_path) -> None:
     """Test get_transformer_arc getter."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     # Create nodes
     node1 = PLEXOSNode(name="NODE1", voltage=115.0)
@@ -618,52 +559,46 @@ def test_transformer_arc_getter() -> None:
     context.target_system.add_component(bus2)
 
     # Test getter - note: should use get_transformer_arc, not get_line_arc
-    arc = getters.get_line_arc(context, xfmr).unwrap()
+    arc = getters.get_line_arc(xfmr, context).unwrap()
     assert arc is not None
     assert arc.from_to.name == "NODE1"
     assert arc.to_from.name == "NODE2"
 
 
-def test_operation_cost_getters() -> None:
+def test_operation_cost_getters(tmp_path) -> None:
     """Test operation cost getter functions return proper objects."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     gen = PLEXOSGenerator(name="GEN1", category="gas-cc", max_capacity=100.0)
 
     # Test thermal operation cost
-    thermal_cost = getters.get_thermal_operation_cost(context, gen).unwrap()
+    thermal_cost = getters.get_thermal_operation_cost(gen, context).unwrap()
     assert thermal_cost is not None
     assert thermal_cost.fixed == 0.0
 
     # Test hydro operation cost
-    hydro_cost = getters.get_hydro_gen_operation_cost(context, gen).unwrap()
+    hydro_cost = getters.get_hydro_gen_operation_cost(gen, context).unwrap()
     assert hydro_cost is not None
     assert hydro_cost.fixed == 0.0
 
     # Test renewable operation cost
-    renewable_cost = getters.get_renewable_operation_cost(context, gen).unwrap()
+    renewable_cost = getters.get_renewable_operation_cost(gen, context).unwrap()
     assert renewable_cost is not None
     assert renewable_cost.fixed == 0.0
 
     # Test storage operation cost
     battery = PLEXOSBattery(name="BATT1", category="battery")
-    storage_cost = getters.get_storage_operation_cost(context, battery).unwrap()
+    storage_cost = getters.get_storage_operation_cost(battery, context).unwrap()
     assert storage_cost is not None
 
 
-def test_area_getter() -> None:
+def test_area_getter(tmp_path) -> None:
     """Test get_area getter."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     # Create area in target
     area = Area(name="REGION1", category="area")
@@ -683,15 +618,12 @@ def test_extract_number_from_name() -> None:
     assert getters.extract_number_from_name("ABC_456") == 456
 
 
-def test_node_number_getter_no_number() -> None:
+def test_node_number_getter_no_number(tmp_path) -> None:
     """Test get_node_number when no number in name."""
-    context = TranslationContext(
-        source_system=System(name="source"),
-        target_system=System(name="target"),
-        config=PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models")),
-        rules=[],
-    )
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
 
     node = PLEXOSNode(name="NODENUMBER", voltage=115.0)
-    result = getters.get_node_number(context, node).unwrap()
-    assert result == 1  # Default value when no number found
+    result = getters.get_node_number(node, context).unwrap()
+    assert result == 1
