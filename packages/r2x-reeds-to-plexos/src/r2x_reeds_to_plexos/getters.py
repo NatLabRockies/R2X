@@ -308,7 +308,7 @@ def interface_min_flow(component: ReEDSInterface, context: PluginContext) -> Res
     from r2x_reeds.models import ReEDSTransmissionLine
 
     interface_name = getattr(component, "name", "")
-    total_max_flow = 0.0
+    total_min_flow = 0.0
     for line in context.source_system.get_components(ReEDSTransmissionLine):
         line_interface = getattr(line, "interface", None)
         if line_interface is None:
@@ -318,10 +318,10 @@ def interface_min_flow(component: ReEDSInterface, context: PluginContext) -> Res
         if line_interface_name == interface_name:
             limits = getattr(line, "max_active_power", None)
             if limits is not None:
-                max_flow = max(abs(limits.from_to), abs(limits.to_from))
-                total_max_flow += float(max_flow)
+                min_flow = max(abs(limits.from_to), abs(limits.to_from))
+                total_min_flow += float(min_flow)
 
-    return Ok(-round(total_max_flow, 1))
+    return Ok(-round(total_min_flow, 1))
 
 
 @getter

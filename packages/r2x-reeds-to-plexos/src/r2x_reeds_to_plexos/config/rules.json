@@ -292,7 +292,7 @@
     },
     "source_type": "ReEDSStorage",
     "target_type": "PLEXOSGenerator",
-    "version": 1
+    "version": 2
   },
   {
     "defaults": {
@@ -394,6 +394,11 @@
     "version": 1
   },
   {
+    "defaults": {
+      "category": "reeds-line",
+      "max_flow": 0,
+      "min_flow": 0
+    },
     "field_map": {
       "name": "name",
       "category": "category"
