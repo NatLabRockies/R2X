@@ -1031,16 +1031,20 @@ def get_storage_discharge_efficiency(
 def get_storage_cycles(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    return Ok(float(source_component.cycle_limits))
+    value = getattr(source_component, "cycle_limits", None)
+    if value is None:
+        return Ok(0.0)
+    return Ok(float(value))
 
 
 @getter
 def get_storage_max_power(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    value = get_magnitude(
-        source_component.output_active_power_limits.max * resolve_base_power(source_component)
-    )
+    limits = getattr(source_component, "output_active_power_limits", None)
+    if limits is None or getattr(limits, "max", None) is None:
+        return Ok(0.0)
+    value = get_magnitude(limits.max)
     return Ok(float(value) if value is not None else 0.0)
 
 
@@ -1048,7 +1052,10 @@ def get_storage_max_power(
 def get_storage_capacity(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    return Ok(float(source_component.storage_capacity) * resolve_base_power(source_component))
+    value = getattr(source_component, "storage_capacity", None)
+    if value is None:
+        return Ok(0.0)
+    return Ok(float(value))
 
 
 @getter

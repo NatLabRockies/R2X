@@ -281,15 +281,61 @@ def get_battery_min_soc(
 
 
 @getter
-def interface_min_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
-    """Return the minimum flow for an interface (negative of max absolute flow)."""
-    return Ok(0.0)
+def interface_max_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
+    """Return the maximum flow for an interface (sum of all lines' max flows)."""
+    from r2x_reeds.models import ReEDSTransmissionLine
+
+    interface_name = getattr(component, "name", "")
+    total_max_flow = 0.0
+    for line in context.source_system.get_components(ReEDSTransmissionLine):
+        line_interface = getattr(line, "interface", None)
+        if line_interface is None:
+            continue
+
+        line_interface_name = getattr(line_interface, "name", "")
+        if line_interface_name == interface_name:
+            limits = getattr(line, "max_active_power", None)
+            if limits is not None:
+                max_flow = max(limits.from_to, limits.to_from)
+                total_max_flow += float(max_flow)
+
+    return Ok(round(total_max_flow, 1))
 
 
 @getter
-def interface_max_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
-    """Return the maximum flow for an interface."""
-    return Ok(0.0)
+def interface_min_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
+    """Return the minimum flow for an interface (negative sum of all lines' max flows)."""
+    from r2x_reeds.models import ReEDSTransmissionLine
+
+    interface_name = getattr(component, "name", "")
+    total_min_flow = 0.0
+    for line in context.source_system.get_components(ReEDSTransmissionLine):
+        line_interface = getattr(line, "interface", None)
+        if line_interface is None:
+            continue
+
+        line_interface_name = getattr(line_interface, "name", "")
+        if line_interface_name == interface_name:
+            limits = getattr(line, "max_active_power", None)
+            if limits is not None:
+                min_flow = max(abs(limits.from_to), abs(limits.to_from))
+                total_min_flow += float(min_flow)
+
+    return Ok(-round(total_min_flow, 1))
+
+
+@getter
+def get_interface_name(component: ReEDSInterface, context: PluginContext) -> Result[str, ValueError]:
+    """Return the name of the interface."""
+    from_region = getattr(component, "from_region", None)
+    to_region = getattr(component, "to_region", None)
+
+    from_transmission_region = getattr(from_region, "transmission_region", "") if from_region else ""
+    to_transmission_region = getattr(to_region, "transmission_region", "") if to_region else ""
+    name = getattr(component, "name", "")
+
+    interface_name = f"{from_transmission_region}_{to_transmission_region}-{name}"
+    return Ok(interface_name)
 
 
 @getter
@@ -723,22 +769,6 @@ def reeds_membership_line_to_parent_node(
         return Err(ValueError(f"Source line '{line.name}' missing interface data"))
 
     return _lookup_target_node(context, source_line.interface.to_region.name)
-
-
-@getter
-def reeds_membership_line_parent_interface(line: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Return the parent interface for a translated line, matching either direction."""
-    from r2x_plexos.models import PLEXOSInterface
-
-    parts = getattr(line, "name", "").split("_")
-    if len(parts) < 3:
-        return Err(ValueError(f"Line name '{getattr(line, 'name', '')}' does not match expected format"))
-    from_region, to_region, _ = parts[0], parts[1], parts[2]
-    interface_names = [f"{from_region}||{to_region}", f"{to_region}||{from_region}"]
-    for iface in context.target_system.get_components(PLEXOSInterface):
-        if iface.name in interface_names:
-            return Ok(iface)
-    return Err(ValueError(f"No PLEXOSInterface found for '{interface_names[0]}' or '{interface_names[1]}'"))
 
 
 @getter
