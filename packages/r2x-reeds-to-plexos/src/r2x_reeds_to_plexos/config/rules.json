@@ -353,7 +353,8 @@
     },
     "getters": {
       "load": "region_load",
-      "units": "get_component_units"
+      "units": "get_component_units",
+      "ext": "region_ext"
     },
     "source_type": "ReEDSRegion",
     "target_type": "PLEXOSRegion",
@@ -406,7 +407,8 @@
     "getters": {
       "units": "get_component_units",
       "max_flow": "line_max_flow",
-      "min_flow": "line_min_flow"
+      "min_flow": "line_min_flow",
+      "loss_incr": "lines_loss_incremental"
     },
     "source_type": "ReEDSTransmissionLine",
     "target_type": "PLEXOSLine",
@@ -420,15 +422,15 @@
     },
     "field_map": {
       "name": "name",
-      "category": "category",
-      "ext": "ext"
+      "category": "category"
     },
     "getters": {
       "duration": "reserve_duration",
       "min_provision": "reserve_requirement",
       "timeframe": "reserve_timeframe",
       "type": "reserve_type",
-      "vors": "reserve_vors_percent"
+      "vors": "reserve_vors_percent",
+      "ext": "reserve_ext"
     },
     "source_type": "ReEDSReserve",
     "target_type": "PLEXOSReserve",
@@ -677,5 +679,17 @@
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
     "version": 15
+  },
+  {
+    "name": "region_reserve_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_region_child_reserve",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_regions"
+    },
+    "source_type": "PLEXOSRegion",
+    "target_type": "PLEXOSMembership",
+    "version": 4
   }
 ]

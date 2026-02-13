@@ -88,6 +88,17 @@ def region_load(component: ReEDSRegion, context: PluginContext) -> Result[float 
 
 
 @getter
+def region_ext(component: ReEDSRegion, context: PluginContext) -> Result[dict, ValueError]:
+    """Return the PLEXOS region ext dict for a ReEDSRegion, including transmission_region."""
+    ext = getattr(component, "ext", {}) or {}
+    transmission_region = getattr(component, "transmission_region", None)
+    if transmission_region:
+        ext = dict(ext)
+        ext["transmission_region"] = transmission_region
+    return Ok(ext)
+
+
+@getter
 def fixed_load(component: ReEDSGenerator, context: PluginContext) -> Result[float | int, ValueError]:
     """Return the fixed load as a PLEXOSPropertyValue with units MW."""
 
@@ -162,6 +173,19 @@ def reserve_type(component: ReEDSReserve, context: PluginContext) -> Result[int,
         return Ok(1)
     res_type = res_type.value
     return Ok(mapping.get(res_type, 1))
+
+
+@getter
+def reserve_ext(component: ReEDSReserve, context: PluginContext) -> Result[dict, ValueError]:
+    """Return the PLEXOS reserve ext dict for a ReEDSReserve, including the associated region's transmission_region."""
+    ext = getattr(component, "ext", {}) or {}
+    region_obj = getattr(component, "region", None)
+    transmission_region = getattr(region_obj, "name", None) if region_obj else None
+
+    if region_obj:
+        ext = dict(ext)
+        ext["transmission_region"] = transmission_region
+    return Ok(ext)
 
 
 @getter
@@ -364,6 +388,19 @@ def line_min_flow(component: ReEDSTransmissionLine, context: PluginContext) -> R
         return Ok(0.0)
     max_abs = max(abs(limits.from_to), abs(limits.to_from))
     return Ok(-float(max_abs))
+
+
+@getter
+def lines_loss_incremental(
+    component: ReEDSTransmissionLine, context: PluginContext
+) -> Result[float, ValueError]:
+    """Return the incremental loss factor for the line."""
+    losses = getattr(component, "losses", None)
+    if losses is None:
+        return Ok(0.0)
+
+    incremental_loss = _float_or_zero(losses.incremental)
+    return Ok(incremental_loss)
 
 
 @getter
@@ -603,6 +640,14 @@ def reeds_membership_collection_node_to(
 ) -> Result[CollectionEnum, ValueError]:
     """Return the NodeTo collection enum."""
     return Ok(CollectionEnum.NodeTo)
+
+
+@getter
+def reeds_membership_collection_regions(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
+    """Return the Region collection enum."""
+    return Ok(CollectionEnum.Regions)
 
 
 @getter
@@ -946,3 +991,21 @@ def _find_generator_reserve_by_type(
             return Ok(reserve)
 
     return Err(ValueError(f"No PLEXOSReserve found for '{matching_reserve_name}'"))
+
+
+@getter
+def reeds_membership_region_child_reserve(region: Any, context: PluginContext) -> Result[Any, ValueError]:
+    """Find the reserve(s) for this region using ext['transmission_region']."""
+    from r2x_plexos.models import PLEXOSReserve
+
+    region_ext = getattr(region, "ext", {}) or {}
+    transmission_region = region_ext.get("transmission_region", None)
+    if not transmission_region:
+        return Err(ValueError(f"No transmission_region in ext for region '{getattr(region, 'name', '')}'"))
+
+    # You may want to return all reserves for this region, or just one
+    for reserve in context.target_system.get_components(PLEXOSReserve):
+        reserve_ext = getattr(reserve, "ext", {}) or {}
+        if reserve_ext.get("transmission_region") == transmission_region:
+            return Ok(reserve)
+    return Err(ValueError(f"No PLEXOSReserve found for transmission_region '{transmission_region}'"))
