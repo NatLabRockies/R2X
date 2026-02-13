@@ -23,9 +23,7 @@ def test_reeds_region_translates_to_node(tmp_path) -> None:
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
-    context.source_system.add_component(
-        ReEDSRegion(name="R_TEST", transmission_region="Z1")
-    )
+    context.source_system.add_component(ReEDSRegion(name="R_TEST", transmission_region="Z1"))
     context.target_system = System(name="target", auto_add_composed_components=True)
     context.rules = rules
 
@@ -138,7 +136,11 @@ def test_reeds_storage_translates_to_plexos_storage(tmp_path) -> None:
     assert result.total_rules > 0
 
     storages = []
-    for cls in (PLEXOSBattery, getattr(__import__("r2x_plexos.models", fromlist=["PLEXOSBattery"]), "PLEXOSBattery", None), PLEXOSGenerator):
+    for cls in (
+        PLEXOSBattery,
+        getattr(__import__("r2x_plexos.models", fromlist=["PLEXOSBattery"]), "PLEXOSBattery", None),
+        PLEXOSGenerator,
+    ):
         if cls is not None:
             storages.extend(list(context.target_system.get_components(cls)))
     storage = [s for s in storages if s.name in ("BATT1", "BATT1_head", "BATT1_tail")]

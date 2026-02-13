@@ -15,14 +15,17 @@ def test_rules_json_exists_and_loads() -> None:
     assert isinstance(rules_data, list)
     assert len(rules_data) > 0, "Rules list is empty"
 
+
 def test_has_region_node_rule() -> None:
     """Verify ReEDSRegion maps to PLEXOSNode."""
     rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
-        rule.get("source_type") == "ReEDSRegion" and rule.get("target_type") == "PLEXOSNode" for rule in rules_data
+        rule.get("source_type") == "ReEDSRegion" and rule.get("target_type") == "PLEXOSNode"
+        for rule in rules_data
     ), "Missing ReEDSRegion -> PLEXOSNode rule"
+
 
 def test_has_region_to_zone_rule() -> None:
     """Verify ReEDSRegion maps to PLEXOSZone."""
@@ -30,8 +33,10 @@ def test_has_region_to_zone_rule() -> None:
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
-        rule.get("source_type") == "ReEDSRegion" and rule.get("target_type") == "PLEXOSZone" for rule in rules_data
+        rule.get("source_type") == "ReEDSRegion" and rule.get("target_type") == "PLEXOSZone"
+        for rule in rules_data
     ), "Missing ReEDSRegion -> PLEXOSZone rule"
+
 
 def test_has_reserve_rule() -> None:
     """Verify ReEDSReserve maps to PLEXOSReserve."""
@@ -42,6 +47,7 @@ def test_has_reserve_rule() -> None:
         rule.get("source_type") == "ReEDSReserve" and rule.get("target_type") == "PLEXOSReserve"
         for rule in rules_data
     ), "Missing ReEDSReserve -> PLEXOSReserve rule"
+
 
 def test_has_generator_rules() -> None:
     """Verify ReEDS generators map to PLEXOS generator types."""
@@ -73,7 +79,8 @@ def test_has_storage_rule() -> None:
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
-        rule.get("source_type") == "ReEDSStorage" and rule.get("target_type") in ("PLEXOSBattery", "PLEXOSGenerator")
+        rule.get("source_type") == "ReEDSStorage"
+        and rule.get("target_type") in ("PLEXOSBattery", "PLEXOSGenerator")
         for rule in rules_data
     ), "Missing ReEDSStorage -> PLEXOSBattery or PLEXOSGenerator rule"
 
@@ -88,6 +95,7 @@ def test_has_interface_rule() -> None:
         for rule in rules_data
     ), "Missing ReEDSInterface -> PLEXOSInterface rule"
 
+
 def test_has_transmission_line_rule() -> None:
     """Verify ReEDSTransmissionLine maps to PLEXOSLine."""
     rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
@@ -97,6 +105,7 @@ def test_has_transmission_line_rule() -> None:
         rule.get("source_type") == "ReEDSTransmissionLine" and rule.get("target_type") == "PLEXOSLine"
         for rule in rules_data
     ), "Missing ReEDSTransmissionLine -> PLEXOSLine rule"
+
 
 def test_rules_have_required_fields() -> None:
     """Verify all rules have essential structure."""
@@ -108,6 +117,7 @@ def test_rules_have_required_fields() -> None:
         assert "target_type" in rule, f"Rule {i} missing target_type"
         assert "version" in rule, f"Rule {i} missing version"
         assert "field_map" in rule or "getters" in rule, f"Rule {i} missing field_map and getters"
+
 
 def test_dependency_rules() -> None:
     """Verify rules with dependencies reference valid rule names."""
@@ -122,6 +132,7 @@ def test_dependency_rules() -> None:
                 assert (
                     dependency in rule_names
                 ), f"Rule {rule.get('name', 'unknown')} depends on unknown rule: {dependency}"
+
 
 def test_node_rule_is_first() -> None:
     """Verify the first PLEXOSNode rule comes before dependent rules."""

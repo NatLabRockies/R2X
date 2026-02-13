@@ -52,12 +52,7 @@ def test_ensure_generator_node_memberships(context):
 
     region = ReEDSRegion(name="R1", transmission_region="Z1")
     gen = ReEDSThermalGenerator(
-        name="GEN1",
-        region=region,
-        technology="coal",
-        capacity=10.0,
-        heat_rate=9.0,
-        fuel_type="coal"
+        name="GEN1", region=region, technology="coal", capacity=10.0, heat_rate=9.0, fuel_type="coal"
     )
     node = PLEXOSNode(name="R1")
     plexos_gen = PLEXOSGenerator(name="GEN1")
@@ -66,7 +61,9 @@ def test_ensure_generator_node_memberships(context):
     context.target_system.add_component(plexos_gen)
     context.target_system.add_component(node)
     getters_utils.ensure_generator_node_memberships(context)
-    memberships = context.target_system.get_supplemental_attributes_with_component(plexos_gen, PLEXOSMembership)
+    memberships = context.target_system.get_supplemental_attributes_with_component(
+        plexos_gen, PLEXOSMembership
+    )
     assert any(m.collection.name == "Nodes" for m in memberships)
 
 
@@ -75,9 +72,7 @@ def test_link_line_memberships(context):
     region2 = ReEDSRegion(name="R2", transmission_region="Z2")
     interface = ReEDSInterface(name="IFACE", from_region=region1, to_region=region2)
     line = ReEDSTransmissionLine(
-        name="LINE1",
-        interface=interface,
-        max_active_power=FromTo_ToFrom(from_to=100.0, to_from=100.0)
+        name="LINE1", interface=interface, max_active_power=FromTo_ToFrom(from_to=100.0, to_from=100.0)
     )
     node1 = PLEXOSNode(name="R1")
     node2 = PLEXOSNode(name="R2")
@@ -114,12 +109,21 @@ def test_attach_region_load_time_series_with_demand(context, monkeypatch):
     context.target_system.add_component(PLEXOSRegion(name="R1"))
 
     # Patch time_series methods
-    monkeypatch.setattr(context.source_system.time_series, "list_time_series_metadata", lambda x: [types.SimpleNamespace(name="max_active_power", features={})])
-    monkeypatch.setattr(context.source_system, "list_time_series", lambda x, **kwargs: [types.SimpleNamespace(name="max_active_power", __class__=object)])
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda x: [types.SimpleNamespace(name="max_active_power", features={})],
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda x, **kwargs: [types.SimpleNamespace(name="max_active_power", __class__=object)],
+    )
     context.target_system.has_time_series = lambda *args, **kwargs: False
     context.target_system.add_time_series = lambda *args, **kwargs: None
 
     getters_utils.attach_region_load_time_series(context)
+
 
 def test_attach_reserve_time_series_with_reserve(context):
     from r2x_plexos.models import PLEXOSReserve
@@ -139,6 +143,7 @@ def test_attach_reserve_time_series_with_reserve(context):
 
     getters_utils.attach_reserve_time_series(context)
 
+
 def test_attach_time_series_to_generators_with_hydro_and_variable(context):
     from r2x_plexos.models import PLEXOSGenerator
     from r2x_reeds.models.components import ReEDSGenerator, ReEDSHydroGenerator, ReEDSVariableGenerator
@@ -152,11 +157,7 @@ def test_attach_time_series_to_generators_with_hydro_and_variable(context):
         capacity=10.0,
     )
     hydro = ReEDSHydroGenerator(
-        name="GEN1",
-        region=reg,
-        technology="hydro",
-        capacity=5.0,
-        is_dispatchable=True
+        name="GEN1", region=reg, technology="hydro", capacity=5.0, is_dispatchable=True
     )
     var = ReEDSVariableGenerator(
         name="GEN2",
@@ -171,11 +172,15 @@ def test_attach_time_series_to_generators_with_hydro_and_variable(context):
     context.target_system.add_component(PLEXOSGenerator(name="GEN1"))
     context.target_system.add_component(PLEXOSGenerator(name="GEN2"))
 
-    context.source_system.list_time_series = lambda x: [types.SimpleNamespace(name="hydro_budget"), types.SimpleNamespace(name="max_active_power")]
+    context.source_system.list_time_series = lambda x: [
+        types.SimpleNamespace(name="hydro_budget"),
+        types.SimpleNamespace(name="max_active_power"),
+    ]
     context.target_system.has_time_series = lambda *args, **kwargs: False
     context.target_system.add_time_series = lambda *args, **kwargs: None
 
     getters_utils.attach_time_series_to_generators(context)
+
 
 def test_attach_emissions_to_generators(context):
     from r2x_plexos.models import PLEXOSGenerator
@@ -201,6 +206,7 @@ def test_attach_emissions_to_generators(context):
     context.target_system.add_supplemental_attribute = lambda *args, **kwargs: None
 
     getters_utils.attach_emissions_to_generators(context)
+
 
 def test_convert_pumped_storage_generators(context):
     from r2x_plexos.models import PLEXOSGenerator

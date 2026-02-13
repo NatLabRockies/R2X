@@ -25,6 +25,7 @@ def make_context(tmp_path) -> PluginContext:
     store = DataStore.from_plugin_config(config, path=tmp_path)
     return PluginContext(config=config, store=store)
 
+
 def setup_systems(context):
     # Source system
     context.source_system = System(name="source")
@@ -124,9 +125,7 @@ def setup_systems(context):
     interface = ReEDSInterface(name="IFACE1", from_region=region, to_region=region2)
     context.source_system.add_component(interface)
     line = ReEDSTransmissionLine(
-        name="LINE1",
-        interface=interface,
-        max_active_power=FromTo_ToFrom(from_to=100.0, to_from=100.0)
+        name="LINE1", interface=interface, max_active_power=FromTo_ToFrom(from_to=100.0, to_from=100.0)
     )
     context.source_system.add_component(line)
     plexos_line = PLEXOSLine(name="LINE1")
@@ -152,6 +151,7 @@ def setup_systems(context):
         "line": line,
         "plexos_line": plexos_line,
     }
+
 
 def test_basic_getters_return_values(tmp_path):
     """Invoke ReEDS-to-PLEXOS getters directly to ensure coverage and registration."""
@@ -236,8 +236,14 @@ def test_basic_getters_return_values(tmp_path):
     # Membership parent/child node lookups
     assert getters.reeds_membership_region_parent_node(objs["region"], context).unwrap().name == "R1"
     assert getters.reeds_membership_node_parent_zone(objs["node"], context).unwrap().name == "Z1"
-    assert getters.reeds_membership_storage_child_head_storage(objs["storage"], context).unwrap().name == "BAT1_head"
-    assert getters.reeds_membership_storage_child_tail_storage(objs["storage"], context).unwrap().name == "BAT1_tail"
+    assert (
+        getters.reeds_membership_storage_child_head_storage(objs["storage"], context).unwrap().name
+        == "BAT1_head"
+    )
+    assert (
+        getters.reeds_membership_storage_child_tail_storage(objs["storage"], context).unwrap().name
+        == "BAT1_tail"
+    )
 
 
 def test_line_max_flow_and_min_flow_edge_cases(tmp_path):
@@ -258,9 +264,11 @@ def test_line_max_flow_and_min_flow_edge_cases(tmp_path):
     # With limits
     class DummyLine2:
         max_active_power = DummyLimits()
+
     line2 = DummyLine2()
     assert getters.line_max_flow(line2, None).unwrap() == 0.0
     assert getters.line_min_flow(line2, None).unwrap() == -0.0
+
 
 def test_vre_category_with_resource_class_edge_cases(tmp_path):
     from r2x_reeds_to_plexos import getters
