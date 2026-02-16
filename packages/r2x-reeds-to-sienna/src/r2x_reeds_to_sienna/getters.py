@@ -51,6 +51,25 @@ def _lookup_area(context: PluginContext, name: str | None) -> Area | None:  # ty
 
 
 @getter
+def get_component_ext(component: object, context: PluginContext) -> Result[dict, ValueError]:
+    """
+    Get the component's ext dict, storing the technology name under the 'technology' key.
+    """
+    ext = getattr(component, "ext", None)
+    if ext is None:
+        ext = {}
+    elif not isinstance(ext, dict):
+        return Err(ValueError("Component ext attribute is not a dict"))
+
+    technology = getattr(component, "technology", None)
+    if technology is not None:
+        ext = dict(ext)
+        ext["technology"] = technology
+
+    return Ok(ext)
+
+
+@getter
 def unique_component_name(component: object, context: PluginContext) -> Result[str, ValueError]:
     """
     Ensure the component name is unique among ThermalStandard components in the target system
@@ -647,8 +666,9 @@ def storage_power_limits(component: ReEDSStorage, context: PluginContext) -> Res
 @getter
 def storage_efficiency(component: ReEDSStorage, context: PluginContext) -> Result[InputOutput, ValueError]:
     """Map round-trip efficiency to input/output pair."""
-    rte = float(getattr(component, "round_trip_efficiency", 0.95) or 0.95)
-    return Ok(InputOutput(input=1.0, output=rte))
+    default_eff = 0.95
+    rte = float(getattr(component, "round_trip_efficiency", default_eff) or default_eff)
+    return Ok(InputOutput(input=default_eff, output=rte))
 
 
 @getter
