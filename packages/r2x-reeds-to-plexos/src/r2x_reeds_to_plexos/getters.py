@@ -158,34 +158,66 @@ def storage_natural_inflow(component: ReEDSStorage, context: PluginContext) -> R
 
 
 @getter
-def pumped_hydro_efficiency_percent(
-    component: ReEDSStorage, context: PluginContext
+def get_generator_pump_efficiency_percent(
+    component: ReEDSGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
     """Convert pumped hydro efficiency (0-1) to percent for PLEXOS."""
-    efficiency = getattr(component, "pumped_efficiency", None)
-    if efficiency is not None:
-        return Ok(_float_or_zero(efficiency) * 100.0)
+    from r2x_reeds.models import (
+        ReEDSConsumingTechnology,
+        ReEDSHydroGenerator,
+        ReEDSStorage,
+        ReEDSThermalGenerator,
+        ReEDSVariableGenerator,
+    )
 
-    charge_efficiency = getattr(component, "charge_efficiency", None)
-    if charge_efficiency is not None:
-        return Ok(_float_or_zero(charge_efficiency) * 100.0)
+    if isinstance(
+        component,
+        ReEDSConsumingTechnology | ReEDSThermalGenerator | ReEDSVariableGenerator | ReEDSHydroGenerator,
+    ):
+        return Ok(0.0)
+    elif isinstance(component, ReEDSStorage):
+        efficiency = getattr(component, "pump_efficiency", None)
+        if efficiency is not None:
+            return Ok(_float_or_zero(efficiency) * 100.0)
 
-    round_trip_efficiency = getattr(component, "round_trip_efficiency", None)
-    if round_trip_efficiency is not None:
-        return Ok(_float_or_zero(round_trip_efficiency) * 100.0)
+        charge_efficiency = getattr(component, "charge_efficiency", None)
+        if charge_efficiency is not None:
+            return Ok(_float_or_zero(charge_efficiency) * 100.0)
 
-    return Ok(0.0)
+        round_trip_efficiency = getattr(component, "round_trip_efficiency", None)
+        if round_trip_efficiency is not None:
+            return Ok(_float_or_zero(round_trip_efficiency) * 100.0)
+    else:
+        return Ok(0.0)
 
 
 @getter
-def pumped_hydro_load_mw(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
+def get_generator_pump_load_mw(
+    component: ReEDSGenerator, context: PluginContext
+) -> Result[float, ValueError]:
     """Return the pumped hydro load in MW."""
-    load = getattr(component, "pumped_load", None)
-    if load is not None:
-        return Ok(_float_or_zero(load))
+    from r2x_reeds.models import (
+        ReEDSConsumingTechnology,
+        ReEDSHydroGenerator,
+        ReEDSStorage,
+        ReEDSThermalGenerator,
+        ReEDSVariableGenerator,
+    )
 
-    capacity = getattr(component, "capacity", 0.0)
-    return Ok(float(capacity))
+    if isinstance(
+        component,
+        ReEDSConsumingTechnology | ReEDSThermalGenerator | ReEDSVariableGenerator | ReEDSHydroGenerator,
+    ):
+        return Ok(0.0)
+    elif isinstance(component, ReEDSStorage):
+        load = getattr(component, "pump_load", None)
+        if load is not None:
+            return Ok(_float_or_zero(load))
+
+        capacity = getattr(component, "capacity", 0.0)
+        return Ok(float(capacity))
+    else:
+        return Ok(0.0)
 
 
 @getter

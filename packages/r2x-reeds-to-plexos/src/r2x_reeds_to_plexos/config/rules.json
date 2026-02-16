@@ -32,7 +32,9 @@
       "max_ramp_down": "ramp_rate_mw_per_hour",
       "min_stable_level": "min_stable_level_mw",
       "min_up_time": "min_up_time_hours",
-      "min_down_time": "min_down_time_hours"
+      "min_down_time": "min_down_time_hours",
+      "pump_load": "get_generator_pump_load_mw",
+      "pump_efficiency": "get_generator_pump_efficiency_percent"
     },
     "source_type": "ReEDSThermalGenerator",
     "target_type": "PLEXOSGenerator",
@@ -68,7 +70,9 @@
       "min_stable_level": "min_stable_level_mw",
       "maintenance_rate": "maintenance_rate_percent",
       "max_ramp_up": "ramp_rate_mw_per_hour",
-      "max_ramp_down": "ramp_rate_mw_per_hour"
+      "max_ramp_down": "ramp_rate_mw_per_hour",
+      "pump_load": "get_generator_pump_load_mw",
+      "pump_efficiency": "get_generator_pump_efficiency_percent"
     },
     "source_type": "ReEDSVariableGenerator",
     "target_type": "PLEXOSGenerator",
@@ -102,7 +106,9 @@
       "max_ramp_up": "hydro_ramp_rate_mw_per_hour",
       "max_ramp_down": "hydro_ramp_rate_mw_per_hour",
       "must_run_units": "hydro_must_run_flag",
-      "fixed_load": "fixed_load"
+      "fixed_load": "fixed_load",
+      "pump_load": "get_generator_pump_load_mw",
+      "pump_efficiency": "get_generator_pump_efficiency_percent"
     },
     "source_type": "ReEDSHydroGenerator",
     "target_type": "PLEXOSGenerator",
@@ -133,7 +139,9 @@
       "min_stable_level": "min_stable_level_mw",
       "forced_outage_rate": "forced_outage_rate_percent",
       "maintenance_rate": "maintenance_rate_percent",
-      "mean_time_to_repair": "mean_time_to_repair_hours"
+      "mean_time_to_repair": "mean_time_to_repair_hours",
+      "pump_load": "get_generator_pump_load_mw",
+      "pump_efficiency": "get_generator_pump_efficiency_percent"
     },
     "source_type": "ReEDSConsumingTechnology",
     "target_type": "PLEXOSGenerator",
@@ -209,7 +217,9 @@
       "mean_time_to_repair": "mean_time_to_repair_hours",
       "max_ramp_up": "ramp_rate_mw_per_hour",
       "max_ramp_down": "ramp_rate_mw_per_hour",
-      "min_stable_level": "min_stable_level_mw"
+      "min_stable_level": "min_stable_level_mw",
+      "pump_load": "get_generator_pump_load_mw",
+      "pump_efficiency": "get_generator_pump_efficiency_percent"
     },
     "source_type": "ReEDSGenerator",
     "target_type": "PLEXOSGenerator",
@@ -297,8 +307,8 @@
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
       "min_stable_level": "min_stable_level_mw",
-      "pump_efficiency": "pumped_hydro_efficiency_percent",
-      "pump_load": "pumped_hydro_load_mw"
+      "pump_efficiency": "get_generator_pump_efficiency_percent",
+      "pump_load": "get_generator_pump_load_mw"
     },
     "source_type": "ReEDSStorage",
     "target_type": "PLEXOSGenerator",
