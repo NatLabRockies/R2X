@@ -288,7 +288,9 @@
       "forced_outage_rate": "forced_outage_rate_percent",
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
-      "min_stable_level": "min_stable_level_mw"
+      "min_stable_level": "min_stable_level_mw",
+      "pump_efficiency": "pumped_hydro_efficiency_percent",
+      "pump_load": "pumped_hydro_load_mw"
     },
     "source_type": "ReEDSStorage",
     "target_type": "PLEXOSGenerator",
@@ -679,6 +681,18 @@
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
     "version": 15
+  },
+  {
+    "name": "interface_line_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_line_parent_interface",
+      "child_object": "reeds_membership_line_child_line",
+      "collection": "reeds_membership_collection_lines"
+    },
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 3
   },
   {
     "name": "region_reserve_membership",

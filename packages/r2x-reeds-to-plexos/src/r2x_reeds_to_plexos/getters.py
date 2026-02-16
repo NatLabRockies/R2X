@@ -158,6 +158,37 @@ def storage_natural_inflow(component: ReEDSStorage, context: PluginContext) -> R
 
 
 @getter
+def pumped_hydro_efficiency_percent(
+    component: ReEDSStorage, context: PluginContext
+) -> Result[float, ValueError]:
+    """Convert pumped hydro efficiency (0-1) to percent for PLEXOS."""
+    efficiency = getattr(component, "pumped_efficiency", None)
+    if efficiency is not None:
+        return Ok(_float_or_zero(efficiency) * 100.0)
+
+    charge_efficiency = getattr(component, "charge_efficiency", None)
+    if charge_efficiency is not None:
+        return Ok(_float_or_zero(charge_efficiency) * 100.0)
+
+    round_trip_efficiency = getattr(component, "round_trip_efficiency", None)
+    if round_trip_efficiency is not None:
+        return Ok(_float_or_zero(round_trip_efficiency) * 100.0)
+
+    return Ok(0.0)
+
+
+@getter
+def pumped_hydro_load_mw(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
+    """Return the pumped hydro load in MW."""
+    load = getattr(component, "pumped_load", None)
+    if load is not None:
+        return Ok(_float_or_zero(load))
+
+    capacity = getattr(component, "capacity", 0.0)
+    return Ok(float(capacity))
+
+
+@getter
 def reserve_type(component: ReEDSReserve, context: PluginContext) -> Result[int, ValueError]:
     """Return the PLEXOS reserve type code for a ReEDSReserve."""
     mapping = {
@@ -1009,3 +1040,27 @@ def reeds_membership_region_child_reserve(region: Any, context: PluginContext) -
         if reserve_ext.get("transmission_region") == transmission_region:
             return Ok(reserve)
     return Err(ValueError(f"No PLEXOSReserve found for transmission_region '{transmission_region}'"))
+
+
+@getter
+def reeds_membership_line_parent_interface(line: Any, context: PluginContext) -> Result[Any, ValueError]:
+    """Return the parent interface for a translated line, matching either direction by region names."""
+    from r2x_plexos.models import PLEXOSInterface
+
+    line_name = getattr(line, "name", "")
+    parts = line_name.split("_")
+    if len(parts) < 3:
+        return Err(ValueError(f"Line name '{line_name}' does not match expected format"))
+
+    from_region, to_region = parts[0], parts[1]
+
+    for iface in context.target_system.get_components(PLEXOSInterface):
+        iface_name = getattr(iface, "name", "")
+        if f"{from_region}||{to_region}" in iface_name or f"{to_region}||{from_region}" in iface_name:
+            return Ok(iface)
+
+    return Err(
+        ValueError(
+            f"No PLEXOSInterface found containing '{from_region}||{to_region}' or '{to_region}||{from_region}' in its name"
+        )
+    )
