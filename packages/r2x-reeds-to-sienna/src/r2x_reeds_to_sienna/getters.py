@@ -647,7 +647,7 @@ def storage_power_limits(component: ReEDSStorage, context: PluginContext) -> Res
 @getter
 def storage_efficiency(component: ReEDSStorage, context: PluginContext) -> Result[InputOutput, ValueError]:
     """Map round-trip efficiency to input/output pair."""
-    rte = float(getattr(component, "round_trip_efficiency", 1.0) or 1.0)
+    rte = float(getattr(component, "round_trip_efficiency", 0.95) or 0.95)
     return Ok(InputOutput(input=1.0, output=rte))
 
 

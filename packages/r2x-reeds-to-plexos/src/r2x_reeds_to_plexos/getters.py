@@ -266,7 +266,7 @@ def discharge_efficiency_percent(
 ) -> Result[float, ValueError]:
     """Convert discharge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
-    efficiency = getattr(component, "discharge_efficiency", None)
+    efficiency = getattr(component, "round_trip_efficiency", None)
 
     if efficiency is not None:
         return Ok(_float_or_zero(efficiency) * 100.0)
@@ -432,6 +432,27 @@ def lines_loss_incremental(
 
     incremental_loss = _float_or_zero(losses.incremental)
     return Ok(incremental_loss)
+
+
+@getter
+def lines_wheeling_charge(line: Any, context: PluginContext) -> Result[float, ValueError]:
+    """Return the wheeling charge for the forward direction (from_region to to_region)."""
+    wc = getattr(line, "wheeling_charge", None)
+    if wc is not None:
+        return Ok(float(wc))
+    return Ok(0.0)
+
+
+@getter
+def lines_wheeling_charge_back(line: Any, context: PluginContext) -> Result[float, ValueError]:
+    """Return the wheeling charge for the reverse direction (to_region to from_region)."""
+    wc_back = getattr(line, "wheeling_charge_back", None)
+    if wc_back is not None:
+        return Ok(float(wc_back))
+    wc = getattr(line, "wheeling_charge", None)
+    if wc is not None:
+        return Ok(float(wc))
+    return Ok(0.0)
 
 
 @getter

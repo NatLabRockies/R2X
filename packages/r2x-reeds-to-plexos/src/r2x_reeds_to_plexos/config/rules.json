@@ -44,6 +44,7 @@
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
+      "start_cost": 0.0,
       "fom_charge": 0.0
     },
     "field_map": {
@@ -52,6 +53,7 @@
       "max_capacity": "capacity",
       "name": "name",
       "vom_charge": "vom_cost",
+      "start_cost": "startup_cost",
       "fom_charge": "fom_cost",
       "ext": "ext"
     },
@@ -78,6 +80,7 @@
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
+      "start_cost": 0.0,
       "fom_charge": 0.0
     },
     "field_map": {
@@ -85,8 +88,9 @@
       "category": "technology",
       "max_capacity": "capacity",
       "name": "name",
-      "vom_charge": "vom_cost",
       "fom_charge": "fom_cost",
+      "vom_charge": "vom_cost",
+      "start_cost": "startup_cost",
       "ext": "ext"
     },
     "getters": {
@@ -110,14 +114,16 @@
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
+      "start_cost": 0.0,
       "fom_charge": 0.0
     },
     "field_map": {
       "uuid": "uuid",
       "category": "technology",
       "name": "name",
-      "vom_charge": "vom_cost",
       "fom_charge": "fom_cost",
+      "vom_charge": "vom_cost",
+      "start_cost": "startup_cost",
       "ext": "ext"
     },
     "getters": {
@@ -137,6 +143,7 @@
     "field_map": {
       "category": "technology",
       "max_power": "capacity",
+      "capacity": "capacity",
       "name": "name",
       "ext": "ext"
     },
@@ -183,6 +190,7 @@
     "max_capacity": "capacity",
     "name": "name",
     "vom_charge": "vom_cost",
+    "start_cost": "startup_cost",
     "ext": "ext"
   },
   "filter": {
@@ -410,7 +418,9 @@
       "units": "get_component_units",
       "max_flow": "line_max_flow",
       "min_flow": "line_min_flow",
-      "loss_incr": "lines_loss_incremental"
+      "loss_incr": "lines_loss_incremental",
+      "wheeling_charge": "lines_wheeling_charge",
+      "wheeling_charge_back": "lines_wheeling_charge_back"
     },
     "source_type": "ReEDSTransmissionLine",
     "target_type": "PLEXOSLine",
@@ -420,7 +430,8 @@
     "defaults": {
       "category": "reeds-reserve",
       "duration": 0.0,
-      "timeframe": 0.0
+      "timeframe": 0.0,
+      "is_enabled": 1
     },
     "field_map": {
       "name": "name",
