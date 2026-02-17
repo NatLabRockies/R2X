@@ -2,6 +2,7 @@
   {
     "defaults": {
       "category": "thermal",
+      "random_number_seed": 123456,
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
@@ -43,6 +44,7 @@
   {
     "defaults": {
       "category": "renewable",
+      "random_number_seed": 123456,
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
@@ -81,6 +83,7 @@
   {
     "defaults": {
       "category": "hydro",
+      "random_number_seed": 123456,
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
@@ -117,6 +120,7 @@
   {
     "defaults": {
       "category": "electrolyzer",
+      "random_number_seed": 123456,
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
@@ -148,6 +152,9 @@
     "version": 1
   },
   {
+    "defaults": {
+      "random_number_seed": 123456
+    },
     "field_map": {
       "category": "technology",
       "max_power": "capacity",
@@ -185,6 +192,7 @@
   {
     "defaults": {
       "category": "reeds-generator",
+      "random_number_seed": 123456,
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
@@ -285,7 +293,8 @@
   },
   {
     "defaults": {
-      "category": "technology"
+      "category": "technology",
+      "random_number_seed": 123456
     },
     "field_map": {
       "category": "technology",
@@ -316,7 +325,8 @@
   },
   {
     "defaults": {
-      "category": "battery"
+      "category": "battery",
+      "random_number_seed": 123456
     },
     "field_map": {
       "category": "category",
@@ -417,6 +427,7 @@
   {
     "defaults": {
       "category": "reeds-line",
+      "random_number_seed": 123456,
       "max_flow": 0,
       "min_flow": 0
     },

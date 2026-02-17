@@ -101,8 +101,7 @@ def region_ext(component: ReEDSRegion, context: PluginContext) -> Result[dict, V
 @getter
 def fixed_load(component: ReEDSGenerator, context: PluginContext) -> Result[float | int, ValueError]:
     """Return the fixed load as a PLEXOSPropertyValue with units MW."""
-
-    value = _float_or_zero(getattr(component, "fixed_load", None))
+    value = _float_or_zero(getattr(component, "fixed_load", 0.0))
     return Ok(value)
 
 
@@ -469,22 +468,15 @@ def lines_loss_incremental(
 @getter
 def lines_wheeling_charge(line: Any, context: PluginContext) -> Result[float, ValueError]:
     """Return the wheeling charge for the forward direction (from_region to to_region)."""
-    wc = getattr(line, "wheeling_charge", None)
-    if wc is not None:
-        return Ok(float(wc))
-    return Ok(0.0)
+    wc = getattr(line, "wheeling_charge", 0.001)
+    return Ok(float(wc))
 
 
 @getter
 def lines_wheeling_charge_back(line: Any, context: PluginContext) -> Result[float, ValueError]:
     """Return the wheeling charge for the reverse direction (to_region to from_region)."""
-    wc_back = getattr(line, "wheeling_charge_back", None)
-    if wc_back is not None:
-        return Ok(float(wc_back))
-    wc = getattr(line, "wheeling_charge", None)
-    if wc is not None:
-        return Ok(float(wc))
-    return Ok(0.0)
+    wc_back = getattr(line, "wheeling_charge_back", 0.001)
+    return Ok(float(wc_back))
 
 
 @getter
@@ -530,7 +522,7 @@ def reserve_duration(component: ReEDSReserve, context: PluginContext) -> Result[
 @getter
 def reserve_requirement(component: ReEDSReserve, context: PluginContext) -> Result[float | int, ValueError]:
     """Return the reserve requirement as a PLEXOSPropertyValue with units MW."""
-    value = _float_or_zero(getattr(component, "requirement", None))
+    value = _float_or_zero(getattr(component, "min_provision", None))
     return Ok(value)
 
 
