@@ -49,7 +49,9 @@
       "heat_rate": 0.0,
       "vom_charge": 0.0,
       "start_cost": 0.0,
-      "fom_charge": 0.0
+      "fom_charge": 0.0,
+      "min_down_time": 0.0,
+      "min_up_time": 0.0
     },
     "field_map": {
       "uuid": "uuid",
@@ -68,6 +70,8 @@
       "build_cost": "supply_curve_cost_getter",
       "mean_time_to_repair": "mean_time_to_repair_hours",
       "rating": "rating",
+      "min_up_time": "min_up_time_hours",
+      "min_down_time": "min_down_time_hours",
       "load_subtracter": "load_subtracter",
       "min_stable_level": "min_stable_level_mw",
       "maintenance_rate": "maintenance_rate_percent",
@@ -88,7 +92,9 @@
       "heat_rate": 0.0,
       "vom_charge": 0.0,
       "start_cost": 0.0,
-      "fom_charge": 0.0
+      "fom_charge": 0.0,
+      "min_down_time": 0.0,
+      "min_up_time": 0.0
     },
     "field_map": {
       "uuid": "uuid",
@@ -106,10 +112,12 @@
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
       "min_stable_level": "hydro_min_flow",
+      "min_up_time": "min_up_time_hours",
+      "min_down_time": "min_down_time_hours",
       "max_ramp_up": "hydro_ramp_rate_mw_per_hour",
       "max_ramp_down": "hydro_ramp_rate_mw_per_hour",
       "must_run_units": "hydro_must_run_flag",
-      "fixed_load": "fixed_load",
+      "max_energy_day": "hydro_max_energy_per_day",
       "pump_load": "get_generator_pump_load_mw",
       "pump_efficiency": "get_generator_pump_efficiency_percent"
     },
@@ -125,7 +133,9 @@
       "heat_rate": 0.0,
       "vom_charge": 0.0,
       "start_cost": 0.0,
-      "fom_charge": 0.0
+      "fom_charge": 0.0,
+      "min_down_time": 0.0,
+      "min_up_time": 0.0
     },
     "field_map": {
       "uuid": "uuid",
@@ -141,6 +151,8 @@
       "max_capacity": "consuming_tech_load_mw",
       "heat_rate": "consuming_tech_efficiency_to_heat_rate",
       "min_stable_level": "min_stable_level_mw",
+      "min_up_time": "min_up_time_hours",
+      "min_down_time": "min_down_time_hours",
       "forced_outage_rate": "forced_outage_rate_percent",
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
@@ -196,7 +208,9 @@
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
-      "fom_charge": 0.0
+      "fom_charge": 0.0,
+      "min_down_time": 0.0,
+      "min_up_time": 0.0
     },
   "field_map": {
     "uuid": "uuid",
@@ -225,6 +239,8 @@
       "mean_time_to_repair": "mean_time_to_repair_hours",
       "max_ramp_up": "ramp_rate_mw_per_hour",
       "max_ramp_down": "ramp_rate_mw_per_hour",
+      "min_down_time": "min_down_time_hours",
+      "min_up_time": "min_up_time_hours",
       "min_stable_level": "min_stable_level_mw",
       "pump_load": "get_generator_pump_load_mw",
       "pump_efficiency": "get_generator_pump_efficiency_percent"
