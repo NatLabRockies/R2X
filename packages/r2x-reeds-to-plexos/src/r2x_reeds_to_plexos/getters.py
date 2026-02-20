@@ -529,7 +529,7 @@ def reserve_requirement(component: ReEDSReserve, context: PluginContext) -> Resu
 
 
 @getter
-def ramp_rate_mw_per_hour(
+def ramp_rate_up_mw_per_hour(
     component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
     """Convert ramp rate from MW/min to MW/hour for PLEXOS."""
@@ -538,6 +538,23 @@ def ramp_rate_mw_per_hour(
     if ramp_rate is None:
         technology = getattr(component, "technology", "")
         default_ramp_up = _get_defaults(technology, "ramp_rate_up")
+        if default_ramp_up > 0.0:
+            return Ok(float(default_ramp_up))
+        return Ok(0.0)
+
+    return Ok(float(ramp_rate) * 60.0)
+
+
+@getter
+def ramp_rate_down_mw_per_hour(
+    component: ReEDSThermalGenerator, context: PluginContext
+) -> Result[float, ValueError]:
+    """Convert ramp rate from MW/min to MW/hour for PLEXOS."""
+    ramp_rate = getattr(component, "ramp_rate", None)
+
+    if ramp_rate is None:
+        technology = getattr(component, "technology", "")
+        default_ramp_up = _get_defaults(technology, "ramp_rate_down")
         if default_ramp_up > 0.0:
             return Ok(float(default_ramp_up))
         return Ok(0.0)
@@ -639,31 +656,15 @@ def hydro_min_flow(component: ReEDSHydroGenerator, context: PluginContext) -> Re
     flow_range = getattr(component, "flow_range", None)
     if flow_range is None:
         return Ok(0.0)
-
-    # flow_range is MinMax(min=..., max=...)
     return Ok(float(flow_range.min))
-
-
-@getter
-def hydro_ramp_rate_mw_per_hour(
-    component: ReEDSHydroGenerator, context: PluginContext
-) -> Result[float, ValueError]:
-    """Convert hydro ramp rate from MW/min to MW/hour."""
-    ramp_rate = getattr(component, "ramp_rate", None)
-    if ramp_rate is None:
-        return Ok(0.0)
-    return Ok(float(ramp_rate) * 60.0)
 
 
 @getter
 def hydro_must_run_flag(component: ReEDSHydroGenerator, context: PluginContext) -> Result[int, ValueError]:
     """Return must_run flag for non-dispatchable hydro."""
     is_dispatchable = getattr(component, "is_dispatchable", True)
-
-    # If not dispatchable, set must_run to 1
     if not is_dispatchable:
         return Ok(1)
-
     return Ok(0)
 
 
