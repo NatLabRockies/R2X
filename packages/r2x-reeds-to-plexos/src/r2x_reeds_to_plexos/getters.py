@@ -38,6 +38,8 @@ def _float_or_zero(value: Any | None) -> float:
 
 
 def _get_defaults(technology: str, key: str) -> float:
+    if technology.lower().startswith("battery"):
+        technology = "battery"
     defaults_path = files("r2x_reeds_to_plexos.config") / "defaults.json"
     with defaults_path.open() as f:
         defaults = json.load(f)

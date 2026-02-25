@@ -528,7 +528,7 @@ def get_line_charging_susceptance(
 
     # Handle Quantity types
     magnitude = get_magnitude(line_b)
-    if magnitude is not None:
+    if isinstance(magnitude, int | float):
         return Ok(float(magnitude))
 
     # Handle plain floats/ints
