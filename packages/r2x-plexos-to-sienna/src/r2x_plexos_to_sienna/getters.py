@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import uuid
 from importlib.resources import files
 from typing import Any
 
@@ -60,11 +59,6 @@ def _get_prime_mover_type(category: str) -> PrimeMoversType:
         defaults = json.load(f)
     code = defaults.get("prime_mover_types", {}).get(category, "OT")
     return getattr(PrimeMoversType, code, PrimeMoversType.OT)
-
-
-@getter
-def get_power_load_uuid(component: PLEXOSRegion, context: PluginContext) -> Result[str, Any]:
-    return Ok(str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{component.uuid}_load")))
 
 
 @getter

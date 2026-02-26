@@ -28,11 +28,13 @@
       "min_capacity_factor": "min_capacity_factor_percent",
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
-      "max_ramp_up": "ramp_rate_mw_per_hour",
-      "max_ramp_down": "ramp_rate_mw_per_hour",
+      "max_ramp_up": "ramp_rate_up_mw_per_hour",
+      "max_ramp_down": "ramp_rate_down_mw_per_hour",
       "min_stable_level": "min_stable_level_mw",
       "min_up_time": "min_up_time_hours",
-      "min_down_time": "min_down_time_hours"
+      "min_down_time": "min_down_time_hours",
+      "pump_load": "get_generator_pump_load_mw",
+      "pump_efficiency": "get_generator_pump_efficiency_percent"
     },
     "source_type": "ReEDSThermalGenerator",
     "target_type": "PLEXOSGenerator",
@@ -44,7 +46,10 @@
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
-      "fom_charge": 0.0
+      "start_cost": 0.0,
+      "fom_charge": 0.0,
+      "min_down_time": 0.0,
+      "min_up_time": 0.0
     },
     "field_map": {
       "uuid": "uuid",
@@ -52,6 +57,7 @@
       "max_capacity": "capacity",
       "name": "name",
       "vom_charge": "vom_cost",
+      "start_cost": "startup_cost",
       "fom_charge": "fom_cost",
       "ext": "ext"
     },
@@ -62,11 +68,15 @@
       "build_cost": "supply_curve_cost_getter",
       "mean_time_to_repair": "mean_time_to_repair_hours",
       "rating": "rating",
+      "min_up_time": "min_up_time_hours",
+      "min_down_time": "min_down_time_hours",
       "load_subtracter": "load_subtracter",
       "min_stable_level": "min_stable_level_mw",
       "maintenance_rate": "maintenance_rate_percent",
-      "max_ramp_up": "ramp_rate_mw_per_hour",
-      "max_ramp_down": "ramp_rate_mw_per_hour"
+      "max_ramp_up": "ramp_rate_up_mw_per_hour",
+      "max_ramp_down": "ramp_rate_down_mw_per_hour",
+      "pump_load": "get_generator_pump_load_mw",
+      "pump_efficiency": "get_generator_pump_efficiency_percent"
     },
     "source_type": "ReEDSVariableGenerator",
     "target_type": "PLEXOSGenerator",
@@ -78,15 +88,19 @@
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
-      "fom_charge": 0.0
+      "start_cost": 0.0,
+      "fom_charge": 0.0,
+      "min_down_time": 0.0,
+      "min_up_time": 0.0
     },
     "field_map": {
       "uuid": "uuid",
       "category": "technology",
       "max_capacity": "capacity",
       "name": "name",
-      "vom_charge": "vom_cost",
       "fom_charge": "fom_cost",
+      "vom_charge": "vom_cost",
+      "start_cost": "startup_cost",
       "ext": "ext"
     },
     "getters": {
@@ -95,10 +109,14 @@
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
       "min_stable_level": "hydro_min_flow",
-      "max_ramp_up": "hydro_ramp_rate_mw_per_hour",
-      "max_ramp_down": "hydro_ramp_rate_mw_per_hour",
+      "min_up_time": "min_up_time_hours",
+      "min_down_time": "min_down_time_hours",
+      "max_ramp_up": "ramp_rate_up_mw_per_hour",
+      "max_ramp_down": "ramp_rate_down_mw_per_hour",
       "must_run_units": "hydro_must_run_flag",
-      "fixed_load": "fixed_load"
+      "max_energy_day": "hydro_max_energy_per_day",
+      "pump_load": "get_generator_pump_load_mw",
+      "pump_efficiency": "get_generator_pump_efficiency_percent"
     },
     "source_type": "ReEDSHydroGenerator",
     "target_type": "PLEXOSGenerator",
@@ -110,14 +128,18 @@
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
-      "fom_charge": 0.0
+      "start_cost": 0.0,
+      "fom_charge": 0.0,
+      "min_down_time": 0.0,
+      "min_up_time": 0.0
     },
     "field_map": {
       "uuid": "uuid",
       "category": "technology",
       "name": "name",
-      "vom_charge": "vom_cost",
       "fom_charge": "fom_cost",
+      "vom_charge": "vom_cost",
+      "start_cost": "startup_cost",
       "ext": "ext"
     },
     "getters": {
@@ -125,9 +147,13 @@
       "max_capacity": "consuming_tech_load_mw",
       "heat_rate": "consuming_tech_efficiency_to_heat_rate",
       "min_stable_level": "min_stable_level_mw",
+      "min_up_time": "min_up_time_hours",
+      "min_down_time": "min_down_time_hours",
       "forced_outage_rate": "forced_outage_rate_percent",
       "maintenance_rate": "maintenance_rate_percent",
-      "mean_time_to_repair": "mean_time_to_repair_hours"
+      "mean_time_to_repair": "mean_time_to_repair_hours",
+      "pump_load": "get_generator_pump_load_mw",
+      "pump_efficiency": "get_generator_pump_efficiency_percent"
     },
     "source_type": "ReEDSConsumingTechnology",
     "target_type": "PLEXOSGenerator",
@@ -137,6 +163,7 @@
     "field_map": {
       "category": "technology",
       "max_power": "capacity",
+      "capacity": "capacity",
       "name": "name",
       "ext": "ext"
     },
@@ -157,11 +184,8 @@
     "filter": {
       "casefold": true,
       "field": "technology",
-      "op": "in",
-      "values": [
-        "battery",
-        "battery_li"
-      ]
+      "op": "startswith",
+       "values": ["battery"]
     },
     "source_type": "ReEDSStorage",
     "target_type": "PLEXOSBattery",
@@ -173,7 +197,9 @@
       "fuel_price": 0.0,
       "heat_rate": 0.0,
       "vom_charge": 0.0,
-      "fom_charge": 0.0
+      "fom_charge": 0.0,
+      "min_down_time": 0.0,
+      "min_up_time": 0.0
     },
   "field_map": {
     "uuid": "uuid",
@@ -183,6 +209,7 @@
     "max_capacity": "capacity",
     "name": "name",
     "vom_charge": "vom_cost",
+    "start_cost": "startup_cost",
     "ext": "ext"
   },
   "filter": {
@@ -199,9 +226,13 @@
       "min_capacity_factor": "min_capacity_factor_percent",
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
-      "max_ramp_up": "ramp_rate_mw_per_hour",
-      "max_ramp_down": "ramp_rate_mw_per_hour",
-      "min_stable_level": "min_stable_level_mw"
+      "max_ramp_up": "ramp_rate_up_mw_per_hour",
+      "max_ramp_down": "ramp_rate_down_mw_per_hour",
+      "min_down_time": "min_down_time_hours",
+      "min_up_time": "min_up_time_hours",
+      "min_stable_level": "min_stable_level_mw",
+      "pump_load": "get_generator_pump_load_mw",
+      "pump_efficiency": "get_generator_pump_efficiency_percent"
     },
     "source_type": "ReEDSGenerator",
     "target_type": "PLEXOSGenerator",
@@ -288,59 +319,13 @@
       "forced_outage_rate": "forced_outage_rate_percent",
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
-      "min_stable_level": "min_stable_level_mw"
+      "min_stable_level": "min_stable_level_mw",
+      "pump_efficiency": "get_generator_pump_efficiency_percent",
+      "pump_load": "get_generator_pump_load_mw"
     },
     "source_type": "ReEDSStorage",
     "target_type": "PLEXOSGenerator",
     "version": 2
-  },
-  {
-    "defaults": {
-      "category": "battery"
-    },
-    "field_map": {
-      "category": "category",
-      "capacity": "capacity",
-      "max_power": "capacity",
-      "name": "name",
-      "ext": "ext"
-    },
-    "filter": {
-      "all_of": [
-        {
-          "casefold": true,
-          "field": "category",
-          "on_missing": "exclude",
-          "op": "in",
-          "values": [
-            "battery_1h",
-            "battery_2h",
-            "battery_4h",
-            "battery_6h",
-            "battery_8h",
-            "battery_10h",
-            "battery_12h",
-            "battery_24h"
-          ]
-        }
-      ]
-    },
-    "getters": {
-      "units": "get_component_units",
-      "max_soc": "get_battery_max_soc",
-      "min_soc": "get_battery_min_soc",
-      "fom_charge": "storage_fom_cost_energy",
-      "vom_charge": "storage_vom_cost_energy",
-      "initial_soc": "get_battery_initial_soc",
-      "charge_efficiency": "charge_efficiency_percent",
-      "discharge_efficiency": "discharge_efficiency_percent",
-      "forced_outage_rate": "forced_outage_rate_percent",
-      "maintenance_rate": "maintenance_rate_percent",
-      "mean_time_to_repair": "mean_time_to_repair_hours"
-    },
-    "source_type": "ReEDSGenerator",
-    "target_type": "PLEXOSBattery",
-    "version": 1
   },
   {
     "defaults": {
@@ -353,7 +338,8 @@
     },
     "getters": {
       "load": "region_load",
-      "units": "get_component_units"
+      "units": "get_component_units",
+      "ext": "region_ext"
     },
     "source_type": "ReEDSRegion",
     "target_type": "PLEXOSRegion",
@@ -406,7 +392,10 @@
     "getters": {
       "units": "get_component_units",
       "max_flow": "line_max_flow",
-      "min_flow": "line_min_flow"
+      "min_flow": "line_min_flow",
+      "loss_incr": "lines_loss_incremental",
+      "wheeling_charge": "lines_wheeling_charge",
+      "wheeling_charge_back": "lines_wheeling_charge_back"
     },
     "source_type": "ReEDSTransmissionLine",
     "target_type": "PLEXOSLine",
@@ -416,19 +405,20 @@
     "defaults": {
       "category": "reeds-reserve",
       "duration": 0.0,
-      "timeframe": 0.0
+      "timeframe": 0.0,
+      "is_enabled": 1
     },
     "field_map": {
       "name": "name",
-      "category": "category",
-      "ext": "ext"
+      "category": "category"
     },
     "getters": {
       "duration": "reserve_duration",
       "min_provision": "reserve_requirement",
       "timeframe": "reserve_timeframe",
       "type": "reserve_type",
-      "vors": "reserve_vors_percent"
+      "vors": "reserve_vors_percent",
+      "ext": "reserve_ext"
     },
     "source_type": "ReEDSReserve",
     "target_type": "PLEXOSReserve",
@@ -677,5 +667,29 @@
     "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
     "version": 15
+  },
+  {
+    "name": "interface_line_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_line_parent_interface",
+      "child_object": "reeds_membership_line_child_line",
+      "collection": "reeds_membership_collection_lines"
+    },
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 3
+  },
+  {
+    "name": "region_reserve_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "reeds_membership_region_child_reserve",
+      "child_object": "reeds_membership_parent_component",
+      "collection": "reeds_membership_collection_regions"
+    },
+    "source_type": "PLEXOSRegion",
+    "target_type": "PLEXOSMembership",
+    "version": 4
   }
 ]

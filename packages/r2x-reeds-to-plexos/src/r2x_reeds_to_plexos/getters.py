@@ -38,6 +38,8 @@ def _float_or_zero(value: Any | None) -> float:
 
 
 def _get_defaults(technology: str, key: str) -> float:
+    if technology.lower().startswith("battery"):
+        technology = "battery"
     defaults_path = files("r2x_reeds_to_plexos.config") / "defaults.json"
     with defaults_path.open() as f:
         defaults = json.load(f)
@@ -88,10 +90,22 @@ def region_load(component: ReEDSRegion, context: PluginContext) -> Result[float 
 
 
 @getter
-def fixed_load(component: ReEDSGenerator, context: PluginContext) -> Result[float | int, ValueError]:
-    """Return the fixed load as a PLEXOSPropertyValue with units MW."""
+def region_ext(component: ReEDSRegion, context: PluginContext) -> Result[dict, ValueError]:
+    """Return the PLEXOS region ext dict for a ReEDSRegion, including transmission_region."""
+    ext = getattr(component, "ext", {}) or {}
+    transmission_region = getattr(component, "transmission_region", None)
+    if transmission_region:
+        ext = dict(ext)
+        ext["transmission_region"] = transmission_region
+    return Ok(ext)
 
-    value = _float_or_zero(getattr(component, "fixed_load", None))
+
+@getter
+def hydro_max_energy_per_day(
+    component: ReEDSHydroGenerator, context: PluginContext
+) -> Result[float | int, ValueError]:
+    """Return the maximum energy per day for a hydro generator as a PLEXOSPropertyValue with units MW."""
+    value = _float_or_zero(getattr(component, "max_energy_per_day", 0.0))
     return Ok(value)
 
 
@@ -147,6 +161,69 @@ def storage_natural_inflow(component: ReEDSStorage, context: PluginContext) -> R
 
 
 @getter
+def get_generator_pump_efficiency_percent(
+    component: ReEDSGenerator, context: PluginContext
+) -> Result[float, ValueError]:
+    """Convert pumped hydro efficiency (0-1) to percent for PLEXOS."""
+    from r2x_reeds.models import (
+        ReEDSConsumingTechnology,
+        ReEDSHydroGenerator,
+        ReEDSStorage,
+        ReEDSThermalGenerator,
+        ReEDSVariableGenerator,
+    )
+
+    if isinstance(
+        component,
+        ReEDSConsumingTechnology | ReEDSThermalGenerator | ReEDSVariableGenerator | ReEDSHydroGenerator,
+    ):
+        return Ok(0.0)
+    elif isinstance(component, ReEDSStorage):
+        efficiency = getattr(component, "pump_efficiency", None)
+        if efficiency is not None:
+            return Ok(_float_or_zero(efficiency) * 100.0)
+
+        charge_efficiency = getattr(component, "charge_efficiency", None)
+        if charge_efficiency is not None:
+            return Ok(_float_or_zero(charge_efficiency) * 100.0)
+
+        round_trip_efficiency = getattr(component, "round_trip_efficiency", None)
+        if round_trip_efficiency is not None:
+            return Ok(_float_or_zero(round_trip_efficiency) * 100.0)
+    else:
+        return Ok(0.0)
+
+
+@getter
+def get_generator_pump_load_mw(
+    component: ReEDSGenerator, context: PluginContext
+) -> Result[float, ValueError]:
+    """Return the pumped hydro load in MW."""
+    from r2x_reeds.models import (
+        ReEDSConsumingTechnology,
+        ReEDSHydroGenerator,
+        ReEDSStorage,
+        ReEDSThermalGenerator,
+        ReEDSVariableGenerator,
+    )
+
+    if isinstance(
+        component,
+        ReEDSConsumingTechnology | ReEDSThermalGenerator | ReEDSVariableGenerator | ReEDSHydroGenerator,
+    ):
+        return Ok(0.0)
+    elif isinstance(component, ReEDSStorage):
+        load = getattr(component, "pump_load", None)
+        if load is not None:
+            return Ok(_float_or_zero(load))
+
+        capacity = getattr(component, "capacity", 0.0)
+        return Ok(float(capacity))
+    else:
+        return Ok(0.0)
+
+
+@getter
 def reserve_type(component: ReEDSReserve, context: PluginContext) -> Result[int, ValueError]:
     """Return the PLEXOS reserve type code for a ReEDSReserve."""
     mapping = {
@@ -162,6 +239,19 @@ def reserve_type(component: ReEDSReserve, context: PluginContext) -> Result[int,
         return Ok(1)
     res_type = res_type.value
     return Ok(mapping.get(res_type, 1))
+
+
+@getter
+def reserve_ext(component: ReEDSReserve, context: PluginContext) -> Result[dict, ValueError]:
+    """Return the PLEXOS reserve ext dict for a ReEDSReserve, including the associated region's transmission_region."""
+    ext = getattr(component, "ext", {}) or {}
+    region_obj = getattr(component, "region", None)
+    transmission_region = getattr(region_obj, "name", None) if region_obj else None
+
+    if region_obj:
+        ext = dict(ext)
+        ext["transmission_region"] = transmission_region
+    return Ok(ext)
 
 
 @getter
@@ -211,7 +301,7 @@ def discharge_efficiency_percent(
 ) -> Result[float, ValueError]:
     """Convert discharge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
-    efficiency = getattr(component, "discharge_efficiency", None)
+    efficiency = getattr(component, "round_trip_efficiency", None)
 
     if efficiency is not None:
         return Ok(_float_or_zero(efficiency) * 100.0)
@@ -367,6 +457,33 @@ def line_min_flow(component: ReEDSTransmissionLine, context: PluginContext) -> R
 
 
 @getter
+def lines_loss_incremental(
+    component: ReEDSTransmissionLine, context: PluginContext
+) -> Result[float, ValueError]:
+    """Return the incremental loss factor for the line."""
+    losses = getattr(component, "losses", None)
+    if losses is None:
+        return Ok(0.0)
+
+    incremental_loss = _float_or_zero(losses.incremental)
+    return Ok(incremental_loss)
+
+
+@getter
+def lines_wheeling_charge(line: Any, context: PluginContext) -> Result[float, ValueError]:
+    """Return the wheeling charge for the forward direction (from_region to to_region)."""
+    wc = getattr(line, "wheeling_charge", 0.001)
+    return Ok(float(wc))
+
+
+@getter
+def lines_wheeling_charge_back(line: Any, context: PluginContext) -> Result[float, ValueError]:
+    """Return the wheeling charge for the reverse direction (to_region to from_region)."""
+    wc_back = getattr(line, "wheeling_charge_back", 0.001)
+    return Ok(float(wc_back))
+
+
+@getter
 def storage_fom_cost_energy(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
     """Return energy-based FOM cost."""
     fom_cost = getattr(component, "fom_cost", None)
@@ -409,12 +526,12 @@ def reserve_duration(component: ReEDSReserve, context: PluginContext) -> Result[
 @getter
 def reserve_requirement(component: ReEDSReserve, context: PluginContext) -> Result[float | int, ValueError]:
     """Return the reserve requirement as a PLEXOSPropertyValue with units MW."""
-    value = _float_or_zero(getattr(component, "requirement", None))
+    value = _float_or_zero(getattr(component, "min_provision", None))
     return Ok(value)
 
 
 @getter
-def ramp_rate_mw_per_hour(
+def ramp_rate_up_mw_per_hour(
     component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
     """Convert ramp rate from MW/min to MW/hour for PLEXOS."""
@@ -423,6 +540,23 @@ def ramp_rate_mw_per_hour(
     if ramp_rate is None:
         technology = getattr(component, "technology", "")
         default_ramp_up = _get_defaults(technology, "ramp_rate_up")
+        if default_ramp_up > 0.0:
+            return Ok(float(default_ramp_up))
+        return Ok(0.0)
+
+    return Ok(float(ramp_rate) * 60.0)
+
+
+@getter
+def ramp_rate_down_mw_per_hour(
+    component: ReEDSThermalGenerator, context: PluginContext
+) -> Result[float, ValueError]:
+    """Convert ramp rate from MW/min to MW/hour for PLEXOS."""
+    ramp_rate = getattr(component, "ramp_rate", None)
+
+    if ramp_rate is None:
+        technology = getattr(component, "technology", "")
+        default_ramp_up = _get_defaults(technology, "ramp_rate_down")
         if default_ramp_up > 0.0:
             return Ok(float(default_ramp_up))
         return Ok(0.0)
@@ -524,31 +658,15 @@ def hydro_min_flow(component: ReEDSHydroGenerator, context: PluginContext) -> Re
     flow_range = getattr(component, "flow_range", None)
     if flow_range is None:
         return Ok(0.0)
-
-    # flow_range is MinMax(min=..., max=...)
     return Ok(float(flow_range.min))
-
-
-@getter
-def hydro_ramp_rate_mw_per_hour(
-    component: ReEDSHydroGenerator, context: PluginContext
-) -> Result[float, ValueError]:
-    """Convert hydro ramp rate from MW/min to MW/hour."""
-    ramp_rate = getattr(component, "ramp_rate", None)
-    if ramp_rate is None:
-        return Ok(0.0)
-    return Ok(float(ramp_rate) * 60.0)
 
 
 @getter
 def hydro_must_run_flag(component: ReEDSHydroGenerator, context: PluginContext) -> Result[int, ValueError]:
     """Return must_run flag for non-dispatchable hydro."""
     is_dispatchable = getattr(component, "is_dispatchable", True)
-
-    # If not dispatchable, set must_run to 1
     if not is_dispatchable:
         return Ok(1)
-
     return Ok(0)
 
 
@@ -603,6 +721,14 @@ def reeds_membership_collection_node_to(
 ) -> Result[CollectionEnum, ValueError]:
     """Return the NodeTo collection enum."""
     return Ok(CollectionEnum.NodeTo)
+
+
+@getter
+def reeds_membership_collection_regions(
+    component: Any, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
+    """Return the Region collection enum."""
+    return Ok(CollectionEnum.Regions)
 
 
 @getter
@@ -946,3 +1072,45 @@ def _find_generator_reserve_by_type(
             return Ok(reserve)
 
     return Err(ValueError(f"No PLEXOSReserve found for '{matching_reserve_name}'"))
+
+
+@getter
+def reeds_membership_region_child_reserve(region: Any, context: PluginContext) -> Result[Any, ValueError]:
+    """Find the reserve(s) for this region using ext['transmission_region']."""
+    from r2x_plexos.models import PLEXOSReserve
+
+    region_ext = getattr(region, "ext", {}) or {}
+    transmission_region = region_ext.get("transmission_region", None)
+    if not transmission_region:
+        return Err(ValueError(f"No transmission_region in ext for region '{getattr(region, 'name', '')}'"))
+
+    # You may want to return all reserves for this region, or just one
+    for reserve in context.target_system.get_components(PLEXOSReserve):
+        reserve_ext = getattr(reserve, "ext", {}) or {}
+        if reserve_ext.get("transmission_region") == transmission_region:
+            return Ok(reserve)
+    return Err(ValueError(f"No PLEXOSReserve found for transmission_region '{transmission_region}'"))
+
+
+@getter
+def reeds_membership_line_parent_interface(line: Any, context: PluginContext) -> Result[Any, ValueError]:
+    """Return the parent interface for a translated line, matching either direction by region names."""
+    from r2x_plexos.models import PLEXOSInterface
+
+    line_name = getattr(line, "name", "")
+    parts = line_name.split("_")
+    if len(parts) < 3:
+        return Err(ValueError(f"Line name '{line_name}' does not match expected format"))
+
+    from_region, to_region = parts[0], parts[1]
+
+    for iface in context.target_system.get_components(PLEXOSInterface):
+        iface_name = getattr(iface, "name", "")
+        if f"{from_region}||{to_region}" in iface_name or f"{to_region}||{from_region}" in iface_name:
+            return Ok(iface)
+
+    return Err(
+        ValueError(
+            f"No PLEXOSInterface found containing '{from_region}||{to_region}' or '{to_region}||{from_region}' in its name"
+        )
+    )
