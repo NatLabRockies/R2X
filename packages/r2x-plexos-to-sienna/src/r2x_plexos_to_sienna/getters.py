@@ -249,6 +249,14 @@ def get_line_arc(component: PLEXOSLine, context: PluginContext) -> Result[Arc, A
     if not from_node or not to_node:
         raise ValueError(f"Could not find both nodes for line {component.name}. Memberships: {memberships}")
 
+    arc_name = f"{from_node}-{to_node}"
+
+    # Reuse existing Arc if one with the same name already exists in the target system
+    existing_arcs = list(context.target_system.get_components(Arc))
+    existing_arc = next((a for a in existing_arcs if getattr(a, "name", None) == arc_name), None)
+    if existing_arc is not None:
+        return Ok(existing_arc)
+
     acbuses = list(context.target_system.get_components(ACBus))
     from_bus = next((bus for bus in acbuses if getattr(bus, "name", None) == from_node), None)
     to_bus = next((bus for bus in acbuses if getattr(bus, "name", None) == to_node), None)
@@ -259,7 +267,7 @@ def get_line_arc(component: PLEXOSLine, context: PluginContext) -> Result[Arc, A
             f"Available: {[bus.name for bus in acbuses]}"
         )
 
-    arc_sense = Arc(name=f"{from_node}-{to_node}", from_to=from_bus, to_from=to_bus)
+    arc_sense = Arc(name=arc_name, from_to=from_bus, to_from=to_bus)
     return Ok(arc_sense)
 
 

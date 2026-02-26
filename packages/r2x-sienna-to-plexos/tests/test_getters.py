@@ -2127,7 +2127,6 @@ def test_get_load_subtracter_with_value(context):
     from r2x_sienna.models import RenewableDispatch
     from r2x_sienna.models.costs import RenewableGenerationCost
 
-
     bus = ACBus(name="N1", base_voltage=115.0, number=1)
     context.source_system.add_component(bus)
 
