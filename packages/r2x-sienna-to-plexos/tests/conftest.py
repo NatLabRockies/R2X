@@ -14,7 +14,6 @@ SRC_DIR = ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-
 pytest_plugins = [
     "tests.fixtures.time_series",
     "tests.fixtures.systems",
@@ -25,7 +24,6 @@ pytest_plugins = [
     "tests.fixtures.five_bus_systems",
     "tests.fixtures.reeds_systems",
 ]
-
 
 @pytest.fixture
 def caplog(caplog):

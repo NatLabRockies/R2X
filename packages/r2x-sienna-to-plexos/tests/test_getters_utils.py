@@ -1,3 +1,5 @@
+"""Tests for getters_utils multiband conversion functions."""
+
 import pytest
 from infrasys.cost_curves import CostCurve, FuelCurve, UnitSystem
 from infrasys.function_data import LinearFunctionData, PiecewiseLinearData, QuadraticFunctionData, XYCoords
@@ -53,7 +55,6 @@ def test_normalize_value_curve_all_types():
     curve = InputOutputCurve(function_data=LinearFunctionData(proportional_term=1, constant_term=2))
     assert getters_utils.normalize_value_curve(curve) is curve
 
-    from infrasys.function_data import LinearFunctionData
     from infrasys.value_curves import AverageRateCurve, IncrementalCurve
 
     class DummyInc(IncrementalCurve):
@@ -68,20 +69,16 @@ def test_normalize_value_curve_all_types():
     assert getters_utils.normalize_value_curve(DummyInc(function_data=fd, initial_input=0.0)) == "ok"
     assert getters_utils.normalize_value_curve(DummyAvg(function_data=fd, initial_input=0.0)) == "ok"
 
-    # Exception path
     class BadInc(IncrementalCurve):
         def to_input_output(self):
             raise Exception("fail")
 
     assert getters_utils.normalize_value_curve(BadInc(function_data=fd, initial_input=0.0)) is None
-
-    # Not a curve
     assert getters_utils.normalize_value_curve(123) is None
 
 
 def test_extract_piecewise_segments_empty_and_bad_dx():
     assert getters_utils.extract_piecewise_segments([]) == ([], [])
-    # Bad dx (should skip)
     pts = [XYCoords(0, 0), XYCoords(0, 1), XYCoords(2, 5)]
     load, slopes = getters_utils.extract_piecewise_segments(pts)
     assert load == [2.0]
@@ -98,7 +95,6 @@ def test_resolve_base_power_variants():
     del c.base_power
     c._system_base = 7
     assert getters_utils.resolve_base_power(c) == 7.0
-    # None present
     del c._system_base
     assert getters_utils.resolve_base_power(c) == 1.0
 
@@ -152,7 +148,6 @@ def test_coerce_value_variants():
 
 
 def test_ensure_region_node_memberships(context):
-    # Setup: 2 regions, 2 nodes, 2 buses with area
     area1 = Area(name="A1")
     area2 = Area(name="A2")
     node1 = PLEXOSNode(name="N1")
@@ -170,7 +165,6 @@ def test_ensure_region_node_memberships(context):
     context.source_system.add_component(bus1)
     context.source_system.add_component(bus2)
     getters_utils.ensure_region_node_memberships(context)
-    # Should create memberships for both
     for node in [node1, node2]:
         memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
         assert any(m.collection == CollectionEnum.Region for m in memberships)
@@ -216,7 +210,6 @@ def test_ensure_head_tail_storage_generator_membership(context):
     getters_utils.ensure_head_storage_generator_membership(context)
     memberships = context.target_system.get_supplemental_attributes_with_component(gen, PLEXOSMembership)
     assert any(m.collection == CollectionEnum.HeadStorage for m in memberships)
-    # Tail
     gen2 = PLEXOSGenerator(name="foo_tail")
     storage2 = PLEXOSStorage(name="foo_tail")
     context.target_system.add_component(gen2)
@@ -427,13 +420,11 @@ def test_compute_heat_rate_data_piecewise():
 
 
 def test_compute_heat_rate_data_invalid():
-    # No operation_cost
     class DummyComponent:
         pass
 
     assert getters_utils.compute_heat_rate_data(DummyComponent()) == {}
 
-    # operation_cost with variable not FuelCurve
     class DummyCost:
         variable = object()
 
@@ -442,7 +433,6 @@ def test_compute_heat_rate_data_invalid():
 
     assert getters_utils.compute_heat_rate_data(DummyComponent2()) == {}
 
-    # FuelCurve with value_curve that can't be normalized
     class DummyFuelCurve:
         value_curve = None
 
@@ -456,7 +446,6 @@ def test_compute_heat_rate_data_invalid():
 
 
 def test_compute_heat_rate_data_curve_with_none_function_data():
-    # FuelCurve with value_curve that normalizes to an object with function_data=None
     class DummyCurve:
         function_data = None
 
@@ -477,8 +466,6 @@ def test_extract_piecewise_segments_empty():
 
 
 def test_extract_piecewise_segments_negative_dx():
-    from infrasys.function_data import XYCoords
-
     points = [XYCoords(0, 0), XYCoords(0, 10), XYCoords(10, 20)]
     load_points, slopes = getters_utils.extract_piecewise_segments(points)
     assert load_points == [10.0]
@@ -486,8 +473,6 @@ def test_extract_piecewise_segments_negative_dx():
 
 
 def test_extract_piecewise_segments_normal():
-    from infrasys.function_data import XYCoords
-
     points = [XYCoords(0, 0), XYCoords(10, 20), XYCoords(20, 40)]
     load_points, slopes = getters_utils.extract_piecewise_segments(points)
     assert load_points == [10.0, 20.0]
@@ -540,16 +525,12 @@ def test_create_multiband_heat_rate_and_markup():
 
 
 def test_normalize_value_curve_input_output():
-    from infrasys.function_data import LinearFunctionData
-    from infrasys.value_curves import InputOutputCurve
-
     fd = LinearFunctionData(proportional_term=1.0, constant_term=2.0)
     ioc = InputOutputCurve(function_data=fd)
     assert getters_utils.normalize_value_curve(ioc) is ioc
 
 
 def test_normalize_value_curve_incremental_average():
-    from infrasys.function_data import LinearFunctionData
     from infrasys.value_curves import AverageRateCurve, IncrementalCurve
 
     fd = LinearFunctionData(proportional_term=1.0, constant_term=2.0)
@@ -579,3 +560,136 @@ def test_extract_base_name():
     assert getters_utils._extract_base_name("foo_Reservoir_tail") == "foo"
     assert getters_utils._extract_base_name("foo_Reservoir") == "foo"
     assert getters_utils._extract_base_name("foo") == "foo"
+
+
+def test_create_multiband_heat_rate_two_bands(two_band_load_points, two_band_heat_rate_slopes):
+    """create_multiband_heat_rate returns two PLEXOSPropertyValue objects with 2 bands."""
+    load_prop, heat_prop = getters_utils.create_multiband_heat_rate(
+        two_band_load_points, two_band_heat_rate_slopes
+    )
+    assert load_prop.get_bands() == [1, 2]
+    assert heat_prop.get_bands() == [1, 2]
+
+
+def test_create_multiband_heat_rate_load_points_correct(two_band_load_points, two_band_heat_rate_slopes):
+    load_prop, _ = getters_utils.create_multiband_heat_rate(two_band_load_points, two_band_heat_rate_slopes)
+    assert len(load_prop._by_band.get(1, set())) == 1
+    assert len(load_prop._by_band.get(2, set())) == 1
+
+
+def test_create_multiband_heat_rate_slopes_correct(two_band_load_points, two_band_heat_rate_slopes):
+    _, heat_prop = getters_utils.create_multiband_heat_rate(two_band_load_points, two_band_heat_rate_slopes)
+    assert heat_prop.get_bands() == [1, 2]
+    assert len(heat_prop._by_band) == 2
+
+
+def test_create_multiband_heat_rate_three_bands(three_band_load_points, three_band_heat_rate_slopes):
+    load_prop, heat_prop = getters_utils.create_multiband_heat_rate(
+        three_band_load_points, three_band_heat_rate_slopes
+    )
+    assert load_prop.get_bands() == [1, 2, 3]
+    assert heat_prop.get_bands() == [1, 2, 3]
+
+
+def test_create_multiband_heat_rate_single_band(single_band_load_points, single_band_heat_rate_slope):
+    load_prop, heat_prop = getters_utils.create_multiband_heat_rate(
+        single_band_load_points, single_band_heat_rate_slope
+    )
+    assert load_prop.get_bands() == [1]
+    assert heat_prop.get_bands() == [1]
+
+
+def test_create_multiband_heat_rate_empty_input(empty_load_points, empty_slopes):
+    load_prop, heat_prop = getters_utils.create_multiband_heat_rate(empty_load_points, empty_slopes)
+    assert load_prop.get_bands() == []
+    assert heat_prop.get_bands() == []
+
+
+def test_create_multiband_heat_rate_returns_plexos_property_values(
+    two_band_load_points, two_band_heat_rate_slopes
+):
+    load_prop, heat_prop = getters_utils.create_multiband_heat_rate(
+        two_band_load_points, two_band_heat_rate_slopes
+    )
+    assert isinstance(load_prop, PLEXOSPropertyValue)
+    assert isinstance(heat_prop, PLEXOSPropertyValue)
+
+
+def test_create_multiband_markup_two_bands(two_band_load_points, two_band_markup_slopes):
+    point_prop, markup_prop = getters_utils.create_multiband_markup(
+        two_band_load_points, two_band_markup_slopes
+    )
+    assert point_prop.get_bands() == [1, 2]
+    assert markup_prop.get_bands() == [1, 2]
+
+
+def test_create_multiband_markup_load_points_correct(two_band_load_points, two_band_markup_slopes):
+    point_prop, _ = getters_utils.create_multiband_markup(two_band_load_points, two_band_markup_slopes)
+    assert len(point_prop._by_band.get(1, set())) == 1
+    assert len(point_prop._by_band.get(2, set())) == 1
+
+
+def test_create_multiband_markup_values_correct(two_band_load_points, two_band_markup_slopes):
+    _, markup_prop = getters_utils.create_multiband_markup(two_band_load_points, two_band_markup_slopes)
+    assert markup_prop.get_bands() == [1, 2]
+    assert len(markup_prop._by_band) == 2
+
+
+def test_create_multiband_markup_three_bands(three_band_load_points, three_band_markup_slopes):
+    point_prop, markup_prop = getters_utils.create_multiband_markup(
+        three_band_load_points, three_band_markup_slopes
+    )
+    assert point_prop.get_bands() == [1, 2, 3]
+    assert markup_prop.get_bands() == [1, 2, 3]
+
+
+def test_create_multiband_markup_single_band(single_band_load_points, two_band_markup_slopes):
+    point_prop, markup_prop = getters_utils.create_multiband_markup(
+        single_band_load_points, [two_band_markup_slopes[0]]
+    )
+    assert point_prop.get_bands() == [1]
+    assert markup_prop.get_bands() == [1]
+
+
+def test_create_multiband_markup_empty_input(empty_load_points, empty_slopes):
+    point_prop, markup_prop = getters_utils.create_multiband_markup(empty_load_points, empty_slopes)
+    assert point_prop.get_bands() == []
+    assert markup_prop.get_bands() == []
+
+
+def test_create_multiband_markup_returns_plexos_property_values(two_band_load_points, two_band_markup_slopes):
+    point_prop, markup_prop = getters_utils.create_multiband_markup(
+        two_band_load_points, two_band_markup_slopes
+    )
+    assert isinstance(point_prop, PLEXOSPropertyValue)
+    assert isinstance(markup_prop, PLEXOSPropertyValue)
+
+
+def test_create_multiband_heat_rate_band_numbering_starts_at_one(
+    two_band_load_points, two_band_heat_rate_slopes
+):
+    load_prop, _ = getters_utils.create_multiband_heat_rate(two_band_load_points, two_band_heat_rate_slopes)
+    bands = load_prop.get_bands()
+    assert 0 not in bands
+    assert 1 in bands
+    assert 2 in bands
+
+
+def test_create_multiband_markup_band_numbering_starts_at_one(two_band_load_points, two_band_markup_slopes):
+    point_prop, _ = getters_utils.create_multiband_markup(two_band_load_points, two_band_markup_slopes)
+    bands = point_prop.get_bands()
+    assert 0 not in bands
+    assert 1 in bands
+    assert 2 in bands
+
+
+def test_multiband_heat_rate_float_conversion(two_band_load_points, two_band_heat_rate_slopes):
+    load_prop, heat_prop = getters_utils.create_multiband_heat_rate([60, 120], [12, 13])
+    assert load_prop.get_bands() == [1, 2]
+    assert heat_prop.get_bands() == [1, 2]
+
+
+def test_multiband_markup_float_conversion(two_band_load_points, two_band_markup_slopes):
+    point_prop, markup_prop = getters_utils.create_multiband_markup([40, 80], [13, 16])
+    assert point_prop.get_bands() == [1, 2]
+    assert markup_prop.get_bands() == [1, 2]

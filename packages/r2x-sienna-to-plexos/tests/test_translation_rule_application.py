@@ -30,8 +30,7 @@ def test_sienna_area_translates_to_node(tmp_path):
 
     nodes = list(context.target_system.get_components(PLEXOSNode))
     assert len(nodes) == 1
-    node = nodes[0]
-    assert node.name == "A_TEST"
+    assert nodes[0].name == "A_TEST"
 
 
 def test_sienna_area_translates_to_zone(tmp_path):
@@ -49,80 +48,75 @@ def test_sienna_area_translates_to_zone(tmp_path):
 
     zones = list(context.target_system.get_components(PLEXOSZone))
     assert len(zones) == 1
-    zone = zones[0]
-    assert zone.name == "Z42"
+    assert zones[0].name == "Z42"
 
 
 def test_sienna_generators_translate_to_plexos_types(tmp_path):
     from r2x_plexos.models import PLEXOSGenerator, PLEXOSNode
-    from r2x_sienna.models import (
-        ACBus,
-        Area,
-        HydroDispatch,
-        RenewableDispatch,
-        ThermalStandard,
-    )
+    from r2x_sienna.models import ACBus, Area, HydroDispatch, RenewableDispatch, ThermalStandard
     from r2x_sienna.models.costs import HydroGenerationCost, RenewableGenerationCost, ThermalGenerationCost
     from r2x_sienna.models.enums import PrimeMoversType, ThermalFuels
     from r2x_sienna.models.named_tuples import MinMax, UpDown
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
-    area = Area(name="A1")
-    context.source_system.add_component(area)
+    context.source_system.add_component(Area(name="A1"))
 
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     context.source_system.add_component(bus1)
 
-    thermal_gen_1 = ThermalStandard(
-        name="THERM1",
-        must_run=False,
-        bus=bus1,
-        status=False,
-        base_power=100.0,
-        rating=200.0,
-        active_power=0.0,
-        reactive_power=0.0,
-        active_power_limits=MinMax(min=0, max=1),
-        prime_mover_type=PrimeMoversType.CC,
-        fuel=ThermalFuels.NATURAL_GAS,
-        operation_cost=ThermalGenerationCost.example(),
-        time_at_status=1_000,
+    context.source_system.add_component(
+        ThermalStandard(
+            name="THERM1",
+            must_run=False,
+            bus=bus1,
+            status=False,
+            base_power=100.0,
+            rating=200.0,
+            active_power=0.0,
+            reactive_power=0.0,
+            active_power_limits=MinMax(min=0, max=1),
+            prime_mover_type=PrimeMoversType.CC,
+            fuel=ThermalFuels.NATURAL_GAS,
+            operation_cost=ThermalGenerationCost.example(),
+            time_at_status=1_000,
+        )
     )
-    context.source_system.add_component(thermal_gen_1)
 
-    ren_dist_1 = RenewableDispatch(
-        name="VRE1",
-        bus=ACBus.example(),
-        base_power=100,
-        rating=1,
-        active_power=0.8,
-        reactive_power=0.0,
-        prime_mover_type=PrimeMoversType.PVe,
-        power_factor=1.0,
-        operation_cost=RenewableGenerationCost(),
+    context.source_system.add_component(
+        RenewableDispatch(
+            name="VRE1",
+            bus=ACBus.example(),
+            base_power=100,
+            rating=1,
+            active_power=0.8,
+            reactive_power=0.0,
+            prime_mover_type=PrimeMoversType.PVe,
+            power_factor=1.0,
+            operation_cost=RenewableGenerationCost(),
+        )
     )
-    context.source_system.add_component(ren_dist_1)
 
-    hyd_dispatch_1 = HydroDispatch(
-        name="HYDRO1",
-        available=True,
-        bus=ACBus.example(),
-        active_power=80.0,
-        reactive_power=0.0,
-        rating=100.0,
-        prime_mover_type=PrimeMoversType.HY,
-        active_power_limits=MinMax(min=10.0, max=100.0),
-        reactive_power_limits=MinMax(min=-30.0, max=30.0),
-        ramp_limits=UpDown(up=5.0, down=5.0),
-        time_limits=UpDown(up=1.0, down=1.0),
-        base_power=100.0,
-        status=True,
-        time_at_status=24.0,
-        operation_cost=HydroGenerationCost.example(),
-        category="hydro",
+    context.source_system.add_component(
+        HydroDispatch(
+            name="HYDRO1",
+            available=True,
+            bus=ACBus.example(),
+            active_power=80.0,
+            reactive_power=0.0,
+            rating=100.0,
+            prime_mover_type=PrimeMoversType.HY,
+            active_power_limits=MinMax(min=10.0, max=100.0),
+            reactive_power_limits=MinMax(min=-30.0, max=30.0),
+            ramp_limits=UpDown(up=5.0, down=5.0),
+            time_limits=UpDown(up=1.0, down=1.0),
+            base_power=100.0,
+            status=True,
+            time_at_status=24.0,
+            operation_cost=HydroGenerationCost.example(),
+            category="hydro",
+        )
     )
-    context.source_system.add_component(hyd_dispatch_1)
 
     context.target_system = System(name="target", auto_add_composed_components=True)
     context.rules = rules
@@ -146,34 +140,33 @@ def test_sienna_storage_translates_to_plexos_storage(tmp_path):
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
-    area = Area(name="A1")
-    context.source_system.add_component(area)
+    context.source_system.add_component(Area(name="A1"))
 
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     context.source_system.add_component(bus1)
-
-    battery = EnergyReservoirStorage(
-        name="battery",
-        available=True,
-        bus=bus1,
-        prime_mover_type=PrimeMoversType.BA,
-        storage_technology_type=StorageTechs.OTHER_CHEM,
-        storage_capacity=1000.0,
-        storage_level_limits=MinMax(min=0.1, max=0.9),
-        initial_storage_capacity_level=0.5,
-        rating=250.0,
-        active_power=0.0,
-        input_active_power_limits=MinMax(min=0.0, max=200.0),
-        output_active_power_limits=MinMax(min=0.0, max=200.0),
-        efficiency=InputOutput(input=0.95, output=0.95),
-        reactive_power=0.0,
-        reactive_power_limits=MinMax(min=-50.0, max=50.0),
-        base_power=250.0,
-        conversion_factor=1.0,
-        storage_target=0.5,
-        cycle_limits=5000,
+    context.source_system.add_component(
+        EnergyReservoirStorage(
+            name="battery",
+            available=True,
+            bus=bus1,
+            prime_mover_type=PrimeMoversType.BA,
+            storage_technology_type=StorageTechs.OTHER_CHEM,
+            storage_capacity=1000.0,
+            storage_level_limits=MinMax(min=0.1, max=0.9),
+            initial_storage_capacity_level=0.5,
+            rating=250.0,
+            active_power=0.0,
+            input_active_power_limits=MinMax(min=0.0, max=200.0),
+            output_active_power_limits=MinMax(min=0.0, max=200.0),
+            efficiency=InputOutput(input=0.95, output=0.95),
+            reactive_power=0.0,
+            reactive_power_limits=MinMax(min=-50.0, max=50.0),
+            base_power=250.0,
+            conversion_factor=1.0,
+            storage_target=0.5,
+            cycle_limits=5000,
+        )
     )
-    context.source_system.add_component(battery)
     context.target_system = System(name="target", auto_add_composed_components=True)
     context.rules = rules
 
@@ -194,10 +187,8 @@ def test_sienna_interface_translates_to_plexos_interface(tmp_path):
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
-    area1 = Area(name="A1")
-    area2 = Area(name="A2")
-    context.source_system.add_component(area1)
-    context.source_system.add_component(area2)
+    context.source_system.add_component(Area(name="A1"))
+    context.source_system.add_component(Area(name="A2"))
     context.source_system.add_component(
         TransmissionInterface(
             name="A1_A2-IFACE_1_2",
@@ -213,8 +204,7 @@ def test_sienna_interface_translates_to_plexos_interface(tmp_path):
 
     interfaces = list(context.target_system.get_components(PLEXOSInterface))
     assert len(interfaces) == 1
-    iface = interfaces[0]
-    assert iface.name == "A1_A2-IFACE_1_2"
+    assert interfaces[0].name == "A1_A2-IFACE_1_2"
 
 
 def test_sienna_reserve_translates_to_plexos_reserve(tmp_path):
@@ -240,9 +230,8 @@ def test_sienna_reserve_translates_to_plexos_reserve(tmp_path):
 
     reserves = list(context.target_system.get_components(PLEXOSReserve))
     assert len(reserves) == 1
-    reserve = reserves[0]
-    assert reserve.name == "REG_UP"
-    assert reserve.duration == 3600.0
+    assert reserves[0].name == "REG_UP"
+    assert reserves[0].duration == 3600.0
 
 
 def test_sienna_transmission_line_translates_to_plexos_line(tmp_path):
@@ -252,10 +241,8 @@ def test_sienna_transmission_line_translates_to_plexos_line(tmp_path):
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
-    area1 = Area(name="A1")
-    area2 = Area(name="A2")
-    context.source_system.add_component(area1)
-    context.source_system.add_component(area2)
+    context.source_system.add_component(Area(name="A1"))
+    context.source_system.add_component(Area(name="A2"))
 
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     bus3 = ACBus(name="N4", base_voltage=115.0, number=3)
@@ -264,25 +251,26 @@ def test_sienna_transmission_line_translates_to_plexos_line(tmp_path):
 
     arc1 = Arc(from_to=bus1, to_from=bus3)
     context.source_system.add_component(arc1)
-
-    interface = TransmissionInterface(
-        name="IFACE",
-        active_power_flow_limits=MinMax(min=-150.0, max=150.0),
-        direction_mapping={"line-01": 1, "line-02": -2},
+    context.source_system.add_component(
+        TransmissionInterface(
+            name="IFACE",
+            active_power_flow_limits=MinMax(min=-150.0, max=150.0),
+            direction_mapping={"line-01": 1, "line-02": -2},
+        )
     )
-    context.source_system.add_component(interface)
-    line1 = Line(
-        name="LINE_1_2",
-        rating=100.0,
-        r=0.01,
-        x=0.1,
-        arc=arc1,
-        b=FromTo_ToFrom(from_to=0.0, to_from=0.0),
-        active_power_flow=0.0,
-        reactive_power_flow=0.0,
-        angle_limits=MinMax(min=-0.03, max=0.03),
+    context.source_system.add_component(
+        Line(
+            name="LINE_1_2",
+            rating=100.0,
+            r=0.01,
+            x=0.1,
+            arc=arc1,
+            b=FromTo_ToFrom(from_to=0.0, to_from=0.0),
+            active_power_flow=0.0,
+            reactive_power_flow=0.0,
+            angle_limits=MinMax(min=-0.03, max=0.03),
+        )
     )
-    context.source_system.add_component(line1)
 
     context.target_system = System(name="target", auto_add_composed_components=True)
     context.rules = rules
@@ -292,10 +280,9 @@ def test_sienna_transmission_line_translates_to_plexos_line(tmp_path):
 
     lines = list(context.target_system.get_components(PLEXOSLine))
     assert len(lines) == 1
-    line = lines[0]
-    assert line.name == "LINE_1_2"
-    assert hasattr(line, "min_flow")
-    assert hasattr(line, "max_flow")
+    assert lines[0].name == "LINE_1_2"
+    assert hasattr(lines[0], "min_flow")
+    assert hasattr(lines[0], "max_flow")
 
 
 def test_multiple_areas_create_multiple_nodes_and_zones(tmp_path):
@@ -304,13 +291,10 @@ def test_multiple_areas_create_multiple_nodes_and_zones(tmp_path):
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
-    context.source_system.add_component(LoadZone(name="A1"))
-    context.source_system.add_component(LoadZone(name="A2"))
-    context.source_system.add_component(LoadZone(name="A3"))
-
-    context.source_system.add_component(ACBus(name="A1", base_voltage=115.0, number=1))
-    context.source_system.add_component(ACBus(name="A2", base_voltage=115.0, number=2))
-    context.source_system.add_component(ACBus(name="A3", base_voltage=115.0, number=3))
+    for name in ("A1", "A2", "A3"):
+        context.source_system.add_component(LoadZone(name=name))
+    for i, name in enumerate(("A1", "A2", "A3"), start=1):
+        context.source_system.add_component(ACBus(name=name, base_voltage=115.0, number=i))
     context.target_system = System(name="target", auto_add_composed_components=True)
     context.rules = rules
 
@@ -322,9 +306,5 @@ def test_multiple_areas_create_multiple_nodes_and_zones(tmp_path):
 
     assert len(nodes) == 3
     assert len(zones) == 3
-
-    node_names = {node.name for node in nodes}
-    zone_names = {zone.name for zone in zones}
-
-    assert node_names == {"A1", "A2", "A3"}
-    assert zone_names == {"A1", "A2", "A3"}
+    assert {n.name for n in nodes} == {"A1", "A2", "A3"}
+    assert {z.name for z in zones} == {"A1", "A2", "A3"}

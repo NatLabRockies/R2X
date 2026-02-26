@@ -201,11 +201,11 @@ def test_get_power_load_skips_loads_without_max_active_power():
 
 
 def test_getter_receives_correct_context_and_component(context_with_buses):
-    """Getter functions receive TranslationContext and source component."""
+    """Getter functions receive PluginContext and source component."""
     from r2x_sienna.models import ACBus
 
     from r2x_core import Rule
-    from r2x_core.rules_utils import _build_target_fields
+    from r2x_core.rules import _build_target_fields
 
     received_context = None
     received_component = None

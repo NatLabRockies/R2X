@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from importlib.resources import files
 
+import pytest
+
 
 def test_rules_json_exists_and_loads() -> None:
     """Ensure the packaged rules file is present and valid JSON."""
@@ -121,3 +123,305 @@ def test_node_rule_is_first() -> None:
             assert (
                 i > node_rule_index
             ), f"Rule {rule.get('name', 'unknown')} depends on acbus_to_node but comes before it"
+
+
+def test_rule_from_records_basic() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([{"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1}])
+    assert len(rules) == 1
+    assert rules[0].source_type == "ACBus"
+    assert rules[0].target_type == "PLEXOSNode"
+    assert rules[0].version == 1
+
+
+def test_rule_from_records_with_field_map() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {
+            "source_type": "ACBus",
+            "target_type": "PLEXOSNode",
+            "version": 1,
+            "field_map": {"name": "name", "voltage": "base_voltage"},
+        }
+    ])
+    assert rules[0].field_map == {"name": "name", "voltage": "base_voltage"}
+
+
+def test_rule_from_records_with_getters() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {
+            "source_type": "ACBus",
+            "target_type": "PLEXOSNode",
+            "version": 1,
+            "getters": {"is_slack": "is_slack_bus", "units": "get_availability"},
+        }
+    ])
+    assert "is_slack" in rules[0].getters
+    assert "units" in rules[0].getters
+
+
+def test_rule_from_records_with_defaults() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {
+            "source_type": "ACBus",
+            "target_type": "PLEXOSNode",
+            "version": 1,
+            "defaults": {"units": 1, "is_slack": 0},
+        }
+    ])
+    assert rules[0].defaults == {"units": 1, "is_slack": 0}
+
+
+def test_rule_from_records_multiple() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1},
+        {"source_type": "Line", "target_type": "PLEXOSLine", "version": 1},
+    ])
+    assert len(rules) == 2
+    assert rules[0].source_type == "ACBus"
+    assert rules[1].source_type == "Line"
+
+
+def test_rule_from_records_empty_list() -> None:
+    from r2x_core import Rule
+
+    assert Rule.from_records([]) == []
+
+
+def test_rule_validation_requires_version() -> None:
+    from r2x_core import Rule
+
+    with pytest.raises((KeyError, ValueError, TypeError)):
+        Rule.from_records([{"source_type": "ACBus", "target_type": "PLEXOSNode"}])
+
+
+def test_rule_field_map_accepts_list_values() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {
+            "source_type": "ThermalStandard",
+            "target_type": "PLEXOSGenerator",
+            "version": 1,
+            "field_map": {"max_capacity": ["active_power_limits", "max_active_power"]},
+            "getters": {"max_capacity": "get_max_capacity"},
+        }
+    ])
+    assert isinstance(rules[0].field_map["max_capacity"], list)
+    assert len(rules[0].field_map["max_capacity"]) == 2
+
+
+def test_rule_field_map_accepts_string_values() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1, "field_map": {"name": "name"}}
+    ])
+    assert isinstance(rules[0].field_map["name"], str)
+
+
+def test_rule_version_is_integer() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([{"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1}])
+    assert isinstance(rules[0].version, int)
+
+
+def test_rules_can_have_optional_source_target() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {"source_type": "DefaultSource", "target_type": "DefaultTarget", "version": 1}
+    ])
+    assert len(rules) == 1
+    assert rules[0].source_type == "DefaultSource"
+    assert rules[0].target_type == "DefaultTarget"
+
+
+def test_rule_has_required_attributes() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([{"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1}])
+    rule = rules[0]
+    assert hasattr(rule, "version")
+    assert hasattr(rule, "source_type")
+    assert hasattr(rule, "target_type")
+
+
+def test_rule_field_map_defaults_to_empty() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([{"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1}])
+    assert hasattr(rules[0], "field_map")
+
+
+def test_rule_getters_defaults_to_empty() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([{"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1}])
+    assert hasattr(rules[0], "getters")
+
+
+def test_rule_defaults_defaults_to_empty() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([{"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1}])
+    assert hasattr(rules[0], "defaults")
+
+
+def test_rule_with_all_fields() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {
+            "source_type": "ThermalStandard",
+            "target_type": "PLEXOSGenerator",
+            "version": 1,
+            "field_map": {
+                "name": "name",
+                "max_capacity": ["active_power_limits", "max_active_power"],
+            },
+            "getters": {
+                "heat_rate": "get_heat_rate",
+                "fuel_price": "get_fuel_price",
+                "max_capacity": "get_max_capacity",
+            },
+            "defaults": {"units": 1, "forced_outage_rate": 0.0},
+        }
+    ])
+    rule = rules[0]
+    assert rule.source_type == "ThermalStandard"
+    assert rule.target_type == "PLEXOSGenerator"
+    assert rule.version == 1
+    assert len(rule.field_map) == 2
+    assert len(rule.getters) == 3
+    assert len(rule.defaults) == 2
+
+
+def test_rules_preserve_field_types() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {
+            "source_type": "ACBus",
+            "target_type": "PLEXOSNode",
+            "version": 1,
+            "defaults": {"units": 1, "voltage": 230.0, "is_slack": False, "region": "WEST"},
+        }
+    ])
+    rule = rules[0]
+    assert isinstance(rule.defaults["units"], int)
+    assert isinstance(rule.defaults["voltage"], float)
+    assert isinstance(rule.defaults["is_slack"], bool)
+    assert isinstance(rule.defaults["region"], str)
+
+
+def test_rule_from_records_handles_duplicate_rules() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1},
+        {"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1},
+    ])
+    assert len(rules) >= 1
+
+
+def test_rule_getters_can_be_empty() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1, "getters": {}}
+    ])
+    assert len(rules) == 1
+
+
+def test_rule_field_map_can_be_empty() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1, "field_map": {}}
+    ])
+    assert len(rules) == 1
+
+
+def test_rule_defaults_can_be_empty() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {"source_type": "ACBus", "target_type": "PLEXOSNode", "version": 1, "defaults": {}}
+    ])
+    assert len(rules) == 1
+
+
+def test_rule_with_storage_properties() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {
+            "source_type": "HydroReservoir",
+            "target_type": "PLEXOSStorage",
+            "version": 1,
+            "getters": {
+                "initial_level": "get_storage_initial_level",
+                "max_level": "get_storage_max_level",
+            },
+        }
+    ])
+    assert "initial_level" in rules[0].getters
+    assert "max_level" in rules[0].getters
+
+
+def test_rule_with_head_tail_storage_memberships() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {
+            "source_type": "PLEXOSGenerator",
+            "target_type": "PLEXOSMembership",
+            "version": 1,
+            "getters": {
+                "parent_object": "membership_head_storage_generator",
+                "child_object": "membership_head_storage",
+                "collection": "membership_collection_head_storage",
+            },
+        },
+        {
+            "source_type": "PLEXOSGenerator",
+            "target_type": "PLEXOSMembership",
+            "version": 2,
+            "getters": {
+                "parent_object": "membership_tail_storage_generator",
+                "child_object": "membership_tail_storage",
+                "collection": "membership_collection_tail_storage",
+            },
+        },
+    ])
+    assert "parent_object" in rules[0].getters
+    assert "parent_object" in rules[1].getters
+
+
+def test_rule_with_storage_properties_and_field_map() -> None:
+    from r2x_core import Rule
+
+    rules = Rule.from_records([
+        {
+            "source_type": "HydroReservoir",
+            "target_type": "PLEXOSStorage",
+            "version": 1,
+            "field_map": {"name": "name", "uuid": "uuid"},
+            "getters": {
+                "initial_level": "get_storage_initial_level",
+                "max_level": "get_storage_max_level",
+            },
+        }
+    ])
+    assert "initial_level" in rules[0].getters
+    assert "name" in rules[0].field_map

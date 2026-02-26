@@ -4,7 +4,7 @@ Provides reusable Rule instances with various configurations:
 - Simple single-field rules
 - Multi-field rules with getters
 - Rules with default values
-- Complete rule lists for TranslationContext
+- Complete rule lists for PluginContext
 
 These fixtures demonstrate the full range of rule capabilities and serve
 as templates for defining new conversion rules in the codebase.
@@ -120,7 +120,7 @@ def rule_with_all_features() -> Rule:
 
 @pytest.fixture
 def rules_list(rule_simple, rule_multifield, rule_with_defaults) -> list[Rule]:
-    """List of multiple rules for TranslationContext initialization."""
+    """List of multiple rules for PluginContext initialization."""
     return [
         rule_simple,
         rule_multifield,

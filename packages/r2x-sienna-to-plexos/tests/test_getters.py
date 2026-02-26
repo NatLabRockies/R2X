@@ -60,21 +60,37 @@ from r2x_sienna_to_plexos import getters
 
 from r2x_core import DataStore, PluginConfig, PluginContext, System
 
+from .fixtures.five_bus_systems import (
+    system_complete,
+    system_with_5_buses,
+    system_with_hydro,
+    system_with_loads,
+    system_with_network,
+    system_with_renewables,
+    system_with_reserves,
+    system_with_storage,
+    system_with_thermal_generators,
+    system_with_zones,
+)
+
 
 @pytest.fixture
 def context(tmp_path):
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
     store = DataStore.from_plugin_config(config, path=tmp_path)
     ctx = PluginContext(config=config, store=store)
-    ctx.source_system = System(name="source")
-    ctx.target_system = System(name="target")
+    ctx.source_system = System(name="source", auto_add_composed_components=True)
+    ctx.target_system = System(name="target", auto_add_composed_components=True)
     return ctx
 
 
 def make_context(tmp_path) -> PluginContext:
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
     store = DataStore.from_plugin_config(config, path=tmp_path)
-    return PluginContext(config=config, store=store)
+    ctx = PluginContext(config=config, store=store)
+    ctx.source_system = System(name="source", auto_add_composed_components=True)
+    ctx.target_system = System(name="target", auto_add_composed_components=True)
+    return ctx
 
 
 def test_basic_getters_return_values(tmp_path):
@@ -2235,3 +2251,328 @@ def test_get_reserve_duration_zero(context):
     )
     assert getters.get_reserve_duration(reserve, context).unwrap() == 3600.0
     assert getters.get_reserve_type(reserve, context).unwrap() == 3
+
+
+def test_is_slack_bus_returns_result_int_type():
+    from r2x_sienna.models.enums import ACBusTypes
+    from r2x_sienna_to_plexos.getters import is_slack_bus
+
+    class MockBus:
+        bustype = ACBusTypes.SLACK
+
+    class MockContext:
+        pass
+
+    result = is_slack_bus(MockBus(), MockContext())
+    assert result.is_ok()
+    assert result.unwrap() == 1
+
+
+def test_is_slack_bus_returns_zero_for_non_slack():
+    from r2x_sienna.models.enums import ACBusTypes
+    from r2x_sienna_to_plexos.getters import is_slack_bus
+
+    class MockBus:
+        bustype = ACBusTypes.PV
+
+    class MockContext:
+        pass
+
+    result = is_slack_bus(MockBus(), MockContext())
+    assert result.is_ok()
+    assert result.unwrap() == 0
+
+
+def test_get_availability_returns_result_int_type():
+    from r2x_sienna_to_plexos.getters import get_availability
+
+    class MockComponent:
+        units = 5
+
+    result = get_availability(MockComponent(), None)
+    assert result.is_ok()
+    assert result.unwrap() == 5
+
+
+def test_get_availability_defaults_to_one():
+    from r2x_sienna_to_plexos.getters import get_availability
+
+    class MockComponent:
+        pass
+
+    result = get_availability(MockComponent(), None)
+    assert result.is_ok()
+    assert result.unwrap() == 1
+
+
+def test_getter_error_variant():
+    from r2x_core import Err
+
+    def failing_getter(component, ctx):
+        return Err(ValueError("Test error"))
+
+    result = failing_getter(None, None)
+    assert result.is_err()
+    assert isinstance(result.err(), ValueError)
+
+
+def test_is_slack_bus_has_decorator():
+    from r2x_core.getters import GETTER_REGISTRY
+
+    assert "is_slack_bus" in GETTER_REGISTRY
+    assert callable(GETTER_REGISTRY["is_slack_bus"])
+
+
+def test_get_availability_has_decorator():
+    from r2x_core.getters import GETTER_REGISTRY
+
+    assert "get_availability" in GETTER_REGISTRY
+    assert callable(GETTER_REGISTRY["get_availability"])
+
+
+def test_get_max_capacity_scales_limits(context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_max_capacity
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
+    result = get_max_capacity(source, context_with_thermal_generators)
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(90.0)
+
+
+def test_get_min_stable_level_scales_limits(context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_min_stable_level
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
+    result = get_min_stable_level(source, context_with_thermal_generators)
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(40.0)
+
+
+def test_get_initial_generation_uses_base_power(context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_initial_generation
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-vom")
+    result = get_initial_generation(source, context_with_thermal_generators)
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(36.0)
+
+
+def test_get_heat_rate_from_fuel_curve(context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_heat_rate, get_heat_rate_base
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
+    assert get_heat_rate(source, context_with_thermal_generators).unwrap() == pytest.approx(9.2)
+    assert get_heat_rate_base(source, context_with_thermal_generators).unwrap() == pytest.approx(0.0)
+
+
+def test_get_fuel_price_from_fuel_curve(context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_fuel_price
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
+    result = get_fuel_price(source, context_with_thermal_generators)
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(2.4)
+
+
+def test_get_mark_up_from_cost_curve(context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_mark_up
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-vom")
+    result = get_mark_up(source, context_with_thermal_generators)
+    assert result.is_ok()
+    assert result.unwrap() == pytest.approx(14.0)
+
+
+def test_get_heat_rate_quadratic_curve_returns_coefficients(context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_heat_rate, get_heat_rate_base, get_heat_rate_incr
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-quadratic")
+    assert get_heat_rate(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
+    assert get_heat_rate_base(source, context_with_thermal_generators).unwrap() == pytest.approx(120.0)
+    assert get_heat_rate_incr(source, context_with_thermal_generators).unwrap() == pytest.approx(0.015)
+
+
+def test_get_heat_rate_multiband_returns_property(context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_heat_rate_incr, get_heat_rate_load_point
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-piecewise")
+    load_prop = get_heat_rate_load_point(source, context_with_thermal_generators).unwrap()
+    incr_prop = get_heat_rate_incr(source, context_with_thermal_generators).unwrap()
+    assert hasattr(load_prop, "get_bands")
+    assert load_prop.get_bands() == [1, 2]
+    assert hasattr(incr_prop, "get_bands")
+    assert incr_prop.get_bands() == [1, 2]
+
+
+def test_get_mark_up_multiband_property(context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_mark_up, get_mark_up_point
+
+    source = context_with_thermal_generators.source_system.get_component(
+        ThermalStandard, "thermal-markup-piecewise"
+    )
+    point_prop = get_mark_up_point(source, context_with_thermal_generators).unwrap()
+    mark_prop = get_mark_up(source, context_with_thermal_generators).unwrap()
+    assert point_prop.get_bands() == [1, 2]
+    assert mark_prop.get_bands() == [1, 2]
+
+
+def _disable_time_series(sys):
+    sys.add_time_series = lambda *args, **kwargs: None
+    return sys
+
+
+def _build_to_5_buses():
+    sys = system_with_zones.__wrapped__()
+    return system_with_5_buses.__wrapped__(sys)
+
+
+def _build_to_loads():
+    sys = _build_to_5_buses()
+    _disable_time_series(sys)
+    return system_with_loads.__wrapped__(sys, object())
+
+
+def _build_to_thermal():
+    sys = _build_to_loads()
+    return system_with_thermal_generators.__wrapped__(sys)
+
+
+def _build_to_renewables():
+    sys = _build_to_thermal()
+    _disable_time_series(sys)
+    return system_with_renewables.__wrapped__(sys, object())
+
+
+def _build_to_hydro():
+    sys = _build_to_renewables()
+    return system_with_hydro.__wrapped__(sys)
+
+
+def _build_to_storage():
+    sys = _build_to_hydro()
+    return system_with_storage.__wrapped__(sys)
+
+
+def _build_to_network():
+    sys = _build_to_storage()
+    return system_with_network.__wrapped__(sys)
+
+
+def _build_to_reserves():
+    sys = _build_to_network()
+    return system_with_reserves.__wrapped__(sys)
+
+
+def test_system_with_zones_builds_base_system():
+    sys = system_with_zones.__wrapped__()
+
+    assert sys.name == "c_sys_5bus"
+    assert sys.base_power == 100.0
+
+    zones = list(sys.get_components(LoadZone))
+    areas = list(sys.get_components(Area))
+    assert len(zones) == 1
+    assert zones[0].name == "Zone-1"
+    assert len(areas) == 1
+    assert areas[0].name == "Area-1"
+
+
+def test_system_with_5_buses_adds_expected_buses():
+    sys = _build_to_5_buses()
+    buses = list(sys.get_components(ACBus))
+
+    assert len(buses) == 5
+    assert {b.name for b in buses} == {f"Bus-{i}" for i in range(1, 6)}
+    assert {b.number for b in buses} == {1, 2, 3, 4, 5}
+    assert all(getattr(b.base_voltage, "magnitude", b.base_voltage) == 138.0 for b in buses)
+
+
+def test_system_with_loads_adds_two_power_loads():
+    sys = _build_to_loads()
+    loads = list(sys.get_components(PowerLoad))
+
+    assert len(loads) == 2
+    by_name = {ld.name: ld for ld in loads}
+    assert {"Load-1", "Load-2"} <= set(by_name)
+    assert by_name["Load-1"].bus.name == "Bus-1"
+    assert by_name["Load-2"].bus.name == "Bus-2"
+    assert by_name["Load-1"].max_active_power.magnitude == 100.0
+    assert by_name["Load-2"].max_active_power.magnitude == 200.0
+
+
+def test_system_with_thermal_generators_adds_five_units():
+    sys = _build_to_thermal()
+    thermal = list(sys.get_components(ThermalStandard))
+    names = {g.name for g in thermal}
+
+    assert len(thermal) == 5
+    assert {
+        "thermal-coal",
+        "thermal-gas-1",
+        "thermal-gas-2",
+        "thermal-quad",
+        "thermal-markup",
+    } <= names
+
+
+def test_system_with_renewables_adds_three_units():
+    from r2x_sienna.models import RenewableDispatch
+
+    sys = _build_to_renewables()
+    renewables = list(sys.get_components(RenewableDispatch))
+    names = {r.name for r in renewables}
+
+    assert len(renewables) == 3
+    assert {"solar-1", "solar-2", "wind-1"} <= names
+
+
+def test_system_with_hydro_adds_dispatch_turbine_and_reservoir():
+    from r2x_sienna.models import HydroDispatch, HydroReservoir, HydroTurbine
+    sys = _build_to_hydro()
+
+    assert len(list(sys.get_components(HydroDispatch))) >= 1
+    assert len(list(sys.get_components(HydroTurbine))) >= 1
+    assert len(list(sys.get_components(HydroReservoir))) >= 1
+
+
+def test_system_with_storage_adds_battery_on_bus_5():
+    sys = _build_to_storage()
+    storages = list(sys.get_components(EnergyReservoirStorage))
+
+    assert len(storages) >= 1
+    assert any(getattr(s, "bus", None) is not None and s.bus.name == "Bus-5" for s in storages)
+
+
+def test_system_with_network_adds_lines_and_transformer():
+    sys = _build_to_network()
+    lines = list(sys.get_components(Line))
+    transformers = list(sys.get_components(Transformer2W))
+
+    assert len(lines) == 4
+    assert {ln.name for ln in lines} == {"line-1-2", "line-2-3", "line-3-4", "line-4-5"}
+    assert len(transformers) == 1
+    assert transformers[0].name == "transformer-1-5"
+
+
+def test_system_with_reserves_adds_two_variable_reserves():
+    sys = _build_to_reserves()
+    reserves = list(sys.get_components(VariableReserve))
+    names = {r.name for r in reserves}
+
+    assert len(reserves) == 2
+    assert {"spin-reserve", "flex-reserve"} <= names
+
+
+def test_system_complete_returns_same_system_instance():
+    sys = _build_to_reserves()
+    result = system_complete.__wrapped__(sys)
+    assert result is sys
