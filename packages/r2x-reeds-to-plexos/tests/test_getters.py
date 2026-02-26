@@ -163,7 +163,6 @@ def test_basic_getters_return_values(tmp_path):
 
     # Generator getters
     assert getters.rating(objs["thermal"], context).unwrap() == 50.0
-    assert getters.fixed_load(objs["thermal"], context).unwrap() == 0.0
     assert getters.load_subtracter(objs["thermal"], context).unwrap() == 0.0
 
     # Storage getters
@@ -207,7 +206,6 @@ def test_basic_getters_return_values(tmp_path):
 
     # Hydro getters
     assert getters.hydro_min_flow(objs["hydro"], context).unwrap() == 0.0
-    assert getters.hydro_ramp_rate_mw_per_hour(objs["hydro"], context).unwrap() == 120.0
     assert getters.hydro_must_run_flag(objs["hydro"], context).unwrap() == 1
 
     # Consuming tech

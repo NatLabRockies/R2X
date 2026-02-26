@@ -303,7 +303,7 @@ def discharge_efficiency_percent(
     gen_technology = getattr(component, "technology", "")
     efficiency = getattr(component, "round_trip_efficiency", None)
 
-    if efficiency is not None:
+    if efficiency is not None and efficiency != 0.0:
         return Ok(_float_or_zero(efficiency) * 100.0)
 
     default_efficiency = _get_defaults(gen_technology, "discharge_efficiency")

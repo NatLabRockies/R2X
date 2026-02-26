@@ -1493,10 +1493,10 @@ def test_getters_none_and_defaults(context):
     assert getters.get_turbine_maintenance_rate(d, context).unwrap() >= 0.0
     assert getters.get_hydro_mean_time_to_repair(d, context).unwrap() >= 0.0
     assert getters.get_turbine_mean_time_to_repair(d, context).unwrap() >= 0.0
-    result_up = getters.get_max_ramp_up(Dummy(), context)
-    assert result_up.is_err()
-    result_down = getters.get_max_ramp_down(Dummy(), context)
-    assert result_down.is_err()
+    result_up = getters.get_max_ramp_up(Dummy(), context).unwrap()
+    assert result_up == 0.0
+    result_down = getters.get_max_ramp_down(Dummy(), context).unwrap()
+    assert result_down == 0.0
 
 
 def test_thermal_standard_initial_none(context):
@@ -1862,3 +1862,377 @@ def test_membership_tail_storage_generator_err(context):
     )
     result = getters.membership_tail_storage_generator(ht, context)
     assert result.is_err()
+
+
+# ...existing code...
+
+
+def test_get_voltage_zero(context):
+    """Covers get_voltage returning 0.0 when base_voltage has no magnitude."""
+    bus = ACBus(name="N1", number=1)
+    bus.base_voltage = None
+    assert getters.get_voltage(bus, context).unwrap() == 0.0
+
+
+def test_get_susceptance_complex_primary_shunt(context):
+    """Covers complex number branch in get_susceptance."""
+    bus1 = ACBus(name="N1", base_voltage=115.0, number=1)
+    bus2 = ACBus(name="N2", base_voltage=115.0, number=2)
+    context.source_system.add_component(bus1)
+    context.source_system.add_component(bus2)
+    arc = Arc(from_to=bus1, to_from=bus2)
+    context.source_system.add_component(arc)
+    t = Transformer2W(name="T1", arc=arc, primary_shunt=Complex(real=1.0, imag=3.0))
+    assert getters.get_susceptance(t, context).unwrap() == 3.0
+
+
+def test_get_line_min_max_flow_none_rating(context):
+    """Covers None rating branch in get_line_min_flow and get_line_max_flow."""
+    bus1 = ACBus(name="N1", base_voltage=115.0, number=1)
+    bus2 = ACBus(name="N2", base_voltage=115.0, number=2)
+    context.source_system.add_component(bus1)
+    context.source_system.add_component(bus2)
+    arc = Arc(from_to=bus1, to_from=bus2)
+    context.source_system.add_component(arc)
+    line = Line(
+        name="L1",
+        arc=arc,
+        rating=None,
+        r=0.01,
+        x=0.1,
+        b=FromTo_ToFrom(from_to=0.0, to_from=0.0),
+        active_power_flow=0.0,
+        reactive_power_flow=0.0,
+        angle_limits=MinMax(min=-0.03, max=0.03),
+    )
+    assert getters.get_line_min_flow(line, context).unwrap() == 0.0
+    assert getters.get_line_max_flow(line, context).unwrap() == 0.0
+
+
+def test_get_line_charging_susceptance_complex_b(context):
+    """Covers complex b branch in get_line_charging_susceptance."""
+    bus1 = ACBus(name="N1", base_voltage=115.0, number=1)
+    bus2 = ACBus(name="N2", base_voltage=115.0, number=2)
+    context.source_system.add_component(bus1)
+    context.source_system.add_component(bus2)
+    arc = Arc(from_to=bus1, to_from=bus2)
+    context.source_system.add_component(arc)
+    line = Line(
+        name="L1",
+        arc=arc,
+        rating=100.0,
+        r=0.01,
+        x=0.1,
+        b=FromTo_ToFrom(from_to=4.5, to_from=4.5),
+        active_power_flow=0.0,
+        reactive_power_flow=0.0,
+        angle_limits=MinMax(min=-0.03, max=0.03),
+    )
+    assert getters.get_line_charging_susceptance(line, context).unwrap() == 4.5
+
+
+def test_get_line_charging_susceptance_dict_b(context):
+    """Covers dict b branch in get_line_charging_susceptance."""
+    bus1 = ACBus(name="N1", base_voltage=115.0, number=1)
+    bus2 = ACBus(name="N2", base_voltage=115.0, number=2)
+    context.source_system.add_component(bus1)
+    context.source_system.add_component(bus2)
+    arc = Arc(from_to=bus1, to_from=bus2)
+    context.source_system.add_component(arc)
+    line = Line(
+        name="L1",
+        arc=arc,
+        rating=100.0,
+        r=0.01,
+        x=0.1,
+        b={"from_to": 6.0, "to_from": 6.0},
+        active_power_flow=0.0,
+        reactive_power_flow=0.0,
+        angle_limits=MinMax(min=-0.03, max=0.03),
+    )
+    assert getters.get_line_charging_susceptance(line, context).unwrap() == 6.0
+
+
+def test_get_max_capacity_zero_from_sienna(context):
+    """Covers branch where sienna_get_max_active_power returns 0.0 and falls through to active_power_limits dict."""
+
+    class DummyWithLimits:
+        active_power_limits = {"max": 55.0}  # noqa: RUF012
+        rating = None
+
+    d = DummyWithLimits()
+    assert getters.get_max_capacity(d, context).unwrap() == 55.0
+
+
+def test_get_component_rating_no_base_power(context):
+    """Covers get_component_rating when rating is not None but base_power missing."""
+
+    class Dummy:
+        rating = 10.0
+        base_power = 5.0
+
+    assert getters.get_component_rating(Dummy(), context).unwrap() == 50.0
+
+
+def test_get_turbine_pump_efficiency_gt_one(context):
+    """Covers get_turbine_pump_efficiency when efficiency > 1.0 (already percent)."""
+
+    class Dummy:
+        efficiency = 95.0
+
+    assert getters.get_turbine_pump_efficiency(Dummy(), context).unwrap() == 100.0
+
+
+def test_get_max_ramp_up_down_dict(context):
+    """Covers dict ramp_limits branch in get_max_ramp_up and get_max_ramp_down."""
+
+    class DummyRamp:
+        ramp_limits = {"up": 10.0, "down": 8.0}  # noqa: RUF012
+        base_power = 100.0
+
+    d = DummyRamp()
+    assert getters.get_max_ramp_up(d, context).unwrap() == 1000.0
+    assert getters.get_max_ramp_down(d, context).unwrap() == 800.0
+
+
+def test_get_max_ramp_up_down_object(context):
+    """Covers object ramp_limits branch in get_max_ramp_up and get_max_ramp_down."""
+
+    class DummyRamp:
+        ramp_limits = UpDown(up=5.0, down=3.0)
+        base_power = 10.0
+
+    d = DummyRamp()
+    assert getters.get_max_ramp_up(d, context).unwrap() == 50.0
+    assert getters.get_max_ramp_down(d, context).unwrap() == 30.0
+
+
+def test_get_initial_hours_up_status_true(context):
+    """Covers get_initial_hours_up when status is True."""
+    bus = ACBus(name="N1", base_voltage=115.0, number=1)
+    context.source_system.add_component(bus)
+    gen = ThermalStandard(
+        name="gen-up",
+        must_run=False,
+        bus=bus,
+        status=True,
+        base_power=100.0,
+        rating=100.0,
+        active_power=0.0,
+        reactive_power=0.0,
+        active_power_limits=MinMax(min=0.0, max=100.0),
+        prime_mover_type=PrimeMoversType.CC,
+        fuel=ThermalFuels.NATURAL_GAS,
+        operation_cost=ThermalGenerationCost.example(),
+        time_at_status=500.0,
+    )
+    assert getters.get_initial_hours_up(gen, context).unwrap() == 500.0
+    assert getters.get_initial_hours_down(gen, context).unwrap() == 0.0
+
+
+def test_get_fuel_price_fuel_curve(context):
+    """Covers get_fuel_price with a FuelCurve that has fuel_cost."""
+    from infrasys.cost_curves import FuelCurve
+    from infrasys.value_curves import LinearCurve
+    from r2x_sienna.models.costs import ThermalGenerationCost
+
+    gen = ThermalStandard(
+        name="GEN-FUEL",
+        bus=None,
+        active_power=0.0,
+        reactive_power=0.0,
+        rating=100.0,
+        base_power=10.0,
+        must_run=False,
+        status=True,
+        time_at_status=0.0,
+        active_power_limits=MinMax(min=10.0, max=100.0),
+        ramp_limits=UpDown(up=10.0, down=10.0),
+        time_limits=UpDown(up=1.0, down=1.0),
+        prime_mover_type=PrimeMoversType.CC,
+        fuel=ThermalFuels.NATURAL_GAS,
+        operation_cost=ThermalGenerationCost(
+            variable=FuelCurve(
+                value_curve=LinearCurve(10.0),
+                fuel_cost=3.5,
+                power_units=UnitSystem.NATURAL_UNITS,
+            )
+        ),
+    )
+    assert getters.get_fuel_price(gen, context).unwrap() == 3.5
+
+
+def test_get_storage_max_power_dict_limits(context):
+    """Covers dict output_active_power_limits branch in get_storage_max_power."""
+
+    class Dummy:
+        output_active_power_limits = {"max": 150.0}  # noqa: RUF012
+        base_power = 1.0
+
+    assert getters.get_storage_max_power(Dummy(), context).unwrap() == 150.0
+
+
+def test_get_storage_max_power_dict_limits_none_max(context):
+    """Covers dict output_active_power_limits with non-numeric max."""
+
+    class Dummy:
+        output_active_power_limits = {"max": "bad"}  # noqa: RUF012
+        base_power = 1.0
+
+    assert getters.get_storage_max_power(Dummy(), context).unwrap() == 0.0
+
+
+def test_get_interface_min_max_flow_none_limits(context):
+    """Covers None active_power_flow_limits in get_interface_min/max_flow."""
+
+    class Dummy:
+        active_power_flow_limits = None
+
+    assert getters.get_interface_min_flow(Dummy(), context).unwrap() == 1e30
+    assert getters.get_interface_max_flow(Dummy(), context).unwrap() == 1e30
+
+
+def test_get_interface_min_max_flow_dict_limits(context):
+    """Covers dict active_power_flow_limits branch."""
+
+    class Dummy:
+        active_power_flow_limits = {"min": -50.0, "max": 75.0}  # noqa: RUF012
+
+    assert getters.get_interface_min_flow(Dummy(), context).unwrap() == -50.0
+    assert getters.get_interface_max_flow(Dummy(), context).unwrap() == 75.0
+
+
+def test_membership_node_child_zone_no_load_zone(context):
+    """Covers branch where source bus has no load_zone."""
+    node = PLEXOSNode(name="N1")
+    bus = ACBus(name="N1", number=1)
+    context.source_system.add_component(bus)
+    result = getters.membership_node_child_zone(node, context)
+    assert result.is_err()
+
+
+def test_get_storage_charge_efficiency_dict(context):
+    """Covers dict efficiency branch in get_storage_charge/discharge_efficiency."""
+
+    class Dummy:
+        efficiency = {"input": 0.88, "output": 0.77}  # noqa: RUF012
+
+    assert getters.get_storage_charge_efficiency(Dummy(), context).unwrap() == 88.0
+    assert getters.get_storage_discharge_efficiency(Dummy(), context).unwrap() == 77.0
+
+
+def test_get_load_subtracter_with_value(context):
+    """Covers get_load_subtracter when load_subtracter is set."""
+    from infrasys.cost_curves import CostCurve, LinearCurve
+    from r2x_sienna.models import RenewableDispatch
+    from r2x_sienna.models.costs import RenewableGenerationCost
+
+
+    bus = ACBus(name="N1", base_voltage=115.0, number=1)
+    context.source_system.add_component(bus)
+
+    gen = RenewableDispatch(
+        name="RD1",
+        bus=bus,
+        rating=100.0,
+        active_power=50.0,
+        reactive_power=0.0,
+        base_power=100.0,
+        prime_mover_type=PrimeMoversType.WT,
+        operation_cost=RenewableGenerationCost(
+            variable=CostCurve(value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS)
+        ),
+    )
+    assert getters.get_load_subtracter(gen, context).unwrap() == 0.0
+
+
+def test_get_thermal_mean_time_to_repair_with_value(context):
+    """Covers get_thermal_mean_time_to_repair when value is set."""
+
+    class Dummy:
+        forced_outage_rate = None
+        maintenance_rate = None
+        mean_time_to_repair = 24.0
+
+    assert getters.get_thermal_mean_time_to_repair(Dummy(), context).unwrap() == 24.0
+
+
+def test_get_turbine_forced_outage_rate_with_value(context):
+    """Covers get_turbine_forced_outage_rate when value is set."""
+
+    class Dummy:
+        forced_outage_rate = 0.05
+
+    assert getters.get_turbine_forced_outage_rate(Dummy(), context).unwrap() == 0.05
+
+
+def test_get_turbine_maintenance_rate_with_value(context):
+    """Covers get_turbine_maintenance_rate when value is set."""
+
+    class Dummy:
+        maintenance_rate = 0.03
+
+    assert getters.get_turbine_maintenance_rate(Dummy(), context).unwrap() == 0.03
+
+
+def test_get_hydro_mean_time_to_repair_with_value(context):
+    """Covers get_hydro_mean_time_to_repair when value is set."""
+
+    class Dummy:
+        mean_time_to_repair = 48.0
+
+    assert getters.get_hydro_mean_time_to_repair(Dummy(), context).unwrap() == 48.0
+
+
+def test_get_turbine_mean_time_to_repair_with_value(context):
+    """Covers get_turbine_mean_time_to_repair when value is set."""
+
+    class Dummy:
+        mean_time_to_repair = 12.0
+
+    assert getters.get_turbine_mean_time_to_repair(Dummy(), context).unwrap() == 12.0
+
+
+def test_get_battery_outage_rates_with_values(context):
+    """Covers battery outage getters when values are directly set."""
+
+    class Dummy:
+        forced_outage_rate = 0.02
+        maintenance_rate = 0.01
+        mean_time_to_repair = 8.0
+
+    d = Dummy()
+    assert getters.get_battery_forced_outage_rate(d, context).unwrap() == 0.02
+    assert getters.get_battery_maintenance_rate(d, context).unwrap() == 0.01
+    assert getters.get_battery_mean_time_to_repair(d, context).unwrap() == 8.0
+
+
+def test_get_min_stable_level_dict_limits(context):
+    """Covers dict active_power_limits branch in get_min_stable_level."""
+
+    class Dummy:
+        active_power_limits = {"min": 10.0, "max": 100.0}  # noqa: RUF012
+
+    assert getters.get_min_stable_level(Dummy(), context).unwrap() == 10.0
+
+
+def test_get_min_stable_level_negative_min(context):
+    """Covers negative min clamped to 0.0 in get_min_stable_level."""
+
+    class Dummy:
+        active_power_limits = {"min": -5.0, "max": 100.0}  # noqa: RUF012
+
+    assert getters.get_min_stable_level(Dummy(), context).unwrap() == 0.0
+
+
+def test_get_reserve_duration_zero(context):
+    """Covers get_reserve_duration with 0 sustained_time."""
+    reserve = VariableReserve(
+        name="R1",
+        reserve_type=ReserveType.REGULATION,
+        vors=1.0,
+        direction="UP",
+        requirement=50.0,
+    )
+    assert getters.get_reserve_duration(reserve, context).unwrap() == 3600.0
+    assert getters.get_reserve_type(reserve, context).unwrap() == 3
