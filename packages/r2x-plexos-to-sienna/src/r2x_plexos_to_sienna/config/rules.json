@@ -48,12 +48,12 @@
     },
     "field_map": {
       "name": "name",
+      "uuid": "uuid",
       "available": "units",
       "category": "category"
     },
     "getters": {
       "bus": "get_load_bus",
-      "uuid": "get_power_load_uuid",
       "active_power": "get_load_active_power",
       "reactive_power": "get_load_reactive_power",
       "max_active_power" : "get_load_max_active_power",
@@ -71,7 +71,6 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
       "category": "category"
     },
     "getters": {

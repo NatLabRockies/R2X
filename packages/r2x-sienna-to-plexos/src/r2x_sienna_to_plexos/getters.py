@@ -84,7 +84,10 @@ SOURCE_GENERATOR_TYPES = [
 def _get_time_limit(component: Any, attr: str, ext_key: str) -> float | None:
     """Extract time limit from time_limits attribute or ext dict."""
     time_limits = getattr(component, "time_limits", None)
-    value = getattr(time_limits, attr, None) if time_limits else None
+    if isinstance(time_limits, dict):
+        value = time_limits.get(attr)
+    else:
+        value = getattr(time_limits, attr, None) if time_limits else None
 
     if value is None:
         ext = getattr(component, "ext", None)
@@ -445,8 +448,17 @@ def get_susceptance(
         if isinstance(magnitude, complex):
             return Ok(float(magnitude.imag))
         # For pint Complex Quantity objects, access .imag to get imaginary part
-        imag_part = magnitude.imag
-        return Ok(float(imag_part))
+        if isinstance(magnitude, dict):
+            imag_part = magnitude.get("imag")
+            if isinstance(imag_part, int | float):
+                return Ok(float(imag_part))
+            return Err(ValueError(f"Cannot extract imag from primary_shunt magnitude dict: {magnitude}"))
+        if isinstance(magnitude, int | float):
+            return Ok(float(magnitude))
+
+        imag_part = getattr(magnitude, "imag", None)
+        if imag_part is not None:
+            return Ok(float(imag_part))
 
     # Handle plain floats/ints
     if isinstance(primary_shunt, int | float):
@@ -522,6 +534,13 @@ def get_line_charging_susceptance(
     if isinstance(line_b, complex):
         return Ok(float(line_b.imag))
 
+    # Handle dict types (e.g., {"from_to": ..., "to_from": ...})
+    if isinstance(line_b, dict):
+        ft_val = line_b.get("from_to")
+        if isinstance(ft_val, int | float):
+            return Ok(float(ft_val))
+        return Ok(0.0)
+
     # Handle FromTo_ToFrom types
     if isinstance(line_b, FromTo_ToFrom):
         return Ok(float(line_b.from_to))
@@ -587,9 +606,12 @@ def get_storage_max_volume(
 ) -> Result[float, ValueError]:
     """Return the max storage volume for a HydroReservoir."""
     value = getattr(source_component, "storage_level_limits", None)
-    if value is not None:
-        return Ok(float(value.max))
-    return Ok(0.0)
+    if value is None:
+        return Ok(0.0)
+    if isinstance(value, dict):
+        max_val = value.get("max")
+        return Ok(float(max_val) if isinstance(max_val, int | float) else 0.0)
+    return Ok(float(value.max))
 
 
 @getter
@@ -648,8 +670,16 @@ def get_min_stable_level(
     limits = getattr(source_component, "active_power_limits", None)
     if not limits:
         return Ok(0.0)
-    converted = sienna_get_value(limits, source_component)
-    min_level = getattr(converted, "min", None)
+    if isinstance(limits, dict):
+        min_val = limits.get("min", 0.0)
+        if isinstance(min_val, int | float):
+            return Ok(float(max(0.0, min_val)))
+        return Ok(0.0)
+    try:
+        converted = sienna_get_value(limits, source_component)
+        min_level = getattr(converted, "min", None)
+    except (NotImplementedError, AttributeError, TypeError):
+        min_level = getattr(limits, "min", None)
     if min_level is None:
         return Ok(0.0)
     min_level = 0.0 if min_level < 0 else min_level
@@ -716,11 +746,17 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
     value = None
     try:
         value = sienna_get_max_active_power(source_component)
-    except TypeError:
+    except (TypeError, NotImplementedError, AttributeError, KeyError):
         value = None
 
     if value is not None:
         return Ok(float(value))
+
+    limits = getattr(source_component, "active_power_limits", None)
+    if isinstance(limits, dict):
+        max_value = limits.get("max")
+        if isinstance(max_value, int | float):
+            return Ok(float(max_value))
 
     rating = getattr(source_component, "rating", None)
     rating_value = get_magnitude(rating)
@@ -793,6 +829,8 @@ def get_turbine_pump_efficiency(
     pump_efficiency = getattr(source_component, "efficiency", None)
     if pump_efficiency is not None and pump_efficiency <= 1.0:
         magnitude = get_magnitude(pump_efficiency)
+        if magnitude is None:
+            return Ok(float(pump_efficiency) * 100)
         return Ok(float(magnitude) * 100)
     return Ok(100.0)
 
@@ -867,22 +905,48 @@ def get_turbine_mean_time_to_repair(
     return Ok(_get_defaults("pumped-hydro", "mean_time_to_repair"))
 
 
+def _ramp_value_to_float(source_component: object, raw_value: Any) -> float:
+    """Convert ramp value to float, applying base power like sienna_get_ramp_limits does."""
+    magnitude = get_magnitude(raw_value)
+    if magnitude is None and isinstance(raw_value, int | float):
+        magnitude = raw_value
+    if magnitude is None:
+        return 0.0
+    return float(magnitude) * resolve_base_power(source_component)
+
+
 @getter
 def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     try:
         limits = sienna_get_ramp_limits(source_component)
-    except (KeyError, TypeError) as err:
-        return Err(ValueError(str(err)))
-    return Ok(float(limits.up) if limits.up is not None else 0.0)
+        return Ok(float(limits.up) if limits.up is not None else 0.0)
+    except (KeyError, TypeError, AttributeError, NotImplementedError):
+        pass
+
+    ramp = getattr(source_component, "ramp_limits", None)
+    if isinstance(ramp, dict):
+        return Ok(_ramp_value_to_float(source_component, ramp.get("up")))
+    if ramp is not None:
+        return Ok(_ramp_value_to_float(source_component, getattr(ramp, "up", None)))
+
+    return Ok(0.0)
 
 
 @getter
 def get_max_ramp_down(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     try:
         limits = sienna_get_ramp_limits(source_component)
-    except (KeyError, TypeError) as err:
-        return Err(ValueError(str(err)))
-    return Ok(float(limits.down) if limits.down is not None else 0.0)
+        return Ok(float(limits.down) if limits.down is not None else 0.0)
+    except (KeyError, TypeError, AttributeError, NotImplementedError):
+        pass
+
+    ramp = getattr(source_component, "ramp_limits", None)
+    if isinstance(ramp, dict):
+        return Ok(_ramp_value_to_float(source_component, ramp.get("down")))
+    if ramp is not None:
+        return Ok(_ramp_value_to_float(source_component, getattr(ramp, "down", None)))
+
+    return Ok(0.0)
 
 
 @getter
@@ -1011,7 +1075,8 @@ def get_battery_mean_time_to_repair(
 def get_storage_charge_efficiency(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    value = float(source_component.efficiency.input)
+    efficiency = source_component.efficiency
+    value = float(efficiency.get("input", 1.0)) if isinstance(efficiency, dict) else float(efficiency.input)
     if value <= 1.0:
         value *= 100
     return Ok(value)
@@ -1021,7 +1086,8 @@ def get_storage_charge_efficiency(
 def get_storage_discharge_efficiency(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    value = float(source_component.efficiency.output)
+    efficiency = source_component.efficiency
+    value = float(efficiency.get("output", 1.0)) if isinstance(efficiency, dict) else float(efficiency.output)
     if value <= 1.0:
         value *= 100
     return Ok(value)
@@ -1042,7 +1108,14 @@ def get_storage_max_power(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
     limits = getattr(source_component, "output_active_power_limits", None)
-    if limits is None or getattr(limits, "max", None) is None:
+    if limits is None:
+        return Ok(0.0)
+    if isinstance(limits, dict):
+        max_val = limits.get("max")
+        if isinstance(max_val, int | float):
+            return Ok(float(max_val))
+        return Ok(0.0)
+    if getattr(limits, "max", None) is None:
         return Ok(0.0)
     value = get_magnitude(limits.max)
     return Ok(float(value) if value is not None else 0.0)
@@ -1064,8 +1137,10 @@ def get_interface_min_flow(
 ) -> Result[float, ValueError]:
     """Get min_flow from active_power_flow_limits or default."""
     limits = getattr(source_component, "active_power_flow_limits", None)
-    value = getattr(limits, "min", None) if limits else None
-    return Ok(float(value) if value is not None else 1e30)
+    if limits is None:
+        return Ok(1e30)
+    value = limits.get("min") if isinstance(limits, dict) else getattr(limits, "min", None)
+    return Ok(float(value) if isinstance(value, int | float) else 1e30)
 
 
 @getter
@@ -1074,8 +1149,10 @@ def get_interface_max_flow(
 ) -> Result[float, ValueError]:
     """Get max_flow from active_power_flow_limits or default."""
     limits = getattr(source_component, "active_power_flow_limits", None)
-    value = getattr(limits, "max", None) if limits else None
-    return Ok(float(value) if value is not None else 1e30)
+    if limits is None:
+        return Ok(1e30)
+    value = limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
+    return Ok(float(value) if isinstance(value, int | float) else 1e30)
 
 
 @getter
@@ -1372,9 +1449,6 @@ def membership_interface_child_line(
     lines = getattr(source_interface, "lines", None)
     if not lines:
         return Err(ValueError(f"TransmissionInterface '{interface_name}' has no lines"))
-
-    if not lines:
-        return Err(ValueError(f"TransmissionInterface '{interface_name}' has empty lines"))
 
     first_line = lines[0]
     line_name = first_line.name if hasattr(first_line, "name") else str(first_line)
