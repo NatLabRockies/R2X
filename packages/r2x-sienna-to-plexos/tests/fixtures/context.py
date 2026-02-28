@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 if TYPE_CHECKING:
-    from r2x_core import TranslationContext
+    from r2x_core import PluginContext
 
 
 @pytest.fixture
@@ -14,10 +14,10 @@ def context(
     plexos_system_empty,
     config_empty,
     rules_list,
-) -> TranslationContext:
-    """TranslationContext with mock systems and rules.
+) -> PluginContext:
+    """PluginContext with mock systems and rules.
 
-    Creates a complete TranslationContext for use in tests. All rules
+    Creates a complete PluginContext for use in tests. All rules
     are indexed automatically by (source_type, target_type, version).
 
     Parameters
@@ -33,7 +33,7 @@ def context(
 
     Returns
     -------
-    TranslationContext
+    PluginContext
         Ready-to-use context with all rules accessible
 
     Examples
@@ -47,9 +47,9 @@ def context(
     List all rules:
     >>> all_rules = context.list_rules()
     """
-    from r2x_core import TranslationContext
+    from r2x_core import PluginContext
 
-    return TranslationContext(
+    return PluginContext(
         source_system=sienna_system_empty,
         target_system=plexos_system_empty,
         config=config_empty,
@@ -63,11 +63,11 @@ def context_with_versioned_rules(
     plexos_system_empty,
     config_empty,
     rule_list_versioned,
-) -> TranslationContext:
-    """TranslationContext with versioned rules and version config."""
-    from r2x_core import TranslationContext
+) -> PluginContext:
+    """PluginContext with versioned rules and version config."""
+    from r2x_core import PluginContext
 
-    return TranslationContext(
+    return PluginContext(
         source_system=sienna_system_empty,
         target_system=plexos_system_empty,
         config=config_empty,
@@ -81,8 +81,8 @@ def context_with_buses(
     plexos_system_empty,
     config_empty,
     rules_list,
-) -> TranslationContext:
-    """TranslationContext with Sienna system containing ACBus components.
+) -> PluginContext:
+    """PluginContext with Sienna system containing ACBus components.
 
     Parameters
     ----------
@@ -97,12 +97,12 @@ def context_with_buses(
 
     Returns
     -------
-    TranslationContext
+    PluginContext
         Context ready for converting buses to nodes
     """
-    from r2x_core import TranslationContext
+    from r2x_core import PluginContext
 
-    return TranslationContext(
+    return PluginContext(
         source_system=sienna_system_with_buses,
         target_system=plexos_system_empty,
         config=config_empty,
@@ -116,8 +116,8 @@ def context_with_bus_and_load(
     plexos_system_empty,
     config_empty,
     rules_list,
-) -> TranslationContext:
-    """TranslationContext with Sienna system containing buses and loads.
+) -> PluginContext:
+    """PluginContext with Sienna system containing buses and loads.
 
     Parameters
     ----------
@@ -132,12 +132,12 @@ def context_with_bus_and_load(
 
     Returns
     -------
-    TranslationContext
+    PluginContext
         Context ready for converting with load extraction
     """
-    from r2x_core import TranslationContext
+    from r2x_core import PluginContext
 
-    return TranslationContext(
+    return PluginContext(
         source_system=sienna_system_with_buses_and_power_load,
         target_system=plexos_system_empty,
         config=config_empty,
@@ -151,11 +151,11 @@ def context_with_thermal_generators(
     plexos_system_empty,
     config_empty,
     rules_from_config,
-) -> TranslationContext:
-    """TranslationContext with ThermalStandard components and real rules."""
-    from r2x_core import TranslationContext
+) -> PluginContext:
+    """PluginContext with ThermalStandard components and real rules."""
+    from r2x_core import PluginContext
 
-    return TranslationContext(
+    return PluginContext(
         source_system=sienna_system_with_thermal_generators,
         target_system=plexos_system_empty,
         config=config_empty,

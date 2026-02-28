@@ -13,6 +13,24 @@
       "mean_time_to_repair": 12,
       "min_energy": 0.0,
       "min_power": 0.0,
+      "initial_soc": 50.0,
+      "min_soc": 0.0,
+      "max_soc": 100.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0
+    },
+    "battery_li": {
+      "average_capacity_MW": 10.0,
+      "charge_efficiency": 0.95,
+      "discharge_efficiency": 0.95,
+      "forced_outage_rate": 0.01,
+      "maintenance_rate": 0.0,
+      "mean_time_to_repair": 12,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "initial_soc": 50.0,
+      "min_soc": 0.0,
+      "max_soc": 100.0,
       "ramp_rate_down": 100.0,
       "ramp_rate_up": 100.0
     },
@@ -226,73 +244,5 @@
       "ramp_rate_down": 100.0,
       "ramp_rate_up": 100.0
     }
-  },
-  "pm_fuel_tech_map": {
-    "CA_COAL": [
-      "coal-new"
-    ],
-    "CA_NATURALGAS": [
-      "gas-cc"
-    ],
-    "CC_COAL": [
-      "coal-new"
-    ],
-    "CC_NATURALGAS": [
-      "gas-cc"
-    ],
-    "CP_": [
-      "csp"
-    ],
-    "CT_COAL": [
-      "coal-new"
-    ],
-    "CT_NATURALGAS": [
-      "gas-cc"
-    ],
-    "OC_": [
-      "other"
-    ],
-    "PV_": [
-      "upv"
-    ],
-    "ST_": [
-      "coal-new"
-    ],
-    "ST_BIOMASS": [
-      "biopower"
-    ],
-    "ST_COAL": [
-      "coal-new"
-    ],
-    "ST_GEOTHERMAL": [
-      "geothermal"
-    ],
-    "ST_NATURALGAS": [
-      "gas-cc"
-    ],
-    "ST_NATURALGAS_CCGT": [
-      "gas-cc"
-    ],
-    "ST_NATURALGAS_LM": [
-      "gas-lm"
-    ],
-    "ST_NATURALGAS_OCGT": [
-      "gas-ct"
-    ],
-    "ST_NATURALGAS_ST": [
-      "gas-st"
-    ],
-    "ST_NUCLEAR": [
-      "nuclear"
-    ],
-    "ST_WASTE": [
-      "biopower"
-    ],
-    "WS_": [
-      "wind-ofs"
-    ],
-    "WT_": [
-      "wind-ons"
-    ]
   }
 }

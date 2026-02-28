@@ -426,6 +426,7 @@ def system_with_hydro(system_with_renewables) -> System:
         rating=1,
         operation_cost=HydroGenerationCost().example(),
         active_power_limits=MinMax(min=5.0, max=150.0),
+        prime_mover_type=PrimeMoversType.HY,
         conversion_factor=0.001,
     )
     sys.add_component(hydro_turbine)

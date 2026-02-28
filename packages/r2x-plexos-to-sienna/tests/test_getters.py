@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import types
+
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
     PLEXOSBattery,
@@ -17,6 +19,26 @@ from r2x_plexos.models import (
     PLEXOSZone,
 )
 from r2x_plexos_to_sienna import getters
+from r2x_plexos_to_sienna.getters import (
+    PLEXOS_NUMBER_BASE,
+    extract_number_from_name,
+    get_base_voltage,
+    get_device_services,
+    get_gen_start_types,
+    get_line_angle_limits,
+    get_line_conductance,
+    get_line_flow_limits,
+    get_line_losses,
+    get_line_susceptance,
+    get_node_area,
+    get_node_ext,
+    get_node_number,
+    get_node_zone,
+    get_prime_mover_type,
+    get_reserve_direction,
+    get_reserve_type,
+    get_trf_primary_shunt,
+)
 from r2x_sienna.models import ACBus, Area
 from r2x_sienna.models.enums import (
     ACBusTypes,
@@ -28,6 +50,187 @@ from r2x_sienna.models.enums import (
 from r2x_sienna.units import Voltage
 
 from r2x_core import DataStore, PluginConfig, PluginContext, System
+
+
+class Dummy:
+    pass
+
+
+def test_extract_number_from_name_digits_and_dummy():
+    # Reset state
+    getters.PLEXOS_NUMBER_COUNTER = getters.PLEXOS_NUMBER_BASE
+    getters.PLEXOS_NUMBER_MAP = {}
+    assert extract_number_from_name("p126_OSW") == 126
+    assert extract_number_from_name("bus") == 100101
+    assert extract_number_from_name("bus") == 100101
+    assert extract_number_from_name("anotherbus") == 100102
+
+
+def test_get_node_number_with_number():
+    node = types.SimpleNamespace(number=42)
+    assert get_node_number(node, None).value == 42
+
+
+def test_get_node_number_with_name():
+    node = types.SimpleNamespace(number=None, name="p123")
+    assert get_node_number(node, None).value == 123
+
+
+def test_get_node_number_default():
+    node = types.SimpleNamespace(number=None, name=None)
+    assert get_node_number(node, None).value == 1
+
+
+def test_get_base_voltage_all_branches():
+    node = types.SimpleNamespace(voltage=5.0)
+    assert get_base_voltage(node, None).value == 5.0
+    node = types.SimpleNamespace(voltage=0.0, ac_voltage_magnitude=7.0)
+    assert get_base_voltage(node, None).value == 7.0
+    node = types.SimpleNamespace(voltage=0.0, ac_voltage_magnitude=0.0)
+    assert get_base_voltage(node, None).value == 1.0
+
+
+def test_get_node_area_and_zone_membership():
+    # Area
+    dummy_area = types.SimpleNamespace(name="A")
+    dummy_target = types.SimpleNamespace(get_components=lambda t: [dummy_area])
+    dummy_membership = types.SimpleNamespace(
+        collection=getters.CollectionEnum.Region, child_object=types.SimpleNamespace(name="A")
+    )
+    node = types.SimpleNamespace(area=None)
+    ctx = types.SimpleNamespace(
+        source_system=types.SimpleNamespace(
+            get_supplemental_attributes_with_component=lambda c: [dummy_membership]
+        ),
+        target_system=dummy_target,
+    )
+    assert get_node_area(node, ctx).value == dummy_area
+
+    # Zone
+    dummy_zone = types.SimpleNamespace(name="Z")
+    dummy_target = types.SimpleNamespace(get_components=lambda t: [dummy_zone])
+    dummy_membership = types.SimpleNamespace(
+        collection=getters.CollectionEnum.Zone, child_object=types.SimpleNamespace(name="Z")
+    )
+    node = types.SimpleNamespace(zone=None)
+    ctx = types.SimpleNamespace(
+        source_system=types.SimpleNamespace(
+            get_supplemental_attributes_with_component=lambda c: [dummy_membership]
+        ),
+        target_system=dummy_target,
+    )
+    assert get_node_zone(node, ctx).value == dummy_zone
+
+
+def test_get_line_conductance_and_susceptance():
+    # Conductance with resistance
+    line = types.SimpleNamespace(resistance=2.0)
+    assert get_line_conductance(line, None).value.from_to == 0.5
+    # Conductance with no resistance
+    line = types.SimpleNamespace(resistance=0.0)
+    assert get_line_conductance(line, None).value.from_to == 0.0
+    # Susceptance with value
+    line = types.SimpleNamespace(susceptance=3.0)
+    assert get_line_susceptance(line, None).value.from_to == 3.0
+    # Susceptance with no value
+    line = types.SimpleNamespace(susceptance=0.0)
+    assert get_line_susceptance(line, None).value.from_to == 0.0
+
+
+def test_get_line_angle_limits_tuple_and_default():
+    line = types.SimpleNamespace(angle_limits=(10, 20))
+    result = get_line_angle_limits(line, None).value
+    assert result.min == 10 and result.max == 20
+    line = types.SimpleNamespace(angle_limits=None)
+    result = get_line_angle_limits(line, None).value
+    assert result.min == -90.0 and result.max == 90.0
+
+
+def test_get_line_flow_limits_with_and_without_max():
+    line = types.SimpleNamespace(min_flow=-50.0, max_flow=150.0)
+    result = get_line_flow_limits(line, None).value
+    assert result.from_to == 150.0 and result.to_from == -50.0
+    line = types.SimpleNamespace(min_flow=-50.0, max_flow=None)
+    result = get_line_flow_limits(line, None).value
+    assert result.from_to == 100.0 and result.to_from == -50.0
+
+
+def test_get_line_losses_with_values():
+    class V:
+        values = [5.0]  # noqa: RUF012
+
+    line = types.SimpleNamespace(losses=V())
+    assert get_line_losses(line, None).value == 5.0
+    line = types.SimpleNamespace(losses=0.0)
+    assert get_line_losses(line, None).value == 0.0
+
+
+def test_get_gen_start_types():
+    node = types.SimpleNamespace(start_type="hot")
+    assert get_gen_start_types(node, None).value == 1
+    node = types.SimpleNamespace(start_type="warm")
+    assert get_gen_start_types(node, None).value == 2
+    node = types.SimpleNamespace(start_type="cold")
+    assert get_gen_start_types(node, None).value == 3
+    node = types.SimpleNamespace(start_type="unknown")
+    assert get_gen_start_types(node, None).value == 1
+
+
+def test_get_prime_mover_type_default(monkeypatch):
+    # Patch _get_prime_mover_type to avoid file access
+    monkeypatch.setattr(getters, "_get_prime_mover_type", lambda category: "OT")
+    node = types.SimpleNamespace(category=None)
+    assert get_prime_mover_type(node, None).value == "OT"
+
+
+def test_get_reserve_type_and_direction():
+    node = types.SimpleNamespace(reserve_type="SPINNING")
+    assert get_reserve_type(node, None).value.name == "SPINNING"
+    node = types.SimpleNamespace(reserve_type="INVALID")
+    assert get_reserve_type(node, None).value.name == "SPINNING"
+    node = types.SimpleNamespace(direction="UP")
+    assert get_reserve_direction(node, None).value.name == "UP"
+    node = types.SimpleNamespace(direction="INVALID")
+    assert get_reserve_direction(node, None).value.name == "UP"
+
+
+def test_get_trf_primary_shunt():
+    node = types.SimpleNamespace(primary_shunt=None)
+    assert get_trf_primary_shunt(node, None).value is None
+    node = types.SimpleNamespace(primary_shunt=getters.Complex(real=1.0, imag=2.0))
+    assert get_trf_primary_shunt(node, None).value.real == 1.0
+    node = types.SimpleNamespace(primary_shunt=5.0)
+    result = get_trf_primary_shunt(node, None).value
+    assert result.real == 0.0 and result.imag == 0.0
+
+
+def test_get_node_ext():
+    node = types.SimpleNamespace(load_participation_factor=0.5)
+    result = get_node_ext(node, None).value
+    assert result["load_participation_factor"] == 0.5
+
+
+def test_get_device_services_empty():
+    node = types.SimpleNamespace()
+    ctx = types.SimpleNamespace(
+        source_system=types.SimpleNamespace(get_supplemental_attributes_with_component=lambda c: []),
+        target_system=types.SimpleNamespace(get_components=lambda t: []),
+    )
+    assert get_device_services(node, ctx).value == []
+
+
+def setup_function(function):
+    # Reset globals before each test
+    global PLEXOS_NUMBER_COUNTER, PLEXOS_NUMBER_MAP
+    PLEXOS_NUMBER_COUNTER = PLEXOS_NUMBER_BASE
+    PLEXOS_NUMBER_MAP = {}
+
+
+def test_node_number_getter_no_number():
+    setup_function(None)
+    assert extract_number_from_name("bus") == 100101
+    assert extract_number_from_name("anotherbus") == 100102
+    assert extract_number_from_name("bus") == 100101
 
 
 def make_context(tmp_path):
@@ -46,7 +249,7 @@ def test_basic_node_getters(tmp_path) -> None:
     context.source_system.add_component(node)
 
     # Test node getters
-    assert getters.get_node_number(node, context).unwrap() == 123
+    assert getters.get_node_number(node, context).unwrap() == 1230
     assert getters.get_base_voltage(node, context).unwrap() == 115.0
     assert getters.get_node_angle(node, context).unwrap() == 0.0
     assert getters.is_slack_bus(node, context).unwrap() == ACBusTypes.PQ
@@ -608,22 +811,23 @@ def test_area_getter(tmp_path) -> None:
     _ = PLEXOSNode(name="NODE1", voltage=115.0)
 
 
-def test_extract_number_from_name() -> None:
-    """Test number extraction from component names."""
-    assert getters.extract_number_from_name("p51191") == 51191
-    assert getters.extract_number_from_name("ACKRLNTC_9_1363") == 1363
-    assert getters.extract_number_from_name("NODE_123") == 123
-    assert getters.extract_number_from_name("NO_NUMBERS") is None
-    assert getters.extract_number_from_name("") is None
-    assert getters.extract_number_from_name("ABC_456") == 456
+def test_plexos_node_translates_to_acbus():
+    getters.PLEXOS_NUMBER_COUNTER = getters.PLEXOS_NUMBER_BASE
+    getters.PLEXOS_NUMBER_MAP.clear()
+    getters.PLEXOS_NUMBER_USED.clear()
 
-
-def test_node_number_getter_no_number(tmp_path) -> None:
-    """Test get_node_number when no number in name."""
-    context = make_context(tmp_path)
-    context.source_system = System(name="source")
-    context.target_system = System(name="target")
-
-    node = PLEXOSNode(name="NODENUMBER", voltage=115.0)
-    result = getters.get_node_number(node, context).unwrap()
-    assert result == 1
+    test_cases = [
+        ("p126", 126),
+        ("p126_OSW", 1260),
+        ("p1", 1),
+        ("p100", 100),
+        ("bus", 100101),
+        ("anotherbus", 100102),
+        ("bus", 100101),
+        ("foo123bar", 123),
+        ("no_digits_here", 100103),
+        ("p126_OSW2", 12600),
+    ]
+    for name, expected in test_cases:
+        result = getters.extract_number_from_name(name)
+        assert result == expected, f"Failed for {name}: got {result}, expected {expected}"

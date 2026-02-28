@@ -51,13 +51,13 @@ from r2x_sienna.models import (
 from r2x_sienna.units import get_magnitude  # type: ignore[import-untyped]
 
 if TYPE_CHECKING:
-    from r2x_core import TranslationContext
+    from r2x_core import PluginContext
 
 InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData]
 
 
 def _ensure_membership(
-    context: TranslationContext,
+    context: PluginContext,
     parent_object: Any,
     child_object: Any,
     collection: CollectionEnum,
@@ -66,7 +66,7 @@ def _ensure_membership(
 
     Parameters
     ----------
-    context : TranslationContext
+    context : PluginContext
         The translation context containing the target system
     parent_object : Any
         The parent object in the membership relationship
@@ -83,7 +83,7 @@ def _ensure_membership(
     context.target_system.add_supplemental_attribute(parent_object, membership)
 
 
-def ensure_region_node_memberships(context: TranslationContext) -> None:
+def ensure_region_node_memberships(context: PluginContext) -> None:
     """Create Region->Node memberships for all regions and their nodes."""
     regions = list(context.target_system.get_components(PLEXOSRegion))
     all_nodes = list(context.target_system.get_components(PLEXOSNode))
@@ -108,7 +108,7 @@ def ensure_region_node_memberships(context: TranslationContext) -> None:
     logger.info(f"Total {total_memberships} Region-Node memberships created.")
 
 
-def ensure_generator_node_memberships(context: TranslationContext) -> None:
+def ensure_generator_node_memberships(context: PluginContext) -> None:
     """Ensure every translated generator has a node membership based on its source bus."""
     sienna_generator_types = [
         HydroDispatch,
@@ -149,7 +149,7 @@ def ensure_generator_node_memberships(context: TranslationContext) -> None:
     logger.info(f"Total {total_memberships} Generator-Node memberships created.")
 
 
-def ensure_battery_node_memberships(context: TranslationContext) -> None:
+def ensure_battery_node_memberships(context: PluginContext) -> None:
     """Ensure every translated battery has a node membership based on its source bus."""
     source_batteries: dict[str, Any] = {}
     for battery in context.source_system.get_components(EnergyReservoirStorage):
@@ -176,7 +176,7 @@ def ensure_battery_node_memberships(context: TranslationContext) -> None:
     logger.info(f"Total {total_memberships} Battery-Node memberships created.")
 
 
-def ensure_node_zone_memberships(context: TranslationContext) -> None:
+def ensure_node_zone_memberships(context: PluginContext) -> None:
     """Create Node->Zone memberships for all nodes and their load zones."""
     all_nodes = list(context.target_system.get_components(PLEXOSNode))
     all_zones = list(context.target_system.get_components(PLEXOSZone))
@@ -208,7 +208,7 @@ def ensure_node_zone_memberships(context: TranslationContext) -> None:
     logger.info(f"Total {total_memberships} Node-Zone memberships created.")
 
 
-def ensure_reserve_generator_memberships(context: TranslationContext) -> None:
+def ensure_reserve_generator_memberships(context: PluginContext) -> None:
     """Create Reserve->Generator memberships by finding which generators provide each reserve service."""
     from r2x_sienna_to_plexos.getters import SOURCE_GENERATOR_TYPES
 
@@ -237,7 +237,7 @@ def ensure_reserve_generator_memberships(context: TranslationContext) -> None:
     logger.info(f"Total {total_memberships} Reserve-Generator memberships created.")
 
 
-def ensure_reserve_battery_memberships(context: TranslationContext) -> None:
+def ensure_reserve_battery_memberships(context: PluginContext) -> None:
     """Create Reserve->Battery memberships by checking the services of each source battery."""
     reserves_by_name = {res.name: res for res in context.target_system.get_components(PLEXOSReserve)}
     batteries_by_name = {bat.name: bat for bat in context.target_system.get_components(PLEXOSBattery)}
@@ -263,7 +263,7 @@ def ensure_reserve_battery_memberships(context: TranslationContext) -> None:
     logger.info(f"Total {total_memberships} Reserve-Battery memberships created.")
 
 
-def ensure_transformer_node_memberships(context: TranslationContext) -> None:
+def ensure_transformer_node_memberships(context: PluginContext) -> None:
     """Create Transformer->Node memberships (both from and to) for all transformers."""
     transformer_types = [Transformer2W, TapTransformer, PhaseShiftingTransformer]
 
@@ -307,7 +307,7 @@ def ensure_transformer_node_memberships(context: TranslationContext) -> None:
     logger.info(f"Total {total_memberships} Transformer-Node memberships created.")
 
 
-def ensure_interface_line_memberships(context: TranslationContext) -> None:
+def ensure_interface_line_memberships(context: PluginContext) -> None:
     """Create Interface->Line memberships for all interfaces and their lines."""
     all_interfaces = list(context.target_system.get_components(PLEXOSInterface))
     all_lines = list(context.target_system.get_components(PLEXOSLine))
@@ -349,7 +349,7 @@ def _extract_base_name(name: str) -> str:
     return name
 
 
-def ensure_head_storage_generator_membership(context: TranslationContext) -> None:
+def ensure_head_storage_generator_membership(context: PluginContext) -> None:
     """Create HeadStorage memberships between generators and head storages."""
     all_generators = list(context.target_system.get_components(PLEXOSGenerator))
     all_storages = list(context.target_system.get_components(PLEXOSStorage))
@@ -368,7 +368,7 @@ def ensure_head_storage_generator_membership(context: TranslationContext) -> Non
     logger.info(f"Total {total_memberships} HeadStorage-Generator memberships created.")
 
 
-def ensure_tail_storage_generator_membership(context: TranslationContext) -> None:
+def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
     """Create TailStorage memberships between generators and tail storages."""
     all_generators = list(context.target_system.get_components(PLEXOSGenerator))
     all_storages = list(context.target_system.get_components(PLEXOSStorage))
@@ -387,7 +387,7 @@ def ensure_tail_storage_generator_membership(context: TranslationContext) -> Non
     logger.info(f"Total {total_memberships} TailStorage-Generator memberships created.")
 
 
-def ensure_pumped_hydro_storage_memberships(context: TranslationContext) -> None:
+def ensure_pumped_hydro_storage_memberships(context: PluginContext) -> None:
     """Create Generator->Storage memberships for pumped hydro generators.
 
     Each HydroPumpedStorage creates:

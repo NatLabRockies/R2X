@@ -44,13 +44,41 @@ from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput, 
 from r2x_core import Ok, PluginContext, Result, UnitSystem
 from r2x_core.getters import getter
 
+PLEXOS_NUMBER_BASE = 100100
+PLEXOS_NUMBER_COUNTER = PLEXOS_NUMBER_BASE
+PLEXOS_NUMBER_MAP = {}
+PLEXOS_NUMBER_USED = set()
 
-def extract_number_from_name(name: str) -> int | None:
-    """Extract trailing digits from a string like 'p51191' or 'ACKRLNTC_9_1363'."""
-    match = re.search(r"(\d+)$", name)
+
+def extract_number_from_name(name: str) -> int:
+    """
+    Extract the first group of digits from a string like 'p126_OSW' or 'ACKRLNTC_9_1363'.
+    Ensure the returned number is unique for each name.
+    If no digits are found, assign a unique dummy number >= 100101.
+    """
+    global PLEXOS_NUMBER_COUNTER, PLEXOS_NUMBER_MAP, PLEXOS_NUMBER_USED
+
+    if name in PLEXOS_NUMBER_MAP:
+        return PLEXOS_NUMBER_MAP[name]
+
+    match = re.search(r"(\d+)", name)
     if match:
-        return int(match.group(1))
-    return None
+        base_number = int(match.group(1))
+        candidate = base_number
+        # Ensure uniqueness
+        while candidate in PLEXOS_NUMBER_USED:
+            # Try appending a digit or incrementing
+            candidate = candidate * 10
+        PLEXOS_NUMBER_MAP[name] = candidate
+        PLEXOS_NUMBER_USED.add(candidate)
+        return candidate
+
+    while True:
+        PLEXOS_NUMBER_COUNTER += 1
+        if PLEXOS_NUMBER_COUNTER not in PLEXOS_NUMBER_USED:
+            PLEXOS_NUMBER_MAP[name] = PLEXOS_NUMBER_COUNTER
+            PLEXOS_NUMBER_USED.add(PLEXOS_NUMBER_COUNTER)
+            return PLEXOS_NUMBER_COUNTER
 
 
 def _get_prime_mover_type(category: str) -> PrimeMoversType:
@@ -249,6 +277,14 @@ def get_line_arc(component: PLEXOSLine, context: PluginContext) -> Result[Arc, A
     if not from_node or not to_node:
         raise ValueError(f"Could not find both nodes for line {component.name}. Memberships: {memberships}")
 
+    arc_name = f"{from_node}-{to_node}"
+
+    # Reuse existing Arc if one with the same name already exists in the target system
+    existing_arcs = list(context.target_system.get_components(Arc))
+    existing_arc = next((a for a in existing_arcs if getattr(a, "name", None) == arc_name), None)
+    if existing_arc is not None:
+        return Ok(existing_arc)
+
     acbuses = list(context.target_system.get_components(ACBus))
     from_bus = next((bus for bus in acbuses if getattr(bus, "name", None) == from_node), None)
     to_bus = next((bus for bus in acbuses if getattr(bus, "name", None) == to_node), None)
@@ -259,7 +295,7 @@ def get_line_arc(component: PLEXOSLine, context: PluginContext) -> Result[Arc, A
             f"Available: {[bus.name for bus in acbuses]}"
         )
 
-    arc_sense = Arc(name=f"{from_node}-{to_node}", from_to=from_bus, to_from=to_bus)
+    arc_sense = Arc(name=arc_name, from_to=from_bus, to_from=to_bus)
     return Ok(arc_sense)
 
 

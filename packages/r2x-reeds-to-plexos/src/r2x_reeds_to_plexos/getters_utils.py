@@ -19,10 +19,10 @@ from r2x_plexos.models import (
 from r2x_core import System
 
 if TYPE_CHECKING:
-    from r2x_core import System, TranslationContext
+    from r2x_core import PluginContext, System
 
 
-def attach_region_load_time_series(context: TranslationContext) -> None:
+def attach_region_load_time_series(context: PluginContext) -> None:
     """Attach demand load and time series from ReEDSDemand to the translated PLEXOSRegion."""
     from r2x_plexos.models import PLEXOSRegion
     from r2x_reeds.models.components import ReEDSDemand
@@ -56,7 +56,7 @@ def attach_region_load_time_series(context: TranslationContext) -> None:
                 logger.debug("Attached demand time series {} to region {}", ts.name, region_name)
 
 
-def attach_reserve_time_series(context: TranslationContext) -> None:
+def attach_reserve_time_series(context: PluginContext) -> None:
     """Attach only min_provision time series from ReEDSReserve to the translated PLEXOSReserve."""
     from r2x_plexos.models import PLEXOSReserve
     from r2x_reeds.models.components import ReEDSReserve
@@ -73,7 +73,7 @@ def attach_reserve_time_series(context: TranslationContext) -> None:
                 context.target_system.add_time_series(deepcopy(ts), reserve)
 
 
-def attach_time_series_to_generators(context: TranslationContext) -> None:
+def attach_time_series_to_generators(context: PluginContext) -> None:
     """Transfer time series from ReEDS generators to translated PLEXOS generators (with duplicate check)."""
     from r2x_reeds.models.components import ReEDSGenerator, ReEDSHydroGenerator, ReEDSVariableGenerator
 
@@ -106,7 +106,7 @@ def attach_time_series_to_generators(context: TranslationContext) -> None:
             continue
 
 
-def ensure_region_node_memberships(context: TranslationContext) -> None:
+def ensure_region_node_memberships(context: PluginContext) -> None:
     """Ensure every translated region has a node child membership with matching name."""
     system = context.target_system
     nodes_by_name = {node.name: node for node in system.get_components(PLEXOSNode)}
@@ -118,7 +118,7 @@ def ensure_region_node_memberships(context: TranslationContext) -> None:
         _ensure_membership(system, node, region, CollectionEnum.Region)
 
 
-def ensure_generator_node_memberships(context: TranslationContext) -> None:
+def ensure_generator_node_memberships(context: PluginContext) -> None:
     """Ensure every translated generator has a node membership based on its source region."""
     from r2x_reeds.models import ReEDSGenerator
 
@@ -142,7 +142,7 @@ def ensure_generator_node_memberships(context: TranslationContext) -> None:
             _ensure_membership(context.target_system, target_gen, node, CollectionEnum.Nodes)
 
 
-def link_line_memberships(context: TranslationContext) -> None:
+def link_line_memberships(context: PluginContext) -> None:
     """Connect translated lines to their originating region nodes."""
     from r2x_reeds.models.components import ReEDSTransmissionLine
 
@@ -163,7 +163,7 @@ def link_line_memberships(context: TranslationContext) -> None:
         _ensure_membership(context.target_system, to_node, plexos_line, CollectionEnum.NodeTo)
 
 
-def attach_emissions_to_generators(context: TranslationContext) -> None:
+def attach_emissions_to_generators(context: PluginContext) -> None:
     """Copy ReEDS emission metadata onto translated generators."""
     from r2x_reeds.models.components import ReEDSEmission, ReEDSGenerator
 
@@ -181,7 +181,7 @@ def attach_emissions_to_generators(context: TranslationContext) -> None:
             context.target_system.add_supplemental_attribute(plexos_gen, emission.model_copy())
 
 
-def convert_pumped_storage_generators(context: TranslationContext) -> None:
+def convert_pumped_storage_generators(context: PluginContext) -> None:
     """Ensure pumped-storage generators also exist as storage components."""
     from r2x_reeds.models.components import ReEDSGenerator
 
