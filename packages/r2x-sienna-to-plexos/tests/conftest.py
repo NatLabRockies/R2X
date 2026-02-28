@@ -25,6 +25,7 @@ pytest_plugins = [
     "tests.fixtures.reeds_systems",
 ]
 
+
 @pytest.fixture
 def caplog(caplog):
     from r2x_core.logger import setup_logging

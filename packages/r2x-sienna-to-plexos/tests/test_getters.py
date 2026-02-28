@@ -2537,6 +2537,7 @@ def test_system_with_renewables_adds_three_units():
 
 def test_system_with_hydro_adds_dispatch_turbine_and_reservoir():
     from r2x_sienna.models import HydroDispatch, HydroReservoir, HydroTurbine
+
     sys = _build_to_hydro()
 
     assert len(list(sys.get_components(HydroDispatch))) >= 1

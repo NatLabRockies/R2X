@@ -44,13 +44,24 @@ from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput, 
 from r2x_core import Ok, PluginContext, Result, UnitSystem
 from r2x_core.getters import getter
 
+PLEXOS_NUMBER_BASE = 100100
+PLEXOS_NUMBER_COUNTER = PLEXOS_NUMBER_BASE
+PLEXOS_NUMBER_MAP = {}
+
 
 def extract_number_from_name(name: str) -> int | None:
-    """Extract trailing digits from a string like 'p51191' or 'ACKRLNTC_9_1363'."""
-    match = re.search(r"(\d+)$", name)
+    """
+    Extract the first group of digits from a string like 'p126_OSW' or 'ACKRLNTC_9_1363'.
+    If no digits are found, assign a unique dummy number >= 100101.
+    """
+    match = re.search(r"(\d+)", name)
     if match:
         return int(match.group(1))
-    return None
+    global PLEXOS_NUMBER_COUNTER
+    if name not in PLEXOS_NUMBER_MAP:
+        PLEXOS_NUMBER_COUNTER += 1
+        PLEXOS_NUMBER_MAP[name] = PLEXOS_NUMBER_COUNTER
+    return PLEXOS_NUMBER_MAP[name]
 
 
 def _get_prime_mover_type(category: str) -> PrimeMoversType:
