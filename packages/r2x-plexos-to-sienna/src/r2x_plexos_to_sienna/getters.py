@@ -47,21 +47,38 @@ from r2x_core.getters import getter
 PLEXOS_NUMBER_BASE = 100100
 PLEXOS_NUMBER_COUNTER = PLEXOS_NUMBER_BASE
 PLEXOS_NUMBER_MAP = {}
+PLEXOS_NUMBER_USED = set()
 
 
-def extract_number_from_name(name: str) -> int | None:
+def extract_number_from_name(name: str) -> int:
     """
     Extract the first group of digits from a string like 'p126_OSW' or 'ACKRLNTC_9_1363'.
+    Ensure the returned number is unique for each name.
     If no digits are found, assign a unique dummy number >= 100101.
     """
+    global PLEXOS_NUMBER_COUNTER, PLEXOS_NUMBER_MAP, PLEXOS_NUMBER_USED
+
+    if name in PLEXOS_NUMBER_MAP:
+        return PLEXOS_NUMBER_MAP[name]
+
     match = re.search(r"(\d+)", name)
     if match:
-        return int(match.group(1))
-    global PLEXOS_NUMBER_COUNTER
-    if name not in PLEXOS_NUMBER_MAP:
+        base_number = int(match.group(1))
+        candidate = base_number
+        # Ensure uniqueness
+        while candidate in PLEXOS_NUMBER_USED:
+            # Try appending a digit or incrementing
+            candidate = candidate * 10
+        PLEXOS_NUMBER_MAP[name] = candidate
+        PLEXOS_NUMBER_USED.add(candidate)
+        return candidate
+
+    while True:
         PLEXOS_NUMBER_COUNTER += 1
-        PLEXOS_NUMBER_MAP[name] = PLEXOS_NUMBER_COUNTER
-    return PLEXOS_NUMBER_MAP[name]
+        if PLEXOS_NUMBER_COUNTER not in PLEXOS_NUMBER_USED:
+            PLEXOS_NUMBER_MAP[name] = PLEXOS_NUMBER_COUNTER
+            PLEXOS_NUMBER_USED.add(PLEXOS_NUMBER_COUNTER)
+            return PLEXOS_NUMBER_COUNTER
 
 
 def _get_prime_mover_type(category: str) -> PrimeMoversType:

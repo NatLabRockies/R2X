@@ -249,7 +249,7 @@ def test_basic_node_getters(tmp_path) -> None:
     context.source_system.add_component(node)
 
     # Test node getters
-    assert getters.get_node_number(node, context).unwrap() == 123
+    assert getters.get_node_number(node, context).unwrap() == 1230
     assert getters.get_base_voltage(node, context).unwrap() == 115.0
     assert getters.get_node_angle(node, context).unwrap() == 0.0
     assert getters.is_slack_bus(node, context).unwrap() == ACBusTypes.PQ
@@ -811,27 +811,23 @@ def test_area_getter(tmp_path) -> None:
     _ = PLEXOSNode(name="NODE1", voltage=115.0)
 
 
-def test_extract_number_from_name():
-    # Reset dummy number state for repeatable tests
-    from r2x_plexos_to_sienna.getters import extract_number_from_name
-
-    global PLEXOS_NUMBER_BASE, PLEXOS_NUMBER_COUNTER, PLEXOS_NUMBER_MAP
-    PLEXOS_NUMBER_BASE = 100100
-    PLEXOS_NUMBER_COUNTER = PLEXOS_NUMBER_BASE
-    PLEXOS_NUMBER_MAP = {}
+def test_plexos_node_translates_to_acbus():
+    getters.PLEXOS_NUMBER_COUNTER = getters.PLEXOS_NUMBER_BASE
+    getters.PLEXOS_NUMBER_MAP.clear()
+    getters.PLEXOS_NUMBER_USED.clear()
 
     test_cases = [
-        ("p126_OSW", 126),
-        ("ACKRLNTC_9_1363", 9),
+        ("p126", 126),
+        ("p126_OSW", 1260),
         ("p1", 1),
         ("p100", 100),
         ("bus", 100101),
         ("anotherbus", 100102),
         ("bus", 100101),
-        ("foo123bar456", 123),
+        ("foo123bar", 123),
         ("no_digits_here", 100103),
+        ("p126_OSW2", 12600),
     ]
     for name, expected in test_cases:
-        result = extract_number_from_name(name)
+        result = getters.extract_number_from_name(name)
         assert result == expected, f"Failed for {name}: got {result}, expected {expected}"
-    print("All extract_number_from_name tests passed.")
