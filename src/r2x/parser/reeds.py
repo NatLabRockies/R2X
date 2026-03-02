@@ -444,6 +444,10 @@ class ReEDSParser(BaseParser):
         combined_data = pl.concat([non_cf_generators, cf_generators], how="align")
 
         for row in combined_data.iter_rows(named=True):
+            if "BATTERY" in row["tech"]:
+                row['active_power'] *= 1.1
+                row['storage_capacity'] *= 1.1
+
             category = row["category"]
 
             if category in self.excluded_categories:
