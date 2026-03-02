@@ -445,8 +445,12 @@ class ReEDSParser(BaseParser):
 
         for row in combined_data.iter_rows(named=True):
             if "BATTERY" in row["tech"]:
-                row['active_power'] *= 1.1
-                row['storage_capacity'] *= 1.1
+                row['active_power'] *= (
+                    self.reeds_config.defaults['battery_storage_multiplier']
+                )
+                row['storage_capacity'] *= (
+                    self.reeds_config.defaults['battery_storage_multiplier']
+                )
 
             category = row["category"]
 

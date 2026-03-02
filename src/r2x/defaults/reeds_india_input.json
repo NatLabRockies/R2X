@@ -1,4 +1,5 @@
 {
+  "battery_storage_multiplier": 1.1,
   "commit_technologies": [
     "HYDRO-PONDAGE",
     "HYDRO-PUMPED",
