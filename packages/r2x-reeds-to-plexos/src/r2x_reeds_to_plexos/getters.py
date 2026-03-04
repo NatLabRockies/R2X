@@ -38,7 +38,7 @@ def _float_or_zero(value: Any | None) -> float:
 
 
 def _get_defaults(technology: str, key: str) -> float:
-    prefixes = ("battery", "csp", "wind-ons", "wind-offs", "geohydro_allkm")
+    prefixes = ("battery", "csp", "wind-ons", "wind-offs", "geohydro_allkm", "egs", "egs_nearfield")
     tech_lower = technology.lower()
     for prefix in prefixes:
         if tech_lower.startswith(prefix):
@@ -272,10 +272,10 @@ def forced_outage_rate_percent(component: object, context: PluginContext) -> Res
 
 
 @getter
-def maintenance_percent(component: object, context: PluginContext) -> Result[float, ValueError]:
+def maintenance_rate_percent(component: object, context: PluginContext) -> Result[float, ValueError]:
     """Convert maintenance rate fraction (0-1) to percent expected by PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
-    rate = getattr(component, "maintenance_rate", None)
+    rate = getattr(component, "planned_outage_rate", None)
 
     if rate is not None:
         return Ok(_float_or_zero(rate) * 100.0)
@@ -545,7 +545,7 @@ def ramp_rate_up_mw_per_hour(
         technology = getattr(component, "technology", "")
         default_ramp_up = _get_defaults(technology, "max_ramp_up_percentage")
         if default_ramp_up > 0.0:
-            return Ok(float(default_ramp_up))
+            return Ok(float(default_ramp_up) * 100.0)  # Convert from percent to MW/hour
         return Ok(0.0)
 
     return Ok(float(ramp_rate) * 60.0)
@@ -566,6 +566,17 @@ def ramp_rate_down_mw_per_hour(
         return Ok(0.0)
 
     return Ok(float(ramp_rate) * 60.0)
+
+
+@getter
+def gen_startup_cost(component: ReEDSGenerator, context: PluginContext) -> Result[float, ValueError]:
+    """Return the startup cost for a thermal generator."""
+    startup_cost = getattr(component, "startup_cost", None)
+    if startup_cost is not None:
+        return Ok(float(startup_cost))
+    technology = getattr(component, "technology", "")
+    default_startup_cost = _get_defaults(technology, "start_cost_per_MW")
+    return Ok(float(default_startup_cost))
 
 
 @getter

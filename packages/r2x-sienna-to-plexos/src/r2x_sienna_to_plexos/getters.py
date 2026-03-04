@@ -750,18 +750,18 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
         value = None
 
     if value is not None:
-        return Ok(float(value))
+        return Ok(max(0.0, float(value)))
 
     limits = getattr(source_component, "active_power_limits", None)
     if isinstance(limits, dict):
         max_value = limits.get("max")
         if isinstance(max_value, int | float):
-            return Ok(float(max_value))
+            return Ok(max(0.0, float(max_value)))
 
     rating = getattr(source_component, "rating", None)
     rating_value = get_magnitude(rating)
     if rating_value is not None:
-        return Ok(float(rating_value) * resolve_base_power(source_component))
+        return Ok(max(0.0, float(rating_value) * resolve_base_power(source_component)))
 
     return Err(ValueError("active_power_limits or rating missing"))
 
@@ -784,7 +784,7 @@ def get_component_rating(source_component: object, context: PluginContext) -> Re
     """Extract turbine rating (in MW) from the HydroTurbine."""
     rating = getattr(source_component, "rating", None)
     if rating is not None:
-        return Ok(float(rating) * source_component.base_power)
+        return Ok(max(0.0, float(rating) * source_component.base_power))
     return Ok(0.0)
 
 
@@ -919,15 +919,18 @@ def _ramp_value_to_float(source_component: object, raw_value: Any) -> float:
 def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     try:
         limits = sienna_get_ramp_limits(source_component)
-        return Ok(float(limits.up) if limits.up is not None else 0.0)
+        value = float(limits.up) if limits.up is not None else 0.0
+        return Ok(max(0.0, value))
     except (KeyError, TypeError, AttributeError, NotImplementedError):
         pass
 
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
-        return Ok(_ramp_value_to_float(source_component, ramp.get("up")))
+        value = _ramp_value_to_float(source_component, ramp.get("up"))
+        return Ok(max(0.0, value))
     if ramp is not None:
-        return Ok(_ramp_value_to_float(source_component, getattr(ramp, "up", None)))
+        value = _ramp_value_to_float(source_component, getattr(ramp, "up", None))
+        return Ok(max(0.0, value))
 
     return Ok(0.0)
 
@@ -936,15 +939,18 @@ def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[
 def get_max_ramp_down(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     try:
         limits = sienna_get_ramp_limits(source_component)
-        return Ok(float(limits.down) if limits.down is not None else 0.0)
+        value = float(limits.down) if limits.down is not None else 0.0
+        return Ok(max(0.0, value))
     except (KeyError, TypeError, AttributeError, NotImplementedError):
         pass
 
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
-        return Ok(_ramp_value_to_float(source_component, ramp.get("down")))
+        value = _ramp_value_to_float(source_component, ramp.get("down"))
+        return Ok(max(0.0, value))
     if ramp is not None:
-        return Ok(_ramp_value_to_float(source_component, getattr(ramp, "down", None)))
+        value = _ramp_value_to_float(source_component, getattr(ramp, "down", None))
+        return Ok(max(0.0, value))
 
     return Ok(0.0)
 
@@ -970,7 +976,9 @@ def get_initial_generation(
     power = get_magnitude(getattr(source_component, "active_power", None))
     if power is None:
         return Ok(0.0)
-    return Ok(float(power) * resolve_base_power(source_component))
+    # Active power may be negative in some cases (e.g. EI dataset)
+    value = float(power) * resolve_base_power(source_component)
+    return Ok(abs(value))
 
 
 @getter
