@@ -38,8 +38,12 @@ def _float_or_zero(value: Any | None) -> float:
 
 
 def _get_defaults(technology: str, key: str) -> float:
-    if technology.lower().startswith("battery"):
-        technology = "battery"
+    prefixes = ("battery", "csp", "wind-ons", "wind-offs", "geohydro_allkm")
+    tech_lower = technology.lower()
+    for prefix in prefixes:
+        if tech_lower.startswith(prefix):
+            technology = prefix
+            break
     defaults_path = files("r2x_reeds_to_plexos.config") / "defaults.json"
     with defaults_path.open() as f:
         defaults = json.load(f)
@@ -264,11 +268,11 @@ def forced_outage_rate_percent(component: object, context: PluginContext) -> Res
         return Ok(_float_or_zero(rate) * 100.0)
 
     default_rate = _get_defaults(gen_technology, "forced_outage_rate")
-    return Ok(float(default_rate) * 100.0)
+    return Ok(float(default_rate))
 
 
 @getter
-def maintenance_rate_percent(component: object, context: PluginContext) -> Result[float, ValueError]:
+def maintenance_percent(component: object, context: PluginContext) -> Result[float, ValueError]:
     """Convert maintenance rate fraction (0-1) to percent expected by PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
     rate = getattr(component, "maintenance_rate", None)
@@ -277,7 +281,7 @@ def maintenance_rate_percent(component: object, context: PluginContext) -> Resul
         return Ok(_float_or_zero(rate) * 100.0)
 
     default_rate = _get_defaults(gen_technology, "maintenance_rate")
-    return Ok(float(default_rate) * 100.0)
+    return Ok(float(default_rate))
 
 
 @getter
@@ -465,7 +469,7 @@ def lines_loss_incremental(
     if losses is None:
         return Ok(0.0)
 
-    incremental_loss = _float_or_zero(losses.incremental)
+    incremental_loss = _float_or_zero(losses)
     return Ok(incremental_loss)
 
 
@@ -539,7 +543,7 @@ def ramp_rate_up_mw_per_hour(
 
     if ramp_rate is None:
         technology = getattr(component, "technology", "")
-        default_ramp_up = _get_defaults(technology, "ramp_rate_up")
+        default_ramp_up = _get_defaults(technology, "max_ramp_up_percentage")
         if default_ramp_up > 0.0:
             return Ok(float(default_ramp_up))
         return Ok(0.0)
@@ -568,30 +572,39 @@ def ramp_rate_down_mw_per_hour(
 def min_stable_level_mw(
     component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert min stable level from fraction to MW."""
+    """Return min stable level as percent, using defaults if missing."""
     min_level_fraction = getattr(component, "min_stable_level", None)
     capacity = getattr(component, "capacity", 0.0)
 
-    if min_level_fraction is None:
-        return Ok(0.0)
-
-    return Ok(float(min_level_fraction) * float(capacity))
+    if min_level_fraction is not None:
+        return Ok(float(min_level_fraction) * float(capacity))
+    technology = getattr(component, "technology", "")
+    default_fraction = _get_defaults(technology, "min_stable_level_percentage")
+    return Ok(float(default_fraction) * 100)
 
 
 @getter
 def min_up_time_hours(component: ReEDSThermalGenerator, context: PluginContext) -> Result[float, ValueError]:
-    """Return min up time in hours."""
+    """Return min up time in hours, using defaults if missing."""
     min_up = getattr(component, "min_up_time", None)
-    return Ok(_float_or_zero(min_up))
+    if min_up is not None:
+        return Ok(_float_or_zero(min_up))
+    technology = getattr(component, "technology", "")
+    default_min_up = _get_defaults(technology, "min_up_time")
+    return Ok(float(default_min_up))
 
 
 @getter
 def min_down_time_hours(
     component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Return min down time in hours."""
+    """Return min down time in hours, using defaults if missing."""
     min_down = getattr(component, "min_down_time", None)
-    return Ok(_float_or_zero(min_down))
+    if min_down is not None:
+        return Ok(_float_or_zero(min_down))
+    technology = getattr(component, "technology", "")
+    default_min_down = _get_defaults(technology, "min_down_time")
+    return Ok(float(default_min_down))
 
 
 @getter
@@ -659,24 +672,6 @@ def hydro_min_flow(component: ReEDSHydroGenerator, context: PluginContext) -> Re
     if flow_range is None:
         return Ok(0.0)
     return Ok(float(flow_range.min))
-
-
-@getter
-def hydro_must_run_flag(component: ReEDSHydroGenerator, context: PluginContext) -> Result[int, ValueError]:
-    """Return must_run flag for non-dispatchable hydro."""
-    is_dispatchable = getattr(component, "is_dispatchable", True)
-    if not is_dispatchable:
-        return Ok(1)
-    return Ok(0)
-
-
-@getter
-def consuming_tech_load_mw(
-    component: ReEDSConsumingTechnology, context: PluginContext
-) -> Result[float, ValueError]:
-    """Return consumption capacity as load."""
-    capacity = getattr(component, "capacity", None)
-    return Ok(_float_or_zero(capacity))
 
 
 @getter
