@@ -538,34 +538,54 @@ def reserve_requirement(component: ReEDSReserve, context: PluginContext) -> Resu
 def ramp_rate_up_mw_per_hour(
     component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert ramp rate from MW/min to MW/hour for PLEXOS."""
+    """Convert ramp rate from fraction/hour to MW/hour for PLEXOS."""
     ramp_rate = getattr(component, "ramp_rate", None)
+    technology = getattr(component, "technology", "")
+    capacity = getattr(component, "capacity", 0.0)
 
     if ramp_rate is None:
-        technology = getattr(component, "technology", "")
+        default_ramp_up = _get_defaults(technology, "ramp_rate_up")
+        if default_ramp_up is not None and default_ramp_up > 0.0:
+            return Ok(float(default_ramp_up))
         default_ramp_up = _get_defaults(technology, "max_ramp_up_percentage")
-        if default_ramp_up > 0.0:
-            return Ok(float(default_ramp_up) * 100.0)  # Convert from percent to MW/hour
+        if default_ramp_up is not None and default_ramp_up > 0.0:
+            if capacity == 0.0:
+                capacity = (
+                    _get_defaults(technology, "capacity_MW")
+                    or _get_defaults(technology, "average_capacity_MW")
+                    or 0.0
+                )
+            return Ok(float(default_ramp_up) * float(capacity))
         return Ok(0.0)
 
-    return Ok(float(ramp_rate) * 60.0)
+    return Ok(float(ramp_rate) * float(capacity))
 
 
 @getter
 def ramp_rate_down_mw_per_hour(
     component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert ramp rate from MW/min to MW/hour for PLEXOS."""
+    """Convert ramp rate from fraction/hour to MW/hour for PLEXOS."""
     ramp_rate = getattr(component, "ramp_rate", None)
+    technology = getattr(component, "technology", "")
+    capacity = getattr(component, "capacity", 0.0)
 
     if ramp_rate is None:
-        technology = getattr(component, "technology", "")
-        default_ramp_up = _get_defaults(technology, "ramp_rate_down")
-        if default_ramp_up > 0.0:
-            return Ok(float(default_ramp_up))
+        default_ramp_down = _get_defaults(technology, "ramp_rate_down")
+        if default_ramp_down is not None and default_ramp_down > 0.0:
+            return Ok(float(default_ramp_down))
+        default_ramp_down = _get_defaults(technology, "max_ramp_up_percentage")
+        if default_ramp_down is not None and default_ramp_down > 0.0:
+            if capacity == 0.0:
+                capacity = (
+                    _get_defaults(technology, "capacity_MW")
+                    or _get_defaults(technology, "average_capacity_MW")
+                    or 0.0
+                )
+            return Ok(float(default_ramp_down) * float(capacity))
         return Ok(0.0)
 
-    return Ok(float(ramp_rate) * 60.0)
+    return Ok(float(ramp_rate) * float(capacity))
 
 
 @getter
@@ -583,15 +603,23 @@ def gen_startup_cost(component: ReEDSGenerator, context: PluginContext) -> Resul
 def min_stable_level_mw(
     component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Return min stable level as percent, using defaults if missing."""
+    """Return min stable level in MW, using defaults if missing."""
     min_level_fraction = getattr(component, "min_stable_level", None)
     capacity = getattr(component, "capacity", 0.0)
+    technology = getattr(component, "technology", "")
+
+    if capacity == 0.0:
+        capacity = (
+            _get_defaults(technology, "capacity_MW")
+            or _get_defaults(technology, "average_capacity_MW")
+            or 0.0
+        )
 
     if min_level_fraction is not None:
         return Ok(float(min_level_fraction) * float(capacity))
-    technology = getattr(component, "technology", "")
+
     default_fraction = _get_defaults(technology, "min_stable_level_percentage")
-    return Ok(float(default_fraction) * 100)
+    return Ok(float(default_fraction) * float(capacity))
 
 
 @getter
