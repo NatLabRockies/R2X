@@ -23,6 +23,7 @@
     },
     "getters": {
       "units": "get_component_units",
+      "commit": "get_commitment_status",
       "forced_outage_rate": "forced_outage_rate_percent",
       "min_capacity_factor": "min_capacity_factor_percent",
       "maintenance_rate": "maintenance_rate_percent",
@@ -64,7 +65,8 @@
       "category": "vre_category_with_resource_class",
       "build_cost": "supply_curve_cost_getter",
       "mean_time_to_repair": "mean_time_to_repair_hours",
-      "rating": "rating",
+      "rating": "get_gen_rating",
+      "commit": "get_commitment_status",
       "load_subtracter": "load_subtracter",
       "min_stable_level": "min_stable_level_mw",
       "maintenance_rate": "maintenance_rate_percent",
@@ -102,6 +104,7 @@
       "min_stable_level": "hydro_min_flow",
       "min_up_time": "min_up_time_hours",
       "min_down_time": "min_down_time_hours",
+      "commit": "get_commitment_status",
       "max_ramp_up": "ramp_rate_up_mw_per_hour",
       "max_ramp_down": "ramp_rate_down_mw_per_hour",
       "max_energy_day": "hydro_max_energy_per_day",
@@ -130,14 +133,15 @@
       "fom_charge": "fom_cost",
       "vom_charge": "vom_cost",
       "heat_rate": "heat_rate",
+      "fuel_price": "fuel_price",
       "ext": "ext"
     },
     "getters": {
       "units": "get_component_units",
-      "heat_rate": "consuming_tech_efficiency_to_heat_rate",
       "min_stable_level": "min_stable_level_mw",
       "min_up_time": "min_up_time_hours",
       "min_down_time": "min_down_time_hours",
+      "commit": "get_commitment_status",
       "forced_outage_rate": "forced_outage_rate_percent",
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
@@ -151,12 +155,12 @@
     "field_map": {
       "category": "technology",
       "max_power": "capacity",
-      "capacity": "capacity",
       "name": "name",
       "ext": "ext"
     },
     "getters": {
       "units": "get_component_units",
+      "capacity": "get_battery_capacity",
       "build_cost": "storage_capital_cost_power",
       "fom_charge": "storage_fom_cost_power",
       "max_soc": "get_battery_max_soc",
@@ -217,6 +221,7 @@
       "max_ramp_down": "ramp_rate_down_mw_per_hour",
       "min_down_time": "min_down_time_hours",
       "min_up_time": "min_up_time_hours",
+      "commit": "get_commitment_status",
       "min_stable_level": "min_stable_level_mw",
       "pump_load": "get_generator_pump_load_mw",
       "pump_efficiency": "get_generator_pump_efficiency_percent",
@@ -309,7 +314,8 @@
       "mean_time_to_repair": "mean_time_to_repair_hours",
       "min_stable_level": "min_stable_level_mw",
       "pump_efficiency": "get_generator_pump_efficiency_percent",
-      "pump_load": "get_generator_pump_load_mw"
+      "pump_load": "get_generator_pump_load_mw",
+      "commit": "get_commitment_status"
     },
     "source_type": "ReEDSStorage",
     "target_type": "PLEXOSGenerator",

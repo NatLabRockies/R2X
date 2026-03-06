@@ -15,7 +15,6 @@ from r2x_core.getters import getter
 if TYPE_CHECKING:
     from r2x_plexos.models import PLEXOSLine, PLEXOSNode
     from r2x_reeds.models import (
-        ReEDSConsumingTechnology,
         ReEDSGenerator,
         ReEDSHydroGenerator,
         ReEDSInterface,
@@ -94,6 +93,17 @@ def _lookup_source_generator(context: PluginContext, name: str) -> Any | None:
 
 
 @getter
+def get_commitment_status(component: Any, context: PluginContext) -> Result[int, ValueError]:
+    """Return 1 if technology is in commit_technologies list, -1 otherwise."""
+    technology = getattr(component, "technology", "")
+    defaults_path = files("r2x_reeds_to_plexos.config") / "defaults.json"
+    with defaults_path.open() as f:
+        defaults = json.load(f)
+    commit_technologies = defaults.get("commit_technologies", [])
+    return Ok(1 if technology in commit_technologies else -1)
+
+
+@getter
 def get_component_units(component: object, context: PluginContext) -> Result[str, ValueError]:
     """Return the units/availability for a given component."""
     return Ok(1)
@@ -128,7 +138,7 @@ def hydro_max_energy_per_day(
 
 
 @getter
-def rating(component: ReEDSGenerator, context: PluginContext) -> Result[float | int, ValueError]:
+def get_gen_rating(component: ReEDSGenerator, context: PluginContext) -> Result[float | int, ValueError]:
     """Return the rating as a PLEXOSPropertyValue with units MW."""
     value = _float_or_zero(getattr(component, "capacity", 0.0))
     return Ok(value)
@@ -168,7 +178,7 @@ def storage_initial_volume(component: ReEDSStorage, context: PluginContext) -> R
     if initial_volume is not None:
         return Ok(float(initial_volume))
 
-    return Ok(_get_storage_max_volume(component) * 0.5)
+    return Ok(_get_storage_max_volume(component) * 0.5 / 1000.0)
 
 
 @getter
@@ -355,7 +365,7 @@ def get_battery_max_soc(
         return Ok(_float_or_zero(max_soc))
 
     default_max_soc = _get_defaults(gen_technology, "max_soc")
-    return Ok(float(default_max_soc))
+    return Ok(float(default_max_soc) * 100.0)
 
 
 @getter
@@ -370,7 +380,7 @@ def get_battery_initial_soc(
         return Ok(_float_or_zero(initial_soc))
 
     default_initial_soc = _get_defaults(gen_technology, "initial_soc")
-    return Ok(float(default_initial_soc))
+    return Ok(float(default_initial_soc) * 100.0)
 
 
 @getter
@@ -385,7 +395,25 @@ def get_battery_min_soc(
         return Ok(_float_or_zero(min_soc))
 
     default_min_soc = _get_defaults(gen_technology, "min_soc")
-    return Ok(float(default_min_soc))
+    return Ok(float(default_min_soc) * 100.0)
+
+
+@getter
+def get_battery_capacity(
+    component: ReEDSGenerator | ReEDSStorage, context: PluginContext
+) -> Result[float, ValueError]:
+    """Return battery capacity in MWh (capacity * storage_duration)."""
+    capacity = getattr(component, "capacity", None)
+    duration = getattr(component, "storage_duration", 1.0) or 1.0
+
+    if capacity is not None:
+        return Ok(_float_or_zero(capacity) * float(duration))
+
+    gen_technology = getattr(component, "technology", "")
+    default_capacity = _get_defaults(gen_technology, "capacity_MW") or _get_defaults(
+        gen_technology, "average_capacity_MW"
+    )
+    return Ok(float(default_capacity) * float(duration))
 
 
 @getter
@@ -725,20 +753,6 @@ def hydro_min_flow(component: ReEDSHydroGenerator, context: PluginContext) -> Re
     if flow_range is None:
         return Ok(0.0)
     return Ok(float(flow_range.min))
-
-
-@getter
-def consuming_tech_efficiency_to_heat_rate(
-    component: ReEDSConsumingTechnology, context: PluginContext
-) -> Result[float, ValueError]:
-    """Convert electricity efficiency to heat rate equivalent."""
-    efficiency = getattr(component, "electricity_efficiency", None)
-    if efficiency is None or efficiency == 0:
-        return Ok(0.0)
-
-    # Heat rate is inverse of efficiency (roughly)
-    # This is a simplification; actual conversion depends on units
-    return Ok(1.0 / float(efficiency))
 
 
 @getter
