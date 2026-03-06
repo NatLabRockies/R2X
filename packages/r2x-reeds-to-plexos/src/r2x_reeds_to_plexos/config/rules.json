@@ -376,8 +376,8 @@
   {
     "defaults": {
       "category": "reeds-line",
-      "max_flow": 0,
-      "min_flow": 0
+      "max_flow": 0.0,
+      "min_flow": 0.0
     },
     "field_map": {
       "name": "name",

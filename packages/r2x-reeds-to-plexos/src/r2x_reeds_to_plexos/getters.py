@@ -485,21 +485,20 @@ def min_capacity_factor_percent(
 
 @getter
 def line_max_flow(component: ReEDSTransmissionLine, context: PluginContext) -> Result[float, ValueError]:
-    """Return the larger of the forward/backward flow limits."""
+    """Return the to_from flow limit as max flow."""
     limits = getattr(component, "max_active_power", None)
     if limits is None:
         return Ok(0.0)
-    return Ok(float(max(limits.from_to, limits.to_from)))
+    return Ok(float(limits.to_from))
 
 
 @getter
 def line_min_flow(component: ReEDSTransmissionLine, context: PluginContext) -> Result[float, ValueError]:
-    """Return the negative of the maximum absolute flow for min_flow."""
+    """Return the negative of from_to flow limit as min flow."""
     limits = getattr(component, "max_active_power", None)
     if limits is None:
         return Ok(0.0)
-    max_abs = max(abs(limits.from_to), abs(limits.to_from))
-    return Ok(-float(max_abs))
+    return Ok(-float(limits.from_to))
 
 
 @getter
