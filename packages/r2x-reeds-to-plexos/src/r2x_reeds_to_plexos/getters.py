@@ -37,6 +37,20 @@ def _float_or_zero(value: Any | None) -> float:
     return float(value)
 
 
+def _get_storage_max_volume(component: ReEDSStorage) -> float:
+    """Calculate max volume from capacity * duration, falling back to defaults if capacity is 0."""
+    capacity = getattr(component, "capacity", 0.0)
+    duration = getattr(component, "storage_duration", 0.0)
+    if not capacity:
+        technology = getattr(component, "technology", "")
+        capacity = (
+            _get_defaults(technology, "capacity_MW")
+            or _get_defaults(technology, "average_capacity_MW")
+            or 0.0
+        )
+    return round(float(capacity) * float(duration), 1)
+
+
 def _get_defaults(technology: str, key: str) -> float:
     prefixes = ("battery", "csp", "wind-ons", "wind-offs", "geohydro_allkm", "egs", "egs_nearfield")
     tech_lower = technology.lower()
@@ -144,17 +158,17 @@ def add_tail_suffix(component: ReEDSStorage, context: PluginContext) -> Result[s
 @getter
 def storage_max_volume(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
     """Return the maximum volume for storage."""
-    capacity = getattr(component, "capacity", 0.0)
-    duration = getattr(component, "storage_duration", 0.0)
-    max_volume = round(float(capacity) * float(duration), 1)
-    return Ok(float(max_volume))
+    return Ok(_get_storage_max_volume(component))
 
 
 @getter
 def storage_initial_volume(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
-    """Return the initial volume for storage (assumed 50% if not specified)."""
-    initial_volume = _float_or_zero(getattr(component, "energy_capacity", 0.0))
-    return Ok(float(initial_volume))
+    """Return the initial volume for storage (assumed 50% of max volume if not specified)."""
+    initial_volume = getattr(component, "initial_volume", None)
+    if initial_volume is not None:
+        return Ok(float(initial_volume))
+
+    return Ok(_get_storage_max_volume(component) * 0.5)
 
 
 @getter

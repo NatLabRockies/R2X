@@ -859,8 +859,8 @@
     },
     "pumped-hydro": {
       "average_capacity_MW": 100.0,
-      "forced_outage_rate": 0.02,
-      "maintenance_rate": 0.01,
+      "forced_outage_rate": 2.0,
+      "maintenance_rate": 1.0,
       "mean_time_to_repair": 48,
       "min_energy": 0.0,
       "min_power": 0.0,
@@ -869,7 +869,7 @@
     },
     "upv": {
       "average_capacity_MW": 20.0,
-      "forced_outage_rate": 0.01,
+      "forced_outage_rate": 1.0,
       "maintenance_rate": 0.0,
       "mean_time_to_repair": 24,
       "min_energy": 0.0,
@@ -879,8 +879,8 @@
     },
     "wind-ofs": {
       "average_capacity_MW": 5.0,
-      "forced_outage_rate": 0.03,
-      "maintenance_rate": 0.02,
+      "forced_outage_rate": 3.0,
+      "maintenance_rate": 2.0,
       "mean_time_to_repair": 48,
       "min_energy": 0.0,
       "min_power": 0.0,
@@ -889,8 +889,8 @@
     },
     "wind-ons": {
       "average_capacity_MW": 2.5,
-      "forced_outage_rate": 0.02,
-      "maintenance_rate": 0.01,
+      "forced_outage_rate": 2.0,
+      "maintenance_rate": 1.0,
       "mean_time_to_repair": 24,
       "min_energy": 0.0,
       "min_power": 0.0,
@@ -899,8 +899,8 @@
     },
     "other": {
       "average_capacity_MW": 50.0,
-      "forced_outage_rate": 0.05,
-      "maintenance_rate": 0.03,
+      "forced_outage_rate": 5.0,
+      "maintenance_rate": 3.0,
       "mean_time_to_repair": 48,
       "min_energy": 0.0,
       "min_power": 0.0,
