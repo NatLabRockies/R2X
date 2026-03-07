@@ -47,7 +47,7 @@ def _get_storage_max_volume(component: ReEDSStorage) -> float:
             or _get_defaults(technology, "average_capacity_MW")
             or 0.0
         )
-    return round(float(capacity) * float(duration), 1)
+    return round(float(capacity) * float(duration), 1) / 1000.0
 
 
 def _get_defaults(technology: str, key: str) -> float:
