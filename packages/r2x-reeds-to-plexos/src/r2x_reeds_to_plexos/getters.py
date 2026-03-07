@@ -178,7 +178,7 @@ def storage_initial_volume(component: ReEDSStorage, context: PluginContext) -> R
     if initial_volume is not None:
         return Ok(float(initial_volume))
 
-    return Ok(_get_storage_max_volume(component) * 0.5 / 1000.0)
+    return Ok(_get_storage_max_volume(component) * 0.5)
 
 
 @getter
