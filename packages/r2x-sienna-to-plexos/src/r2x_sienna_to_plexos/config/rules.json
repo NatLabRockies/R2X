@@ -159,9 +159,7 @@
   },
   {
     "defaults": {
-      "category": "thermal",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "thermal"
     },
     "field_map": {
       "name": "name",
@@ -178,9 +176,6 @@
       "initial_generation": "get_initial_generation",
       "initial_hours_down": "get_initial_hours_down",
       "initial_hours_up": "get_initial_hours_up",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point",
       "max_capacity": "get_max_capacity",
       "max_ramp_down": "get_max_ramp_down",
       "max_ramp_up": "get_max_ramp_up",
@@ -200,9 +195,7 @@
   },
   {
     "defaults": {
-      "category": "thermal-multi-start",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "thermal-multi-start"
     },
     "field_map": {
       "name": "name",
@@ -222,11 +215,8 @@
       "forced_outage_rate": "get_thermal_forced_outage_rate",
       "maintenance_rate": "get_thermal_maintenance_rate",
       "mean_time_to_repair": "get_thermal_mean_time_to_repair",
-      "load_point": "get_heat_rate_load_point",
       "max_ramp_down": "get_max_ramp_down",
-      "max_ramp_up": "get_max_ramp_up",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point"
+      "max_ramp_up": "get_max_ramp_up"
     },
     "source_type": "ThermalMultiStart",
     "target_type": "PLEXOSGenerator",
@@ -234,9 +224,7 @@
   },
   {
     "defaults": {
-      "category": "hydro-dispatch",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "hydro-dispatch"
     },
     "field_map": {
       "name": "name",
@@ -253,10 +241,7 @@
       "min_stable_level": "get_min_stable_level",
       "vom_charge": "get_vom_cost",
       "mean_time_to_repair": "get_hydro_mean_time_to_repair",
-      "heat_rate_base": "get_heat_rate_base",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point"
+      "heat_rate_base": "get_heat_rate_base"
     },
     "source_type": "HydroDispatch",
     "target_type": "PLEXOSGenerator",
@@ -264,9 +249,7 @@
   },
   {
     "defaults": {
-      "category": "hydro-dispatch",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "hydro-dispatch"
     },
     "field_map": {
       "name": "name",
@@ -280,10 +263,7 @@
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
       "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
       "rating": "get_component_rating",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point",
       "max_capacity": "get_max_capacity"
     },
     "source_type": "HydroEnergyReservoir",
@@ -292,9 +272,7 @@
   },
   {
     "defaults": {
-      "category": "head",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "head"
     },
     "field_map": {
       "name": "name",
@@ -313,9 +291,7 @@
   },
   {
     "defaults": {
-      "category": "tail",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "tail"
     },
     "field_map": {
       "name": "name",
@@ -334,9 +310,7 @@
   },
   {
     "defaults": {
-      "category": "pumped-hydro",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "pumped-hydro"
     },
     "field_map": {
       "name": "name",
@@ -378,9 +352,7 @@
   },
   {
     "defaults": {
-      "category": "pumped-hydro",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "pumped-hydro"
     },
     "field_map": {
       "name": "name",
@@ -395,11 +367,8 @@
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
       "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
       "max_ramp_down": "get_max_ramp_down",
       "max_ramp_up":"get_max_ramp_up",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point",
       "max_capacity": "get_max_capacity"
     },
     "source_type": "HydroPumpedStorage",
@@ -408,9 +377,7 @@
   },
   {
     "defaults": {
-      "category": "renewable-dispatch",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "renewable-dispatch"
     },
     "field_map": {
       "name": "name",
@@ -427,10 +394,7 @@
       "heat_rate_base": "get_heat_rate_base",
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point"
+      "heat_rate_incr3": "get_heat_rate_incr3"
     },
     "source_type": "RenewableDispatch",
     "target_type": "PLEXOSGenerator",
@@ -438,9 +402,7 @@
   },
   {
     "defaults": {
-      "category": "renewable-non-dispatch",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "renewable-non-dispatch"
     },
     "field_map": {
       "name": "name",
@@ -457,10 +419,7 @@
       "heat_rate_base": "get_heat_rate_base",
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point"
+      "heat_rate_incr3": "get_heat_rate_incr3"
     },
     "source_type": "RenewableNonDispatch",
     "target_type": "PLEXOSGenerator",
@@ -468,9 +427,7 @@
   },
   {
     "defaults": {
-      "category": "synchronous-condenser",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "synchronous-condenser"
     },
     "field_map": {
       "name": "name",
@@ -491,10 +448,7 @@
       "heat_rate_base": "get_heat_rate_base",
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
-      "load_point": "get_heat_rate_load_point",
-      "mark_up": "get_mark_up",
-      "mark_up_point": "get_mark_up_point"
+      "heat_rate_incr3": "get_heat_rate_incr3"
     },
     "source_type": "SynchronousCondenser",
     "target_type": "PLEXOSGenerator",
