@@ -29,14 +29,17 @@ from r2x_sienna.models import (
     HydroDispatch,
     HydroEnergyReservoir,
     HydroPumpedStorage,
+    HydroPumpTurbine,
     HydroReservoir,
     HydroTurbine,
     Line,
     LoadZone,
     MonitoredLine,
     PhaseShiftingTransformer,
+    PhaseShiftingTransformer3W,
     PowerLoad,
     RenewableDispatch,
+    RenewableGen,
     RenewableNonDispatch,
     StandardLoad,
     SynchronousCondenser,
@@ -44,8 +47,12 @@ from r2x_sienna.models import (
     ThermalMultiStart,
     ThermalStandard,
     Transformer2W,
+    Transformer3W,
     TransmissionInterface,
+    TwoTerminalGenericHVDCLine,
     TwoTerminalHVDCLine,
+    TwoTerminalLCCLine,
+    TwoTerminalVSCLine,
     VariableReserve,
 )
 from r2x_sienna.models.enums import ReserveType
@@ -82,15 +89,6 @@ SOURCE_GENERATOR_TYPES = [
     RenewableNonDispatch,
     SynchronousCondenser,
 ]
-
-
-# def _build_target_node_name_index(context: PluginContext) -> dict[str, PLEXOSNode]:
-#     cached = context._cache.get("target_node_name_index")
-#     if cached is not None:
-#         return cached
-#     result = {n.name: n for n in context.target_system.get_components(PLEXOSNode)}
-#     context._cache["target_node_name_index"] = result
-#     return result
 
 
 def _build_target_storage_name_index(context: PluginContext) -> dict[str, Any]:
@@ -340,106 +338,6 @@ def _get_defaults(category: str, key: str) -> float:
         return 0.0
 
 
-# def _lookup_target_zone_by_name(context: PluginContext, zone_name: str) -> Result[Any, ValueError]:
-#     """Return the translated zone with the given name."""
-#     for zone in context.target_system.get_components(PLEXOSZone):
-#         if zone.name == zone_name:
-#             return Ok(zone)
-#     return Err(ValueError(f"No PLEXOSZone found with name '{zone_name}'"))
-
-
-# def _lookup_target_node_by_source_area(
-#     context: PluginContext, area_name: str
-# ) -> Result[PLEXOSNode, ValueError]:
-#     """Return the translated node whose source ACBus has matching area name."""
-#     for node in context.target_system.get_components(PLEXOSNode):
-#         node_name = node.name
-#         source_buses = list(
-#             context.source_system.get_components(ACBus, filter_func=lambda bus, nn=node_name: bus.name == nn)
-#         )
-
-#         for source_bus in source_buses:
-#             if hasattr(source_bus, "area"):
-#                 bus_area = source_bus.area
-#                 if isinstance(bus_area, Area):
-#                     if bus_area.name == area_name:
-#                         return Ok(node)
-#                 elif isinstance(bus_area, str) and bus_area == area_name:
-#                     return Ok(node)
-
-#     return Err(ValueError(f"No PLEXOSNode found with source area '{area_name}'"))
-
-
-# def _lookup_source_generator(context: PluginContext, gen_name: str) -> Any | None:
-#     """Find a source generator by name across all Sienna generator types."""
-#     for gen_type in SOURCE_GENERATOR_TYPES:
-#         generators: list[Any] = list(context.source_system.get_components(gen_type))  # type: ignore[arg-type]
-#         for gen in generators:
-#             if gen.name == gen_name:
-#                 return gen
-
-#     return None
-
-
-# def _lookup_source_battery(context: PluginContext, battery_name: str) -> Any | None:
-#     """Find a source battery by name."""
-#     batteries: list[Any] = list(context.source_system.get_components(EnergyReservoirStorage))
-#     for battery in batteries:
-#         if battery.name == battery_name:
-#             return battery
-#     return None
-
-
-# def _lookup_target_node_by_name(context: PluginContext, node_name: str) -> Result[PLEXOSNode, ValueError]:
-#     """Return the translated node with the given name."""
-#     for node in context.target_system.get_components(PLEXOSNode):
-#         if node.name == node_name:
-#             return Ok(node)
-#     return Err(ValueError(f"No PLEXOSNode found with name '{node_name}'"))
-
-
-# def _find_source_line(context: PluginContext, line_name: str) -> Any | None:
-#     """Find a source line by name across Line, MonitoredLine, and TwoTerminalHVDCLine types."""
-#     line_types: list[type[Line | MonitoredLine | TwoTerminalHVDCLine]] = [
-#         Line,
-#         MonitoredLine,
-#         TwoTerminalHVDCLine,
-#     ]
-
-#     for line_type in line_types:
-#         source_line: Line | MonitoredLine | TwoTerminalHVDCLine | None = next(
-#             (ln for ln in context.source_system.get_components(line_type) if ln.name == line_name),
-#             None,
-#         )
-#         if source_line is not None:
-#             return source_line
-
-#     return None
-
-
-# def _find_source_transformer(context: PluginContext, transformer_name: str) -> Any | None:
-#     """Find a source transformer by name across Transformer2W, TapTransformer, and PhaseShiftingTransformer types."""
-#     transformer_types: list[type[Transformer2W | TapTransformer | PhaseShiftingTransformer]] = [
-#         Transformer2W,
-#         TapTransformer,
-#         PhaseShiftingTransformer,
-#     ]
-
-#     for transformer_type in transformer_types:
-#         source_transformer: Transformer2W | TapTransformer | PhaseShiftingTransformer | None = next(
-#             (
-#                 tf
-#                 for tf in context.source_system.get_components(transformer_type)
-#                 if tf.name == transformer_name
-#             ),
-#             None,
-#         )
-#         if source_transformer is not None:
-#             return source_transformer
-
-#     return None
-
-
 def _attach_generator_time_series(
     context: PluginContext,
     generator_name: str,
@@ -612,6 +510,31 @@ def _build_bus_to_standard_loads_index(context: PluginContext) -> dict[str, list
     return result
 
 
+def _build_3w_transformer_name_index(context: PluginContext) -> dict[str, Any]:
+    """Build name → Transformer3W / PhaseShiftingTransformer3W index, cached."""
+    cached = context._cache.get("source_3w_transformer_name_index")
+    if cached is not None:
+        return cached
+    index: dict[str, Any] = {}
+    for tf_type in [Transformer3W, PhaseShiftingTransformer3W]:
+        for tf in context.source_system.get_components(tf_type):
+            index[tf.name] = tf
+    context._cache["source_3w_transformer_name_index"] = index
+    return index
+
+
+def _find_3w_source_transformer(context: PluginContext, arm_name: str) -> tuple[Any, str] | None:
+    """Given an arm name like 'TRANSFORMER_primary', return (transformer3w, arm) or None."""
+    for arm in ("primary", "secondary", "tertiary"):
+        suffix = f"_{arm}"
+        if arm_name.endswith(suffix):
+            base_name = arm_name[: -len(suffix)]
+            tf = _build_3w_transformer_name_index(context).get(base_name)
+            if tf is not None:
+                return tf, arm
+    return None
+
+
 @getter
 def get_load_participation_factor(
     source_component: ACBus,
@@ -672,6 +595,12 @@ def get_availability(source_component: ACBus, context: PluginContext) -> Result[
 
 
 @getter
+def get_area_units(source_component: Area, context: PluginContext) -> Result[float, ValueError]:
+    """Always return 1 for region units."""
+    return Ok(1.0)
+
+
+@getter
 def get_susceptance(
     source_component: Transformer2W | TapTransformer | PhaseShiftingTransformer, context: PluginContext
 ) -> Result[float, ValueError]:
@@ -719,8 +648,72 @@ def get_susceptance(
 
 
 @getter
+def get_3w_primary_name(
+    source_component: Transformer3W | PhaseShiftingTransformer3W, context: PluginContext
+) -> Result[str, ValueError]:
+    return Ok(f"{source_component.name}_primary")
+
+
+@getter
+def get_3w_secondary_name(
+    source_component: Transformer3W | PhaseShiftingTransformer3W, context: PluginContext
+) -> Result[str, ValueError]:
+    return Ok(f"{source_component.name}_secondary")
+
+
+@getter
+def get_3w_tertiary_name(
+    source_component: Transformer3W | PhaseShiftingTransformer3W, context: PluginContext
+) -> Result[str, ValueError]:
+    return Ok(f"{source_component.name}_tertiary")
+
+
+@getter
+def get_3w_primary_uuid(
+    source_component: Transformer3W | PhaseShiftingTransformer3W, context: PluginContext
+) -> Result[str, ValueError]:
+    import uuid
+
+    return Ok(str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source_component.uuid}_primary")))
+
+
+@getter
+def get_3w_secondary_uuid(
+    source_component: Transformer3W | PhaseShiftingTransformer3W, context: PluginContext
+) -> Result[str, ValueError]:
+    import uuid
+
+    return Ok(str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source_component.uuid}_secondary")))
+
+
+@getter
+def get_3w_tertiary_uuid(
+    source_component: Transformer3W | PhaseShiftingTransformer3W, context: PluginContext
+) -> Result[str, ValueError]:
+    import uuid
+
+    return Ok(str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source_component.uuid}_tertiary")))
+
+
+@getter
+def get_3w_susceptance(
+    source_component: Transformer3W | PhaseShiftingTransformer3W, context: PluginContext
+) -> Result[float, ValueError]:
+    """Read shunt susceptance from the global 'b' attribute of a 3W transformer."""
+    b = getattr(source_component, "b", None)
+    if b is None:
+        return Err(ValueError("No 'b' attribute on 3W transformer"))
+    return Ok(float(b))
+
+
+@getter
 def get_line_min_flow(
-    source_component: Line | MonitoredLine, context: PluginContext
+    source_component: Line
+    | MonitoredLine
+    | TwoTerminalGenericHVDCLine
+    | TwoTerminalLCCLine
+    | TwoTerminalVSCLine,
+    context: PluginContext,
 ) -> Result[float, ValueError]:
     """Extract line min flow as float from source component negative rating.
 
@@ -739,6 +732,30 @@ def get_line_min_flow(
         return Ok(float(-abs(min_flow)) * 100)
 
     return Ok(0.0)
+
+
+@getter
+def lines_loss_incremental(component: Line, context: PluginContext) -> Result[float, ValueError]:
+    """Return the incremental loss factor for the line."""
+    losses = getattr(component, "losses", None)
+    if losses is None:
+        return Ok(0.0)
+
+    return Ok(float(losses))
+
+
+@getter
+def lines_wheeling_charge(line: Any, context: PluginContext) -> Result[float, ValueError]:
+    """Return the wheeling charge for the forward direction (from_region to to_region)."""
+    wc = getattr(line, "wheeling_charge", 0.001)
+    return Ok(float(wc))
+
+
+@getter
+def lines_wheeling_charge_back(line: Any, context: PluginContext) -> Result[float, ValueError]:
+    """Return the wheeling charge for the reverse direction (to_region to from_region)."""
+    wc_back = getattr(line, "wheeling_charge_back", 0.001)
+    return Ok(float(wc_back))
 
 
 @getter
@@ -806,6 +823,23 @@ def get_line_charging_susceptance(
 
     # If we can't convert it, return 0.0 as safe default
     return Ok(0.0)
+
+
+@getter
+def get_storage_initial_volume(
+    source_component: HydroReservoir, context: PluginContext
+) -> Result[float, ValueError]:
+    """Return the initial storage volume for a HydroReservoir."""
+    value = getattr(source_component, "initial_volume", None)
+    if value is not None:
+        return Ok(float(value))
+    storage_limits = getattr(source_component, "storage_level_limits", None)
+    if storage_limits is None:
+        return Ok(0.0)
+    if isinstance(storage_limits, dict):
+        max_val = storage_limits.get("max")
+        return Ok(float(max_val) * 0.5 if isinstance(max_val, int | float) else 0.0)
+    return Ok(float(storage_limits.max) * 0.5)
 
 
 @getter
@@ -1042,15 +1076,29 @@ def get_turbine_pump_load(
 
 @getter
 def get_turbine_pump_efficiency(
-    source_component: HydroTurbine, context: PluginContext
+    source_component: HydroTurbine | HydroPumpTurbine, context: PluginContext
 ) -> Result[float, ValueError]:
     """Extract pump efficiency (%) from the HydroTurbine."""
     pump_efficiency = getattr(source_component, "efficiency", None)
-    if pump_efficiency is not None and pump_efficiency <= 1.0:
-        magnitude = get_magnitude(pump_efficiency)
-        if magnitude is None:
-            return Ok(float(pump_efficiency) * 100)
-        return Ok(float(magnitude) * 100)
+    if pump_efficiency is None:
+        return Ok(100.0)
+
+    pump_val = getattr(pump_efficiency, "pump", None)
+    if pump_val is not None:
+        magnitude = get_magnitude(pump_val)
+        value = (
+            float(magnitude)
+            if isinstance(magnitude, int | float)
+            else float(pump_val)
+            if isinstance(pump_val, int | float)
+            else None
+        )
+        if value is not None:
+            return Ok(value * 100 if value <= 1.0 else value)
+
+    if isinstance(pump_efficiency, int | float):
+        return Ok(float(pump_efficiency) * 100 if pump_efficiency <= 1.0 else float(pump_efficiency))
+
     return Ok(100.0)
 
 
@@ -1072,6 +1120,17 @@ def get_thermal_maintenance_rate(
     if value is not None:
         return Ok(float(value))
     return Ok(_get_defaults("gas-ct", "maintenance_rate"))
+
+
+@getter
+def get_gen_forced_outage_rate(
+    source_component: RenewableGen, context: PluginContext
+) -> Result[float, ValueError]:
+    value = getattr(source_component, "forced_outage_rate", None)
+    if value is not None:
+        return Ok(float(value))
+
+    return Ok(_get_defaults(source_component.class_type, "forced_outage_rate"))
 
 
 @getter
@@ -1139,17 +1198,17 @@ def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[
     try:
         limits = sienna_get_ramp_limits(source_component)
         value = float(limits.up) if limits.up is not None else 0.0
-        return Ok(max(0.0, value))
+        return Ok(round(max(0.0, value), 2))
     except (KeyError, TypeError, AttributeError, NotImplementedError):
         pass
 
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
         value = _ramp_value_to_float(source_component, ramp.get("up"))
-        return Ok(max(0.0, value))
+        return Ok(round(max(0.0, value), 2))
     if ramp is not None:
         value = _ramp_value_to_float(source_component, getattr(ramp, "up", None))
-        return Ok(max(0.0, value))
+        return Ok(round(max(0.0, value), 2))
 
     return Ok(0.0)
 
@@ -1159,17 +1218,17 @@ def get_max_ramp_down(source_component: object, context: PluginContext) -> Resul
     try:
         limits = sienna_get_ramp_limits(source_component)
         value = float(limits.down) if limits.down is not None else 0.0
-        return Ok(max(0.0, value))
+        return Ok(round(max(0.0, value), 2))
     except (KeyError, TypeError, AttributeError, NotImplementedError):
         pass
 
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
         value = _ramp_value_to_float(source_component, ramp.get("down"))
-        return Ok(max(0.0, value))
+        return Ok(round(max(0.0, value), 2))
     if ramp is not None:
         value = _ramp_value_to_float(source_component, getattr(ramp, "down", None))
-        return Ok(max(0.0, value))
+        return Ok(round(max(0.0, value), 2))
 
     return Ok(0.0)
 
@@ -1310,6 +1369,52 @@ def get_storage_charge_efficiency(
 
 
 @getter
+def get_storage_initial_soc(
+    source_component: EnergyReservoirStorage, context: PluginContext
+) -> Result[float, ValueError]:
+    initial_soc = getattr(source_component, "initial_soc", None)
+    if initial_soc is None:
+        return Ok(_get_defaults("battery", "initial_soc") * 100)
+    if isinstance(initial_soc, dict):
+        min_soc = initial_soc.get("min")
+        if isinstance(min_soc, int | float):
+            return Ok(float(min_soc) * 100)
+        return Ok(_get_defaults("battery", "initial_soc") * 100)
+    breakpoint()
+    return Ok(float(initial_soc.min) * 100)
+
+
+@getter
+def get_storage_min_soc(
+    source_component: EnergyReservoirStorage, context: PluginContext
+) -> Result[float, ValueError]:
+    min_soc = getattr(source_component, "min_soc", None)
+    if min_soc is None:
+        return Ok(_get_defaults("battery", "min_soc") * 100)
+    if isinstance(min_soc, dict):
+        min_soc_value = min_soc.get("min")
+        if isinstance(min_soc_value, int | float):
+            return Ok(float(min_soc_value) * 100)
+        return Ok(_get_defaults("battery", "min_soc") * 100)
+    return Ok(float(min_soc.min) * 100)
+
+
+@getter
+def get_storage_max_soc(
+    source_component: EnergyReservoirStorage, context: PluginContext
+) -> Result[float, ValueError]:
+    max_soc = getattr(source_component, "max_soc", None)
+    if max_soc is None:
+        return Ok(_get_defaults("battery", "max_soc") * 100)
+    if isinstance(max_soc, dict):
+        max_soc_value = max_soc.get("max")
+        if isinstance(max_soc_value, int | float):
+            return Ok(float(max_soc_value) * 100)
+        return Ok(_get_defaults("battery", "max_soc") * 100)
+    return Ok(float(max_soc.max) * 100)
+
+
+@getter
 def get_storage_discharge_efficiency(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
@@ -1340,12 +1445,12 @@ def get_storage_max_power(
     if isinstance(limits, dict):
         max_val = limits.get("max")
         if isinstance(max_val, int | float):
-            return Ok(float(max_val))
+            return Ok(float(max_val) * resolve_base_power(source_component))
         return Ok(0.0)
     if getattr(limits, "max", None) is None:
         return Ok(0.0)
     value = get_magnitude(limits.max)
-    return Ok(float(value) if value is not None else 0.0)
+    return Ok(float(value) * resolve_base_power(source_component) if value is not None else 0.0)
 
 
 @getter
@@ -1355,7 +1460,7 @@ def get_storage_capacity(
     value = getattr(source_component, "storage_capacity", None)
     if value is None:
         return Ok(0.0)
-    return Ok(float(value))
+    return Ok(float(value) * resolve_base_power(source_component))
 
 
 @getter
@@ -1485,12 +1590,6 @@ def get_tail_storage_uuid(
     import uuid
 
     return Ok(str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source_component.uuid}_tail")))
-
-
-@getter
-def get_area_units(source_component: Area, context: PluginContext) -> Result[float, ValueError]:
-    """Always return 1 for region units."""
-    return Ok(1.0)
 
 
 @getter
@@ -1721,18 +1820,24 @@ def membership_line_to_parent_node(
 def membership_transformer_from_parent_node(
     transformer: PLEXOSTransformer, context: PluginContext
 ) -> Result[PLEXOSNode, ValueError]:
-    """Return the from-node for a translated transformer."""
-    source_transformer = _find_source_transformer(context, transformer.name)
+    """Return the from-node for a translated transformer (2W and 3W arm transformers)."""
+    result_3w = _find_3w_source_transformer(context, transformer.name)
+    if result_3w is not None:
+        source_3w, arm = result_3w
+        arc = getattr(source_3w, f"{arm}_star_arc", None)
+        if arc is None:
+            return Err(ValueError(f"No '{arm}_star_arc' on source transformer '{source_3w.name}'"))
+        from_bus = arc.from_to
+        from_bus_name = from_bus.name if hasattr(from_bus, "name") else str(from_bus)
+        return _lookup_target_node_by_name(context, from_bus_name)
 
+    source_transformer = _find_source_transformer(context, transformer.name)
     if source_transformer is None:
         return Err(ValueError(f"Source transformer '{transformer.name}' not found"))
-
     if not hasattr(source_transformer, "arc"):
         return Err(ValueError(f"Source transformer '{transformer.name}' missing arc data"))
-
     from_bus = source_transformer.arc.from_to
     from_bus_name = from_bus.name if hasattr(from_bus, "name") else str(from_bus)
-
     return _lookup_target_node_by_name(context, from_bus_name)
 
 
@@ -1740,18 +1845,21 @@ def membership_transformer_from_parent_node(
 def membership_transformer_to_parent_node(
     transformer: PLEXOSTransformer, context: PluginContext
 ) -> Result[PLEXOSNode, ValueError]:
-    """Return the to-node for a translated transformer."""
-    source_transformer = _find_source_transformer(context, transformer.name)
+    """Return the to-node for a translated transformer (2W arms go to star_bus, 2W go to arc.to_from)."""
+    result_3w = _find_3w_source_transformer(context, transformer.name)
+    if result_3w is not None:
+        source_3w, _ = result_3w
+        star_bus = source_3w.star_bus
+        star_bus_name = star_bus.name if hasattr(star_bus, "name") else str(star_bus)
+        return _lookup_target_node_by_name(context, star_bus_name)
 
+    source_transformer = _find_source_transformer(context, transformer.name)
     if source_transformer is None:
         return Err(ValueError(f"Source transformer '{transformer.name}' not found"))
-
     if not hasattr(source_transformer, "arc"):
         return Err(ValueError(f"Source transformer '{transformer.name}' missing arc data"))
-
     to_bus = source_transformer.arc.to_from
     to_bus_name = to_bus.name if hasattr(to_bus, "name") else str(to_bus)
-
     return _lookup_target_node_by_name(context, to_bus_name)
 
 

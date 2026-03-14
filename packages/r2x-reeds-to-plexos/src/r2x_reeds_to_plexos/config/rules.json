@@ -233,8 +233,7 @@
   },
   {
     "defaults": {
-      "category": "head",
-      "storage_type": "head"
+      "category": "head"
     },
     "field_map": {
       "category": "head",
@@ -262,8 +261,7 @@
   },
   {
     "defaults": {
-      "category": "tail",
-      "storage_type": "tail"
+      "category": "tail"
     },
     "field_map": {
       "category": "tail",
