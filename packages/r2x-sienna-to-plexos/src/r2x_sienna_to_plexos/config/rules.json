@@ -11,11 +11,11 @@
       "category": "category"
     },
     "getters": {
-      "voltage": "get_voltage",
+      "voltage": "get_voltage_kv",
+      "ac_voltage_magnitude": "get_ac_voltage_magnitude_pu",
       "units": "get_availability",
       "load_participation_factor": "get_load_participation_factor",
-      "is_slack_bus": "is_slack_bus",
-      "load": "get_power_or_standard_load"
+      "is_slack_bus": "is_slack_bus"
     },
     "source_type": "ACBus",
     "target_type": "PLEXOSNode",
@@ -381,10 +381,10 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
-      "category": "category"
+      "uuid": "uuid"
     },
     "getters": {
+      "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
       "heat_rate_base": "get_heat_rate_base",
@@ -417,10 +417,10 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
-      "category": "category"
+      "uuid": "uuid"
     },
     "getters": {
+      "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
       "rating": "get_component_rating",
@@ -446,10 +446,10 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
-      "category": "category"
+      "uuid": "uuid"
     },
     "getters": {
+      "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
       "max_ramp_down": "get_max_ramp_down",
@@ -472,10 +472,10 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
-      "category": "category"
+      "uuid": "uuid"
     },
     "getters": {
+      "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
       "heat_rate_base": "get_heat_rate_base",
@@ -491,54 +491,14 @@
   },
   {
     "defaults": {
-      "category": "head"
-    },
-    "field_map": {
-      "name": "name",
-      "category": "category"
-    },
-    "getters": {
-      "name": "get_head_storage_name",
-      "uuid": "get_head_storage_uuid",
-      "initial_volume": "get_storage_initial_volume",
-      "initial_level": "get_storage_initial_level",
-      "max_volume": "get_storage_max_volume",
-      "natural_inflow": "get_storage_natural_inflow"
-    },
-    "source_type": "HydroReservoir",
-    "target_type": "PLEXOSStorage",
-    "version": 1
-  },
-  {
-    "defaults": {
-      "category": "tail"
-    },
-    "field_map": {
-      "name": "name",
-      "category": "category"
-    },
-    "getters": {
-      "name": "get_tail_storage_name",
-      "uuid": "get_tail_storage_uuid",
-      "initial_volume": "get_storage_initial_volume",
-      "initial_level": "get_storage_initial_level",
-      "max_volume": "get_storage_max_volume",
-      "natural_inflow": "get_storage_natural_inflow"
-    },
-    "source_type": "HydroReservoir",
-    "target_type": "PLEXOSStorage",
-    "version": 2
-  },
-  {
-    "defaults": {
       "category": "hydro-turbine"
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
-      "category": "category"
+      "uuid": "uuid"
     },
     "getters": {
+      "category": "get_generator_category",
       "rating": "get_component_rating",
       "max_ramp_up": "get_max_ramp_up",
       "max_ramp_down": "get_max_ramp_down",
@@ -561,10 +521,10 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
-      "category": "category"
+      "uuid": "uuid"
     },
     "getters": {
+      "category": "get_generator_category",
       "rating": "get_component_rating",
       "max_ramp_up": "get_max_ramp_up",
       "max_ramp_down": "get_max_ramp_down",
@@ -587,10 +547,10 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
-      "category": "category"
+      "uuid": "uuid"
     },
     "getters": {
+      "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "rating": "get_component_rating",
       "max_capacity": "get_component_rating",
@@ -611,10 +571,10 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
-      "category": "category"
+      "uuid": "uuid"
     },
     "getters": {
+      "category": "get_generator_category",
       "rating": "get_component_rating",
       "load_subtracter": "get_load_subtracter",
       "max_capacity": "get_component_rating",
@@ -633,10 +593,10 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
-      "category": "category"
+      "uuid": "uuid"
     },
     "getters": {
+      "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "heat_rate": "get_heat_rate",
       "rating": "get_component_rating",
@@ -654,6 +614,71 @@
     },
     "source_type": "SynchronousCondenser",
     "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+    {
+    "defaults": {
+      "category": "head"
+    },
+    "field_map": {
+      "name": "name",
+      "category": "category"
+    },
+    "getters": {
+      "name": "get_head_storage_name",
+      "uuid": "get_head_storage_uuid",
+      "initial_volume": "get_storage_initial_volume",
+      "max_volume": "get_storage_max_volume",
+      "natural_inflow": "get_storage_natural_inflow"
+    },
+    "source_type": "HydroReservoir",
+    "target_type": "PLEXOSStorage",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "tail"
+    },
+    "field_map": {
+      "name": "name",
+      "category": "category"
+    },
+    "getters": {
+      "name": "get_tail_storage_name",
+      "uuid": "get_tail_storage_uuid",
+      "initial_volume": "get_storage_initial_volume",
+      "max_volume": "get_storage_max_volume",
+      "natural_inflow": "get_storage_natural_inflow"
+    },
+    "source_type": "HydroReservoir",
+    "target_type": "PLEXOSStorage",
+    "version": 2
+  },
+  {
+    "defaults": {
+      "category": "battery",
+      "units": 1
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid"
+    },
+    "getters": {
+      "category": "get_generator_category",
+      "capacity": "get_storage_capacity",
+      "charge_efficiency": "get_storage_charge_efficiency",
+      "discharge_efficiency": "get_storage_discharge_efficiency",
+      "max_cycles": "get_storage_cycles",
+      "initial_soc": "get_storage_initial_soc",
+      "max_power": "get_storage_max_power",
+      "min_soc": "get_storage_min_soc",
+      "max_soc": "get_storage_max_soc",
+      "forced_outage_rate": "get_battery_forced_outage_rate",
+      "maintenance_rate": "get_battery_maintenance_rate",
+      "mean_time_to_repair": "get_battery_mean_time_to_repair"
+    },
+    "source_type": "EnergyReservoirStorage",
+    "target_type": "PLEXOSBattery",
     "version": 1
   },
   {
@@ -692,33 +717,6 @@
     },
     "source_type": "TransmissionInterface",
     "target_type": "PLEXOSInterface",
-    "version": 1
-  },
-  {
-    "defaults": {
-      "category": "battery",
-      "units": 1
-    },
-    "field_map": {
-      "name": "name",
-      "uuid": "uuid",
-      "category": "category"
-    },
-    "getters": {
-      "capacity": "get_storage_capacity",
-      "charge_efficiency": "get_storage_charge_efficiency",
-      "discharge_efficiency": "get_storage_discharge_efficiency",
-      "max_cycles": "get_storage_cycles",
-      "initial_soc": "get_storage_initial_soc",
-      "max_power": "get_storage_max_power",
-      "min_soc": "get_storage_min_soc",
-      "max_soc": "get_storage_max_soc",
-      "forced_outage_rate": "get_battery_forced_outage_rate",
-      "maintenance_rate": "get_battery_maintenance_rate",
-      "mean_time_to_repair": "get_battery_mean_time_to_repair"
-    },
-    "source_type": "EnergyReservoirStorage",
-    "target_type": "PLEXOSBattery",
     "version": 1
   },
   {

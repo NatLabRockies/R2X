@@ -90,6 +90,87 @@ SOURCE_GENERATOR_TYPES = [
     SynchronousCondenser,
 ]
 
+_GEN_TYPE_STRING_MAP: dict[str, str] = {
+    "wind": "wind-ons",
+    "solar": "upv",
+    "hydro": "hyded",
+    "nuclear": "nuclear",
+    "coal": "coal-new",
+    "gas": "gas-cc",
+    "natural_gas": "gas-cc",
+    "geothermal": "geothermal",
+    "biomass": "biopower",
+    "battery": "battery",
+    "pumped_hydro": "pumped-hydro",
+    "csp": "csp",
+    "offshore_wind": "wind-ofs",
+    "onshore_wind": "wind-ons",
+    "unidentified": "other",
+}
+
+_REEDS_COMPONENT_SUBSTRINGS: list[tuple[str, str]] = [
+    ("can-imports", "can-imports"),
+    ("hydend", "hydend"),
+    ("hyded", "hyded"),
+    ("hydnpnd", "hydnpnd"),
+    ("hydund", "hydund"),
+    ("distpv", "distpv"),
+    ("wind-ofs", "wind-ofs"),
+]
+
+
+def _resolve_generator_category(source_component: Any, context: PluginContext) -> str | None:
+    """Resolve category via ext gen_type_string, ReEDS name patterns, or prime_mover mapping."""
+    # 1. ext.get("gen_type_string")
+    ext = getattr(source_component, "ext", None)
+    if isinstance(ext, dict):
+        gen_type = ext.get("gen_type_string", "").lower().strip()
+        if gen_type and gen_type not in ("unknown", "other", "", "unidentified"):
+            return _GEN_TYPE_STRING_MAP.get(gen_type, gen_type)
+
+    # 2. ReEDS name patterns
+    name = (getattr(source_component, "name", "") or "").lower()
+    if name.startswith("reeds"):
+        for substr, tech in _REEDS_COMPONENT_SUBSTRINGS:
+            if substr in name:
+                return tech
+
+    # 3. prime_mover + fuel via context.config.prime_mover_mapping
+    prime_mover = getattr(source_component, "prime_mover_type", None)
+    fuel = getattr(source_component, "fuel", None)
+
+    # Also check ext dict for prime_mover key if attribute is missing
+    if prime_mover is None and isinstance(ext, dict):
+        prime_mover = ext.get("prime_mover")
+
+    pm_fuel_map: dict[str, list[str]] = (
+        getattr(getattr(context, "config", None), "prime_mover_mapping", None) or {}
+    )
+
+    if prime_mover is not None:
+        pm_str = prime_mover.name if hasattr(prime_mover, "name") else str(prime_mover).upper()
+
+        if pm_fuel_map:
+            if fuel is not None:
+                fuel_str = fuel.name if hasattr(fuel, "name") else str(fuel).upper()
+                techs = pm_fuel_map.get(f"{pm_str}_{fuel_str}")
+                if techs:
+                    return techs[0]
+            pm_only = pm_fuel_map.get(f"{pm_str}_")
+            if pm_only:
+                return pm_only[0]
+
+        # 4. defaults.json prime_mover_types (abbreviation → base tech)
+        defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
+        with defaults_path.open() as f:
+            defaults_data = json.load(f)
+        pm_types: dict[str, str] = defaults_data.get("prime_mover_types", {})
+        tech = pm_types.get(pm_str)
+        if tech:
+            return tech
+
+    return None
+
 
 def _build_target_storage_name_index(context: PluginContext) -> dict[str, Any]:
     cached = context._cache.get("target_storage_name_index")
@@ -331,7 +412,7 @@ def _get_defaults(category: str, key: str) -> float:
     defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
     with defaults_path.open() as f:
         defaults = json.load(f)
-    value = defaults.get("pcm_defaults", {}).get(category, {}).get(key, 0.0)
+    value = defaults.get("reeds_defaults", {}).get(category, {}).get(key, 0.0)
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -535,33 +616,81 @@ def _find_3w_source_transformer(context: PluginContext, arm_name: str) -> tuple[
     return None
 
 
+def _get_load_mw(load: Any) -> float:
+    """Extract MW value from a StandardLoad or PowerLoad for LPF computation."""
+    magnitude = get_magnitude(getattr(load, "max_active_power", None))
+    if magnitude is not None:
+        return float(magnitude) * float(getattr(load, "base_power", 100.0))
+    for attr in ("max_constant_active_power", "constant_active_power"):
+        val = getattr(load, attr, None)
+        if isinstance(val, int | float) and val > 0:
+            return float(val) * float(getattr(load, "base_power", 100.0))
+    return 0.0
+
+
+def _compute_total_system_load(context: PluginContext) -> float:
+    cached = context._cache.get("total_system_load")
+    if cached is not None:
+        return cached
+    total = 0.0
+    for load_type in [StandardLoad, PowerLoad]:
+        for load in context.source_system.get_components(load_type):
+            total += _get_load_mw(load)
+    context._cache["total_system_load"] = total
+    return total
+
+
+@getter
+def get_generator_category(
+    source_component: Any,
+    context: PluginContext,
+) -> Result[str, ValueError]:
+    """Determine generator category using ReEDS tech names, gen_type_string, or prime_mover/fuel mapping.
+
+    Priority:
+    1. ext["gen_type_string"] mapped through _GEN_TYPE_STRING_MAP
+    2. ReEDS component name patterns (hydend, hyded, distpv, wind-ofs, etc.)
+    3. prime_mover + fuel via context.config.prime_mover_mapping
+    4. prime_mover abbreviation via defaults.json prime_mover_types
+    5. Err → rule default applies
+    """
+    category = _resolve_generator_category(source_component, context)
+    if category is not None:
+        return Ok(category)
+    return Err(ValueError("Cannot resolve generator category; rule default will apply"))
+
+
 @getter
 def get_load_participation_factor(
     source_component: ACBus,
     context: PluginContext,
 ) -> Result[float, ValueError]:
-    """Extract load participation factor from StandardLoads connected to the bus."""
+    """Extract load participation factor from StandardLoads connected to the bus.
+
+    Priority:
+    1. ext["MMWG_LPF"] or ext["ReEDS_LPF"] on connected StandardLoads
+    2. Computed as node_load_MW / total_system_load_MW
+    """
+    bus_uuid_str = str(source_component.uuid)
     index = _build_bus_to_standard_loads_index(context)
     node_lpf_total = 0.0
-    for load in index.get(source_component.uuid, []):
+    for load in index.get(bus_uuid_str, []):
         if hasattr(load, "ext") and isinstance(load.ext, dict):
             lpf = load.ext.get("MMWG_LPF") or load.ext.get("ReEDS_LPF", 0)
             if isinstance(lpf, int | float):
                 node_lpf_total += float(lpf)
-    return Ok(node_lpf_total)
 
+    if node_lpf_total > 0.0:
+        return Ok(node_lpf_total)
 
-@getter
-def get_power_or_standard_load(source_component: ACBus, context: PluginContext) -> Result[float, ValueError]:
-    """Populate power_load fields with aggregated active power from PowerLoad and StandardLoad."""
-    index = _build_bus_to_loads_index(context)
-    total_load = 0.0
-    for load in index.get(source_component.uuid, []):
-        if not hasattr(load, "max_active_power"):
-            continue
-        magnitude = get_magnitude(load.max_active_power)
-        total_load += float(magnitude) if magnitude is not None else 0.0
-    return Ok(total_load)
+    # Fallback: compute LPF as node_load / total_system_load
+    all_loads_index = _build_bus_to_loads_index(context)
+    node_load = sum(_get_load_mw(load) for load in all_loads_index.get(bus_uuid_str, []))
+    total_load = _compute_total_system_load(context)
+    if total_load > 0.0:
+        return Ok(node_load / total_load)
+
+    return Ok(0.0)
 
 
 @getter
@@ -575,10 +704,17 @@ def is_slack_bus(source_component: ACBus, context: PluginContext) -> Result[int,
 
 
 @getter
-def get_voltage(source_component: ACBus, context: PluginContext) -> Result[float, ValueError]:
+def get_voltage_kv(source_component: ACBus, context: PluginContext) -> Result[float, ValueError]:
     """Extract AC voltage magnitude from base_voltage Quantity."""
     value = get_magnitude(source_component.base_voltage)
-    return Ok(float(value) if value is not None else 0.0)
+    return Ok(round(float(value), 1) if value is not None else 0.0)
+
+
+@getter
+def get_ac_voltage_magnitude_pu(source_component: ACBus, context: PluginContext) -> Result[float, ValueError]:
+    """Extract AC voltage magnitude in per unit from the source component."""
+    value = getattr(source_component, "magnitude", None)
+    return Ok(round(float(value), 3) if value is not None else 1.0)
 
 
 @getter
@@ -831,26 +967,18 @@ def get_storage_initial_volume(
 ) -> Result[float, ValueError]:
     """Return the initial storage volume for a HydroReservoir."""
     value = getattr(source_component, "initial_volume", None)
-    if value is not None:
+    if value is not None and float(value) != 0.0:
         return Ok(float(value))
     storage_limits = getattr(source_component, "storage_level_limits", None)
     if storage_limits is None:
-        return Ok(0.0)
+        return Ok(50.0)
     if isinstance(storage_limits, dict):
         max_val = storage_limits.get("max")
-        return Ok(float(max_val) * 0.5 if isinstance(max_val, int | float) else 0.0)
-    return Ok(float(storage_limits.max) * 0.5)
-
-
-@getter
-def get_storage_initial_level(
-    source_component: HydroReservoir, context: PluginContext
-) -> Result[float, ValueError]:
-    """Return the initial storage level for a HydroReservoir."""
-    value = getattr(source_component, "initial_level", None)
-    if value is not None:
-        return Ok(float(value))
-    return Ok(0.0)
+        max_volume = float(max_val) if isinstance(max_val, int | float) and max_val else 100.0
+    else:
+        max_val = getattr(storage_limits, "max", None)
+        max_volume = float(max_val) if isinstance(max_val, int | float) and max_val else 100.0
+    return Ok(max_volume * 0.5)
 
 
 @getter
@@ -860,11 +988,16 @@ def get_storage_max_volume(
     """Return the max storage volume for a HydroReservoir."""
     value = getattr(source_component, "storage_level_limits", None)
     if value is None:
-        return Ok(0.0)
+        return Ok(100.0)
     if isinstance(value, dict):
         max_val = value.get("max")
-        return Ok(float(max_val) if isinstance(max_val, int | float) else 0.0)
-    return Ok(float(value.max))
+        if isinstance(max_val, int | float) and max_val:
+            return Ok(float(max_val))
+        return Ok(100.0)
+    max_val = getattr(value, "max", None)
+    if isinstance(max_val, int | float) and max_val:
+        return Ok(float(max_val))
+    return Ok(100.0)
 
 
 @getter
@@ -881,13 +1014,13 @@ def get_storage_natural_inflow(
 @getter
 def get_heat_rate(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     value = compute_heat_rate_data(source_component).get("heat_rate")
-    return Ok(float(value) if value is not None else 0.0)
+    return Ok(round(float(value), 2) if value is not None else 0.0)
 
 
 @getter
 def get_heat_rate_base(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     value = compute_heat_rate_data(source_component).get("heat_rate_base")
-    return Ok(float(value) if value is not None else 0.0)
+    return Ok(round(float(value), 2) if value is not None else 0.0)
 
 
 @getter
@@ -899,21 +1032,13 @@ def get_heat_rate_incr(source_component: object, context: PluginContext) -> Resu
 @getter
 def get_heat_rate_incr2(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     value = compute_heat_rate_data(source_component).get("heat_rate_incr2")
-    return Ok(float(value) if value is not None else 0.0)
+    return Ok(round(float(value), 2) if value is not None else 0.0)
 
 
 @getter
 def get_heat_rate_incr3(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     value = compute_heat_rate_data(source_component).get("heat_rate_incr3")
-    return Ok(float(value) if value is not None else 0.0)
-
-
-@getter
-def get_heat_rate_load_point(source_component: object, context: PluginContext) -> Result[Any, ValueError]:
-    value = compute_heat_rate_data(source_component).get("load_point")
-    if value is None:
-        return Err(ValueError("No heat rate load points"))
-    return Ok(value)
+    return Ok(round(float(value), 2) if value is not None else 0.0)
 
 
 @getter
@@ -921,22 +1046,29 @@ def get_min_stable_level(
     source_component: ThermalStandard, context: PluginContext
 ) -> Result[float, ValueError]:
     limits = getattr(source_component, "active_power_limits", None)
-    if not limits:
-        return Ok(0.0)
-    if isinstance(limits, dict):
-        min_val = limits.get("min", 0.0)
-        if isinstance(min_val, int | float):
-            return Ok(float(max(0.0, min_val)))
-        return Ok(0.0)
-    try:
-        converted = sienna_get_value(limits, source_component)
-        min_level = getattr(converted, "min", None)
-    except (NotImplementedError, AttributeError, TypeError):
-        min_level = getattr(limits, "min", None)
-    if min_level is None:
-        return Ok(0.0)
-    min_level = 0.0 if min_level < 0 else min_level
-    return Ok(float(min_level))
+    min_level: float | None = None
+
+    if limits:
+        if isinstance(limits, dict):
+            min_val = limits.get("min", 0.0)
+            if isinstance(min_val, int | float) and min_val > 0.0:
+                min_level = float(min_val)
+        else:
+            try:
+                converted = sienna_get_value(limits, source_component)
+                raw = getattr(converted, "min", None)
+            except (NotImplementedError, AttributeError, TypeError):
+                raw = getattr(limits, "min", None)
+            if raw is not None and raw > 0.0:
+                min_level = float(raw)
+
+    if min_level is not None:
+        return Ok(round(min_level, 2))
+
+    # Fallback: reeds_defaults[category].min_stable_level_percentage * 100
+    category = _resolve_generator_category(source_component, context) or "gas-cc"
+    pct = _get_defaults(category, "min_stable_level_percentage")
+    return Ok(round(pct * 100.0, 2))
 
 
 @getter
@@ -1003,18 +1135,18 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
         value = None
 
     if value is not None:
-        return Ok(max(0.0, float(value)))
+        return Ok(round(max(0.0, float(value)), 2))
 
     limits = getattr(source_component, "active_power_limits", None)
     if isinstance(limits, dict):
         max_value = limits.get("max")
         if isinstance(max_value, int | float):
-            return Ok(max(0.0, float(max_value)))
+            return Ok(round(max(0.0, float(max_value)), 2))
 
     rating = getattr(source_component, "rating", None)
     rating_value = get_magnitude(rating)
     if rating_value is not None:
-        return Ok(max(0.0, float(rating_value) * resolve_base_power(source_component)))
+        return Ok(round(max(0.0, float(rating_value) * resolve_base_power(source_component)), 2))
 
     return Err(ValueError("active_power_limits or rating missing"))
 
@@ -1037,7 +1169,7 @@ def get_component_rating(source_component: object, context: PluginContext) -> Re
     """Extract turbine rating (in MW) from the HydroTurbine."""
     rating = getattr(source_component, "rating", None)
     if rating is not None:
-        return Ok(max(0.0, float(rating) * source_component.base_power))
+        return Ok(round(max(0.0, float(rating) * source_component.base_power), 2))
     return Ok(0.0)
 
 
@@ -1256,7 +1388,7 @@ def get_initial_generation(
         return Ok(0.0)
     # Active power may be negative in some cases (e.g. EI dataset)
     value = float(power) * resolve_base_power(source_component)
-    return Ok(abs(value))
+    return Ok(round(abs(value), 2))
 
 
 @getter
@@ -1372,46 +1504,40 @@ def get_storage_charge_efficiency(
 def get_storage_initial_soc(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    initial_soc = getattr(source_component, "initial_soc", None)
-    if initial_soc is None:
+    value = getattr(source_component, "initial_storage_capacity_level", None)
+    if value is None:
         return Ok(_get_defaults("battery", "initial_soc") * 100)
-    if isinstance(initial_soc, dict):
-        min_soc = initial_soc.get("min")
-        if isinstance(min_soc, int | float):
-            return Ok(float(min_soc) * 100)
-        return Ok(_get_defaults("battery", "initial_soc") * 100)
-    breakpoint()
-    return Ok(float(initial_soc.min) * 100)
+    return Ok(float(value) * 100)
 
 
 @getter
 def get_storage_min_soc(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    min_soc = getattr(source_component, "min_soc", None)
-    if min_soc is None:
+    limits = getattr(source_component, "storage_level_limits", None)
+    if limits is None:
         return Ok(_get_defaults("battery", "min_soc") * 100)
-    if isinstance(min_soc, dict):
-        min_soc_value = min_soc.get("min")
-        if isinstance(min_soc_value, int | float):
-            return Ok(float(min_soc_value) * 100)
+    if isinstance(limits, dict):
+        min_val = limits.get("min")
+        if isinstance(min_val, int | float):
+            return Ok(float(min_val) * 100)
         return Ok(_get_defaults("battery", "min_soc") * 100)
-    return Ok(float(min_soc.min) * 100)
+    return Ok(float(limits.min) * 100)
 
 
 @getter
 def get_storage_max_soc(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    max_soc = getattr(source_component, "max_soc", None)
-    if max_soc is None:
+    limits = getattr(source_component, "storage_level_limits", None)
+    if limits is None:
         return Ok(_get_defaults("battery", "max_soc") * 100)
-    if isinstance(max_soc, dict):
-        max_soc_value = max_soc.get("max")
-        if isinstance(max_soc_value, int | float):
-            return Ok(float(max_soc_value) * 100)
+    if isinstance(limits, dict):
+        max_val = limits.get("max")
+        if isinstance(max_val, int | float):
+            return Ok(float(max_val) * 100)
         return Ok(_get_defaults("battery", "max_soc") * 100)
-    return Ok(float(max_soc.max) * 100)
+    return Ok(float(limits.max) * 100)
 
 
 @getter
@@ -1445,12 +1571,12 @@ def get_storage_max_power(
     if isinstance(limits, dict):
         max_val = limits.get("max")
         if isinstance(max_val, int | float):
-            return Ok(float(max_val) * resolve_base_power(source_component))
+            return Ok(round(float(max_val) * resolve_base_power(source_component), 2))
         return Ok(0.0)
     if getattr(limits, "max", None) is None:
         return Ok(0.0)
     value = get_magnitude(limits.max)
-    return Ok(float(value) * resolve_base_power(source_component) if value is not None else 0.0)
+    return Ok(round(float(value) * resolve_base_power(source_component), 2) if value is not None else 0.0)
 
 
 @getter
