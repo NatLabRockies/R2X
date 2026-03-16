@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from infrasys.cost_curves import CostCurve, FuelCurve
@@ -117,6 +118,50 @@ def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | 
     return result
 
 
+def _attach_reservoir_time_series_to_storage(
+    context: PluginContext,
+    storage_name: str,
+    target_storage: Any,
+) -> None:
+    """Attach time series from source HydroReservoir to translated PLEXOS storage."""
+    base_name = storage_name[:-5] if storage_name.endswith(("_head", "_tail")) else storage_name
+
+    source_reservoir = None
+    for r in context.source_system.get_components(HydroReservoir):
+        if r.name == base_name:
+            source_reservoir = r
+            break
+    if source_reservoir is None:
+        for r in context.source_system.get_components(HydroReservoir):
+            if base_name in r.name:
+                source_reservoir = r
+                break
+    if source_reservoir is None:
+        logger.warning("No source HydroReservoir found for '{}', skipping time series attachment.", base_name)
+        return
+
+    if not context.source_system.time_series.has_time_series(source_reservoir):
+        return
+
+    for ts in context.source_system.list_time_series(source_reservoir):
+        plexos_ts = deepcopy(ts)
+        if ts.name in ("inflow", "hydro_budget"):
+            plexos_ts.name = "natural_inflow"
+        elif ts.name == "outflow":
+            continue  # skip outflow
+        ts_type = plexos_ts.__class__
+        if not context.target_system.has_time_series(
+            target_storage,
+            name=plexos_ts.name,
+            time_series_type=ts_type,
+            **getattr(plexos_ts, "features", {}),
+        ):
+            context.target_system.add_time_series(
+                plexos_ts, target_storage, **getattr(plexos_ts, "features", {})
+            )
+            logger.success("Attached time series {} to storage {}", plexos_ts.name, storage_name)
+
+
 def ensure_region_node_memberships(context: PluginContext) -> None:
     """Create Region->Node memberships for all regions and their nodes."""
     bus_index = _bus_name_to_area_and_zone(context)
@@ -133,6 +178,59 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
             total_memberships += 1
 
     logger.info("Total {} Region-Node memberships created.", total_memberships)
+
+
+def _extract_base_name(name: str) -> str:
+    for suffix in ("_Turbine", "_Reservoir_head", "_Reservoir_tail", "_Reservoir", "_head", "_tail"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def ensure_head_storage_generator_membership(context: PluginContext) -> None:
+    """Create HeadStorage memberships between generators and head storages."""
+    generators_by_base = {
+        _extract_base_name(g.name): g for g in context.target_system.get_components(PLEXOSGenerator)
+    }
+
+    total_memberships = 0
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if not storage.name.endswith("_head"):
+            continue
+
+        _attach_reservoir_time_series_to_storage(context, storage.name, storage)
+        if storage.name.endswith("_Reservoir_head"):
+            continue
+
+        gen = generators_by_base.get(_extract_base_name(storage.name))
+        if gen is not None:
+            _ensure_membership(context, gen, storage, CollectionEnum.HeadStorage)
+            total_memberships += 1
+
+    logger.info("Total {} HeadStorage-Generator memberships created.", total_memberships)
+
+
+def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
+    """Create TailStorage memberships between generators and tail storages."""
+    generators_by_base = {
+        _extract_base_name(g.name): g for g in context.target_system.get_components(PLEXOSGenerator)
+    }
+
+    total_memberships = 0
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if not storage.name.endswith("_tail"):
+            continue
+
+        _attach_reservoir_time_series_to_storage(context, storage.name, storage)
+        if storage.name.endswith("_Reservoir_tail"):
+            continue
+
+        gen = generators_by_base.get(_extract_base_name(storage.name))
+        if gen is not None:
+            _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
+            total_memberships += 1
+
+    logger.info("Total {} TailStorage-Generator memberships created.", total_memberships)
 
 
 def ensure_node_zone_memberships(context: PluginContext) -> None:
@@ -291,57 +389,13 @@ def ensure_interface_line_memberships(context: PluginContext) -> None:
         source_intf = source_interfaces_by_name.get(interface.name)
         if source_intf is None:
             continue
-        for line_ref in getattr(source_intf, "lines", None) or []:
-            line_name = line_ref.name if hasattr(line_ref, "name") else str(line_ref)
+        for line_name in getattr(source_intf, "direction_mapping", None) or {}:
             line = lines_by_name.get(line_name)
             if line is not None:
                 _ensure_membership(context, interface, line, CollectionEnum.Lines)
                 total_memberships += 1
 
     logger.info("Total {} Interface-Line memberships created.", total_memberships)
-
-
-def _extract_base_name(name: str) -> str:
-    for suffix in ("_Turbine", "_Reservoir_head", "_Reservoir_tail", "_Reservoir"):
-        if name.endswith(suffix):
-            return name[: -len(suffix)]
-    return name
-
-
-def ensure_head_storage_generator_membership(context: PluginContext) -> None:
-    """Create HeadStorage memberships between generators and head storages."""
-    generators_by_base = {
-        _extract_base_name(g.name): g for g in context.target_system.get_components(PLEXOSGenerator)
-    }
-
-    total_memberships = 0
-    for storage in context.target_system.get_components(PLEXOSStorage):
-        if not storage.name.endswith("_head"):
-            continue
-        gen = generators_by_base.get(_extract_base_name(storage.name))
-        if gen is not None:
-            _ensure_membership(context, gen, storage, CollectionEnum.HeadStorage)
-            total_memberships += 1
-
-    logger.info("Total {} HeadStorage-Generator memberships created.", total_memberships)
-
-
-def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
-    """Create TailStorage memberships between generators and tail storages."""
-    generators_by_base = {
-        _extract_base_name(g.name): g for g in context.target_system.get_components(PLEXOSGenerator)
-    }
-
-    total_memberships = 0
-    for storage in context.target_system.get_components(PLEXOSStorage):
-        if not storage.name.endswith("_tail"):
-            continue
-        gen = generators_by_base.get(_extract_base_name(storage.name))
-        if gen is not None:
-            _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
-            total_memberships += 1
-
-    logger.info("Total {} TailStorage-Generator memberships created.", total_memberships)
 
 
 def ensure_pumped_hydro_storage_memberships(context: PluginContext) -> None:
@@ -479,11 +533,20 @@ def compute_heat_rate_data(component: Any) -> dict[str, Any]:
     if isinstance(fd, LinearFunctionData):
         data["heat_rate"] = float(fd.proportional_term)
         data["heat_rate_base"] = float(fd.constant_term)
+        data["heat_rate_incr"] = float(fd.proportional_term)
     elif isinstance(fd, QuadraticFunctionData):
         data["heat_rate_base"] = float(fd.constant_term)
         data["heat_rate"] = float(fd.proportional_term)
-        data["heat_rate_incr"] = float(fd.quadratic_term)
+        data["heat_rate_incr"] = float(fd.proportional_term)
+        data["heat_rate_incr2"] = float(fd.quadratic_term)
+        cubic = getattr(fd, "cubic_term", None)
+        if cubic is not None:
+            data["heat_rate_incr3"] = float(cubic)
     elif isinstance(fd, PiecewiseLinearData):
+        initial_input = getattr(variable.value_curve, "initial_input", None)
+        if initial_input is not None:
+            data["heat_rate_base"] = round(float(initial_input) / 1000, 3)
+            data["heat_rate"] = data["heat_rate_base"]
         load_points, slopes = extract_piecewise_segments(fd.points)
         if load_points and slopes:
             load_prop, heat_prop = create_multiband_heat_rate(load_points, slopes)
