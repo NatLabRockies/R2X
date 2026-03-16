@@ -483,6 +483,7 @@
       "max_ramp_up": "get_max_ramp_up",
       "rating": "get_generator_rating",
       "max_capacity": "get_max_capacity",
+      "fixed_load": "get_generator_fixed_load",
       "min_stable_level": "get_generator_min_stable_level",
       "forced_outage_rate": "get_generator_forced_outage_rate",
       "maintenance_rate": "get_generator_maintenance_rate",

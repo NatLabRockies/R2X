@@ -445,7 +445,7 @@ def _attach_generator_time_series(
             continue
 
         ts = ts_list[0]
-        ts_name_map = {"max_active_power": "max_energy_day"}
+        ts_name_map = {"hydro_budget": "max_energy_day", "max_active_power": "fixed_load"}
         target_ts_name = ts_name_map.get(ts.name, ts.name) if is_hydro_dispatch else ts.name
         ts_type = ts.__class__
         if not context.target_system.has_time_series(
@@ -1241,10 +1241,21 @@ def get_generator_vom_cost(source_component: object, context: PluginContext) -> 
 
 @getter
 def get_generator_max_energy_day(
-    component: object, context: PluginContext
+    component: HydroDispatch, context: PluginContext
 ) -> Result[float | int, ValueError]:
     """Return the maximum energy per day for a hydro generator as a PLEXOSPropertyValue with units MW."""
     value = getattr(component, "max_energy_per_day", None)
+    if value is None:
+        return Ok(0.0)
+    return Ok(value)
+
+
+@getter
+def get_generator_fixed_load(
+    source_component: HydroDispatch, context: PluginContext
+) -> Result[float, ValueError]:
+    """Extract fixed load (in MW) from the Generator."""
+    value = getattr(source_component, "fixed_load", None)
     if value is None:
         return Ok(0.0)
     return Ok(value)
