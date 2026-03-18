@@ -383,13 +383,17 @@ def _lookup_source_generator(context: PluginContext, gen_name: str) -> Any | Non
     index = context._cache.get(cache_key)
     if index is None:
         display_index = _build_generator_display_name_index(context)
-        index = {}
+        by_orig: dict[str, Any] = {}
+        by_display: dict[str, Any] = {}
         for gen_type in SOURCE_GENERATOR_TYPES:
             for gen in context.source_system.get_components(gen_type):
-                index[gen.name] = gen
+                by_orig[gen.name] = gen
                 display_name = display_index.get(gen.name)
                 if display_name:
-                    index[display_name] = gen
+                    by_display.setdefault(display_name, gen)
+        # display names overwrite original names so that a HydroReservoir whose
+        # Sienna name equals a HydroDispatch's plant_name does not shadow it
+        index = {**by_orig, **by_display}
         context._cache[cache_key] = index
     return index.get(gen_name)
 
@@ -530,48 +534,34 @@ def _attach_generator_time_series(
     target_generator: Any,
 ) -> None:
     """Attach time series from source generator to translated PLEXOS generator."""
-    source_gen = None
-    is_hydro_dispatch = False
-
-    for gen_type in (RenewableDispatch, RenewableNonDispatch, HydroReservoir, HydroTurbine, HydroDispatch):
-        source_gen = next(
-            (g for g in context.source_system.get_components(gen_type) if g.name == generator_name),
-            None,
-        )
-        if source_gen is not None:
-            break
-
+    source_gen = _lookup_source_generator(context, generator_name)
     if source_gen is None:
-        source_gen = next(
-            (g for g in context.source_system.get_components(HydroDispatch) if g.name == generator_name),
-            None,
-        )
-        if source_gen is not None:
-            is_hydro_dispatch = True
-
-    if source_gen is None:
-        logger.debug("No source generator found for {}", generator_name)
+        logger.debug("No source generator found for '{}', skipping time series attachment.", generator_name)
         return
 
+    if not context.source_system.time_series.has_time_series(source_gen):
+        return
+
+    base_power = resolve_base_power(source_gen)
     for metadata in context.source_system.time_series.list_time_series_metadata(source_gen):
         ts_list = context.source_system.list_time_series(source_gen, name=metadata.name, **metadata.features)
-
         if not ts_list:
             logger.warning("Missing time series {} for generator {}", metadata.name, generator_name)
             continue
+        ts = deepcopy(ts_list[0])
 
-        ts = ts_list[0]
-        ts_name_map = {"hydro_budget": "max_energy_day", "max_active_power": "fixed_load"}
-        target_ts_name = ts_name_map.get(ts.name, ts.name) if is_hydro_dispatch else ts.name
+        # Scale pu capacity factor → MW for PLEXOS
+        if ts.name == "max_active_power" and base_power > 0.0:
+            import numpy as np
+
+            ts.data = np.asarray(ts.data) * base_power
+
         ts_type = ts.__class__
         if not context.target_system.has_time_series(
-            target_generator, name=target_ts_name, time_series_type=ts_type, **metadata.features
+            target_generator, name=ts.name, time_series_type=ts_type, **metadata.features
         ):
-            if is_hydro_dispatch and target_ts_name != ts.name:
-                ts = deepcopy(ts)
-                ts.name = target_ts_name
             context.target_system.add_time_series(ts, target_generator, **metadata.features)
-            logger.success("Attached time series {} to generator {}", target_ts_name, generator_name)
+            logger.success("Attached time series {} to generator {}", ts.name, generator_name)
 
 
 def _attach_region_node_load_time_series(
@@ -598,8 +588,13 @@ def _attach_region_node_load_time_series(
         if context.source_system.time_series.has_time_series(load):
             for ts in context.source_system.list_time_series(load):
                 if ts.name == "max_active_power":
+                    load_mw = _get_load_mw(load)
                     ts_copy = deepcopy(ts)
                     ts_copy.name = "load"
+                    if load_mw > 0.0:
+                        import numpy as np
+
+                        ts_copy.data = np.asarray(ts_copy.data) * load_mw
                     if aggregated_ts is None:
                         aggregated_ts = ts_copy
                     else:
@@ -720,6 +715,36 @@ def _get_general_default(key: str) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+@getter
+def get_component_ext(source_component: object, context: PluginContext) -> Result[dict, ValueError]:
+    """Store the Sienna source type name in ext for downstream use (e.g. time series file naming)."""
+    return Ok({"sienna_type": type(source_component).__name__})
+
+
+@getter
+def get_region_ext(source_component: Area, context: PluginContext) -> Result[dict, ValueError]:
+    """Return ext with sienna_type set to the load type found in this region (StandardLoad or PowerLoad)."""
+    area_name = getattr(source_component, "name", "")
+    ext_dict = getattr(source_component, "ext", None)
+    if isinstance(ext_dict, dict):
+        arname = ext_dict.get("ARNAME")
+        if arname:
+            area_name = str(arname)
+
+    area_buses_index = _build_area_buses_index(context)
+    bus_loads_index = _build_bus_to_loads_index(context)
+    for bus in area_buses_index.get(area_name, []):
+        for load in bus_loads_index.get(str(bus.uuid), []):
+            return Ok({"sienna_type": type(load).__name__})
+
+    for _ in context.source_system.get_components(StandardLoad):
+        return Ok({"sienna_type": "StandardLoad"})
+    for _ in context.source_system.get_components(PowerLoad):
+        return Ok({"sienna_type": "PowerLoad"})
+
+    return Ok({"sienna_type": "StandardLoad"})
 
 
 @getter
@@ -1267,7 +1292,7 @@ def get_min_down_time(source_component: object, context: PluginContext) -> Resul
 
 @getter
 def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract maximum ramp up from ramp_limits, convert to MW/min, capped at max capacity."""
+    """Extract maximum ramp up from ramp_limits, convert to MW/min, capped at max capacity/base power."""
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
         value = _ramp_value_to_float(source_component, ramp.get("up"))
@@ -1276,20 +1301,14 @@ def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[
     else:
         return Ok(0.0)
 
-    value = abs(value)
-    try:
-        max_mw = abs(float(sienna_get_max_active_power(source_component) or 0.0))
-    except (TypeError, NotImplementedError, AttributeError, KeyError):
-        max_mw = resolve_base_power(source_component)
-    if max_mw > 0.0:
-        value = min(value, max_mw)
-
+    if value <= 0.0:
+        value = resolve_base_power(source_component)
     return Ok(value)
 
 
 @getter
 def get_max_ramp_down(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract maximum ramp down from ramp_limits, convert to MW/min, capped at max capacity."""
+    """Extract maximum ramp down from ramp_limits, convert to MW/min, capped at max capacity/base power."""
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
         value = _ramp_value_to_float(source_component, ramp.get("down"))
@@ -1298,14 +1317,8 @@ def get_max_ramp_down(source_component: object, context: PluginContext) -> Resul
     else:
         return Ok(0.0)
 
-    value = abs(value)
-    try:
-        max_mw = abs(float(sienna_get_max_active_power(source_component) or 0.0))
-    except (TypeError, NotImplementedError, AttributeError, KeyError):
-        max_mw = resolve_base_power(source_component)
-    if max_mw > 0.0:
-        value = min(value, max_mw)
-
+    if value <= 0.0:
+        value = resolve_base_power(source_component)
     return Ok(value)
 
 

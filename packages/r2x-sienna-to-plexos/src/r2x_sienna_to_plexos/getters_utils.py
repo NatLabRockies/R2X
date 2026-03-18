@@ -101,12 +101,18 @@ def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | 
     """
     cached = context._cache.get("bus_name_to_area_and_zone")
     if cached is not None:
-        return cached  # type: ignore[return-value]
+        return cached
 
     result: dict[str, tuple[str | None, str | None]] = {}
     for bus in context.source_system.get_components(ACBus):
         area = getattr(bus, "area", None)
-        area_name: str | None = area.name if isinstance(area, Area) else (str(area) if area else None)
+        area_name: str | None = None
+        if isinstance(area, Area):
+            ext = getattr(area, "ext", None)
+            arname = (ext or {}).get("ARNAME") if isinstance(ext, dict) else None
+            area_name = str(arname) if arname else area.name
+        elif area:
+            area_name = str(area)
 
         load_zone = getattr(bus, "load_zone", None)
         zone_name: str | None = (
