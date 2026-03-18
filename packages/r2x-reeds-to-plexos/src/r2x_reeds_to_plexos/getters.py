@@ -111,7 +111,7 @@ def get_component_units(component: object, context: PluginContext) -> Result[str
 
 @getter
 def region_load(component: ReEDSRegion, context: PluginContext) -> Result[float | int, ValueError]:
-    """Return the load for a region as a PLEXOSPropertyValue with units MW."""
+    """Return the load for a region with units MW."""
 
     value = _float_or_zero(getattr(component, "load", 0.0))
     return Ok(value)
