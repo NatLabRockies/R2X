@@ -88,6 +88,27 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
             if substr in name:
                 return tech
 
+    # Nuclear plant name matching — check component name and plant_name from ext
+    nuclear_names = _build_nuclear_plant_name_set(context)
+    candidate_names = [name]
+    if isinstance(ext, dict):
+        plant_name = ext.get("plant_name")
+        if plant_name:
+            candidate_names.append(str(plant_name).lower())
+    for candidate in candidate_names:
+        if candidate:
+            for nuclear_name in nuclear_names:
+                if nuclear_name in candidate or candidate in nuclear_name:
+                    return "nuclear"
+
+    # Oil plant name matching — check component name and plant_name from ext
+    oil_names = _build_oil_plant_name_set(context)
+    for candidate in candidate_names:  # candidate_names was already built for nuclear check
+        if candidate:
+            for oil_name in oil_names:
+                if oil_name in candidate or candidate in oil_name:
+                    return "oil"
+
     # Get it from defaults as prime mover mapping if available
     prime_mover = getattr(source_component, "prime_mover_type", None)
     fuel = getattr(source_component, "fuel", None)
@@ -205,6 +226,53 @@ def _build_battery_service_index(context: PluginContext) -> dict[str, list[Any]]
     return result
 
 
+def _build_oil_plant_name_set(context: PluginContext) -> set[str]:
+    """Build normalized petroleum plant names set from us_power_plants.json, cached."""
+    cached = context._cache.get("oil_plant_name_set")
+    if cached is not None:
+        return cached
+    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
+    with plants_path.open() as f:
+        plants_data = json.load(f)
+    name_set = {
+        p["power Plant Name"].lower()
+        for p in plants_data
+        if isinstance(p.get("Primary Energy Source"), str)
+        and p["Primary Energy Source"].lower() == "petroleum"
+        and isinstance(p.get("power Plant Name"), str)
+    }
+    context._cache["oil_plant_name_set"] = name_set
+    return name_set
+
+
+def _build_nuclear_plant_name_set(context: PluginContext) -> set[str]:
+    """Build normalized nuclear plant names set from defaults.json and us_power_plants.json, cached."""
+    cached = context._cache.get("nuclear_plant_name_set")
+    if cached is not None:
+        return cached
+
+    # From defaults.json nuclear_plants list
+    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
+    with defaults_path.open() as f:
+        defaults_data = json.load(f)
+    name_set = {p["name"].lower() for p in defaults_data.get("nuclear_plants", [])}
+
+    # From us_power_plants.json filtered by Primary Energy Source == "nuclear"
+    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
+    with plants_path.open() as f:
+        plants_data = json.load(f)
+    name_set |= {
+        p["power Plant Name"].lower()
+        for p in plants_data
+        if isinstance(p.get("Primary Energy Source"), str)
+        and p["Primary Energy Source"].lower() == "nuclear"
+        and isinstance(p.get("power Plant Name"), str)
+    }
+
+    context._cache["nuclear_plant_name_set"] = name_set
+    return name_set
+
+
 def _build_area_buses_index(context: PluginContext) -> dict[str, list[Any]]:
     """Map area_name -> list of ACBus components in that area."""
     cached = context._cache.get("area_buses_index")
@@ -212,9 +280,15 @@ def _build_area_buses_index(context: PluginContext) -> dict[str, list[Any]]:
         return cached
     index: dict[str, list[Any]] = defaultdict(list)
     for bus in context.source_system.get_components(ACBus):
-        area_name = getattr(getattr(bus, "area", None), "name", None)
+        area = getattr(bus, "area", None)
+        if area is None:
+            continue
+        area_name = getattr(area, "name", None)
         if area_name:
             index[area_name].append(bus)
+        arname = (getattr(area, "ext", None) or {}).get("ARNAME")
+        if arname and str(arname) != area_name:
+            index[str(arname)].append(bus)
     result = dict(index)
     context._cache["area_buses_index"] = result
     return result
@@ -260,6 +334,9 @@ def _build_area_to_node_index(context: PluginContext) -> dict[str, PLEXOSNode]:
         bus_area = getattr(source_bus, "area", None)
         if isinstance(bus_area, Area):
             index[bus_area.name] = node
+            arname = (getattr(bus_area, "ext", None) or {}).get("ARNAME")
+            if arname:
+                index[str(arname)] = node
         elif isinstance(bus_area, str):
             index[bus_area] = node
 
@@ -305,12 +382,51 @@ def _lookup_source_generator(context: PluginContext, gen_name: str) -> Any | Non
     cache_key = "source_generator_name_index"
     index = context._cache.get(cache_key)
     if index is None:
+        display_index = _build_generator_display_name_index(context)
         index = {}
         for gen_type in SOURCE_GENERATOR_TYPES:
             for gen in context.source_system.get_components(gen_type):
                 index[gen.name] = gen
+                display_name = display_index.get(gen.name)
+                if display_name:
+                    index[display_name] = gen
         context._cache[cache_key] = index
     return index.get(gen_name)
+
+
+def _build_generator_display_name_index(context: PluginContext) -> dict[str, str]:
+    """Map each source generator's original name -> final display name.
+
+    When multiple generators share the same plant_name (or base name), they
+    get deterministic _1, _2, ... suffixes sorted by their original Sienna name.
+    """
+    cached = context._cache.get("generator_display_name_index")
+    if cached is not None:
+        return cached
+
+    all_gens: list[tuple[str, str]] = []
+    for gen_type in SOURCE_GENERATOR_TYPES:
+        for gen in context.source_system.get_components(gen_type):
+            orig = gen.name
+            ext = getattr(gen, "ext", None)
+            plant_name = ext.get("plant_name") if isinstance(ext, dict) else None
+            display = str(plant_name) if plant_name else orig
+            all_gens.append((orig, display))
+
+    groups: dict[str, list[str]] = defaultdict(list)
+    for orig, display in all_gens:
+        groups[display].append(orig)
+
+    result: dict[str, str] = {}
+    for display, orig_names in groups.items():
+        if len(orig_names) == 1:
+            result[orig_names[0]] = display
+        else:
+            for i, orig in enumerate(sorted(orig_names), start=1):
+                result[orig] = f"{display}_{i}"
+
+    context._cache["generator_display_name_index"] = result
+    return result
 
 
 def _lookup_source_battery(context: PluginContext, battery_name: str) -> Any | None:
@@ -634,6 +750,22 @@ def get_ac_voltage_magnitude_pu(source_component: ACBus, context: PluginContext)
 
 
 @getter
+def get_node_category(source_component: ACBus, context: PluginContext) -> Result[str, ValueError]:
+    """Return human-readable region name (ARNAME) from the bus's area ext, falling back to area.name."""
+    area = getattr(source_component, "area", None)
+    if area is not None:
+        ext = getattr(area, "ext", None)
+        if isinstance(ext, dict):
+            arname = ext.get("ARNAME")
+            if arname:
+                return Ok(str(arname))
+        area_name = getattr(area, "name", None)
+        if area_name:
+            return Ok(str(area_name))
+    return Err(ValueError(f"No area found for ACBus '{source_component.name}'"))
+
+
+@getter
 def get_load_participation_factor(
     source_component: ACBus,
     context: PluginContext,
@@ -697,6 +829,17 @@ def get_area_load(source_component: Area, context: PluginContext) -> Result[floa
     Supports both StandardLoad and PowerLoad.
     """
     return Ok(0.0)
+
+
+@getter
+def get_area_name(source_component: Area, context: PluginContext) -> Result[str, ValueError]:
+    """Return ARNAME from ext if available, otherwise fall back to the component name."""
+    ext = getattr(source_component, "ext", None)
+    if isinstance(ext, dict):
+        arname = ext.get("ARNAME")
+        if arname:
+            return Ok(str(arname))
+    return Ok(getattr(source_component, "name", ""))
 
 
 @getter
@@ -936,7 +1079,7 @@ def get_3w_transformer_primary_rating(
     if rating is None:
         return Ok(99999.0)
     val = float(rating)
-    return Ok(99999.0 if val >= 1e6 else round(max(0.0, val), 2))
+    return Ok(99999.0 if val >= 1e6 else round(abs(val), 2))
 
 
 @getter
@@ -970,7 +1113,7 @@ def get_3w_transformer_secondary_rating(
     if rating is None:
         return Ok(0.0)
     val = float(rating)
-    return Ok(99999.0 if val >= 1e6 else round(max(0.0, val), 2))
+    return Ok(99999.0 if val >= 1e6 else round(abs(val), 2))
 
 
 @getter
@@ -1004,7 +1147,7 @@ def get_3w_transformer_tertiary_rating(
     if rating is None:
         return Ok(0.0)
     val = float(rating)
-    return Ok(99999.0 if val >= 1e6 else round(max(0.0, val), 2))
+    return Ok(99999.0 if val >= 1e6 else round(abs(val), 2))
 
 
 @getter
@@ -1040,26 +1183,25 @@ def get_fuel_price(
 
 @getter
 def get_max_capacity(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract maximum capacity in MW from max_active_power time series, active_power_limits, or rating, and return as float."""
-    value = None
+    """Extract maximum capacity in MW from rating, active_power_limits, or max_active_power, and return as float."""
+    rating = getattr(source_component, "rating", None)
+    rating_value = get_magnitude(rating)
+    if rating_value is not None:
+        return Ok(round(abs(float(rating_value) * resolve_base_power(source_component)), 2))
+
+    limits = getattr(source_component, "active_power_limits", None)
+    if isinstance(limits, dict):
+        max_value = limits.get("max")
+        if isinstance(max_value, int | float):
+            return Ok(round(abs(float(max_value)), 2))
+
     try:
         value = sienna_get_max_active_power(source_component)
     except (TypeError, NotImplementedError, AttributeError, KeyError):
         value = None
 
     if value is not None:
-        return Ok(round(max(0.0, float(value)), 2))
-
-    limits = getattr(source_component, "active_power_limits", None)
-    if isinstance(limits, dict):
-        max_value = limits.get("max")
-        if isinstance(max_value, int | float):
-            return Ok(round(max(0.0, float(max_value)), 2))
-
-    rating = getattr(source_component, "rating", None)
-    rating_value = get_magnitude(rating)
-    if rating_value is not None:
-        return Ok(round(max(0.0, float(rating_value) * resolve_base_power(source_component)), 2))
+        return Ok(round(abs(float(value)), 2))
 
     return Err(ValueError("active_power_limits or rating missing"))
 
@@ -1105,7 +1247,7 @@ def get_initial_generation(source_component: object, context: PluginContext) -> 
     power = get_magnitude(getattr(source_component, "active_power", None))
     if power is None:
         return Ok(0.0)
-    value = float(power) * resolve_base_power(source_component) / _get_system_base_power(context)
+    value = float(power) * resolve_base_power(source_component)
     return Ok(round(abs(value), 2))
 
 
@@ -1125,32 +1267,54 @@ def get_min_down_time(source_component: object, context: PluginContext) -> Resul
 
 @getter
 def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[float, ValueError]:
+    """Extract maximum ramp up from ramp_limits, convert to MW/min, capped at max capacity."""
     ramp = getattr(source_component, "ramp_limits", None)
-    """Extract maximum ramp up from ramp_limits dict or object attribute, convert to MW/min, and return as float."""
     if isinstance(ramp, dict):
-        value = _ramp_value_to_float(source_component, ramp.get("up")) / _get_system_base_power(context)
-        return Ok(round(max(0.0, value), 2))
-    if ramp is not None:
-        value = _ramp_value_to_float(source_component, getattr(ramp, "up", None)) / _get_system_base_power(
-            context
-        )
-        return Ok(round(max(0.0, value), 2))
-    return Ok(0.0)
+        value = _ramp_value_to_float(source_component, ramp.get("up"))
+    elif ramp is not None:
+        value = _ramp_value_to_float(source_component, getattr(ramp, "up", None))
+    else:
+        return Ok(0.0)
+
+    value = abs(value)
+    try:
+        max_mw = abs(float(sienna_get_max_active_power(source_component) or 0.0))
+    except (TypeError, NotImplementedError, AttributeError, KeyError):
+        max_mw = resolve_base_power(source_component)
+    if max_mw > 0.0:
+        value = min(value, max_mw)
+
+    return Ok(value)
 
 
 @getter
 def get_max_ramp_down(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract maximum ramp down from ramp_limits dict or object attribute, convert to MW/min, and return as float."""
+    """Extract maximum ramp down from ramp_limits, convert to MW/min, capped at max capacity."""
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
-        value = _ramp_value_to_float(source_component, ramp.get("down")) / _get_system_base_power(context)
-        return Ok(round(max(0.0, value), 2))
-    if ramp is not None:
-        value = _ramp_value_to_float(source_component, getattr(ramp, "down", None)) / _get_system_base_power(
-            context
-        )
-        return Ok(round(max(0.0, value), 2))
-    return Ok(0.0)
+        value = _ramp_value_to_float(source_component, ramp.get("down"))
+    elif ramp is not None:
+        value = _ramp_value_to_float(source_component, getattr(ramp, "down", None))
+    else:
+        return Ok(0.0)
+
+    value = abs(value)
+    try:
+        max_mw = abs(float(sienna_get_max_active_power(source_component) or 0.0))
+    except (TypeError, NotImplementedError, AttributeError, KeyError):
+        max_mw = resolve_base_power(source_component)
+    if max_mw > 0.0:
+        value = min(value, max_mw)
+
+    return Ok(value)
+
+
+@getter
+def get_generator_name(source_component: object, context: PluginContext) -> Result[str, ValueError]:
+    """Return plant_name from ext (with _N suffix for duplicates), otherwise component name."""
+    index = _build_generator_display_name_index(context)
+    orig_name = getattr(source_component, "name", "")
+    return Ok(index.get(orig_name, orig_name))
 
 
 @getter
@@ -1160,7 +1324,7 @@ def get_generator_min_stable_level(
     """Extract minimum stable level from active_power_limits or compute as percentage of max capacity."""
     min_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "min")
     if min_pu is not None:
-        value = abs(min_pu) * resolve_base_power(source_component) / _get_system_base_power(context)
+        value = abs(min_pu) * resolve_base_power(source_component)
         return Ok(round(value, 2))
 
     category = _resolve_generator_category(source_component, context) or "gas-cc"
@@ -1221,7 +1385,7 @@ def get_generator_rating(source_component: object, context: PluginContext) -> Re
             round(
                 max(
                     0.0,
-                    float(rating) * resolve_base_power(source_component) / _get_system_base_power(context),
+                    float(rating) * resolve_base_power(source_component),
                 ),
                 2,
             )
@@ -1313,7 +1477,7 @@ def get_turbine_pump_load(
         if magnitude is not None:
             return Ok(
                 round(
-                    float(magnitude) * resolve_base_power(source_component) / _get_system_base_power(context),
+                    float(magnitude) * resolve_base_power(source_component),
                     2,
                 )
             )
@@ -1324,8 +1488,16 @@ def get_turbine_pump_load(
 def get_head_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
-    """Return the storage name for the head reservoir (appends _head)."""
-    return Ok(f"{_reservoir_base_name(source_component.name)}_head")
+    """Return the storage name for the head reservoir (appends _head), using plant_name from ext if available."""
+    ext = getattr(source_component, "ext", None)
+    base = None
+    if isinstance(ext, dict):
+        plant_name = ext.get("plant_name")
+        if plant_name:
+            base = str(plant_name)
+    if base is None:
+        base = _reservoir_base_name(source_component.name)
+    return Ok(f"{base}_head")
 
 
 @getter
@@ -1343,8 +1515,16 @@ def get_head_storage_uuid(
 def get_tail_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
-    """Return the storage name for the tail reservoir (appends _tail)."""
-    return Ok(f"{_reservoir_base_name(source_component.name)}_tail")
+    """Return the storage name for the tail reservoir (appends _tail), using plant_name from ext if available."""
+    ext = getattr(source_component, "ext", None)
+    base = None
+    if isinstance(ext, dict):
+        plant_name = ext.get("plant_name")
+        if plant_name:
+            base = str(plant_name)
+    if base is None:
+        base = _reservoir_base_name(source_component.name)
+    return Ok(f"{base}_tail")
 
 
 @getter
@@ -1414,9 +1594,7 @@ def get_battery_capacity(
     """Extract battery capacity in MWh from storage_capacity attribute, convert using base power, and return as float."""
     value = getattr(source_component, "storage_capacity", None)
     if value is not None and float(value) != 0.0:
-        return Ok(
-            round(float(value) * resolve_base_power(source_component) / _get_system_base_power(context), 2)
-        )
+        return Ok(round(float(value) * resolve_base_power(source_component), 2))
     return Ok(round(_get_defaults("battery", "average_capacity_MW"), 2))
 
 
@@ -1501,26 +1679,23 @@ def get_battery_cycles(
 def get_battery_max_power(
     source_component: EnergyReservoirStorage, context: PluginContext
 ) -> Result[float, ValueError]:
+    rating = getattr(source_component, "rating", None)
+    rating_value = get_magnitude(rating)
+    if rating_value is not None:
+        return Ok(round(float(rating_value) * resolve_base_power(source_component), 2))
+
     limits = getattr(source_component, "output_active_power_limits", None)
     if limits is None:
         return Ok(0.0)
     if isinstance(limits, dict):
         max_val = limits.get("max")
         if isinstance(max_val, int | float):
-            return Ok(
-                round(
-                    float(max_val) * resolve_base_power(source_component) / _get_system_base_power(context), 2
-                )
-            )
+            return Ok(float(max_val) * resolve_base_power(source_component))
         return Ok(0.0)
     if getattr(limits, "max", None) is None:
         return Ok(0.0)
     value = get_magnitude(limits.max)
-    return Ok(
-        round(float(value) * resolve_base_power(source_component) / _get_system_base_power(context), 2)
-        if value is not None
-        else 0.0
-    )
+    return Ok(float(value) * resolve_base_power(source_component) if value is not None else 0.0)
 
 
 @getter
@@ -1929,8 +2104,12 @@ def membership_head_storage_generator(
     )
     target_storage = storage_index.get(storage_name.lower())
     if target_storage is None:
-        logger.warning("No PLEXOSStorage found for '{}', skipping membership.", storage_name)
-        return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
+        storage_name = f"{gen_name}_head"
+        target_storage = storage_index.get(storage_name.lower())
+
+    if target_storage is None:
+        logger.warning("No PLEXOSStorage found for '{}', skipping membership.", gen_name)
+        return Err(ValueError(f"No PLEXOSStorage found for '{gen_name}'"))
     _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
     return Ok(target_storage)
 
@@ -1948,8 +2127,12 @@ def membership_tail_storage_generator(
     )
     target_storage = storage_index.get(storage_name.lower())
     if target_storage is None:
-        logger.warning("No PLEXOSStorage found for '{}', skipping membership.", storage_name)
-        return Err(ValueError(f"No PLEXOSStorage found for '{storage_name}'"))
+        storage_name = f"{gen_name}_tail"
+        target_storage = storage_index.get(storage_name.lower())
+
+    if target_storage is None:
+        logger.warning("No PLEXOSStorage found for '{}', skipping membership.", gen_name)
+        return Err(ValueError(f"No PLEXOSStorage found for '{gen_name}'"))
     _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
     return Ok(target_storage)
 

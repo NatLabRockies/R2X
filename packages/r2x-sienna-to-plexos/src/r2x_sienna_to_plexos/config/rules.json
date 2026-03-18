@@ -6,10 +6,10 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
-      "category": "category"
+      "uuid": "uuid"
     },
     "getters": {
+      "category": "get_node_category",
       "units": "get_availability",
       "voltage": "get_voltage_kv",
       "is_slack_bus": "is_slack_bus",
@@ -31,6 +31,7 @@
     },
     "getters": {
       "units": "get_area_units",
+      "name": "get_area_name",
       "load": "get_area_load"
     },
     "source_type": "Area",
@@ -402,11 +403,11 @@
       "category": "thermal-standard"
     },
     "field_map": {
-      "name": "name",
       "uuid": "uuid",
       "commit": "must_run"
     },
     "getters": {
+      "name": "get_generator_name",
       "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "rating": "get_generator_rating",
@@ -443,6 +444,7 @@
       "commit": "must_run"
     },
     "getters": {
+      "name": "get_generator_name",
       "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "rating": "get_generator_rating",
@@ -478,6 +480,7 @@
       "uuid": "uuid"
     },
     "getters": {
+      "name": "get_generator_name",
       "category": "get_generator_category",
       "max_ramp_down": "get_max_ramp_down",
       "max_ramp_up": "get_max_ramp_up",
@@ -504,6 +507,7 @@
       "uuid": "uuid"
     },
     "getters": {
+      "name": "get_generator_name",
       "category": "get_generator_category",
       "max_ramp_down": "get_max_ramp_down",
       "max_ramp_up": "get_max_ramp_up",
@@ -529,6 +533,7 @@
       "uuid": "uuid"
     },
     "getters": {
+      "name": "get_generator_name",
       "category": "get_generator_category",
       "rating": "get_generator_rating",
       "max_ramp_up": "get_max_ramp_up",
@@ -555,6 +560,7 @@
       "uuid": "uuid"
     },
     "getters": {
+      "name": "get_generator_name",
       "category": "get_generator_category",
       "rating": "get_generator_rating",
       "max_ramp_up": "get_max_ramp_up",
@@ -581,6 +587,7 @@
       "uuid": "uuid"
     },
     "getters": {
+      "name": "get_generator_name",
       "category": "get_generator_category",
       "rating": "get_generator_rating",
       "max_capacity": "get_max_capacity",
@@ -603,6 +610,7 @@
       "uuid": "uuid"
     },
     "getters": {
+      "name": "get_generator_name",
       "category": "get_generator_category",
       "rating": "get_generator_rating",
       "max_capacity": "get_max_capacity",
@@ -626,6 +634,7 @@
       "category": "category"
     },
     "getters": {
+      "name": "get_generator_name",
       "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "rating": "get_generator_rating",
