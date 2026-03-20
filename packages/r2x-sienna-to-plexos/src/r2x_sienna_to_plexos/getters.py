@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 # Add this near the top, after imports
 from collections import defaultdict
@@ -47,7 +48,6 @@ from r2x_sienna.models import (
     Transformer3W,
     TransmissionInterface,
     TwoTerminalGenericHVDCLine,
-    TwoTerminalHVDCLine,
     TwoTerminalLCCLine,
     TwoTerminalVSCLine,
     VariableReserve,
@@ -69,7 +69,12 @@ from r2x_sienna_to_plexos.getters_utils import (
     resolve_base_power,
 )
 
-from .getters_mappings import GEN_TYPE_STRING_MAP, REEDS_COMPONENT_SUBSTRINGS, SOURCE_GENERATOR_TYPES
+from .getters_mappings import (
+    GEN_TYPE_STRING_MAP,
+    REEDS_COMPONENT_SUBSTRINGS,
+    SOURCE_GENERATOR_TYPES,
+    SOURCE_LINE_TYPES,
+)
 
 
 def _resolve_generator_category(source_component: Any, context: PluginContext) -> str | None:
@@ -87,6 +92,16 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
         for substr, tech in REEDS_COMPONENT_SUBSTRINGS:
             if substr in name:
                 return tech
+
+    if name.startswith("zonal2nodal_"):
+        suffix = name[len("zonal2nodal_") :]
+        defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
+        with defaults_path.open() as f:
+            _z2n_defaults = json.load(f)
+        reeds_cats = sorted(_z2n_defaults.get("reeds_defaults", {}).keys(), key=len, reverse=True)
+        for cat in reeds_cats:
+            if suffix == cat or suffix.startswith(cat + "_"):
+                return cat
 
     # Nuclear plant name matching — check component name and plant_name from ext
     nuclear_names = _build_nuclear_plant_name_set(context)
@@ -133,7 +148,6 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
             if pm_only:
                 return pm_only[0]
 
-        # 4. defaults.json prime_mover_types (abbreviation → base tech)
         defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
         with defaults_path.open() as f:
             defaults_data = json.load(f)
@@ -401,27 +415,36 @@ def _lookup_source_generator(context: PluginContext, gen_name: str) -> Any | Non
 def _build_generator_display_name_index(context: PluginContext) -> dict[str, str]:
     """Map each source generator's original name -> final display name.
 
-    When multiple generators share the same plant_name (or base name), they
-    get deterministic _1, _2, ... suffixes sorted by their original Sienna name.
+    Priority:
+    1. ext["unit_name"] — used as-is (assumed unique per unit)
+    2. ext["plant_name"] — deduplicated with _1, _2, ... suffixes when shared
+    3. original component name — same dedup logic as plant_name
     """
     cached = context._cache.get("generator_display_name_index")
     if cached is not None:
         return cached
 
-    all_gens: list[tuple[str, str]] = []
+    result: dict[str, str] = {}
+    needs_dedup: list[tuple[str, str]] = []
+
     for gen_type in SOURCE_GENERATOR_TYPES:
         for gen in context.source_system.get_components(gen_type):
             orig = gen.name
             ext = getattr(gen, "ext", None)
-            plant_name = ext.get("plant_name") if isinstance(ext, dict) else None
-            display = str(plant_name) if plant_name else orig
-            all_gens.append((orig, display))
+            ext_dict = ext if isinstance(ext, dict) else {}
+
+            unit_name = ext_dict.get("unit_name")
+            if unit_name:
+                result[orig] = str(unit_name)
+            else:
+                plant_name = ext_dict.get("plant_name")
+                display = str(plant_name) if plant_name else orig
+                needs_dedup.append((orig, display))
 
     groups: dict[str, list[str]] = defaultdict(list)
-    for orig, display in all_gens:
+    for orig, display in needs_dedup:
         groups[display].append(orig)
 
-    result: dict[str, str] = {}
     for display, orig_names in groups.items():
         if len(orig_names) == 1:
             result[orig_names[0]] = display
@@ -449,7 +472,7 @@ def _find_source_line(context: PluginContext, line_name: str) -> Any | None:
     index = context._cache.get(cache_key)
     if index is None:
         index = {}
-        for line_type in [Line, MonitoredLine, TwoTerminalHVDCLine]:
+        for line_type in SOURCE_LINE_TYPES:
             for ln in context.source_system.get_components(line_type):
                 index[ln.name] = ln
         context._cache[cache_key] = index
@@ -516,6 +539,21 @@ def _get_minmax_value(obj: Any, key: str) -> float | None:
     return float(val) if isinstance(val, int | float) else None
 
 
+def _get_ramp_default(source_component: object, context: PluginContext) -> float:
+    """Return the ramp default from defaults.json max_ramp_up_percentage * max active power (MW/min)."""
+    category = _resolve_generator_category(source_component, context) or "gas-cc"
+    pct = _get_defaults(category, "max_ramp_up_percentage")
+    if math.isclose(pct, 0.0, rel_tol=0.0, abs_tol=1e-6):
+        return 0.0
+    try:
+        max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
+    except (TypeError, NotImplementedError, AttributeError, KeyError):
+        max_mw = 0.0
+    if math.isclose(max_mw, 0.0, rel_tol=0.0, abs_tol=1e-6):
+        max_mw = _get_defaults(category, "capacity_MW") or 100.0
+    return pct * max_mw
+
+
 def _get_defaults(category: str, key: str) -> float:
     """Extract a default value from defaults.json for the given category and key."""
     defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
@@ -542,20 +580,12 @@ def _attach_generator_time_series(
     if not context.source_system.time_series.has_time_series(source_gen):
         return
 
-    base_power = resolve_base_power(source_gen)
     for metadata in context.source_system.time_series.list_time_series_metadata(source_gen):
         ts_list = context.source_system.list_time_series(source_gen, name=metadata.name, **metadata.features)
         if not ts_list:
             logger.warning("Missing time series {} for generator {}", metadata.name, generator_name)
             continue
         ts = deepcopy(ts_list[0])
-
-        # Scale pu capacity factor → MW for PLEXOS
-        if ts.name == "max_active_power" and base_power > 0.0:
-            import numpy as np
-
-            ts.data = np.asarray(ts.data) * base_power
-
         ts_type = ts.__class__
         if not context.target_system.has_time_series(
             target_generator, name=ts.name, time_series_type=ts_type, **metadata.features
@@ -1292,33 +1322,33 @@ def get_min_down_time(source_component: object, context: PluginContext) -> Resul
 
 @getter
 def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract maximum ramp up from ramp_limits, convert to MW/min, capped at max capacity/base power."""
+    """Extract maximum ramp up from ramp_limits, convert to MW/min; falls back to category default."""
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
         value = _ramp_value_to_float(source_component, ramp.get("up"))
     elif ramp is not None:
         value = _ramp_value_to_float(source_component, getattr(ramp, "up", None))
     else:
-        return Ok(0.0)
+        value = 0.0
 
-    if value <= 0.0:
-        value = resolve_base_power(source_component)
+    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
+        value = _get_ramp_default(source_component, context)
     return Ok(value)
 
 
 @getter
 def get_max_ramp_down(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract maximum ramp down from ramp_limits, convert to MW/min, capped at max capacity/base power."""
+    """Extract maximum ramp down from ramp_limits, convert to MW/min; falls back to category default."""
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
         value = _ramp_value_to_float(source_component, ramp.get("down"))
     elif ramp is not None:
         value = _ramp_value_to_float(source_component, getattr(ramp, "down", None))
     else:
-        return Ok(0.0)
+        value = 0.0
 
-    if value <= 0.0:
-        value = resolve_base_power(source_component)
+    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
+        value = _get_ramp_default(source_component, context)
     return Ok(value)
 
 
@@ -1481,7 +1511,7 @@ def get_turbine_pump_efficiency(
 
 @getter
 def get_turbine_pump_load(
-    source_component: HydroTurbine, context: PluginContext
+    source_component: HydroTurbine | HydroPumpTurbine, context: PluginContext
 ) -> Result[float, ValueError]:
     """Extract pump load (MW) from the HydroTurbine."""
     pump_load = getattr(source_component, "rating", None)

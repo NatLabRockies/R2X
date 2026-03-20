@@ -1,14 +1,21 @@
 from r2x_sienna.models import (
+    DiscreteControlledACBranch,
     HydroDispatch,
     HydroEnergyReservoir,
     HydroPumpedStorage,
     HydroReservoir,
     HydroTurbine,
+    Line,
+    MonitoredLine,
     RenewableDispatch,
     RenewableNonDispatch,
     SynchronousCondenser,
     ThermalMultiStart,
     ThermalStandard,
+    TwoTerminalGenericHVDCLine,
+    TwoTerminalHVDCLine,
+    TwoTerminalLCCLine,
+    TwoTerminalVSCLine,
 )
 
 SOURCE_GENERATOR_TYPES = [
@@ -22,6 +29,16 @@ SOURCE_GENERATOR_TYPES = [
     RenewableDispatch,
     RenewableNonDispatch,
     SynchronousCondenser,
+]
+
+SOURCE_LINE_TYPES = [
+    Line,
+    MonitoredLine,
+    TwoTerminalHVDCLine,
+    TwoTerminalLCCLine,
+    TwoTerminalVSCLine,
+    TwoTerminalGenericHVDCLine,
+    DiscreteControlledACBranch,
 ]
 
 GEN_TYPE_STRING_MAP: dict[str, str] = {

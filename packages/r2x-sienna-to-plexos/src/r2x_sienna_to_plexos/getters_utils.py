@@ -502,7 +502,11 @@ def resolve_base_power(component: Any) -> float:
     """
     base = get_magnitude(getattr(component, "base_power", None))
     if base is None:
-        base = get_magnitude(getattr(component, "_system_base", None))
+        raw = getattr(component, "_system_base", None)
+        if isinstance(raw, int | float):
+            base = float(raw)
+        elif raw is not None:
+            base = get_magnitude(raw)
     return float(base) if base is not None else 1.0
 
 

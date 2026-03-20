@@ -1041,14 +1041,15 @@
       "ramp_rate_up": 100.0
     },
     "other": {
-      "average_capacity_MW": 50.0,
-      "forced_outage_rate": 5.0,
-      "maintenance_rate": 3.0,
-      "mean_time_to_repair": 48,
-      "min_energy": 0.0,
-      "min_power": 0.0,
-      "ramp_rate_down": 50.0,
-      "ramp_rate_up": 50.0
+      "forced_outage_rate": 3.28,
+      "maintenance_rate": 6.0,
+      "max_ramp_up_percentage": 0.05,
+      "mean_time_to_repair": 24.0,
+      "min_down_time": 8.0,
+      "min_stable_level_percentage": 0.5,
+      "min_up_time": 6.0,
+      "start_cost_per_MW": 20.0,
+      "vom_cost": 5.2
     }
   }
 }
