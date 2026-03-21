@@ -1325,15 +1325,23 @@ def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[
     """Extract maximum ramp up from ramp_limits, convert to MW/min; falls back to category default."""
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
-        value = _ramp_value_to_float(source_component, ramp.get("up"))
+        value = abs(_ramp_value_to_float(source_component, ramp.get("up")))
     elif ramp is not None:
-        value = _ramp_value_to_float(source_component, getattr(ramp, "up", None))
+        value = abs(_ramp_value_to_float(source_component, getattr(ramp, "up", None)))
     else:
         value = 0.0
 
     if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        value = _get_ramp_default(source_component, context)
-    return Ok(value)
+        value = abs(_get_ramp_default(source_component, context))
+
+    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
+        try:
+            max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
+        except (TypeError, NotImplementedError, AttributeError, KeyError):
+            max_mw = 0.0
+        value = max_mw / 60.0
+
+    return Ok(max(value, 1e-3))
 
 
 @getter
@@ -1341,15 +1349,23 @@ def get_max_ramp_down(source_component: object, context: PluginContext) -> Resul
     """Extract maximum ramp down from ramp_limits, convert to MW/min; falls back to category default."""
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
-        value = _ramp_value_to_float(source_component, ramp.get("down"))
+        value = abs(_ramp_value_to_float(source_component, ramp.get("down")))
     elif ramp is not None:
-        value = _ramp_value_to_float(source_component, getattr(ramp, "down", None))
+        value = abs(_ramp_value_to_float(source_component, getattr(ramp, "down", None)))
     else:
         value = 0.0
 
     if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        value = _get_ramp_default(source_component, context)
-    return Ok(value)
+        value = abs(_get_ramp_default(source_component, context))
+
+    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
+        try:
+            max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
+        except (TypeError, NotImplementedError, AttributeError, KeyError):
+            max_mw = 0.0
+        value = max_mw / 60.0
+
+    return Ok(max(value, 1e-3))
 
 
 @getter

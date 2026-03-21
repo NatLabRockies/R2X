@@ -3,6 +3,7 @@ from r2x_sienna.models import (
     HydroDispatch,
     HydroEnergyReservoir,
     HydroPumpedStorage,
+    HydroPumpTurbine,
     HydroReservoir,
     HydroTurbine,
     Line,
@@ -29,6 +30,7 @@ SOURCE_GENERATOR_TYPES = [
     RenewableDispatch,
     RenewableNonDispatch,
     SynchronousCondenser,
+    HydroPumpTurbine,
 ]
 
 SOURCE_LINE_TYPES = [

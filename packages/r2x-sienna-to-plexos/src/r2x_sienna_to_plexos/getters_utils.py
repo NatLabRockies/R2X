@@ -28,18 +28,10 @@ from r2x_sienna.models import (
     ACBus,
     Area,
     EnergyReservoirStorage,
-    HydroDispatch,
-    HydroEnergyReservoir,
-    HydroPumpedStorage,
     HydroReservoir,
     LoadZone,
     PhaseShiftingTransformer,
-    RenewableDispatch,
-    RenewableNonDispatch,
-    SynchronousCondenser,
     TapTransformer,
-    ThermalMultiStart,
-    ThermalStandard,
     Transformer2W,
     TransmissionInterface,
     VariableReserve,
@@ -50,18 +42,6 @@ if TYPE_CHECKING:
     from r2x_core import PluginContext
 
 InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData]
-
-_SIENNA_GENERATOR_TYPES = (
-    HydroDispatch,
-    ThermalStandard,
-    ThermalMultiStart,
-    RenewableDispatch,
-    RenewableNonDispatch,
-    HydroEnergyReservoir,
-    HydroPumpedStorage,
-    HydroReservoir,
-    SynchronousCondenser,
-)
 
 _SIENNA_TRANSFORMER_TYPES = (Transformer2W, TapTransformer, PhaseShiftingTransformer)
 
@@ -173,9 +153,16 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
     bus_index = _bus_name_to_area_and_zone(context)
     regions_by_name = {r.name: r for r in context.target_system.get_components(PLEXOSRegion)}
 
+    zone_to_area: dict[str, str] = {}
+    for area_name, zone_name in bus_index.values():
+        if area_name and zone_name and zone_name not in zone_to_area:
+            zone_to_area[zone_name] = area_name
+
     total_memberships = 0
     for node in context.target_system.get_components(PLEXOSNode):
-        area_name, _ = bus_index.get(node.name, (None, None))
+        area_name, zone_name = bus_index.get(node.name, (None, None))
+        if area_name is None and zone_name is not None:
+            area_name = zone_to_area.get(zone_name)
         if area_name is None:
             continue
         region = regions_by_name.get(area_name)
@@ -259,17 +246,22 @@ def ensure_node_zone_memberships(context: PluginContext) -> None:
 
 def ensure_generator_node_memberships(context: PluginContext) -> None:
     """Ensure every translated generator has a node membership based on its source bus."""
+    from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
+    from r2x_sienna_to_plexos.getters_mappings import SOURCE_GENERATOR_TYPES
+
     source_generators: dict[str, Any] = {}
-    for gen_type in _SIENNA_GENERATOR_TYPES:
-        for gen in context.source_system.get_components(gen_type):  # type: ignore[arg-type]
+    for gen_type in SOURCE_GENERATOR_TYPES:
+        for gen in context.source_system.get_components(gen_type):
             source_generators[gen.name] = gen
 
+    display_name_index = _build_generator_display_name_index(context)
     target_generators = {g.name: g for g in context.target_system.get_components(PLEXOSGenerator)}
     nodes_by_name = {n.name: n for n in context.target_system.get_components(PLEXOSNode)}
 
     total_memberships = 0
     for name, source_gen in source_generators.items():
-        target_gen = target_generators.get(name)
+        target_name = display_name_index.get(name, name)
+        target_gen = target_generators.get(target_name)
         if target_gen is None:
             continue
         bus = getattr(source_gen, "bus", None)
@@ -306,15 +298,16 @@ def ensure_battery_node_memberships(context: PluginContext) -> None:
 
 def ensure_reserve_generator_memberships(context: PluginContext) -> None:
     """Create Reserve->Generator memberships by finding which generators provide each reserve service."""
-    from r2x_sienna_to_plexos.getters import SOURCE_GENERATOR_TYPES
+    from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
+    from r2x_sienna_to_plexos.getters_mappings import SOURCE_GENERATOR_TYPES
 
     reserves_by_name = {r.name: r for r in context.target_system.get_components(PLEXOSReserve)}
     generators_by_name = {g.name: g for g in context.target_system.get_components(PLEXOSGenerator)}
+    display_name_index = _build_generator_display_name_index(context)
 
-    # reserve_name -> [source_gen, ...] built once instead of O(reserves * generators)
     reserve_to_generators: dict[str, list[Any]] = {}
     for gen_type in SOURCE_GENERATOR_TYPES:
-        for gen in context.source_system.get_components(gen_type):  # type: ignore[arg-type]
+        for gen in context.source_system.get_components(gen_type):
             for service in getattr(gen, "services", None) or []:
                 sname = getattr(service, "name", None)
                 if sname and sname in reserves_by_name:
@@ -323,7 +316,8 @@ def ensure_reserve_generator_memberships(context: PluginContext) -> None:
     total_memberships = 0
     for reserve_name, target_reserve in reserves_by_name.items():
         for source_gen in reserve_to_generators.get(reserve_name, []):
-            target_gen = generators_by_name.get(source_gen.name)
+            target_name = display_name_index.get(source_gen.name, source_gen.name)
+            target_gen = generators_by_name.get(target_name)
             if target_gen is not None:
                 _ensure_membership(context, target_reserve, target_gen, CollectionEnum.Generators)
                 total_memberships += 1
