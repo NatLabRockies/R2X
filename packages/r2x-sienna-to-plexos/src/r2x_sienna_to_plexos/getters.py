@@ -402,11 +402,11 @@ def _lookup_source_generator(context: PluginContext, gen_name: str) -> Any | Non
         for gen_type in SOURCE_GENERATOR_TYPES:
             for gen in context.source_system.get_components(gen_type):
                 by_orig[gen.name] = gen
+                if isinstance(gen, HydroReservoir):
+                    continue
                 display_name = display_index.get(gen.name)
                 if display_name:
                     by_display.setdefault(display_name, gen)
-        # display names overwrite original names so that a HydroReservoir whose
-        # Sienna name equals a HydroDispatch's plant_name does not shadow it
         index = {**by_orig, **by_display}
         context._cache[cache_key] = index
     return index.get(gen_name)
@@ -416,7 +416,7 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
     """Map each source generator's original name -> final display name.
 
     Priority:
-    1. ext["unit_name"] — used as-is (assumed unique per unit)
+    1. ext["unit_name"] — used as-is, deduplicated when shared
     2. ext["plant_name"] — deduplicated with _1, _2, ... suffixes when shared
     3. original component name — same dedup logic as plant_name
     """
@@ -449,6 +449,22 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
         if len(orig_names) == 1:
             result[orig_names[0]] = display
         else:
+            for i, orig in enumerate(sorted(orig_names), start=1):
+                result[orig] = f"{display}_{i}"
+
+    # Detect collision where different original names ended up with the same display name
+    # Renumber those with suffixes to ensure uniqueness, and log a warning
+    display_to_origs: dict[str, list[str]] = defaultdict(list)
+    for orig, display in result.items():
+        display_to_origs[display].append(orig)
+
+    for display, orig_names in display_to_origs.items():
+        if len(orig_names) > 1:
+            logger.warning(
+                "Display name collision '{}' shared by {} source generators; renumbering.",
+                display,
+                len(orig_names),
+            )
             for i, orig in enumerate(sorted(orig_names), start=1):
                 result[orig] = f"{display}_{i}"
 
@@ -1262,6 +1278,17 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
 
 
 @getter
+def get_generator_commit(component: object, context: PluginContext) -> Result[int, ValueError]:
+    """Return 1 if technology is in commit_technologies list, -1 otherwise."""
+    technology = getattr(component, "technology", "")
+    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
+    with defaults_path.open() as f:
+        defaults = json.load(f)
+    commit_technologies = defaults.get("commit_technologies", [])
+    return Ok(1 if technology in commit_technologies else -1)
+
+
+@getter
 def get_heat_rate(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract heat_rate from computed heat rate data, round to 2 decimals, and return as float (units='GJ/MWh')"""
     value = compute_heat_rate_data(source_component).get("heat_rate")
@@ -1298,12 +1325,34 @@ def get_heat_rate_incr3(source_component: object, context: PluginContext) -> Res
 
 @getter
 def get_initial_generation(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract initial generation in MW from active_power attribute, convert using base power, and return as float."""
+    """Extract initial generation in MW from active_power attribute, convert using base power.
+
+    Clamps the result to [0, max_capacity]:
+    - If value > max_capacity: clamp down (avoids Warning 110 upper bound).
+    - If 0 < value < min_stable and value >= 50% of min_stable: clamp up to min_stable (unit intended on).
+    - If 0 < value < min_stable and value < 50% of min_stable: set to 0 (treat as off).
+    """
     power = get_magnitude(getattr(source_component, "active_power", None))
     if power is None:
         return Ok(0.0)
-    value = float(power) * resolve_base_power(source_component)
-    return Ok(round(abs(value), 2))
+    value = round(abs(float(power) * resolve_base_power(source_component)), 2)
+    if value <= 0.0:
+        return Ok(0.0)
+
+    max_cap_result = get_max_capacity(source_component, context)
+    max_cap = max_cap_result.unwrap() if isinstance(max_cap_result, Ok) else None
+
+    if max_cap is not None and value > max_cap:
+        value = max_cap
+
+    min_stable = get_generator_min_stable_level(source_component, context).unwrap()
+    if value < min_stable:
+        if value >= 0.5 * min_stable:
+            value = min_stable
+        else:
+            return Ok(0.0)
+
+    return Ok(value)
 
 
 @getter

@@ -131,10 +131,10 @@ def _attach_reservoir_time_series_to_storage(
 
     for ts in context.source_system.list_time_series(source_reservoir):
         plexos_ts = deepcopy(ts)
-        if ts.name in ("inflow", "hydro_budget"):
+        if ts.name == "inflow":
             plexos_ts.name = "natural_inflow"
-        elif ts.name == "outflow":
-            continue  # skip outflow
+        elif ts.name == "hydro_budget":
+            plexos_ts.name = "hydro_budget"
         ts_type = plexos_ts.__class__
         if not context.target_system.has_time_series(
             target_storage,
@@ -259,6 +259,7 @@ def ensure_generator_node_memberships(context: PluginContext) -> None:
     nodes_by_name = {n.name: n for n in context.target_system.get_components(PLEXOSNode)}
 
     total_memberships = 0
+    cached: set[tuple[str, str]] = set()
     for name, source_gen in source_generators.items():
         target_name = display_name_index.get(name, name)
         target_gen = target_generators.get(target_name)
@@ -269,10 +270,38 @@ def ensure_generator_node_memberships(context: PluginContext) -> None:
             continue
         node = nodes_by_name.get(bus.name)
         if node is not None:
+            key = (target_name, node.name)
+            if key in cached:
+                continue
+            cached.add(key)
             _ensure_membership(context, target_gen, node, CollectionEnum.Nodes)
             total_memberships += 1
 
     logger.info("Total {} Generator-Node memberships created.", total_memberships)
+
+
+def ensure_generator_time_series(context: PluginContext) -> None:
+    """Attach time series from every source generator to its translated PLEXOSGenerator."""
+    from r2x_sienna_to_plexos.getters import (
+        _attach_generator_time_series,
+        _build_generator_display_name_index,
+    )
+
+    from .getters_mappings import SOURCE_GENERATOR_TYPES
+
+    display_name_index = _build_generator_display_name_index(context)
+    target_generators = {g.name: g for g in context.target_system.get_components(PLEXOSGenerator)}
+
+    total = 0
+    for gen_type in SOURCE_GENERATOR_TYPES:
+        for source_gen in context.source_system.get_components(gen_type):
+            target_name = display_name_index.get(source_gen.name, source_gen.name)
+            target_gen = target_generators.get(target_name)
+            if target_gen is None:
+                continue
+            _attach_generator_time_series(context, source_gen.name, target_gen)
+            total += 1
+    logger.info("Ensured time series for {} generators.", total)
 
 
 def ensure_battery_node_memberships(context: PluginContext) -> None:

@@ -404,11 +404,11 @@
       "category": "thermal-standard"
     },
     "field_map": {
-      "uuid": "uuid",
-      "commit": "must_run"
+      "uuid": "uuid"
     },
     "getters": {
       "name": "get_generator_name",
+      "commit": "get_generator_commit",
       "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "rating": "get_generator_rating",
@@ -447,6 +447,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "commit": "get_generator_commit",
       "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "rating": "get_generator_rating",
@@ -484,6 +485,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "commit": "get_generator_commit",
       "category": "get_generator_category",
       "max_ramp_down": "get_max_ramp_down",
       "max_ramp_up": "get_max_ramp_up",
@@ -512,6 +514,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "commit": "get_generator_commit",
       "category": "get_generator_category",
       "max_ramp_down": "get_max_ramp_down",
       "max_ramp_up": "get_max_ramp_up",
@@ -539,6 +542,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "commit": "get_generator_commit",
       "category": "get_generator_category",
       "rating": "get_generator_rating",
       "max_ramp_up": "get_max_ramp_up",
@@ -567,6 +571,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "commit": "get_generator_commit",
       "category": "get_generator_category",
       "rating": "get_generator_rating",
       "max_ramp_up": "get_max_ramp_up",
@@ -595,6 +600,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "commit": "get_generator_commit",
       "category": "get_generator_category",
       "rating": "get_generator_rating",
       "max_capacity": "get_max_capacity",
@@ -618,6 +624,7 @@
       "uuid": "uuid"
     },
     "getters": {
+      "commit": "get_generator_commit",
       "name": "get_generator_name",
       "category": "get_generator_category",
       "rating": "get_generator_rating",
@@ -644,6 +651,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "commit": "get_generator_commit",
       "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
       "rating": "get_generator_rating",

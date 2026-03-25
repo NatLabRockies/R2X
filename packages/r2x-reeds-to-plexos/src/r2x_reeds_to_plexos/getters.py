@@ -79,7 +79,7 @@ def _lookup_target_node(context: PluginContext, region_name: str) -> Result[PLEX
 
 def _lookup_source_generator(context: PluginContext, name: str) -> Any | None:
     """Find a ReEDS generator-like component by name."""
-    from r2x_reeds.models import ReEDSConsumingTechnology, ReEDSGenerator
+    from r2x_reeds.models import ReEDSConsumingTechnology, ReEDSGenerator, ReEDSStorage
 
     for gen in context.source_system.get_components(ReEDSGenerator):
         if gen.name == name:
@@ -88,6 +88,10 @@ def _lookup_source_generator(context: PluginContext, name: str) -> Any | None:
     for consuming_tech in context.source_system.get_components(ReEDSConsumingTechnology):
         if consuming_tech.name == name:
             return consuming_tech
+
+    for storage in context.source_system.get_components(ReEDSStorage):
+        if storage.name == name:
+            return storage
 
     return None
 
