@@ -593,20 +593,65 @@ def _attach_generator_time_series(
         logger.debug("No source generator found for '{}', skipping time series attachment.", generator_name)
         return
 
+    if isinstance(source_gen, HydroReservoir):
+        return
+
     if not context.source_system.time_series.has_time_series(source_gen):
         return
+
+    import numpy as np
+    from infrasys import SingleTimeSeries
 
     for metadata in context.source_system.time_series.list_time_series_metadata(source_gen):
         ts_list = context.source_system.list_time_series(source_gen, name=metadata.name, **metadata.features)
         if not ts_list:
             logger.warning("Missing time series {} for generator {}", metadata.name, generator_name)
             continue
-        ts = deepcopy(ts_list[0])
-        ts_type = ts.__class__
+
+        ts = ts_list[0]
         if not context.target_system.has_time_series(
-            target_generator, name=ts.name, time_series_type=ts_type, **metadata.features
+            target_generator, name=ts.name, time_series_type=SingleTimeSeries, **metadata.features
         ):
-            context.target_system.add_time_series(ts, target_generator, **metadata.features)
+            data = np.asarray(ts.data)
+            if ts.name == "max_active_power":
+                max_mw = 0.0
+                limits = getattr(source_gen, "active_power_limits", None)
+                if limits is not None:
+                    max_val = limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
+                    if max_val is not None:
+                        mag = get_magnitude(max_val)
+                        raw = (
+                            float(mag)
+                            if mag is not None
+                            else float(max_val)
+                            if isinstance(max_val, int | float)
+                            else None
+                        )
+                        if raw is not None:
+                            max_mw = abs(raw) * resolve_base_power(source_gen)
+                else:
+                    # active_power_limits absent (e.g. RenewableDispatch) — use rating
+                    rating = getattr(source_gen, "rating", None)
+                    if rating is not None:
+                        mag = get_magnitude(rating)
+                        raw = (
+                            float(mag)
+                            if mag is not None
+                            else float(rating)
+                            if isinstance(rating, int | float)
+                            else None
+                        )
+                        if raw is not None:
+                            max_mw = abs(raw) * resolve_base_power(source_gen)
+                if max_mw > 0.0:
+                    data = data * max_mw
+            fresh_ts = SingleTimeSeries.from_array(
+                data=data,
+                name=ts.name,
+                initial_timestamp=ts.initial_timestamp,
+                resolution=ts.resolution,
+            )
+            context.target_system.add_time_series(fresh_ts, target_generator, **metadata.features)
             logger.success("Attached time series {} to generator {}", ts.name, generator_name)
 
 
@@ -648,10 +693,19 @@ def _attach_region_node_load_time_series(
                     break
 
     if aggregated_ts is not None and region_component is not None:
-        ts_type = aggregated_ts.__class__
-        if not context.target_system.has_time_series(region_component, name="load", time_series_type=ts_type):
-            context.target_system.add_time_series(aggregated_ts, region_component)
-            logger.debug("Attached aggregated 'load' time series to region {}", region_name)
+        import numpy as np
+        from infrasys import SingleTimeSeries
+
+        fresh_ts = SingleTimeSeries.from_array(
+            data=np.asarray(aggregated_ts.data),
+            name="load",
+            initial_timestamp=aggregated_ts.initial_timestamp,
+            resolution=aggregated_ts.resolution,
+        )
+        if not context.target_system.has_time_series(
+            region_component, name="load", time_series_type=SingleTimeSeries
+        ):
+            context.target_system.add_time_series(fresh_ts, region_component)
 
 
 def _build_bus_to_loads_index(context: PluginContext) -> dict[str, list[Any]]:
@@ -1658,11 +1712,11 @@ def get_storage_initial_volume(
         return Ok(50.0)
     if isinstance(storage_limits, dict):
         max_val = storage_limits.get("max")
-        max_volume = float(max_val) if isinstance(max_val, int | float) and max_val else 100.0
     else:
         max_val = getattr(storage_limits, "max", None)
-        max_volume = float(max_val) if isinstance(max_val, int | float) and max_val else 100.0
-    return Ok(round(max_volume * 0.5 / 1000.0, 2))
+    if isinstance(max_val, int | float) and max_val:
+        return Ok(round(float(max_val) * 0.5 / 1000.0, 2))
+    return Ok(50.0)
 
 
 @getter
