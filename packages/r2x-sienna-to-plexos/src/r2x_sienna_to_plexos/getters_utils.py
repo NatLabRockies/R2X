@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from infrasys.cost_curves import CostCurve, FuelCurve
@@ -29,6 +28,7 @@ from r2x_sienna.models import (
     Area,
     EnergyReservoirStorage,
     HydroReservoir,
+    HydroTurbine,
     LoadZone,
     PhaseShiftingTransformer,
     TapTransformer,
@@ -129,23 +129,64 @@ def _attach_reservoir_time_series_to_storage(
     if not context.source_system.time_series.has_time_series(source_reservoir):
         return
 
+    import numpy as np
+    from infrasys import SingleTimeSeries
+
+    # Resolve max_mw for scaling max_active_power:
+    # 1) NARIS_Pmax from reservoir ext (direct MW value)
+    # 2) Fallback: matching HydroTurbine active_power_limits.max * base_power
+    max_mw = 0.0
+    ext = getattr(source_reservoir, "ext", None)
+    naris_pmax = ext.get("NARIS_Pmax") if isinstance(ext, dict) else None
+    if naris_pmax is not None:
+        max_mw = abs(float(naris_pmax))
+    else:
+        turbine_base = base_name[: -len("_Reservoir")] if base_name.endswith("_Reservoir") else base_name
+        for t in context.source_system.get_components(HydroTurbine):
+            t_base = t.name[: -len("_Turbine")] if t.name.endswith("_Turbine") else t.name
+            if t_base == turbine_base:
+                limits = getattr(t, "active_power_limits", None)
+                if limits is not None:
+                    max_val = limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
+                    if max_val is not None:
+                        mag = get_magnitude(max_val)
+                        raw = (
+                            float(mag)
+                            if mag is not None
+                            else float(max_val)
+                            if isinstance(max_val, int | float)
+                            else None
+                        )
+                        if raw is not None:
+                            max_mw = abs(raw) * resolve_base_power(t)
+                break
+
     for ts in context.source_system.list_time_series(source_reservoir):
-        plexos_ts = deepcopy(ts)
-        if ts.name == "inflow":
-            plexos_ts.name = "natural_inflow"
-        elif ts.name == "hydro_budget":
-            plexos_ts.name = "hydro_budget"
-        ts_type = plexos_ts.__class__
+        ts_name = "natural_inflow" if ts.name == "inflow" else ts.name
+        ts_features = getattr(ts, "features", {})
         if not context.target_system.has_time_series(
             target_storage,
-            name=plexos_ts.name,
-            time_series_type=ts_type,
-            **getattr(plexos_ts, "features", {}),
+            name=ts_name,
+            time_series_type=SingleTimeSeries,
+            **ts_features,
         ):
-            context.target_system.add_time_series(
-                plexos_ts, target_storage, **getattr(plexos_ts, "features", {})
+            data = np.asarray(ts.data)
+            if ts.name == "max_active_power":
+                if max_mw > 0.0:
+                    data = data * max_mw
+                else:
+                    logger.warning(
+                        "Could not resolve max_mw for reservoir '{}', attaching unscaled max_active_power.",
+                        base_name,
+                    )
+            fresh_ts = SingleTimeSeries.from_array(
+                data=data,
+                name=ts_name,
+                initial_timestamp=ts.initial_timestamp,
+                resolution=ts.resolution,
             )
-            logger.success("Attached time series {} to storage {}", plexos_ts.name, storage_name)
+            context.target_system.add_time_series(fresh_ts, target_storage, **ts_features)
+            logger.success("Attached time series {} to storage {}", ts_name, storage_name)
 
 
 def ensure_region_node_memberships(context: PluginContext) -> None:
