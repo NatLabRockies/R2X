@@ -879,6 +879,17 @@
       "ramp_rate_up": 100.0,
       "vom_cost": 3.2
     },
+    "hydtrb": {
+      "average_capacity_MW": 50.0,
+      "forced_outage_rate": 0.02,
+      "maintenance_rate": 0.01,
+      "mean_time_to_repair": 48,
+      "min_energy": 0.0,
+      "min_power": 0.0,
+      "ramp_rate_down": 100.0,
+      "ramp_rate_up": 100.0,
+      "vom_cost": 3.2
+    },
     "hydund": {
       "capacity_MW": null,
       "forced_outage_rate": null,

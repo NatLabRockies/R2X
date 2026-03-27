@@ -222,46 +222,128 @@ def _extract_base_name(name: str) -> str:
 
 
 def ensure_head_storage_generator_membership(context: PluginContext) -> None:
-    """Create HeadStorage memberships between generators and head storages."""
-    generators_by_base = {
-        _extract_base_name(g.name): g for g in context.target_system.get_components(PLEXOSGenerator)
-    }
+    """Create HeadStorage memberships between generators and head storages.
+
+    Drives linkage from HydroTurbine.reservoirs (reservoir_location == HEAD) to
+    avoid relying on name conventions. Also attaches time series to all head storages.
+    """
+    from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
+
+    display_name_index = _build_generator_display_name_index(context)
+    generators_by_name = {g.name: g for g in context.target_system.get_components(PLEXOSGenerator)}
+    storages_by_name = {s.name: s for s in context.target_system.get_components(PLEXOSStorage)}
+
+    # Attach time series to ALL head storages regardless of membership
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if storage.name.endswith("_head"):
+            _attach_reservoir_time_series_to_storage(context, storage.name, storage)
 
     total_memberships = 0
-    for storage in context.target_system.get_components(PLEXOSStorage):
-        if not storage.name.endswith("_head"):
+    for turbine in context.source_system.get_components(HydroTurbine):
+        target_gen_name = display_name_index.get(turbine.name, turbine.name)
+        target_gen = generators_by_name.get(target_gen_name)
+        if target_gen is None:
+            logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", turbine.name)
             continue
 
-        _attach_reservoir_time_series_to_storage(context, storage.name, storage)
-        if storage.name.endswith("_Reservoir_head"):
-            continue
+        for reservoir in getattr(turbine, "reservoirs", None) or []:
+            location = getattr(reservoir, "reservoir_location", None)
+            location_str = (
+                location.value if hasattr(location, "value") else str(location) if location else "HEAD"
+            )
+            if location_str.upper() != "HEAD":
+                continue
 
-        gen = generators_by_base.get(_extract_base_name(storage.name))
-        if gen is not None:
-            _ensure_membership(context, gen, storage, CollectionEnum.HeadStorage)
+            # Use same name resolution as get_head_storage_name getter
+            ext = getattr(reservoir, "ext", None)
+            base = None
+            if isinstance(ext, dict):
+                plant_name = ext.get("plant_name")
+                if plant_name:
+                    base = str(plant_name)
+            if base is None:
+                rname = reservoir.name
+                for suffix in ("_head", "_tail"):
+                    if rname.endswith(suffix):
+                        rname = rname[: -len(suffix)]
+                        break
+                base = rname
+
+            storage_name = f"{base}_head"
+            target_storage = storages_by_name.get(storage_name)
+            if target_storage is None:
+                logger.warning(
+                    "No PLEXOSStorage '{}' found for HydroTurbine '{}', skipping.",
+                    storage_name,
+                    turbine.name,
+                )
+                continue
+
+            _ensure_membership(context, target_gen, target_storage, CollectionEnum.HeadStorage)
             total_memberships += 1
 
     logger.info("Total {} HeadStorage-Generator memberships created.", total_memberships)
 
 
 def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
-    """Create TailStorage memberships between generators and tail storages."""
-    generators_by_base = {
-        _extract_base_name(g.name): g for g in context.target_system.get_components(PLEXOSGenerator)
-    }
+    """Create TailStorage memberships between generators and tail storages.
+
+    Drives linkage from HydroTurbine.reservoirs (reservoir_location == TAIL) to
+    avoid relying on name conventions. Also attaches time series to all tail storages.
+    """
+    from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
+
+    display_name_index = _build_generator_display_name_index(context)
+    generators_by_name = {g.name: g for g in context.target_system.get_components(PLEXOSGenerator)}
+    storages_by_name = {s.name: s for s in context.target_system.get_components(PLEXOSStorage)}
+
+    # Attach time series to ALL tail storages regardless of membership
+    for storage in context.target_system.get_components(PLEXOSStorage):
+        if storage.name.endswith("_tail"):
+            _attach_reservoir_time_series_to_storage(context, storage.name, storage)
 
     total_memberships = 0
-    for storage in context.target_system.get_components(PLEXOSStorage):
-        if not storage.name.endswith("_tail"):
+    for turbine in context.source_system.get_components(HydroTurbine):
+        target_gen_name = display_name_index.get(turbine.name, turbine.name)
+        target_gen = generators_by_name.get(target_gen_name)
+        if target_gen is None:
+            logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", turbine.name)
             continue
 
-        _attach_reservoir_time_series_to_storage(context, storage.name, storage)
-        if storage.name.endswith("_Reservoir_tail"):
-            continue
+        for reservoir in getattr(turbine, "reservoirs", None) or []:
+            location = getattr(reservoir, "reservoir_location", None)
+            location_str = (
+                location.value if hasattr(location, "value") else str(location) if location else "HEAD"
+            )
+            if location_str.upper() != "TAIL":
+                continue
 
-        gen = generators_by_base.get(_extract_base_name(storage.name))
-        if gen is not None:
-            _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
+            # Use same name resolution as get_tail_storage_name getter
+            ext = getattr(reservoir, "ext", None)
+            base = None
+            if isinstance(ext, dict):
+                plant_name = ext.get("plant_name")
+                if plant_name:
+                    base = str(plant_name)
+            if base is None:
+                rname = reservoir.name
+                for suffix in ("_head", "_tail"):
+                    if rname.endswith(suffix):
+                        rname = rname[: -len(suffix)]
+                        break
+                base = rname
+
+            storage_name = f"{base}_tail"
+            target_storage = storages_by_name.get(storage_name)
+            if target_storage is None:
+                logger.warning(
+                    "No PLEXOSStorage '{}' found for HydroTurbine '{}', skipping.",
+                    storage_name,
+                    turbine.name,
+                )
+                continue
+
+            _ensure_membership(context, target_gen, target_storage, CollectionEnum.TailStorage)
             total_memberships += 1
 
     logger.info("Total {} TailStorage-Generator memberships created.", total_memberships)

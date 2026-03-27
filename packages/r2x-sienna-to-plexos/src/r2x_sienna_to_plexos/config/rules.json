@@ -534,7 +534,7 @@
   },
   {
     "defaults": {
-      "category": "hydro-turbine"
+      "category": "hydtrb"
     },
     "field_map": {
       "name": "name",
@@ -543,7 +543,6 @@
     "getters": {
       "name": "get_generator_name",
       "commit": "get_generator_commit",
-      "category": "get_generator_category",
       "rating": "get_generator_rating",
       "max_ramp_up": "get_max_ramp_up",
       "max_ramp_down": "get_max_ramp_down",
@@ -551,8 +550,6 @@
       "forced_outage_rate": "get_generator_forced_outage_rate",
       "maintenance_rate": "get_generator_maintenance_rate",
       "mean_time_to_repair": "get_generator_mean_time_to_repair",
-      "pump_load": "get_turbine_pump_load",
-      "pump_efficiency": "get_turbine_pump_efficiency",
       "vom_charge": "get_generator_vom_cost",
       "max_capacity": "get_max_capacity",
       "ext": "get_component_ext"
