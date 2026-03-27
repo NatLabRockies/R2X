@@ -289,8 +289,7 @@
   {
     "name": "region_line",
     "defaults": {
-      "category": "line",
-      "status": true
+      "category": "line"
     },
     "field_map": {
       "name": "name",
