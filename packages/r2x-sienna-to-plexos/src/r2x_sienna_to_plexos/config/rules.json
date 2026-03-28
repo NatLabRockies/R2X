@@ -854,7 +854,7 @@
     "filter": {
       "field": "category",
       "op": "in",
-      "values": ["pumped-hydro"]
+      "values": ["pumped-hydro", "hydtrb"]
     }
   },
   {
@@ -871,7 +871,7 @@
     "filter": {
       "field": "category",
       "op": "in",
-      "values": ["pumped-hydro"]
+      "values": ["pumped-hydro", "hydtrb"]
     }
   },
   {

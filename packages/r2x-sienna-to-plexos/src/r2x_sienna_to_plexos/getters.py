@@ -1502,22 +1502,25 @@ def get_generator_min_stable_level(
 def get_generator_forced_outage_rate(
     source_component: object, context: PluginContext
 ) -> Result[float, ValueError]:
+    """Extract forced outage rate from ext dict or return category default."""
     category = _resolve_generator_category(source_component, context)
-    return Ok(_get_defaults(category, "forced_outage_rate") if category else 0.0)
+    return Ok(_get_defaults(category, "forced_outage_rate") * 100.0 if category else 0.0)
 
 
 @getter
 def get_generator_maintenance_rate(
     source_component: object, context: PluginContext
 ) -> Result[float, ValueError]:
+    """Extract maintenance rate from ext dict or return category default."""
     category = _resolve_generator_category(source_component, context)
-    return Ok(_get_defaults(category, "maintenance_rate") if category else 0.0)
+    return Ok(_get_defaults(category, "maintenance_rate") * 100.0 if category else 0.0)
 
 
 @getter
 def get_generator_mean_time_to_repair(
     source_component: object, context: PluginContext
 ) -> Result[float, ValueError]:
+    """Extract mean time to repair from ext dict or return category default."""
     category = _resolve_generator_category(source_component, context)
     return Ok(_get_defaults(category, "mean_time_to_repair") if category else 0.0)
 
@@ -1533,6 +1536,7 @@ def get_generator_start_cost(source_component: object, context: PluginContext) -
 def get_generator_shutdown_cost(
     source_component: object, context: PluginContext
 ) -> Result[float, ValueError]:
+    """Extract shutdown cost in $ from operation_cost.start_up attribute of the source component."""
     cost = getattr(source_component, "operation_cost", None)
     value = get_magnitude(getattr(cost, "shut_down", None)) if cost else None
     return Ok(float(value) if value is not None else 0.0)
