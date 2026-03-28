@@ -1914,24 +1914,56 @@ def get_reserve_vors(source_component: VariableReserve, context: PluginContext) 
 def get_interface_min_flow(
     source_component: TransmissionInterface, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Get min_flow from active_power_flow_limits or default."""
-    limits = getattr(source_component, "active_power_flow_limits", None)
-    if limits is None:
-        return Ok(-99999.9)
-    value = limits.get("min") if isinstance(limits, dict) else getattr(limits, "min", None)
-    return Ok(float(value) if isinstance(value, int | float) else -99999.9)
+    """Get min_flow as the negative sum of all constituent line ratings (MW) in direction_mapping."""
+    direction_mapping = getattr(source_component, "direction_mapping", None) or {}
+    if not direction_mapping:
+        limits = getattr(source_component, "active_power_flow_limits", None)
+        if limits is None:
+            return Ok(-99999.9)
+        value = limits.get("min") if isinstance(limits, dict) else getattr(limits, "min", None)
+        return Ok(float(value) if isinstance(value, int | float) else -99999.9)
+
+    total_rating = 0.0
+    for line_name in direction_mapping:
+        source_line = _find_source_line(context, line_name)
+        if source_line is None:
+            continue
+        rating = getattr(source_line, "rating", None)
+        magnitude = get_magnitude(rating)
+        if magnitude is not None:
+            total_rating += abs(float(magnitude)) * _get_system_base_power(context)
+        elif isinstance(rating, int | float):
+            total_rating += abs(float(rating)) * _get_system_base_power(context)
+
+    return Ok(round(-total_rating, 2) if total_rating > 0.0 else -99999.9)
 
 
 @getter
 def get_interface_max_flow(
     source_component: TransmissionInterface, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Get max_flow from active_power_flow_limits or default."""
-    limits = getattr(source_component, "active_power_flow_limits", None)
-    if limits is None:
-        return Ok(99999.9)
-    value = limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
-    return Ok(float(value) if isinstance(value, int | float) else 99999.9)
+    """Get max_flow as the sum of all constituent line ratings (MW) in direction_mapping."""
+    direction_mapping = getattr(source_component, "direction_mapping", None) or {}
+    if not direction_mapping:
+        limits = getattr(source_component, "active_power_flow_limits", None)
+        if limits is None:
+            return Ok(99999.9)
+        value = limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
+        return Ok(float(value) if isinstance(value, int | float) else 99999.9)
+
+    total_rating = 0.0
+    for line_name in direction_mapping:
+        source_line = _find_source_line(context, line_name)
+        if source_line is None:
+            continue
+        rating = getattr(source_line, "rating", None)
+        magnitude = get_magnitude(rating)
+        if magnitude is not None:
+            total_rating += abs(float(magnitude)) * _get_system_base_power(context)
+        elif isinstance(rating, int | float):
+            total_rating += abs(float(rating)) * _get_system_base_power(context)
+
+    return Ok(round(total_rating, 2) if total_rating > 0.0 else 99999.9)
 
 
 @getter

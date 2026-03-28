@@ -12,6 +12,7 @@ from r2x_core import PluginContext, Rule, System, apply_rules_to_context
 from .getters_utils import (
     ensure_battery_node_memberships,
     ensure_generator_node_memberships,
+    ensure_generator_time_series,
     ensure_head_storage_generator_membership,
     ensure_interface_line_memberships,
     ensure_node_zone_memberships,
@@ -50,6 +51,7 @@ def perform_translation(context: PluginContext) -> System:
     context.target_system = plexos_system
 
     apply_rules_to_context(context)
+    ensure_generator_time_series(context)
     ensure_region_node_memberships(context)
     ensure_generator_node_memberships(context)
     ensure_battery_node_memberships(context)
