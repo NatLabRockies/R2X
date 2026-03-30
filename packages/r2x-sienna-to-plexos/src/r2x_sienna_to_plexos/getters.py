@@ -1483,19 +1483,28 @@ def get_generator_name(source_component: object, context: PluginContext) -> Resu
 def get_generator_min_stable_level(
     source_component: object, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Extract minimum stable level from active_power_limits or compute as percentage of max capacity."""
+    """Extract minimum stable level from active_power_limits or compute as percentage of max capacity.
+    Ensures min_stable_level does not exceed max_capacity.
+    """
     min_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "min")
     if min_pu is not None:
-        value = abs(min_pu) * resolve_base_power(source_component)
-        return Ok(round(value, 2))
+        min_stable = float(min_pu)
+    else:
+        category = _resolve_generator_category(source_component, context) or "gas-cc"
+        pct = _get_defaults(category, "min_stable_level_percentage")
+        try:
+            max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
+        except (TypeError, NotImplementedError, AttributeError, KeyError):
+            max_mw = 0.0
+        min_stable = round(pct * max_mw, 2)
 
-    category = _resolve_generator_category(source_component, context) or "gas-cc"
-    pct = _get_defaults(category, "min_stable_level_percentage")
-    try:
-        max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
-    except (TypeError, NotImplementedError, AttributeError, KeyError):
-        max_mw = 0.0
-    return Ok(round(pct * max_mw, 2))
+    # Clamp min_stable to not exceed max_capacity
+    max_cap_result = get_max_capacity(source_component, context)
+    max_cap = max_cap_result.unwrap() if isinstance(max_cap_result, Ok) else None
+    if max_cap is not None and min_stable > max_cap:
+        min_stable = max_cap
+
+    return Ok(round(min_stable, 2))
 
 
 @getter
