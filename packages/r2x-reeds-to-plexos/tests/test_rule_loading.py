@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import sys
 from importlib.resources import files
+from pathlib import Path
 
 
 def test_rules_json_exists_and_loads() -> None:
@@ -152,3 +154,55 @@ def test_node_rule_is_first() -> None:
             assert (
                 i > node_rule_index
             ), f"Rule {rule.get('name', 'unknown')} depends on region_node but comes before it"
+
+
+def test_dependency_rules_with_synthetic_depends_on(monkeypatch, tmp_path: Path) -> None:
+    rules = [
+        {
+            "name": "region_node",
+            "source_type": "A",
+            "target_type": "PLEXOSNode",
+            "version": "1",
+            "field_map": {},
+        },
+        {
+            "name": "dependent",
+            "source_type": "B",
+            "target_type": "C",
+            "version": "1",
+            "field_map": {},
+            "depends_on": ["region_node"],
+        },
+    ]
+    cfg_dir = tmp_path / "config"
+    cfg_dir.mkdir()
+    (cfg_dir / "rules.json").write_text(json.dumps(rules))
+
+    monkeypatch.setattr(sys.modules[__name__], "files", lambda _pkg: cfg_dir)
+    test_dependency_rules()
+
+
+def test_node_rule_order_with_synthetic_dependency(monkeypatch, tmp_path: Path) -> None:
+    rules = [
+        {
+            "name": "region_node",
+            "source_type": "A",
+            "target_type": "PLEXOSNode",
+            "version": "1",
+            "field_map": {},
+        },
+        {
+            "name": "needs_node",
+            "source_type": "B",
+            "target_type": "D",
+            "version": "1",
+            "field_map": {},
+            "depends_on": ["region_node"],
+        },
+    ]
+    cfg_dir = tmp_path / "config"
+    cfg_dir.mkdir()
+    (cfg_dir / "rules.json").write_text(json.dumps(rules))
+
+    monkeypatch.setattr(sys.modules[__name__], "files", lambda _pkg: cfg_dir)
+    test_node_rule_is_first()
