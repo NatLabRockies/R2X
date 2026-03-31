@@ -115,7 +115,11 @@ def test_compute_heat_rate_data_none_curve():
         )()
 
     d = Dummy()
-    assert getters_utils.compute_heat_rate_data(d) == {"heat_rate": 10.0, "heat_rate_base": 12.0}
+    assert getters_utils.compute_heat_rate_data(d) == {
+        "heat_rate": 10.0,
+        "heat_rate_incr": 10.0,
+        "heat_rate_base": 12.0,
+    }
 
 
 def test_compute_markup_data_piecewise():
