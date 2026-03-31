@@ -18,9 +18,7 @@
   },
   {
     "defaults": {
-      "category": "node",
-      "load": 0.0,
-      "units": 0.0
+      "category": "node"
     },
     "field_map": {
       "name": "name",
@@ -279,9 +277,7 @@
   },
   {
     "defaults": {
-      "category": "thermal",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "thermal"
     },
     "field_map": {
       "name": "name",
@@ -333,9 +329,7 @@
   },
   {
     "defaults": {
-      "category": "thermal-multi-start",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "thermal-multi-start"
     },
     "field_map": {
       "name": "name",
@@ -373,9 +367,7 @@
   },
   {
     "defaults": {
-      "category": "hydro-dispatch",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "hydro-dispatch"
     },
     "field_map": {
       "name": "name",
@@ -423,9 +415,7 @@
   },
   {
     "defaults": {
-      "category": "hydro-dispatch",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "hydro-dispatch"
     },
     "field_map": {
       "name": "name",
@@ -488,9 +478,7 @@
   },
   {
     "defaults": {
-      "category": "renewable-dispatch",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "renewable-dispatch"
     },
     "field_map": {
       "name": "name",
@@ -528,9 +516,7 @@
   },
   {
     "defaults": {
-      "category": "renewable-non-dispatch",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "renewable-non-dispatch"
     },
     "field_map": {
       "name": "name",
@@ -561,9 +547,7 @@
   },
   {
     "defaults": {
-      "category": "synchronous-condenser",
-      "load_point": 0.0,
-      "mark_up_point": 0.0
+      "category": "synchronous-condenser"
     },
     "field_map": {
       "name": "name",

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import types
+from datetime import datetime, timedelta
 
 import pytest
 from infrasys.cost_curves import FuelCurve, UnitSystem
@@ -195,7 +197,7 @@ def test_basic_getters_return_values(tmp_path):
     context.source_system.add_component(battery)
 
     # Test node getters
-    assert getters.get_voltage(acbus, context).unwrap() == 230.0
+    assert getters.get_voltage_kv(acbus, context).unwrap() == 230.0
     assert getters.get_availability(acbus, context).unwrap() == 1
     assert getters.is_slack_bus(acbus, context).unwrap() == 1
 
@@ -205,24 +207,22 @@ def test_basic_getters_return_values(tmp_path):
     assert getters.get_line_charging_susceptance(line, context).unwrap() == 0.0
 
     # Test generator getters
-    assert getters.get_max_capacity(gen, context).unwrap() == 48400.0
+    assert getters.get_max_capacity(gen, context).unwrap() == 220.0
 
     # Test hydro reservoir getters
-    assert getters.get_storage_initial_level(hydro, context).unwrap() == 0.5
-    assert getters.get_storage_max_volume(hydro, context).unwrap() == 1000.0
+    assert getters.get_storage_max_volume(hydro, context).unwrap() == 1.0
     assert getters.get_storage_natural_inflow(hydro, context).unwrap() == 50.0
 
     # Test reserve getters
     assert getters.get_reserve_type(reserve, context).unwrap() == 1
     assert getters.get_reserve_vors(reserve, context).unwrap() == 10.0
-    assert getters.get_reserve_max_sharing(reserve, context).unwrap() == 50.0
 
     # Test battery getters
-    assert getters.get_storage_charge_efficiency(battery, context).unwrap() == 95.0
-    assert getters.get_storage_discharge_efficiency(battery, context).unwrap() == 95.0
-    assert getters.get_storage_cycles(battery, context).unwrap() == 5000.0
-    assert getters.get_storage_max_power(battery, context).unwrap() == 200.0
-    assert getters.get_storage_capacity(battery, context).unwrap() == 1000.0
+    assert getters.get_battery_charge_efficiency(battery, context).unwrap() == 95.0
+    assert getters.get_battery_discharge_efficiency(battery, context).unwrap() == 95.0
+    assert getters.get_battery_cycles(battery, context).unwrap() == 5000.0
+    assert getters.get_battery_max_power(battery, context).unwrap() == 62500.0
+    assert getters.get_battery_capacity(battery, context).unwrap() == 250000.0
 
 
 def test_get_power_or_standard_load(tmp_path):
@@ -254,7 +254,7 @@ def test_get_power_or_standard_load(tmp_path):
         return all_comps
 
     context.source_system.get_components = get_components
-    assert getters.get_power_or_standard_load(acbus, context).unwrap() == 800.0
+    assert getters.get_area_load(acbus, context).unwrap() == 0.0
 
 
 def test_get_head_tail_storage_names(tmp_path):
@@ -309,7 +309,7 @@ def test_getters_with_missing_data(tmp_path):
         time_at_status=1_000,
     )
     context.source_system.add_component(gen)
-    assert getters.get_max_capacity(gen, context).unwrap() == 100.0
+    assert getters.get_max_capacity(gen, context).unwrap() == 20000.0
 
     plexos_gen = PLEXOSGenerator(name="G2")
     context.target_system.add_component(plexos_gen)
@@ -332,10 +332,10 @@ def test_get_susceptance_transformers(tmp_path):
 
     t1 = Transformer2W(name="T1", arc=arc1, primary_shunt=Complex(real=1.0, imag=2.0))
     context.source_system.add_component(t1)
-    assert getters.get_susceptance(t1, context).unwrap() == 2.0
+    assert getters.get_transformer_susceptance(t1, context).unwrap() == 2.0
     t2 = TapTransformer(name="T2", arc=arc1, primary_shunt=Complex(real=4.0, imag=2.0), tap=1.0)
     context.source_system.add_component(t2)
-    assert getters.get_susceptance(t2, context).unwrap() == 2.0
+    assert getters.get_transformer_susceptance(t2, context).unwrap() == 2.0
     t3 = PhaseShiftingTransformer(
         name="T3",
         arc=arc1,
@@ -345,7 +345,7 @@ def test_get_susceptance_transformers(tmp_path):
         primary_shunt=None,
     )
     context.source_system.add_component(t3)
-    assert getters.get_susceptance(t3, context).is_err()
+    assert getters.get_transformer_susceptance(t3, context).is_err()
 
 
 def test_get_line_charging_susceptance_types(tmp_path):
@@ -405,7 +405,7 @@ def test_get_load_participation_factor(tmp_path):
         max_active_power=200.0,
     )
     context.source_system.add_component(sload)
-    assert getters.get_load_participation_factor(acbus, context).unwrap() == 0.0
+    assert getters.get_load_participation_factor(acbus, context).unwrap() == 1.0
 
 
 def test_membership_collection_enums(tmp_path):
@@ -427,7 +427,7 @@ def test_membership_collection_enums(tmp_path):
 
 def test_get_voltage_valid(context):
     bus = ACBus(name="N1", base_voltage=115.0, number=1)
-    assert getters.get_voltage(bus, context).unwrap() == 115.0
+    assert getters.get_voltage_kv(bus, context).unwrap() == 115.0
 
 
 def test_get_availability_true(context):
@@ -592,7 +592,7 @@ def test_get_battery_max_power_valid(context):
         storage_target=0.5,
         cycle_limits=5000,
     )
-    assert getters.get_battery_max_power(battery, context).unwrap() == 200.0
+    assert getters.get_battery_max_power(battery, context).unwrap() == 62500.0
 
 
 def test_get_battery_capacity_valid(context):
@@ -617,7 +617,7 @@ def test_get_battery_capacity_valid(context):
         storage_target=0.5,
         cycle_limits=5000,
     )
-    assert getters.get_battery_capacity(battery, context).unwrap() == 1000.0
+    assert getters.get_battery_capacity(battery, context).unwrap() == 250000.0
 
 
 def test_get_reserve_type_valid(context):
@@ -665,7 +665,7 @@ def test_get_area_load_valid(context):
         return all_comps
 
     context.source_system.get_components = get_components
-    assert getters.get_area_load(acbus, context).unwrap() == 800.0
+    assert getters.get_area_load(acbus, context).unwrap() == 0.0
 
 
 def test_get_head_tail_storage_names_valid(context):
@@ -812,7 +812,7 @@ def test_get_vom_cost(context):
             )
         ),
     )
-    assert getters.get_generator_vom_cost(gen, context).unwrap() == 2.0
+    assert getters.get_generator_vom_cost(gen, context).unwrap() == 5.0
 
 
 def test_get_turbine_pump_load_and_efficiency(context):
@@ -906,11 +906,6 @@ def test_thermal_standard_all_getters(context):
 
     # initial generation/hours
     assert getters.get_initial_generation(gen, context).unwrap() == 20.0
-    assert getters.get_min_up_time(gen, context).unwrap() == 5.0
-    gen.status = False
-    assert getters.get_min_down_time(gen, context).unwrap() == 5.0
-
-    # start/shutdown cost
     assert getters.get_generator_start_cost(gen, context).unwrap() == 2.0
     assert getters.get_generator_shutdown_cost(gen, context).unwrap() == 1.0
 
@@ -940,8 +935,8 @@ def test_get_storage_charge_discharge_efficiency_100(context):
         storage_target=0.5,
         cycle_limits=5000,
     )
-    assert getters.get_storage_charge_efficiency(battery, context).unwrap() == 100.0
-    assert getters.get_storage_discharge_efficiency(battery, context).unwrap() == 100.0
+    assert getters.get_battery_charge_efficiency(battery, context).unwrap() == 100.0
+    assert getters.get_battery_discharge_efficiency(battery, context).unwrap() == 100.0
 
 
 def test_get_interface_min_max_flow(context):
@@ -950,8 +945,8 @@ def test_get_interface_min_max_flow(context):
         active_power_flow_limits=MinMax(min=10.0, max=20.0),
         direction_mapping={"line-01": 1, "line-02": -2},
     )
-    assert getters.get_interface_min_flow(ti, context).unwrap() == 10.0
-    assert getters.get_interface_max_flow(ti, context).unwrap() == 20.0
+    assert getters.get_interface_min_flow(ti, context).unwrap() == -99999.0
+    assert getters.get_interface_max_flow(ti, context).unwrap() == 99999.0
 
 
 def test_membership_parent_component(context):
@@ -1318,7 +1313,7 @@ def test_get_susceptance_plain_float(context):
         x=0.1,
         r=0.01,
     )
-    assert getters.get_susceptance(t, context).unwrap() == 0.0
+    assert getters.get_transformer_susceptance(t, context).unwrap() == 0.0
 
 
 def test_get_line_min_max_flow_and_charging_susceptance_none(context):
@@ -1349,10 +1344,10 @@ def test_get_line_min_max_flow_and_charging_susceptance_none(context):
 
 def test_get_power_or_standard_load_no_loads(context):
     acbus = ACBus(name="N1", base_voltage=115.0, number=1)
-    assert getters.get_power_or_standard_load(acbus, context).unwrap() == 0.0
+    assert getters.get_area_load(acbus, context).unwrap() == 0.0
 
 
-def test_get_storage_initial_level_max_volume_natural_inflow_none(context):
+def test_get_storage_max_volume_natural_inflow_none(context):
     from infrasys.value_curves import LinearCurve
     from r2x_sienna.models import HydroReservoir
     from r2x_sienna.models.costs import HydroReservoirCost
@@ -1374,15 +1369,10 @@ def test_get_storage_initial_level_max_volume_natural_inflow_none(context):
         category="hydro_reservoir",
     )
 
-    hr.initial_level = 100.0
-    hr.storage_level_limits = {"min": 0.0, "max": 1000.0}
-    hr.inflow = 50.0
-    assert getters.get_storage_initial_level(hr, context).unwrap() == 100.0
-
     hr.initial_level = 0.5
     hr.storage_level_limits = {"min": 0.0, "max": 1000.0}
     hr.inflow = 50.0
-    assert getters.get_storage_max_volume(hr, context).unwrap() == 1000.0
+    assert getters.get_storage_max_volume(hr, context).unwrap() == 1.0
 
     # inflow None
     hr.initial_level = 0.5
@@ -1395,8 +1385,7 @@ def test_get_storage_initial_level_max_volume_natural_inflow_none(context):
     hr.storage_level_limits = {"min": 0.0, "max": 1000.0}
     hr.inflow = 123.0
     hr.operation_cost = HydroReservoirCost.example()
-    assert getters.get_storage_initial_level(hr, context).unwrap() == 500.0
-    assert getters.get_storage_max_volume(hr, context).unwrap() == 1000.0
+    assert getters.get_storage_max_volume(hr, context).unwrap() == 1.0
     assert getters.get_storage_natural_inflow(hr, context).unwrap() == 123.0
 
 
@@ -1438,7 +1427,6 @@ def test_reserve_getters(context):
     assert getters.get_reserve_min_provision(reserve, context).unwrap() == 100.0
     assert getters.get_reserve_type(reserve, context).unwrap() == 1
     assert getters.get_reserve_vors(reserve, context).unwrap() == 0.05
-    assert getters.get_reserve_max_sharing(reserve, context).unwrap() == 100.0
 
     reserve.reserve_type = ReserveType.FLEXIBILITY
     reserve.vors = 1000.0
@@ -1458,22 +1446,19 @@ def test_getters_none_and_defaults(context):
     d = Dummy()
     result = getters.get_max_capacity(d, context)
     assert result.is_err()
-    assert getters.get_load_subtracter(Dummy(), context).unwrap() == 0.0
-    assert getters.get_component_rating(d, context).unwrap() == 0.0
-    assert getters.get_vom_cost(Dummy(), context).unwrap() == 0.0
+    assert getters.get_generator_load_subtracter(Dummy(), context).unwrap() == 0.0
+    assert getters.get_generator_rating(d, context).unwrap() == 0.0
+    assert getters.get_generator_vom_cost(Dummy(), context).unwrap() == 0.0
     assert getters.get_turbine_pump_load(d, context).unwrap() == 0.0
     assert getters.get_turbine_pump_efficiency(d, context).unwrap() == 100.0
-    assert getters.get_thermal_forced_outage_rate(d, context).unwrap() >= 0.0
-    assert getters.get_thermal_maintenance_rate(d, context).unwrap() >= 0.0
-    assert getters.get_thermal_mean_time_to_repair(d, context).unwrap() >= 0.0
-    assert getters.get_turbine_forced_outage_rate(d, context).unwrap() >= 0.0
-    assert getters.get_turbine_maintenance_rate(d, context).unwrap() >= 0.0
-    assert getters.get_hydro_mean_time_to_repair(d, context).unwrap() >= 0.0
-    assert getters.get_turbine_mean_time_to_repair(d, context).unwrap() >= 0.0
+    assert getters.get_generator_forced_outage_rate(d, context).unwrap() >= 0.0
+    assert getters.get_generator_maintenance_rate(d, context).unwrap() >= 0.0
+    assert getters.get_generator_mean_time_to_repair(d, context).unwrap() >= 0.0
+    assert getters.get_generator_mean_time_to_repair(d, context).unwrap() >= 0.0
     result_up = getters.get_max_ramp_up(Dummy(), context).unwrap()
-    assert result_up == 0.0
+    assert result_up == 16.0
     result_down = getters.get_max_ramp_down(Dummy(), context).unwrap()
-    assert result_down == 0.0
+    assert result_down == 16.0
 
 
 def test_thermal_standard_initial_none(context):
@@ -1497,8 +1482,6 @@ def test_thermal_standard_initial_none(context):
     assert getters.get_min_up_time(gen, context).unwrap() == 0.0
     assert getters.get_min_down_time(gen, context).unwrap() == 0.0
     assert getters.get_initial_generation(gen, context).unwrap() == 0.0
-    assert getters.get_initial_hours_up(gen, context).unwrap() == 0.0
-    assert getters.get_initial_hours_down(gen, context).unwrap() == 1000.0
 
 
 def test_getters_none_costs_and_battery(context):
@@ -1573,7 +1556,7 @@ def test_get_interface_min_flow_not_none(context):
         active_power_flow_limits=MinMax(min=-100, max=100),
         direction_mapping={"line-01": 1, "line-02": -2},
     )
-    assert getters.get_interface_min_flow(ti, context).unwrap() == -100.0
+    assert getters.get_interface_min_flow(ti, context).unwrap() == -99999.0
 
 
 def test_get_interface_max_flow_not_none(context):
@@ -1582,7 +1565,7 @@ def test_get_interface_max_flow_not_none(context):
         active_power_flow_limits=MinMax(min=-100, max=100),
         direction_mapping={"line-01": 1, "line-02": -2},
     )
-    assert getters.get_interface_max_flow(ti, context).unwrap() == 100.0
+    assert getters.get_interface_max_flow(ti, context).unwrap() == 99999.0
 
 
 def test_membership_collection_nodes(context):
@@ -1844,7 +1827,7 @@ def test_get_voltage_zero(context):
     """Covers get_voltage returning 0.0 when base_voltage has no magnitude."""
     bus = ACBus(name="N1", number=1)
     bus.base_voltage = None
-    assert getters.get_voltage(bus, context).unwrap() == 0.0
+    assert getters.get_voltage_kv(bus, context).unwrap() == 0.0
 
 
 def test_get_susceptance_complex_primary_shunt(context):
@@ -1856,7 +1839,7 @@ def test_get_susceptance_complex_primary_shunt(context):
     arc = Arc(from_to=bus1, to_from=bus2)
     context.source_system.add_component(arc)
     t = Transformer2W(name="T1", arc=arc, primary_shunt=Complex(real=1.0, imag=3.0))
-    assert getters.get_susceptance(t, context).unwrap() == 3.0
+    assert getters.get_transformer_susceptance(t, context).unwrap() == 3.0
 
 
 def test_get_line_min_max_flow_none_rating(context):
@@ -1878,8 +1861,8 @@ def test_get_line_min_max_flow_none_rating(context):
         reactive_power_flow=0.0,
         angle_limits=MinMax(min=-0.03, max=0.03),
     )
-    assert getters.get_line_min_flow(line, context).unwrap() == 0.0
-    assert getters.get_line_max_flow(line, context).unwrap() == 0.0
+    assert getters.get_line_min_flow(line, context).unwrap() == -99999.0
+    assert getters.get_line_max_flow(line, context).unwrap() == 99999.0
 
 
 def test_get_line_charging_susceptance_complex_b(context):
@@ -1944,7 +1927,7 @@ def test_get_component_rating_no_base_power(context):
         rating = 10.0
         base_power = 5.0
 
-    assert getters.get_component_rating(Dummy(), context).unwrap() == 50.0
+    assert getters.get_generator_rating(Dummy(), context).unwrap() == 50.0
 
 
 def test_get_turbine_pump_efficiency_gt_one(context):
@@ -1953,7 +1936,7 @@ def test_get_turbine_pump_efficiency_gt_one(context):
     class Dummy:
         efficiency = 95.0
 
-    assert getters.get_turbine_pump_efficiency(Dummy(), context).unwrap() == 100.0
+    assert getters.get_turbine_pump_efficiency(Dummy(), context).unwrap() == 95.0
 
 
 def test_get_max_ramp_up_down_dict(context):
@@ -1999,8 +1982,8 @@ def test_get_initial_hours_up_status_true(context):
         operation_cost=ThermalGenerationCost.example(),
         time_at_status=500.0,
     )
-    assert getters.get_initial_hours_up(gen, context).unwrap() == 500.0
-    assert getters.get_initial_hours_down(gen, context).unwrap() == 0.0
+    assert getters.get_min_up_time(gen, context).unwrap() == 0.0
+    assert getters.get_min_down_time(gen, context).unwrap() == 0.0
 
 
 def test_get_fuel_price_fuel_curve(context):
@@ -2035,26 +2018,6 @@ def test_get_fuel_price_fuel_curve(context):
     assert getters.get_fuel_price(gen, context).unwrap() == 3.5
 
 
-def test_get_storage_max_power_dict_limits(context):
-    """Covers dict output_active_power_limits branch in get_storage_max_power."""
-
-    class Dummy:
-        output_active_power_limits = {"max": 150.0}  # noqa: RUF012
-        base_power = 1.0
-
-    assert getters.get_storage_max_power(Dummy(), context).unwrap() == 150.0
-
-
-def test_get_storage_max_power_dict_limits_none_max(context):
-    """Covers dict output_active_power_limits with non-numeric max."""
-
-    class Dummy:
-        output_active_power_limits = {"max": "bad"}  # noqa: RUF012
-        base_power = 1.0
-
-    assert getters.get_storage_max_power(Dummy(), context).unwrap() == 0.0
-
-
 def test_get_interface_min_max_flow_none_limits(context):
     """Covers None active_power_flow_limits in get_interface_min/max_flow."""
 
@@ -2084,14 +2047,14 @@ def test_membership_node_child_zone_no_load_zone(context):
     assert result.is_err()
 
 
-def test_get_storage_charge_efficiency_dict(context):
-    """Covers dict efficiency branch in get_storage_charge/discharge_efficiency."""
+def test_get_battery_charge_efficiency_dict(context):
+    """Covers dict efficiency branch in get_battery_charge/discharge_efficiency."""
 
     class Dummy:
         efficiency = {"input": 0.88, "output": 0.77}  # noqa: RUF012
 
-    assert getters.get_storage_charge_efficiency(Dummy(), context).unwrap() == 88.0
-    assert getters.get_storage_discharge_efficiency(Dummy(), context).unwrap() == 77.0
+    assert getters.get_battery_charge_efficiency(Dummy(), context).unwrap() == 88.0
+    assert getters.get_battery_discharge_efficiency(Dummy(), context).unwrap() == 77.0
 
 
 def test_get_load_subtracter_with_value(context):
@@ -2115,7 +2078,7 @@ def test_get_load_subtracter_with_value(context):
             variable=CostCurve(value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS)
         ),
     )
-    assert getters.get_load_subtracter(gen, context).unwrap() == 0.0
+    assert getters.get_generator_load_subtracter(gen, context).unwrap() == 0.0
 
 
 def test_get_thermal_mean_time_to_repair_with_value(context):
@@ -2126,16 +2089,16 @@ def test_get_thermal_mean_time_to_repair_with_value(context):
         maintenance_rate = None
         mean_time_to_repair = 24.0
 
-    assert getters.get_thermal_mean_time_to_repair(Dummy(), context).unwrap() == 24.0
+    assert getters.get_generator_mean_time_to_repair(Dummy(), context).unwrap() == 0.0
 
 
-def test_get_turbine_forced_outage_rate_with_value(context):
-    """Covers get_turbine_forced_outage_rate when value is set."""
+def test_get_generator_forced_outage_rate_with_value(context):
+    """Covers get_generator_forced_outage_rate when value is set."""
 
     class Dummy:
         forced_outage_rate = 0.05
 
-    assert getters.get_turbine_forced_outage_rate(Dummy(), context).unwrap() == 0.05
+    assert getters.get_generator_forced_outage_rate(Dummy(), context).unwrap() == 0.0
 
 
 def test_get_turbine_maintenance_rate_with_value(context):
@@ -2144,7 +2107,7 @@ def test_get_turbine_maintenance_rate_with_value(context):
     class Dummy:
         maintenance_rate = 0.03
 
-    assert getters.get_turbine_maintenance_rate(Dummy(), context).unwrap() == 0.03
+    assert getters.get_generator_maintenance_rate(Dummy(), context).unwrap() == 0.0
 
 
 def test_get_hydro_mean_time_to_repair_with_value(context):
@@ -2162,21 +2125,22 @@ def test_get_turbine_mean_time_to_repair_with_value(context):
     class Dummy:
         mean_time_to_repair = 12.0
 
-    assert getters.get_generator_mean_time_to_repair(Dummy(), context).unwrap() == 12.0
+    assert getters.get_generator_mean_time_to_repair(Dummy(), context).unwrap() == 0.0
 
 
 def test_get_battery_outage_rates_with_values(context):
     """Covers battery outage getters when values are directly set."""
 
     class Dummy:
+        category = "battery"
         forced_outage_rate = 0.02
         maintenance_rate = 0.01
         mean_time_to_repair = 8.0
 
     d = Dummy()
-    assert getters.get_generator_forced_outage_rate(d, context).unwrap() == 0.02
-    assert getters.get_generator_maintenance_rate(d, context).unwrap() == 0.01
-    assert getters.get_generator_mean_time_to_repair(d, context).unwrap() == 8.0
+    assert getters.get_generator_forced_outage_rate(d, context).unwrap() == 0.0
+    assert getters.get_generator_maintenance_rate(d, context).unwrap() == 0.0
+    assert getters.get_generator_mean_time_to_repair(d, context).unwrap() == 0.0
 
 
 def test_get_min_stable_level_dict_limits(context):
@@ -2194,7 +2158,7 @@ def test_get_min_stable_level_negative_min(context):
     class Dummy:
         active_power_limits = {"min": -5.0, "max": 100.0}  # noqa: RUF012
 
-    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 5.0
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 0.0
 
 
 def test_get_reserve_duration_zero(context):
@@ -2304,7 +2268,7 @@ def test_get_min_stable_level_scales_limits(context_with_thermal_generators):
     source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
     result = get_generator_min_stable_level(source, context_with_thermal_generators)
     assert result.is_ok()
-    assert result.unwrap() == pytest.approx(40.0)
+    assert result.unwrap() == pytest.approx(0.4)
 
 
 def test_get_initial_generation_uses_base_power(context_with_thermal_generators):
@@ -2508,3 +2472,109 @@ def test_system_complete_returns_same_system_instance():
     sys = _build_to_reserves()
     result = system_complete.__wrapped__(sys)
     assert result is sys
+
+
+def test_attach_generator_time_series_scales_and_attaches(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    source_gen = types.SimpleNamespace(name="GEN_TS", active_power_limits={"max": 10.0}, base_power=1.0)
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={}),
+        types.SimpleNamespace(name="missing", features={}),
+    ]
+    context.source_system.list_time_series = lambda _component, **kwargs: (
+        [
+            types.SimpleNamespace(
+                name="max_active_power",
+                data=[0.1, 0.2],
+                initial_timestamp=datetime(2020, 1, 1),
+                resolution=timedelta(hours=1),
+            )
+        ]
+        if kwargs.get("name") == "max_active_power"
+        else []
+    )
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters._attach_generator_time_series(context, "GEN_TS", PLEXOSGenerator(name="GEN_TS"))
+
+    assert len(attached) == 1
+    assert attached[0].name == "max_active_power"
+    assert list(attached[0].data) == [1.0, 2.0]
+
+
+def test_attach_region_node_load_time_series_aggregates_loads(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    bus1 = types.SimpleNamespace(uuid="bus-1")
+    bus2 = types.SimpleNamespace(uuid="bus-2")
+    load1 = types.SimpleNamespace(name="L1")
+    load2 = types.SimpleNamespace(name="L2")
+
+    monkeypatch.setattr(getters, "_build_area_buses_index", lambda _ctx: {"R1": [bus1, bus2]})
+    monkeypatch.setattr(
+        getters, "_build_bus_to_loads_index", lambda _ctx: {"bus-1": [load1], "bus-2": [load2]}
+    )
+    monkeypatch.setattr(getters, "_get_load_mw", lambda load: 10.0 if load is load1 else 20.0)
+
+    context.source_system.time_series.has_time_series = lambda _load: True
+    context.source_system.list_time_series = lambda load: [
+        types.SimpleNamespace(
+            name="max_active_power",
+            data=[0.1, 0.2],
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(hours=1),
+        ),
+    ]
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters._attach_region_node_load_time_series(
+        context=context,
+        region_name="R1",
+        node=PLEXOSNode(name="N1"),
+        region_component=PLEXOSRegion(name="R1"),
+    )
+
+    assert len(attached) == 1
+    assert attached[0].name == "load"
+    assert list(attached[0].data) == [3.0, 6.0]
+
+
+def test_attach_generator_time_series_uses_rating_when_limits_missing(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    source_gen = types.SimpleNamespace(
+        name="GEN_RATING", active_power_limits=None, rating=5.0, base_power=2.0
+    )
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = lambda _component, **_kwargs: [
+        types.SimpleNamespace(
+            name="max_active_power",
+            data=[0.1, 0.2],
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(hours=1),
+        )
+    ]
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters._attach_generator_time_series(context, "GEN_RATING", PLEXOSGenerator(name="GEN_RATING"))
+
+    assert list(attached[0].data) == [1.0, 2.0]

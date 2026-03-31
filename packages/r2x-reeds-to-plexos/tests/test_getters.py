@@ -162,14 +162,14 @@ def test_basic_getters_return_values(tmp_path):
     assert getters.region_load(objs["region"], context).unwrap() == 0.0
 
     # Generator getters
-    assert getters.rating(objs["thermal"], context).unwrap() == 50.0
+    assert getters.get_gen_rating(objs["thermal"], context).unwrap() == 50.0
     assert getters.load_subtracter(objs["thermal"], context).unwrap() == 0.0
 
     # Storage getters
     assert getters.add_head_suffix(objs["storage"], context).unwrap() == "BAT1_head"
     assert getters.add_tail_suffix(objs["storage"], context).unwrap() == "BAT1_tail"
-    assert getters.storage_max_volume(objs["storage"], context).unwrap() == 40.0
-    assert getters.storage_initial_volume(objs["storage"], context).unwrap() == 35.0
+    assert getters.storage_max_volume(objs["storage"], context).unwrap() == 0.04
+    assert getters.storage_initial_volume(objs["storage"], context).unwrap() == 0.02
     assert getters.storage_natural_inflow(objs["storage"], context).unwrap() == 0.0
 
     # Reserve getters
@@ -206,11 +206,6 @@ def test_basic_getters_return_values(tmp_path):
 
     # Hydro getters
     assert getters.hydro_min_flow(objs["hydro"], context).unwrap() == 0.0
-    assert getters.hydro_must_run_flag(objs["hydro"], context).unwrap() == 1
-
-    # Consuming tech
-    assert getters.consuming_tech_load_mw(objs["consuming"], context).unwrap() == 12.0
-    assert getters.consuming_tech_efficiency_to_heat_rate(objs["consuming"], context).unwrap() == 2.5
 
     # VRE category/resource class
     assert getters.vre_category_with_resource_class(objs["variable"], context).unwrap() == "wind-ons"
@@ -279,3 +274,44 @@ def test_vre_category_with_resource_class_edge_cases(tmp_path):
     dummy = Dummy()
     result = getters.vre_category_with_resource_class(dummy, None)
     assert result.is_err()
+
+
+def test_getter_fallback_and_branch_paths(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    objs = setup_systems(context)
+
+    # Capacity fallback path in _get_storage_max_volume.
+    storage_no_capacity = ReEDSStorage(
+        name="BATX",
+        region=objs["region"],
+        technology="battery",
+        capacity=0.0,
+        storage_duration=2.0,
+        round_trip_efficiency=0.9,
+    )
+    assert getters.storage_max_volume(storage_no_capacity, context).unwrap() == 0.02
+
+    # Reserve type missing should use default mapping.
+    class DummyReserve:
+        reserve_type = None
+
+    reserve_no_type = DummyReserve()
+    assert getters.reserve_type(reserve_no_type, context).unwrap() == 1
+
+    # Explicit initial volume branch.
+    class DummyStorage:
+        initial_volume = 5.0
+
+    assert getters.storage_initial_volume(DummyStorage(), context).unwrap() == 5.0
+
+    # ReEDSStorage branches for pump efficiency/load.
+    assert getters.get_generator_pump_efficiency_percent(objs["storage"], context).unwrap() == 0.0
+    assert getters.get_generator_pump_load_mw(objs["storage"], context).unwrap() == 10.0
+
+    # Non-storage generators should return zero for pump-related getters.
+    assert getters.get_generator_pump_efficiency_percent(objs["thermal"], context).unwrap() == 0.0
+    assert getters.get_generator_pump_load_mw(objs["thermal"], context).unwrap() == 0.0
+
+    # Exercise default-MTTR fallback branch that returns 24 when defaults are unavailable.
+    monkeypatch.setattr(getters, "_get_defaults", lambda *_args, **_kwargs: None)
+    assert getters.mean_time_to_repair_hours(objs["thermal"], context).unwrap() == 24

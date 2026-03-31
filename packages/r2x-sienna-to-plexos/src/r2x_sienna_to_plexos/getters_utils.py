@@ -239,6 +239,7 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
             _attach_reservoir_time_series_to_storage(context, storage.name, storage)
 
     total_memberships = 0
+    # Original logic for HydroTurbine-based memberships
     for turbine in context.source_system.get_components(HydroTurbine):
         target_gen_name = display_name_index.get(turbine.name, turbine.name)
         target_gen = generators_by_name.get(target_gen_name)
@@ -282,7 +283,22 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.HeadStorage)
             total_memberships += 1
 
-    logger.info("Total {} HeadStorage-Generator memberships created.", total_memberships)
+    # Fallback: For all generators and storages with matching _head names, ensure membership exists
+    for gen_name, gen in generators_by_name.items():
+        if gen_name.endswith("_head"):
+            storage = storages_by_name.get(gen_name)
+            if storage is not None:
+                # Check if membership already exists
+                memberships = context.target_system.get_supplemental_attributes_with_component(
+                    gen, PLEXOSMembership
+                )
+                if not any(
+                    m.collection == CollectionEnum.HeadStorage and m.child_object == storage
+                    for m in memberships
+                ):
+                    _ensure_membership(context, gen, storage, CollectionEnum.HeadStorage)
+                    total_memberships += 1
+    logger.info("Total {} HeadStorage-Generator memberships created (including fallback).", total_memberships)
 
 
 def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
@@ -303,6 +319,7 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
             _attach_reservoir_time_series_to_storage(context, storage.name, storage)
 
     total_memberships = 0
+    # Original logic for HydroTurbine-based memberships
     for turbine in context.source_system.get_components(HydroTurbine):
         target_gen_name = display_name_index.get(turbine.name, turbine.name)
         target_gen = generators_by_name.get(target_gen_name)
@@ -346,7 +363,21 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.TailStorage)
             total_memberships += 1
 
-    logger.info("Total {} TailStorage-Generator memberships created.", total_memberships)
+    # Fallback: For all generators and storages with matching _tail names, ensure membership exists
+    for gen_name, gen in generators_by_name.items():
+        if gen_name.endswith("_tail"):
+            storage = storages_by_name.get(gen_name)
+            if storage is not None:
+                memberships = context.target_system.get_supplemental_attributes_with_component(
+                    gen, PLEXOSMembership
+                )
+                if not any(
+                    m.collection == CollectionEnum.TailStorage and m.child_object == storage
+                    for m in memberships
+                ):
+                    _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
+                    total_memberships += 1
+    logger.info("Total {} TailStorage-Generator memberships created (including fallback).", total_memberships)
 
 
 def ensure_node_zone_memberships(context: PluginContext) -> None:

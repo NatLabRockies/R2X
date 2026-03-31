@@ -1,5 +1,8 @@
 """Tests for getters_utils multiband conversion functions."""
 
+import types
+from datetime import datetime, timedelta
+
 import pytest
 from infrasys.cost_curves import CostCurve, FuelCurve, UnitSystem
 from infrasys.function_data import LinearFunctionData, PiecewiseLinearData, QuadraticFunctionData, XYCoords
@@ -8,10 +11,13 @@ from plexosdb import CollectionEnum
 from r2x_plexos.models import (
     PLEXOSBattery,
     PLEXOSGenerator,
+    PLEXOSInterface,
+    PLEXOSLine,
     PLEXOSMembership,
     PLEXOSNode,
     PLEXOSPropertyValue,
     PLEXOSRegion,
+    PLEXOSReserve,
     PLEXOSStorage,
     PLEXOSTransformer,
     PLEXOSZone,
@@ -24,9 +30,10 @@ from r2x_sienna.models import (
     LoadZone,
     ThermalStandard,
     Transformer2W,
+    VariableReserve,
 )
 from r2x_sienna.models.costs import ThermalGenerationCost
-from r2x_sienna.models.enums import PrimeMoversType, StorageTechs, ThermalFuels
+from r2x_sienna.models.enums import PrimeMoversType, ReserveType, StorageTechs, ThermalFuels
 from r2x_sienna.models.named_tuples import Complex, InputOutput, MinMax, UpDown
 from r2x_sienna_to_plexos import getters_utils
 
@@ -115,7 +122,11 @@ def test_compute_heat_rate_data_none_curve():
         )()
 
     d = Dummy()
-    assert getters_utils.compute_heat_rate_data(d) == {"heat_rate": 10.0, "heat_rate_base": 12.0}
+    assert getters_utils.compute_heat_rate_data(d) == {
+        "heat_rate": 10.0,
+        "heat_rate_incr": 10.0,
+        "heat_rate_base": 12.0,
+    }
 
 
 def test_compute_markup_data_piecewise():
@@ -693,3 +704,158 @@ def test_multiband_markup_float_conversion(two_band_load_points, two_band_markup
     point_prop, markup_prop = getters_utils.create_multiband_markup([40, 80], [13, 16])
     assert point_prop.get_bands() == [1, 2]
     assert markup_prop.get_bands() == [1, 2]
+
+
+def test_bus_name_to_area_and_zone_cache_and_non_area_object(context):
+    context._cache["bus_name_to_area_and_zone"] = {"cached_bus": ("A", "Z")}
+    assert getters_utils._bus_name_to_area_and_zone(context) == {"cached_bus": ("A", "Z")}
+
+    context._cache.clear()
+    context.source_system.get_components = lambda _comp_type: [
+        types.SimpleNamespace(name="B1", area="A1", load_zone="Z1")
+    ]
+    mapping = getters_utils._bus_name_to_area_and_zone(context)
+    assert mapping["B1"] == ("A1", "Z1")
+
+
+def test_attach_reservoir_time_series_to_storage_paths(context):
+    target_storage = PLEXOSStorage(name="Plant_head")
+
+    reservoir = types.SimpleNamespace(name="Plant_Reservoir", ext={"NARIS_Pmax": 2.0})
+
+    context.source_system.get_components = (
+        lambda comp_type: [reservoir] if comp_type.__name__ == "HydroReservoir" else []
+    )
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.list_time_series = lambda _component: [
+        types.SimpleNamespace(
+            name="inflow",
+            data=[1.0, 2.0],
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(hours=1),
+            features={},
+        ),
+        types.SimpleNamespace(
+            name="max_active_power",
+            data=[0.5, 1.0],
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(hours=1),
+            features={},
+        ),
+    ]
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+    getters_utils._attach_reservoir_time_series_to_storage(context, "Plant_head", target_storage)
+
+    assert [ts.name for ts in attached] == ["natural_inflow", "max_active_power"]
+    assert list(attached[1].data) == [1.0, 2.0]
+
+    reservoir.name = "AlphaPlant_Reservoir"
+    reservoir.ext = {}
+    attached.clear()
+    getters_utils._attach_reservoir_time_series_to_storage(context, "Alpha_head", target_storage)
+    max_ts = next(ts for ts in attached if ts.name == "max_active_power")
+    assert list(max_ts.data) == [0.5, 1.0]
+
+
+def test_hydroturbine_driven_head_tail_memberships(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    monkeypatch.setattr(getters_mod, "_build_generator_display_name_index", lambda _ctx: {"TURB": "GEN"})
+    monkeypatch.setattr(
+        getters_utils, "_attach_reservoir_time_series_to_storage", lambda *_args, **_kwargs: None
+    )
+
+    gen = PLEXOSGenerator(name="GEN")
+    context.target_system.add_component(gen)
+    context.target_system.add_component(PLEXOSStorage(name="Plant_head"))
+    context.target_system.add_component(PLEXOSStorage(name="Plant_tail"))
+
+    head_res = types.SimpleNamespace(
+        name="Plant_head", reservoir_location=types.SimpleNamespace(value="HEAD"), ext={}
+    )
+    tail_res = types.SimpleNamespace(
+        name="Plant_tail", reservoir_location=types.SimpleNamespace(value="TAIL"), ext={}
+    )
+    turbine = types.SimpleNamespace(name="TURB", reservoirs=[head_res, tail_res])
+    context.source_system.get_components = (
+        lambda comp_type: [turbine] if comp_type.__name__ == "HydroTurbine" else []
+    )
+
+    getters_utils.ensure_head_storage_generator_membership(context)
+    getters_utils.ensure_tail_storage_generator_membership(context)
+
+    memberships = context.target_system.get_supplemental_attributes_with_component(gen, PLEXOSMembership)
+    assert any(m.collection == CollectionEnum.HeadStorage for m in memberships)
+    assert any(m.collection == CollectionEnum.TailStorage for m in memberships)
+
+
+def test_generator_reserve_interface_and_battery_memberships(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+    import r2x_sienna_to_plexos.getters_mappings as mappings_mod
+
+    monkeypatch.setattr(getters_mod, "_build_generator_display_name_index", lambda _ctx: {"SRC_GEN": "GEN_A"})
+    attached = []
+    monkeypatch.setattr(
+        getters_mod,
+        "_attach_generator_time_series",
+        lambda _ctx, source_name, target_gen: attached.append((source_name, target_gen.name)),
+    )
+    monkeypatch.setattr(mappings_mod, "SOURCE_GENERATOR_TYPES", [dict])
+
+    reserve_service = types.SimpleNamespace(name="RES_A")
+    source_gen = types.SimpleNamespace(name="SRC_GEN", services=[reserve_service], bus=None)
+    source_gen_missing_target = types.SimpleNamespace(
+        name="SRC_MISSING", services=[reserve_service], bus=None
+    )
+    reserve_obj = VariableReserve(
+        name="RES_A",
+        reserve_type=ReserveType.SPINNING,
+        vors=10.0,
+        max_participation_factor=0.5,
+        direction="UP",
+        requirement=100.0,
+    )
+    source_battery = types.SimpleNamespace(name="BAT_A", services=[reserve_obj, object()], bus=None)
+    source_interface = types.SimpleNamespace(name="IF_A", direction_mapping={"LINE_A": 1, "LINE_B": -1})
+
+    def fake_get_components(comp_type, *_args, **_kwargs):
+        name = getattr(comp_type, "__name__", "")
+        if comp_type is dict:
+            return [source_gen, source_gen_missing_target]
+        if name == "EnergyReservoirStorage":
+            return [source_battery]
+        if name == "TransmissionInterface":
+            return [source_interface]
+        return []
+
+    context.source_system.get_components = fake_get_components
+
+    gen_a = PLEXOSGenerator(name="GEN_A")
+    reserve = PLEXOSReserve(name="RES_A")
+    battery = PLEXOSBattery(name="BAT_A")
+    interface = PLEXOSInterface(name="IF_A")
+    line = PLEXOSLine(name="LINE_A")
+    context.target_system.add_component(gen_a)
+    context.target_system.add_component(reserve)
+    context.target_system.add_component(battery)
+    context.target_system.add_component(interface)
+    context.target_system.add_component(line)
+
+    getters_utils.ensure_generator_time_series(context)
+    getters_utils.ensure_reserve_generator_memberships(context)
+    getters_utils.ensure_reserve_battery_memberships(context)
+    getters_utils.ensure_interface_line_memberships(context)
+    getters_utils.ensure_battery_node_memberships(context)
+
+    assert attached == [("SRC_GEN", "GEN_A")]
+    reserve_memberships = context.target_system.get_supplemental_attributes_with_component(
+        reserve, PLEXOSMembership
+    )
+    assert any(m.collection == CollectionEnum.Generators for m in reserve_memberships)
+    assert any(m.collection == CollectionEnum.Batteries for m in reserve_memberships)
+    interface_memberships = context.target_system.get_supplemental_attributes_with_component(
+        interface, PLEXOSMembership
+    )
+    assert any(m.collection == CollectionEnum.Lines for m in interface_memberships)

@@ -774,12 +774,15 @@ def _find_3w_source_transformer(context: PluginContext, arm_name: str) -> tuple[
 def _get_load_mw(load: Any) -> float:
     """Extract MW value from a StandardLoad or PowerLoad for LPF computation."""
     magnitude = get_magnitude(getattr(load, "max_active_power", None))
+    base_power = getattr(load, "base_power", None)
+    if base_power is None:
+        base_power = 100.0
     if magnitude is not None:
-        return float(magnitude) * float(getattr(load, "base_power", 100.0))
+        return float(magnitude) * float(base_power)
     for attr in ("max_constant_active_power", "constant_active_power"):
         val = getattr(load, attr, None)
         if isinstance(val, int | float) and val > 0:
-            return float(val) * float(getattr(load, "base_power", 100.0))
+            return float(val) * float(base_power)
     return 0.0
 
 
@@ -1929,9 +1932,9 @@ def get_interface_min_flow(
     if not direction_mapping:
         limits = getattr(source_component, "active_power_flow_limits", None)
         if limits is None:
-            return Ok(-99999.9)
+            return Ok(-99999.0)
         value = limits.get("min") if isinstance(limits, dict) else getattr(limits, "min", None)
-        return Ok(float(value) if isinstance(value, int | float) else -99999.9)
+        return Ok(float(value) if isinstance(value, int | float) else -99999.0)
 
     total_rating = 0.0
     for line_name in direction_mapping:
@@ -1945,7 +1948,7 @@ def get_interface_min_flow(
         elif isinstance(rating, int | float):
             total_rating += abs(float(rating)) * _get_system_base_power(context)
 
-    return Ok(round(-total_rating, 2) if total_rating > 0.0 else -99999.9)
+    return Ok(round(-total_rating, 2) if total_rating > 0.0 else -99999.0)
 
 
 @getter
@@ -1957,9 +1960,9 @@ def get_interface_max_flow(
     if not direction_mapping:
         limits = getattr(source_component, "active_power_flow_limits", None)
         if limits is None:
-            return Ok(99999.9)
+            return Ok(99999.0)
         value = limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
-        return Ok(float(value) if isinstance(value, int | float) else 99999.9)
+        return Ok(float(value) if isinstance(value, int | float) else 99999.0)
 
     total_rating = 0.0
     for line_name in direction_mapping:
@@ -1973,7 +1976,7 @@ def get_interface_max_flow(
         elif isinstance(rating, int | float):
             total_rating += abs(float(rating)) * _get_system_base_power(context)
 
-    return Ok(round(total_rating, 2) if total_rating > 0.0 else 99999.9)
+    return Ok(round(total_rating, 2) if total_rating > 0.0 else 99999.0)
 
 
 @getter
