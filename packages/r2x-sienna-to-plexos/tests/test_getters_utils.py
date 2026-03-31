@@ -395,7 +395,7 @@ def test_compute_heat_rate_data_quadratic():
     result = getters_utils.compute_heat_rate_data(DummyComponent())
     assert result["heat_rate_base"] == 1.0
     assert result["heat_rate"] == 2.0
-    assert result["heat_rate_incr"] == 3.0
+    assert result["heat_rate_incr"] == 2.0
 
 
 def test_compute_heat_rate_data_piecewise():

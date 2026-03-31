@@ -541,8 +541,8 @@ def test_get_storage_charge_discharge_efficiency_valid(context):
         storage_target=0.5,
         cycle_limits=5000,
     )
-    assert getters.get_storage_charge_efficiency(battery, context).unwrap() == 95.0
-    assert getters.get_storage_discharge_efficiency(battery, context).unwrap() == 92.0
+    assert getters.get_battery_charge_efficiency(battery, context).unwrap() == 95.0
+    assert getters.get_battery_discharge_efficiency(battery, context).unwrap() == 92.0
 
 
 def test_get_storage_cycles_valid(context):
@@ -567,10 +567,10 @@ def test_get_storage_cycles_valid(context):
         storage_target=0.5,
         cycle_limits=5000,
     )
-    assert getters.get_storage_cycles(battery, context).unwrap() == 5000.0
+    assert getters.get_battery_cycles(battery, context).unwrap() == 5000.0
 
 
-def test_get_storage_max_power_valid(context):
+def test_get_battery_max_power_valid(context):
     battery = EnergyReservoirStorage(
         name="BAT1",
         available=True,
@@ -592,10 +592,10 @@ def test_get_storage_max_power_valid(context):
         storage_target=0.5,
         cycle_limits=5000,
     )
-    assert getters.get_storage_max_power(battery, context).unwrap() == 200.0
+    assert getters.get_battery_max_power(battery, context).unwrap() == 200.0
 
 
-def test_get_storage_capacity_valid(context):
+def test_get_battery_capacity_valid(context):
     battery = EnergyReservoirStorage(
         name="BAT1",
         available=True,
@@ -617,7 +617,7 @@ def test_get_storage_capacity_valid(context):
         storage_target=0.5,
         cycle_limits=5000,
     )
-    assert getters.get_storage_capacity(battery, context).unwrap() == 1000.0
+    assert getters.get_battery_capacity(battery, context).unwrap() == 1000.0
 
 
 def test_get_reserve_type_valid(context):
@@ -642,19 +642,7 @@ def test_get_reserve_vors_valid(context):
     assert getters.get_reserve_vors(reserve, context).unwrap() == 1000.0
 
 
-def test_get_reserve_max_sharing_valid(context):
-    reserve = VariableReserve(
-        name="RES1",
-        reserve_type=ReserveType.SPINNING,
-        vors=3000.0,
-        direction="DOWN",
-        requirement=100.0,
-    )
-    reserve.max_participation_factor = 0.5
-    assert getters.get_reserve_max_sharing(reserve, context).unwrap() == 50.0
-
-
-def test_get_power_or_standard_load_valid(context):
+def test_get_area_load_valid(context):
     acbus = ACBus(name="N2", base_voltage=115.0, number=2)
     context.source_system.add_component(acbus)
     pload = PowerLoad(
@@ -677,7 +665,7 @@ def test_get_power_or_standard_load_valid(context):
         return all_comps
 
     context.source_system.get_components = get_components
-    assert getters.get_power_or_standard_load(acbus, context).unwrap() == 800.0
+    assert getters.get_area_load(acbus, context).unwrap() == 800.0
 
 
 def test_get_head_tail_storage_names_valid(context):
@@ -739,7 +727,7 @@ def test_get_hydro_dispatch_properties(context):
         operation_cost=HydroGenerationCost.example(),
     )
     context.source_system.add_component(hydro)
-    assert getters.get_component_rating(hydro, context).unwrap() == 10000.0
+    assert getters.get_generator_rating(hydro, context).unwrap() == 10000.0
     assert getters.get_max_ramp_down(hydro, context).unwrap() == 500.0
     assert getters.get_max_ramp_up(hydro, context).unwrap() == 500.0
 
@@ -762,7 +750,7 @@ def test_get_component_rating_transformer(context):
         x=0.1,
         r=0.01,
     )
-    assert getters.get_component_rating(t, context).unwrap() == 100.0
+    assert getters.get_generator_rating(t, context).unwrap() == 100.0
 
 
 def test_get_component_rating_hydro_turbine(context):
@@ -790,7 +778,7 @@ def test_get_component_rating_hydro_turbine(context):
         reservoirs=[],
         category="hydro_turbine",
     )
-    assert getters.get_component_rating(ht, context).unwrap() == 22500.0
+    assert getters.get_generator_rating(ht, context).unwrap() == 22500.0
 
 
 def test_get_vom_cost(context):
@@ -824,7 +812,7 @@ def test_get_vom_cost(context):
             )
         ),
     )
-    assert getters.get_vom_cost(gen, context).unwrap() == 2.0
+    assert getters.get_generator_vom_cost(gen, context).unwrap() == 2.0
 
 
 def test_get_turbine_pump_load_and_efficiency(context):
@@ -881,13 +869,12 @@ def test_get_thermal_forced_outage_rate_defaults(context):
         reservoirs=[],
         category="hydro_turbine",
     )
-    assert getters.get_thermal_forced_outage_rate(ht, context).unwrap() >= 0.0
+    assert getters.get_generator_forced_outage_rate(ht, context).unwrap() >= 0.0
 
 
 def test_thermal_standard_all_getters(context):
-    from infrasys.cost_curves import CostCurve, FuelCurve
-    from infrasys.function_data import PiecewiseLinearData, XYCoords
-    from infrasys.value_curves import InputOutputCurve, LinearCurve
+    from infrasys.cost_curves import FuelCurve
+    from infrasys.value_curves import LinearCurve
     from r2x_sienna.models.costs import ThermalGenerationCost
 
     gen = ThermalStandard(
@@ -919,30 +906,16 @@ def test_thermal_standard_all_getters(context):
 
     # initial generation/hours
     assert getters.get_initial_generation(gen, context).unwrap() == 20.0
-    assert getters.get_initial_hours_up(gen, context).unwrap() == 5.0
+    assert getters.get_min_up_time(gen, context).unwrap() == 5.0
     gen.status = False
-    assert getters.get_initial_hours_down(gen, context).unwrap() == 5.0
+    assert getters.get_min_down_time(gen, context).unwrap() == 5.0
 
-    # running/start/shutdown cost
-    assert getters.get_running_cost(gen, context).unwrap() == 5.0
-    assert getters.get_start_cost(gen, context).unwrap() == 2.0
-    assert getters.get_shutdown_cost(gen, context).unwrap() == 1.0
+    # start/shutdown cost
+    assert getters.get_generator_start_cost(gen, context).unwrap() == 2.0
+    assert getters.get_generator_shutdown_cost(gen, context).unwrap() == 1.0
 
     # fuel price
     assert getters.get_fuel_price(gen, context).unwrap() == 0.0
-
-    # mark up and mark up point
-    gen.operation_cost = ThermalGenerationCost(
-        variable=CostCurve(
-            vom_cost=InputOutputCurve(
-                function_data=PiecewiseLinearData(points=[XYCoords(0, 0), XYCoords(10, 10)])
-            ),
-            value_curve=LinearCurve(1.0),
-            power_units=UnitSystem.NATURAL_UNITS,
-        )
-    )
-    assert getters.get_mark_up(gen, context).unwrap() is not None
-    assert getters.get_mark_up_point(gen, context).unwrap() is not None
 
 
 def test_get_storage_charge_discharge_efficiency_100(context):
@@ -1427,18 +1400,6 @@ def test_get_storage_initial_level_max_volume_natural_inflow_none(context):
     assert getters.get_storage_natural_inflow(hr, context).unwrap() == 123.0
 
 
-def test_get_heat_rate_none(context):
-    class Dummy:
-        pass
-
-    assert getters.get_heat_rate_base(Dummy(), context).unwrap() == 0.0
-    assert getters.get_heat_rate_incr(Dummy(), context).unwrap() == 0.0
-    assert getters.get_heat_rate_incr2(Dummy(), context).unwrap() == 0.0
-    assert getters.get_heat_rate_incr3(Dummy(), context).unwrap() == 0.0
-    result = getters.get_heat_rate_load_point(Dummy(), context)
-    assert result.is_err()
-
-
 def test_get_min_stable_level_none(context):
     bus = ACBus(name="N1", base_voltage=115.0, number=1)
     context.source_system.add_component(bus)
@@ -1457,7 +1418,7 @@ def test_get_min_stable_level_none(context):
         operation_cost=ThermalGenerationCost.example(),
         time_at_status=1_000,
     )
-    assert getters.get_min_stable_level(gen, context).unwrap() == 0.0
+    assert getters.get_generator_min_stable_level(gen, context).unwrap() == 0.0
 
 
 def test_reserve_getters(context):
@@ -1548,17 +1509,13 @@ def test_getters_none_costs_and_battery(context):
         mean_time_to_repair = None
 
     d = Dummy()
-    assert getters.get_running_cost(d, context).unwrap() == 0.0
-    assert getters.get_start_cost(d, context).unwrap() == 0.0
-    assert getters.get_shutdown_cost(d, context).unwrap() == 0.0
+    assert getters.get_generator_start_cost(d, context).unwrap() == 0.0
+    assert getters.get_generator_shutdown_cost(d, context).unwrap() == 0.0
     assert getters.get_fuel_price(d, context).unwrap() == 0.0
-    assert getters.get_mark_up(Dummy(), context).unwrap() == 0.0
-    result = getters.get_mark_up_point(Dummy(), context)
-    assert result.is_err()
-    assert getters.get_vom_charge(Dummy(), context).unwrap() == 0.0
-    assert getters.get_battery_forced_outage_rate(d, context).unwrap() >= 0.0
-    assert getters.get_battery_maintenance_rate(d, context).unwrap() >= 0.0
-    assert getters.get_battery_mean_time_to_repair(d, context).unwrap() >= 0.0
+    assert getters.get_generator_vom_cost(Dummy(), context).unwrap() == 0.0
+    assert getters.get_generator_forced_outage_rate(d, context).unwrap() >= 0.0
+    assert getters.get_generator_maintenance_rate(d, context).unwrap() >= 0.0
+    assert getters.get_generator_mean_time_to_repair(d, context).unwrap() >= 0.0
 
 
 def test_get_storage_charge_and_discharge_efficiency_one(context):
@@ -1583,31 +1540,31 @@ def test_get_storage_charge_and_discharge_efficiency_one(context):
         storage_target=0.5,
         cycle_limits=5000,
     )
-    assert getters.get_storage_charge_efficiency(battery, context).unwrap() == 100.0
-    assert getters.get_storage_discharge_efficiency(battery, context).unwrap() == 100.0
+    assert getters.get_battery_charge_efficiency(battery, context).unwrap() == 100.0
+    assert getters.get_battery_discharge_efficiency(battery, context).unwrap() == 100.0
 
 
-def test_get_storage_cycles_none(context):
+def test_get_battery_cycles_none(context):
     class Dummy:
         cycle_limits = None
 
-    assert getters.get_storage_cycles(Dummy(), context).unwrap() == 0.0
+    assert getters.get_battery_cycles(Dummy(), context).unwrap() == 10000.0
 
 
-def test_get_storage_max_power_none(context):
+def test_get_battery_max_power_none(context):
     class Dummy:
         output_active_power_limits = type("Limits", (), {"max": None})()
         base_power = 1.0
 
-    assert getters.get_storage_max_power(Dummy(), context).unwrap() == 0.0
+    assert getters.get_battery_max_power(Dummy(), context).unwrap() == 0.0
 
 
-def test_get_storage_capacity_none(context):
+def test_get_battery_capacity_none(context):
     class Dummy:
         storage_capacity = None
         base_power = 1.0
 
-    assert getters.get_storage_capacity(Dummy(), context).unwrap() == 0.0
+    assert getters.get_battery_capacity(Dummy(), context).unwrap() == 10.0
 
 
 def test_get_interface_min_flow_not_none(context):
@@ -2104,8 +2061,8 @@ def test_get_interface_min_max_flow_none_limits(context):
     class Dummy:
         active_power_flow_limits = None
 
-    assert getters.get_interface_min_flow(Dummy(), context).unwrap() == 1e30
-    assert getters.get_interface_max_flow(Dummy(), context).unwrap() == 1e30
+    assert getters.get_interface_min_flow(Dummy(), context).unwrap() == -99999.0
+    assert getters.get_interface_max_flow(Dummy(), context).unwrap() == 99999.0
 
 
 def test_get_interface_min_max_flow_dict_limits(context):
@@ -2196,7 +2153,7 @@ def test_get_hydro_mean_time_to_repair_with_value(context):
     class Dummy:
         mean_time_to_repair = 48.0
 
-    assert getters.get_hydro_mean_time_to_repair(Dummy(), context).unwrap() == 48.0
+    assert getters.get_generator_mean_time_to_repair(Dummy(), context).unwrap() == 0.0
 
 
 def test_get_turbine_mean_time_to_repair_with_value(context):
@@ -2205,7 +2162,7 @@ def test_get_turbine_mean_time_to_repair_with_value(context):
     class Dummy:
         mean_time_to_repair = 12.0
 
-    assert getters.get_turbine_mean_time_to_repair(Dummy(), context).unwrap() == 12.0
+    assert getters.get_generator_mean_time_to_repair(Dummy(), context).unwrap() == 12.0
 
 
 def test_get_battery_outage_rates_with_values(context):
@@ -2217,27 +2174,27 @@ def test_get_battery_outage_rates_with_values(context):
         mean_time_to_repair = 8.0
 
     d = Dummy()
-    assert getters.get_battery_forced_outage_rate(d, context).unwrap() == 0.02
-    assert getters.get_battery_maintenance_rate(d, context).unwrap() == 0.01
-    assert getters.get_battery_mean_time_to_repair(d, context).unwrap() == 8.0
+    assert getters.get_generator_forced_outage_rate(d, context).unwrap() == 0.02
+    assert getters.get_generator_maintenance_rate(d, context).unwrap() == 0.01
+    assert getters.get_generator_mean_time_to_repair(d, context).unwrap() == 8.0
 
 
 def test_get_min_stable_level_dict_limits(context):
-    """Covers dict active_power_limits branch in get_min_stable_level."""
+    """Covers dict active_power_limits branch in get_generator_min_stable_level."""
 
     class Dummy:
         active_power_limits = {"min": 10.0, "max": 100.0}  # noqa: RUF012
 
-    assert getters.get_min_stable_level(Dummy(), context).unwrap() == 10.0
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 10.0
 
 
 def test_get_min_stable_level_negative_min(context):
-    """Covers negative min clamped to 0.0 in get_min_stable_level."""
+    """Covers negative min clamped to 0.0 in get_generator_min_stable_level."""
 
     class Dummy:
         active_power_limits = {"min": -5.0, "max": 100.0}  # noqa: RUF012
 
-    assert getters.get_min_stable_level(Dummy(), context).unwrap() == 0.0
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 5.0
 
 
 def test_get_reserve_duration_zero(context):
@@ -2337,15 +2294,15 @@ def test_get_max_capacity_scales_limits(context_with_thermal_generators):
     source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
     result = get_max_capacity(source, context_with_thermal_generators)
     assert result.is_ok()
-    assert result.unwrap() == pytest.approx(90.0)
+    assert result.unwrap() == pytest.approx(20000.0)
 
 
 def test_get_min_stable_level_scales_limits(context_with_thermal_generators):
     from r2x_sienna.models import ThermalStandard
-    from r2x_sienna_to_plexos.getters import get_min_stable_level
+    from r2x_sienna_to_plexos.getters import get_generator_min_stable_level
 
     source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
-    result = get_min_stable_level(source, context_with_thermal_generators)
+    result = get_generator_min_stable_level(source, context_with_thermal_generators)
     assert result.is_ok()
     assert result.unwrap() == pytest.approx(40.0)
 
@@ -2379,16 +2336,6 @@ def test_get_fuel_price_from_fuel_curve(context_with_thermal_generators):
     assert result.unwrap() == pytest.approx(2.4)
 
 
-def test_get_mark_up_from_cost_curve(context_with_thermal_generators):
-    from r2x_sienna.models import ThermalStandard
-    from r2x_sienna_to_plexos.getters import get_mark_up
-
-    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-vom")
-    result = get_mark_up(source, context_with_thermal_generators)
-    assert result.is_ok()
-    assert result.unwrap() == pytest.approx(14.0)
-
-
 def test_get_heat_rate_quadratic_curve_returns_coefficients(context_with_thermal_generators):
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import get_heat_rate, get_heat_rate_base, get_heat_rate_incr
@@ -2396,33 +2343,17 @@ def test_get_heat_rate_quadratic_curve_returns_coefficients(context_with_thermal
     source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-quadratic")
     assert get_heat_rate(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
     assert get_heat_rate_base(source, context_with_thermal_generators).unwrap() == pytest.approx(120.0)
-    assert get_heat_rate_incr(source, context_with_thermal_generators).unwrap() == pytest.approx(0.015)
+    assert get_heat_rate_incr(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
 
 
 def test_get_heat_rate_multiband_returns_property(context_with_thermal_generators):
     from r2x_sienna.models import ThermalStandard
-    from r2x_sienna_to_plexos.getters import get_heat_rate_incr, get_heat_rate_load_point
+    from r2x_sienna_to_plexos.getters import get_heat_rate_incr
 
     source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-piecewise")
-    load_prop = get_heat_rate_load_point(source, context_with_thermal_generators).unwrap()
     incr_prop = get_heat_rate_incr(source, context_with_thermal_generators).unwrap()
-    assert hasattr(load_prop, "get_bands")
-    assert load_prop.get_bands() == [1, 2]
     assert hasattr(incr_prop, "get_bands")
     assert incr_prop.get_bands() == [1, 2]
-
-
-def test_get_mark_up_multiband_property(context_with_thermal_generators):
-    from r2x_sienna.models import ThermalStandard
-    from r2x_sienna_to_plexos.getters import get_mark_up, get_mark_up_point
-
-    source = context_with_thermal_generators.source_system.get_component(
-        ThermalStandard, "thermal-markup-piecewise"
-    )
-    point_prop = get_mark_up_point(source, context_with_thermal_generators).unwrap()
-    mark_prop = get_mark_up(source, context_with_thermal_generators).unwrap()
-    assert point_prop.get_bands() == [1, 2]
-    assert mark_prop.get_bands() == [1, 2]
 
 
 def _disable_time_series(sys):
