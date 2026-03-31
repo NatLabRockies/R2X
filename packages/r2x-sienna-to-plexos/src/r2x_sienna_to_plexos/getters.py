@@ -1484,7 +1484,7 @@ def get_generator_min_stable_level(
     source_component: object, context: PluginContext
 ) -> Result[float, ValueError]:
     """Extract minimum stable level from active_power_limits or compute as percentage of max capacity.
-    Ensures min_stable_level does not exceed max_capacity.
+    Ensures min_stable_level is in [0, max_capacity].
     """
     min_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "min")
     if min_pu is not None:
@@ -1498,7 +1498,8 @@ def get_generator_min_stable_level(
             max_mw = 0.0
         min_stable = round(pct * max_mw, 2)
 
-    # Clamp min_stable to not exceed max_capacity
+    # Clamp min_stable to [0, max_capacity]
+    min_stable = max(0.0, min_stable)
     max_cap_result = get_max_capacity(source_component, context)
     max_cap = max_cap_result.unwrap() if isinstance(max_cap_result, Ok) else None
     if max_cap is not None and min_stable > max_cap:
