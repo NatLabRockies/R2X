@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import types
+from datetime import datetime, timedelta
 
 import pytest
 from infrasys.cost_curves import FuelCurve, UnitSystem
@@ -2470,3 +2472,109 @@ def test_system_complete_returns_same_system_instance():
     sys = _build_to_reserves()
     result = system_complete.__wrapped__(sys)
     assert result is sys
+
+
+def test_attach_generator_time_series_scales_and_attaches(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    source_gen = types.SimpleNamespace(name="GEN_TS", active_power_limits={"max": 10.0}, base_power=1.0)
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={}),
+        types.SimpleNamespace(name="missing", features={}),
+    ]
+    context.source_system.list_time_series = lambda _component, **kwargs: (
+        [
+            types.SimpleNamespace(
+                name="max_active_power",
+                data=[0.1, 0.2],
+                initial_timestamp=datetime(2020, 1, 1),
+                resolution=timedelta(hours=1),
+            )
+        ]
+        if kwargs.get("name") == "max_active_power"
+        else []
+    )
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters._attach_generator_time_series(context, "GEN_TS", PLEXOSGenerator(name="GEN_TS"))
+
+    assert len(attached) == 1
+    assert attached[0].name == "max_active_power"
+    assert list(attached[0].data) == [1.0, 2.0]
+
+
+def test_attach_region_node_load_time_series_aggregates_loads(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    bus1 = types.SimpleNamespace(uuid="bus-1")
+    bus2 = types.SimpleNamespace(uuid="bus-2")
+    load1 = types.SimpleNamespace(name="L1")
+    load2 = types.SimpleNamespace(name="L2")
+
+    monkeypatch.setattr(getters, "_build_area_buses_index", lambda _ctx: {"R1": [bus1, bus2]})
+    monkeypatch.setattr(
+        getters, "_build_bus_to_loads_index", lambda _ctx: {"bus-1": [load1], "bus-2": [load2]}
+    )
+    monkeypatch.setattr(getters, "_get_load_mw", lambda load: 10.0 if load is load1 else 20.0)
+
+    context.source_system.time_series.has_time_series = lambda _load: True
+    context.source_system.list_time_series = lambda load: [
+        types.SimpleNamespace(
+            name="max_active_power",
+            data=[0.1, 0.2],
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(hours=1),
+        ),
+    ]
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters._attach_region_node_load_time_series(
+        context=context,
+        region_name="R1",
+        node=PLEXOSNode(name="N1"),
+        region_component=PLEXOSRegion(name="R1"),
+    )
+
+    assert len(attached) == 1
+    assert attached[0].name == "load"
+    assert list(attached[0].data) == [3.0, 6.0]
+
+
+def test_attach_generator_time_series_uses_rating_when_limits_missing(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    source_gen = types.SimpleNamespace(
+        name="GEN_RATING", active_power_limits=None, rating=5.0, base_power=2.0
+    )
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = lambda _component, **_kwargs: [
+        types.SimpleNamespace(
+            name="max_active_power",
+            data=[0.1, 0.2],
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(hours=1),
+        )
+    ]
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters._attach_generator_time_series(context, "GEN_RATING", PLEXOSGenerator(name="GEN_RATING"))
+
+    assert list(attached[0].data) == [1.0, 2.0]
