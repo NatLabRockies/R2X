@@ -378,6 +378,56 @@ def _lookup_target_node_by_source_area(
     return Ok(node)
 
 
+def _build_zone_buses_index(context: PluginContext) -> dict[str, list[Any]]:
+    """Map load_zone.name -> list of ACBus components in that load zone."""
+    cached = context._cache.get("zone_buses_index")
+    if cached is not None:
+        return cached
+    index: dict[str, list[Any]] = defaultdict(list)
+    for bus in context.source_system.get_components(ACBus):
+        load_zone = getattr(bus, "load_zone", None)
+        if load_zone is None:
+            continue
+        zone_name = load_zone.name if isinstance(load_zone, LoadZone) else str(load_zone)
+        if zone_name:
+            index[zone_name].append(bus)
+    result = dict(index)
+    context._cache["zone_buses_index"] = result
+    return result
+
+
+def _build_zone_to_node_index(context: PluginContext) -> dict[str, PLEXOSNode]:
+    """Build load_zone.name->PLEXOSNode index once and cache it."""
+    cached = context._cache.get("zone_to_node_index")
+    if cached is not None:
+        return cached
+    bus_name_index = _build_bus_name_index(context)
+    node_name_index = _build_node_name_index(context)
+    index: dict[str, PLEXOSNode] = {}
+    for node_name, node in node_name_index.items():
+        source_bus = bus_name_index.get(node_name)
+        if source_bus is None:
+            continue
+        load_zone = getattr(source_bus, "load_zone", None)
+        if isinstance(load_zone, LoadZone):
+            index.setdefault(load_zone.name, node)
+        elif isinstance(load_zone, str):
+            index.setdefault(load_zone, node)
+    context._cache["zone_to_node_index"] = index
+    return index
+
+
+def _lookup_target_node_by_source_zone(
+    context: PluginContext, zone_name: str
+) -> Result[PLEXOSNode, ValueError]:
+    """Return the translated node whose source ACBus has matching load zone name."""
+    index = _build_zone_to_node_index(context)
+    node = index.get(zone_name)
+    if node is None:
+        return Err(ValueError(f"No PLEXOSNode found with source zone '{zone_name}'"))
+    return Ok(node)
+
+
 def _lookup_target_zone_by_name(context: PluginContext, zone_name: str) -> Result[Any, ValueError]:
     """Return the translated zone with the given name."""
     cache_key = "zone_name_index"
@@ -662,8 +712,8 @@ def _attach_region_node_load_time_series(
     region_component: Any | None,
 ) -> None:
     """Aggregate load time series from all loads in the region and attach to the region's node in PLEXOS."""
-    area_buses_index = _build_area_buses_index(context)
-    buses_in_region = area_buses_index.get(region_name, [])
+    zone_buses_index = _build_zone_buses_index(context)
+    buses_in_region = zone_buses_index.get(region_name, [])
     if not buses_in_region:
         logger.debug("No buses found in region {}", region_name)
         return
@@ -879,18 +929,13 @@ def get_ac_voltage_magnitude_pu(source_component: ACBus, context: PluginContext)
 
 @getter
 def get_node_category(source_component: ACBus, context: PluginContext) -> Result[str, ValueError]:
-    """Return human-readable region name (ARNAME) from the bus's area ext, falling back to area.name."""
-    area = getattr(source_component, "area", None)
-    if area is not None:
-        ext = getattr(area, "ext", None)
-        if isinstance(ext, dict):
-            arname = ext.get("ARNAME")
-            if arname:
-                return Ok(str(arname))
-        area_name = getattr(area, "name", None)
-        if area_name:
-            return Ok(str(area_name))
-    return Err(ValueError(f"No area found for ACBus '{source_component.name}'"))
+    """Return the LoadZone name for the bus, since LoadZone maps to PLEXOSRegion."""
+    load_zone = getattr(source_component, "load_zone", None)
+    if load_zone is not None:
+        zone_name = load_zone.name if isinstance(load_zone, LoadZone) else str(load_zone)
+        if zone_name:
+            return Ok(zone_name)
+    return Err(ValueError(f"No load_zone found for ACBus '{source_component.name}'"))
 
 
 @getter
@@ -1445,9 +1490,9 @@ def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[
             max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
         except (TypeError, NotImplementedError, AttributeError, KeyError):
             max_mw = 0.0
-        value = max_mw / 60.0
+        value = max_mw
 
-    return Ok(max(value, 1e-3))
+    return Ok(max(value, 10))
 
 
 @getter
@@ -1469,9 +1514,9 @@ def get_max_ramp_down(source_component: object, context: PluginContext) -> Resul
             max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
         except (TypeError, NotImplementedError, AttributeError, KeyError):
             max_mw = 0.0
-        value = max_mw / 60.0
+        value = max_mw
 
-    return Ok(max(value, 1e-3))
+    return Ok(max(value, 10))
 
 
 @getter
@@ -2071,11 +2116,15 @@ def membership_node_child_zone(node: PLEXOSNode, context: PluginContext) -> Resu
     source_bus = bus_index.get(node.name)
     if source_bus is None:
         return Err(ValueError(f"No source ACBus found for node '{node.name}'"))
-    load_zone = getattr(source_bus, "load_zone", None)
-    if load_zone is None:
-        return Err(ValueError(f"Source bus '{source_bus.name}' has no load_zone"))
-    zone_name = load_zone.name if isinstance(load_zone, LoadZone) else str(load_zone)
-    return _lookup_target_zone_by_name(context, zone_name)
+    area = getattr(source_bus, "area", None)
+    if area is None:
+        return Err(ValueError(f"Source bus '{source_bus.name}' has no area"))
+    ext = getattr(area, "ext", None)
+    if isinstance(ext, dict) and ext.get("ARNAME"):
+        area_name = str(ext["ARNAME"])
+    else:
+        area_name = str(area.name) if isinstance(area, Area) else str(area)
+    return _lookup_target_zone_by_name(context, area_name)
 
 
 @getter
@@ -2185,7 +2234,7 @@ def membership_interface_child_line(
 def membership_region_parent_node(region: object, context: PluginContext) -> Result[PLEXOSNode, ValueError]:
     """Find the translated node for membership parent links and attach load time series."""
     region_name = getattr(region, "name", "")
-    result = _lookup_target_node_by_source_area(context, region_name)
+    result = _lookup_target_node_by_source_zone(context, region_name)
     match result:
         case Ok(node):
             try:
@@ -2203,7 +2252,7 @@ def membership_region_parent_node(region: object, context: PluginContext) -> Res
 def membership_region_child_node(region: object, context: PluginContext) -> Result[PLEXOSNode, ValueError]:
     """Find the translated node that matches the region name and attach load time series."""
     region_name = getattr(region, "name", "")
-    result = _lookup_target_node_by_source_area(context, region_name)
+    result = _lookup_target_node_by_source_zone(context, region_name)
     match result:
         case Ok(node):
             try:
@@ -2302,22 +2351,61 @@ def membership_transformer_to_parent_node(
     return _lookup_target_node_by_name(context, to_bus_name)
 
 
+def _build_reservoir_by_turbine_index(context: PluginContext) -> dict[str, Any]:
+    """Build a mapping from source turbine name to its HydroReservoir, using downstream_turbines and ext[\"plants\"]."""
+    cache_key = "_reservoir_by_turbine_index"
+    if (cached := context._cache.get(cache_key)) is not None:
+        return cached
+    index: dict[str, Any] = {}
+    for reservoir in context.source_system.get_components(HydroReservoir):
+        for turbine in getattr(reservoir, "downstream_turbines", None) or []:
+            tname = getattr(turbine, "name", None)
+            if tname and tname not in index:
+                index[tname] = reservoir
+        ext = getattr(reservoir, "ext", None)
+        if isinstance(ext, dict):
+            for plant_id in ext.get("plants") or []:
+                if isinstance(plant_id, str) and plant_id not in index:
+                    index[plant_id] = reservoir
+    # Also index by display name so target-side PLEXOSGenerator names resolve correctly
+    display_index = _build_generator_display_name_index(context)
+    for source_name, reservoir in list(index.items()):
+        display_name = display_index.get(source_name)
+        if display_name and display_name not in index:
+            index[display_name] = reservoir
+    context._cache[cache_key] = index
+    return index
+
+
 @getter
 def membership_head_storage_generator(
     generator: HydroTurbine, context: PluginContext
 ) -> Result[Any, ValueError]:
-    storage_index = _build_target_storage_name_index(context)
     gen_name = getattr(generator, "name", "")
+    storage_index = _build_target_storage_name_index(context)
+
+    # Primary: look up which reservoir owns this turbine
+    reservoir = _build_reservoir_by_turbine_index(context).get(gen_name)
+    if reservoir is not None:
+        ext = getattr(reservoir, "ext", None)
+        base = (
+            str(ext["plant_name"])
+            if isinstance(ext, dict) and ext.get("plant_name")
+            else _reservoir_base_name(reservoir.name)
+        )
+        storage_name = f"{base}_head"
+        target_storage = storage_index.get(storage_name.lower())
+        if target_storage is not None:
+            _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
+            return Ok(target_storage)
+
+    # Fallback: name-based convention
     storage_name = (
         gen_name.replace("_Turbine", "_Reservoir_head")
         if gen_name.endswith("_Turbine")
-        else f"{gen_name}_Reservoir_head"
+        else f"{gen_name}_head"
     )
     target_storage = storage_index.get(storage_name.lower())
-    if target_storage is None:
-        storage_name = f"{gen_name}_head"
-        target_storage = storage_index.get(storage_name.lower())
-
     if target_storage is None:
         logger.warning("No PLEXOSStorage found for '{}', skipping membership.", gen_name)
         return Err(ValueError(f"No PLEXOSStorage found for '{gen_name}'"))
@@ -2329,18 +2417,31 @@ def membership_head_storage_generator(
 def membership_tail_storage_generator(
     generator: HydroTurbine, context: PluginContext
 ) -> Result[Any, ValueError]:
-    storage_index = _build_target_storage_name_index(context)
     gen_name = getattr(generator, "name", "")
+    storage_index = _build_target_storage_name_index(context)
+
+    # Primary: look up which reservoir owns this turbine
+    reservoir = _build_reservoir_by_turbine_index(context).get(gen_name)
+    if reservoir is not None:
+        ext = getattr(reservoir, "ext", None)
+        base = (
+            str(ext["plant_name"])
+            if isinstance(ext, dict) and ext.get("plant_name")
+            else _reservoir_base_name(reservoir.name)
+        )
+        storage_name = f"{base}_tail"
+        target_storage = storage_index.get(storage_name.lower())
+        if target_storage is not None:
+            _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
+            return Ok(target_storage)
+
+    # Fallback: name-based convention
     storage_name = (
         gen_name.replace("_Turbine", "_Reservoir_tail")
         if gen_name.endswith("_Turbine")
-        else f"{gen_name}_Reservoir_tail"
+        else f"{gen_name}_tail"
     )
     target_storage = storage_index.get(storage_name.lower())
-    if target_storage is None:
-        storage_name = f"{gen_name}_tail"
-        target_storage = storage_index.get(storage_name.lower())
-
     if target_storage is None:
         logger.warning("No PLEXOSStorage found for '{}', skipping membership.", gen_name)
         return Err(ValueError(f"No PLEXOSStorage found for '{gen_name}'"))

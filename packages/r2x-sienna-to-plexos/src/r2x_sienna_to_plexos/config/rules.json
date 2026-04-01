@@ -1,8 +1,7 @@
 [
   {
     "defaults": {
-      "category": "node",
-      "load": 0.0
+      "category": "node"
     },
     "field_map": {
       "name": "name",
@@ -22,7 +21,7 @@
   },
   {
     "defaults": {
-      "category": "area"
+      "category": "sienna-regions"
     },
     "field_map": {
       "name": "name",
@@ -31,27 +30,26 @@
     },
     "getters": {
       "units": "get_area_units",
-      "name": "get_area_name",
       "load": "get_area_load",
       "ext": "get_region_ext"
     },
-    "source_type": "Area",
+    "source_type": "LoadZone",
     "target_type": "PLEXOSRegion",
     "version": 1
   },
   {
     "defaults": {
-      "category": "load-zone"
+      "category": "sienna-zones"
     },
     "field_map": {
-      "name": "name",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
+      "name": "get_area_name",
       "units": "get_area_units"
     },
-    "source_type": "LoadZone",
+    "source_type": "Area",
     "target_type": "PLEXOSZone",
     "version": 1
   },
@@ -528,7 +526,7 @@
   },
   {
     "defaults": {
-      "category": "hydtrb"
+      "category": "pumped-hydro"
     },
     "field_map": {
       "name": "name",
@@ -820,21 +818,30 @@
     "version": 2
   },
   {
-    "name": "component_node_membership",
+    "name": "generator_node_membership",
     "system": "target",
     "getters": {
       "parent_object": "membership_parent_component",
       "child_object": "membership_component_child_node",
       "collection": "membership_collection_nodes"
     },
-    "source_type": [
-      "PLEXOSGenerator",
-      "PLEXOSBattery"
-    ],
+    "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
     "version": 1
   },
-    {
+  {
+    "name": "battery_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_component_child_node",
+      "collection": "membership_collection_nodes"
+    },
+    "source_type": "PLEXOSBattery",
+    "target_type": "PLEXOSMembership",
+    "version": 2
+  },
+  {
     "name": "head_storage_membership",
     "system": "target",
     "getters": {
