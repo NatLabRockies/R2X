@@ -21,7 +21,6 @@ from r2x_plexos.models import (
     PLEXOSReserve,
     PLEXOSStorage,
     PLEXOSTransformer,
-    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
@@ -74,11 +73,8 @@ def _ensure_membership(
 
 
 def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | None, str | None]]:
-    """Build a single-pass index: bus_name -> (area_name, zone_name).
+    """Build a single-pass index: bus_name -> (area_name, zone_name)."""
 
-    Computed once and cached. Replaces two separate O(n*m) nested loops in
-    ensure_region_node_memberships and ensure_node_zone_memberships.
-    """
     cached = context._cache.get("bus_name_to_area_and_zone")
     if cached is not None:
         return cached
@@ -192,17 +188,17 @@ def _attach_reservoir_time_series_to_storage(
 def ensure_region_node_memberships(context: PluginContext) -> None:
     """Create Region->Node memberships for all regions and their nodes.
 
-    LoadZone maps to PLEXOSRegion, so regions are looked up by zone_name.
+    Area maps to PLEXOSRegion, so regions are looked up by area_name.
     """
     bus_index = _bus_name_to_area_and_zone(context)
     regions_by_name = {r.name: r for r in context.target_system.get_components(PLEXOSRegion)}
 
     total_memberships = 0
     for node in context.target_system.get_components(PLEXOSNode):
-        _, zone_name = bus_index.get(node.name, (None, None))
-        if zone_name is None:
+        area_name, _ = bus_index.get(node.name, (None, None))
+        if area_name is None:
             continue
-        region = regions_by_name.get(zone_name)
+        region = regions_by_name.get(area_name)
         if region is not None:
             _ensure_membership(context, node, region, CollectionEnum.Region)
             total_memberships += 1
@@ -375,27 +371,6 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
                     _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
                     total_memberships += 1
     logger.info("Total {} TailStorage-Generator memberships created (including fallback).", total_memberships)
-
-
-def ensure_node_zone_memberships(context: PluginContext) -> None:
-    """Create Node->Zone memberships for all nodes and their areas.
-
-    Area maps to PLEXOSZone, so zones are looked up by area_name.
-    """
-    bus_index = _bus_name_to_area_and_zone(context)
-    zones_by_name = {z.name: z for z in context.target_system.get_components(PLEXOSZone)}
-
-    total_memberships = 0
-    for node in context.target_system.get_components(PLEXOSNode):
-        area_name, _ = bus_index.get(node.name, (None, None))
-        if area_name is None:
-            continue
-        zone = zones_by_name.get(area_name)
-        if zone is not None:
-            _ensure_membership(context, node, zone, CollectionEnum.Zone)
-            total_memberships += 1
-
-    logger.info("Total {} Node-Zone memberships created.", total_memberships)
 
 
 def ensure_generator_node_memberships(context: PluginContext) -> None:

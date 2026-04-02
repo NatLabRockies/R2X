@@ -57,7 +57,7 @@
     "BA": "battery",
     "BT": "geothermal",
     "CA": "gas-cc",
-    "CC": "gas-cc-ccs",
+    "CC": "gas-cc",
     "CE": "caes",
     "CP": "csp",
     "CS": "gas-cc",
@@ -73,7 +73,7 @@
     "IC": "lfill-gas",
     "PS": "pumped-hydro",
     "OT": "other",
-    "ST": "coal-ccs",
+    "ST": "coal",
     "PVe": "upv",
     "WT": "wind-ons",
     "WS": "wind-ofs"

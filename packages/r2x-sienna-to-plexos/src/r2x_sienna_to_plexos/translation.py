@@ -15,7 +15,6 @@ from .getters_utils import (
     ensure_generator_time_series,
     ensure_head_storage_generator_membership,
     ensure_interface_line_memberships,
-    ensure_node_zone_memberships,
     ensure_region_node_memberships,
     ensure_reserve_battery_memberships,
     ensure_reserve_generator_memberships,
@@ -55,7 +54,6 @@ def perform_translation(context: PluginContext) -> System:
     ensure_region_node_memberships(context)
     ensure_generator_node_memberships(context)
     ensure_battery_node_memberships(context)
-    ensure_node_zone_memberships(context)
     ensure_reserve_battery_memberships(context)
     ensure_reserve_generator_memberships(context)
     ensure_transformer_node_memberships(context)

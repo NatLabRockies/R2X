@@ -20,14 +20,12 @@ from r2x_plexos.models import (
     PLEXOSReserve,
     PLEXOSStorage,
     PLEXOSTransformer,
-    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
     Arc,
     Area,
     EnergyReservoirStorage,
-    LoadZone,
     ThermalStandard,
     Transformer2W,
     VariableReserve,
@@ -332,20 +330,6 @@ def test_ensure_battery_node_memberships(context):
         plexos_battery, PLEXOSMembership
     )
     assert any(m.collection.name == "Nodes" for m in memberships)
-
-
-def test_ensure_node_zone_memberships(context):
-    zone = PLEXOSZone(name="Z1")
-    node = PLEXOSNode(name="N1")
-    load_zone = LoadZone(name="Z1")
-    context.source_system.add_component(load_zone)
-    bus = ACBus(name="N1", load_zone=load_zone, number=1)
-    context.target_system.add_component(zone)
-    context.target_system.add_component(node)
-    context.source_system.add_component(bus)
-    getters_utils.ensure_node_zone_memberships(context)
-    memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
-    assert any(m.collection.name == "Zone" for m in memberships)
 
 
 def test_ensure_head_storage_generator_membership(context):

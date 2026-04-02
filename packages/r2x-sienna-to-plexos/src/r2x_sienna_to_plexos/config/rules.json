@@ -33,24 +33,8 @@
       "load": "get_area_load",
       "ext": "get_region_ext"
     },
-    "source_type": "LoadZone",
-    "target_type": "PLEXOSRegion",
-    "version": 1
-  },
-  {
-    "defaults": {
-      "category": "sienna-zones"
-    },
-    "field_map": {
-      "uuid": "uuid",
-      "category": "category"
-    },
-    "getters": {
-      "name": "get_area_name",
-      "units": "get_area_units"
-    },
     "source_type": "Area",
-    "target_type": "PLEXOSZone",
+    "target_type": "PLEXOSRegion",
     "version": 1
   },
   {
@@ -410,7 +394,6 @@
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
       "heat_rate_incr3": "get_heat_rate_incr3",
-      "initial_generation": "get_initial_generation",
       "min_up_time": "get_min_up_time",
       "min_down_time": "get_min_down_time",
       "max_ramp_down": "get_max_ramp_down",
@@ -449,7 +432,6 @@
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
       "heat_rate_incr3": "get_heat_rate_incr3",
-      "initial_generation": "get_initial_generation",
       "min_up_time": "get_min_up_time",
       "min_down_time": "get_min_down_time",
       "max_ramp_down": "get_max_ramp_down",
@@ -778,18 +760,6 @@
       "collection": "membership_collection_region"
     },
     "source_type": "PLEXOSRegion",
-    "target_type": "PLEXOSMembership",
-    "version": 1
-  },
-  {
-    "name": "node_zone_membership",
-    "system": "target",
-    "getters": {
-      "parent_object": "membership_parent_component",
-      "child_object": "membership_node_child_zone",
-      "collection": "membership_collection_zone"
-    },
-    "source_type": "PLEXOSNode",
     "target_type": "PLEXOSMembership",
     "version": 1
   },
