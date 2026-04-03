@@ -18,6 +18,7 @@ from .getters_utils import (
     link_line_memberships,
 )
 from .plugin_config import ReedsToPlexosConfig
+from .translation import reeds_to_plexos
 
 __version__ = version("r2x_reeds_to_plexos")
 
@@ -36,4 +37,5 @@ __all__ = [
     "ensure_region_node_memberships",
     "link_line_memberships",
     "attach_time_series_to_generators",
+    "reeds_to_plexos",
 ]
