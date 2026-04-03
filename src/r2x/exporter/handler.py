@@ -499,7 +499,12 @@ def get_exporter(
     logger.debug("Getting {} instance.", exporter_class.__name__)
 
     exporter: BaseExporter = exporter_class(
-        config=config, system=system, output_folder=config.output_folder, **kwargs
+        config=config,
+        system=system,
+        output_folder=config.output_folder,
+        plexos_scenario=config.output_config.defaults['scenario'],
+        xml_fname=config.output_config.defaults['existing_model_fpath'],
+        **kwargs
     )
 
     # Functions relative to the parser.

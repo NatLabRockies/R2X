@@ -39,6 +39,7 @@
     "co2_cap": "tonne"
   },
   "dump_energy_price": -100,
+  "existing_model_fpath": null,
   "flex_reserve_file_prefix": "Flex_reserve",
   "fuel_price_end_date": "12/31",
   "fuel_price_properties": "Price",
@@ -169,6 +170,7 @@
       "type": "SPINNING"
     }
   },
+  "scenario": "default",
   "spin_reserve_file_prefix": "Spin_reserve",
   "static_horizon_type": "static_horizons_overlap",
   "static_model_type": "static_models_overlap",
