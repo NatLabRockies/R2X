@@ -15,7 +15,7 @@ class PlexosToSiennaConfig(PluginConfig):
         description="Modules used to resolve PLEXOS sources and Sienna targets.",
     )
     technology_mapping: Annotated[
-        dict[str, dict[str, str]],
+        dict[str, dict[str, str]] | None,
         Field(
             default_factory=dict,
             description="Technology category to prime mover/fuel type mappings",

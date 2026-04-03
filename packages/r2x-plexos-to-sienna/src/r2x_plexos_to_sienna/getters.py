@@ -145,12 +145,6 @@ def get_load_base_power(component: PLEXOSRegion, context: PluginContext) -> Resu
 
 
 @getter
-def get_load_operation_cost(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
-    """Get the operation cost of the load at the bus (if available)."""
-    return Ok(getattr(component, "operation_cost", None))
-
-
-@getter
 def get_zone_peak_active_power(component: PLEXOSZone, context: PluginContext) -> Result[float, Any]:
     """Get the peak active power for a zone."""
     value = getattr(component, "peak_active_power", 0.0)
@@ -504,9 +498,12 @@ def get_renewable_operation_cost(
     component: PLEXOSGenerator, context: PluginContext
 ) -> Result[RenewableGenerationCost, ValueError]:
     """Return zeroed renewable operation cost."""
+    zero_curve = CostCurve(value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS)
     return Ok(
         RenewableGenerationCost(
-            fixed=0.0, variable=CostCurve(value_curve=LinearCurve(0), power_units=UnitSystem.NATURAL_UNITS)
+            fixed=0.0,
+            variable=zero_curve,
+            curtailment_cost=zero_curve,
         )
     )
 
@@ -700,12 +697,6 @@ def get_storage_efficiency(component: PLEXOSGenerator, context: PluginContext) -
     """Get the storage efficiency as InputOutput (in/out)."""
     eff = float(getattr(component, "efficiency", 1.0))
     return Ok(InputOutput(input=eff, output=eff))
-
-
-@getter
-def get_storage_operation_cost(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the operation cost (use energy_value as proxy)."""
-    return Ok(float(getattr(component, "energy_value", 0.0)))
 
 
 @getter
