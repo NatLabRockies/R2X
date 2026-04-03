@@ -5,8 +5,8 @@ description = "Translation helpers for ReEDS-to-Sienna interoperability."
 requires-python = ">=3.11, <3.14"
 dependencies = ["r2x-reeds>=0.3.0,<1.0.0", "r2x-sienna>=0.1.0,<1.0.0"]
 
-[project.entry-points."r2x_plugin"]
-reeds-to-sienna = "r2x_reeds_to_sienna.plugin:manifest"
+[project.entry-points."r2x.transforms"]
+reeds-to-sienna = "r2x_reeds_to_sienna.translation:reeds_to_sienna"
 
 [tool.setuptools.package-data]
 r2x_reeds_to_sienna = ["config/*.json"]

@@ -7,7 +7,8 @@ from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
 
-from r2x_core import PluginContext, Rule, System, apply_rules_to_context
+from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
+from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
 
 from .getters_utils import (
     ensure_battery_node_memberships,
@@ -15,16 +16,17 @@ from .getters_utils import (
     ensure_generator_time_series,
     ensure_head_storage_generator_membership,
     ensure_interface_line_memberships,
-    ensure_node_zone_memberships,
     ensure_region_node_memberships,
     ensure_reserve_battery_memberships,
     ensure_reserve_generator_memberships,
+    ensure_reserve_time_series,
     ensure_tail_storage_generator_membership,
     ensure_transformer_node_memberships,
 )
 
 
-def perform_translation(context: PluginContext) -> System:
+@expose_plugin
+def sienna_to_plexos(system: System, config: SiennaToPlexosConfig) -> System:
     """
     Perform the Sienna to PLEXOS translation.
 
@@ -34,6 +36,7 @@ def perform_translation(context: PluginContext) -> System:
     Returns:
         The translated PLEXOS system.
     """
+    context = PluginContext(source_system=system, config=config)
     rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     context.rules = rules
@@ -52,10 +55,10 @@ def perform_translation(context: PluginContext) -> System:
 
     apply_rules_to_context(context)
     ensure_generator_time_series(context)
+    ensure_reserve_time_series(context)
     ensure_region_node_memberships(context)
     ensure_generator_node_memberships(context)
     ensure_battery_node_memberships(context)
-    ensure_node_zone_memberships(context)
     ensure_reserve_battery_memberships(context)
     ensure_reserve_generator_memberships(context)
     ensure_transformer_node_memberships(context)

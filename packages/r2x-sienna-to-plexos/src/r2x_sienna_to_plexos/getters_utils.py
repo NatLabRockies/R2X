@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from infrasys.cost_curves import CostCurve, FuelCurve
@@ -21,7 +22,6 @@ from r2x_plexos.models import (
     PLEXOSReserve,
     PLEXOSStorage,
     PLEXOSTransformer,
-    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
@@ -74,11 +74,8 @@ def _ensure_membership(
 
 
 def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | None, str | None]]:
-    """Build a single-pass index: bus_name -> (area_name, zone_name).
+    """Build a single-pass index: bus_name -> (area_name, zone_name)."""
 
-    Computed once and cached. Replaces two separate O(n*m) nested loops in
-    ensure_region_node_memberships and ensure_node_zone_memberships.
-    """
     cached = context._cache.get("bus_name_to_area_and_zone")
     if cached is not None:
         return cached
@@ -190,20 +187,16 @@ def _attach_reservoir_time_series_to_storage(
 
 
 def ensure_region_node_memberships(context: PluginContext) -> None:
-    """Create Region->Node memberships for all regions and their nodes."""
+    """Create Region->Node memberships for all regions and their nodes.
+
+    Area maps to PLEXOSRegion, so regions are looked up by area_name.
+    """
     bus_index = _bus_name_to_area_and_zone(context)
     regions_by_name = {r.name: r for r in context.target_system.get_components(PLEXOSRegion)}
 
-    zone_to_area: dict[str, str] = {}
-    for area_name, zone_name in bus_index.values():
-        if area_name and zone_name and zone_name not in zone_to_area:
-            zone_to_area[zone_name] = area_name
-
     total_memberships = 0
     for node in context.target_system.get_components(PLEXOSNode):
-        area_name, zone_name = bus_index.get(node.name, (None, None))
-        if area_name is None and zone_name is not None:
-            area_name = zone_to_area.get(zone_name)
+        area_name, _ = bus_index.get(node.name, (None, None))
         if area_name is None:
             continue
         region = regions_by_name.get(area_name)
@@ -224,8 +217,8 @@ def _extract_base_name(name: str) -> str:
 def ensure_head_storage_generator_membership(context: PluginContext) -> None:
     """Create HeadStorage memberships between generators and head storages.
 
-    Drives linkage from HydroTurbine.reservoirs (reservoir_location == HEAD) to
-    avoid relying on name conventions. Also attaches time series to all head storages.
+    Drives linkage from HydroReservoir.downstream_turbines (and ext["plants"] as fallback)
+    to avoid relying on name conventions. Also attaches time series to all head storages.
     """
     from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
 
@@ -239,47 +232,48 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
             _attach_reservoir_time_series_to_storage(context, storage.name, storage)
 
     total_memberships = 0
-    # Original logic for HydroTurbine-based memberships
-    for turbine in context.source_system.get_components(HydroTurbine):
-        target_gen_name = display_name_index.get(turbine.name, turbine.name)
-        target_gen = generators_by_name.get(target_gen_name)
-        if target_gen is None:
-            logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", turbine.name)
+    # Iterate over HydroReservoir.downstream_turbines
+    for reservoir in context.source_system.get_components(HydroReservoir):
+        ext = getattr(reservoir, "ext", None)
+        base = None
+        if isinstance(ext, dict):
+            plant_name = ext.get("plant_name")
+            if plant_name:
+                base = str(plant_name)
+        if base is None:
+            rname = reservoir.name
+            for suffix in ("_head", "_tail"):
+                if rname.endswith(suffix):
+                    rname = rname[: -len(suffix)]
+                    break
+            base = rname
+
+        storage_name = f"{base}_head"
+        target_storage = storages_by_name.get(storage_name)
+        if target_storage is None:
+            logger.debug(
+                "No PLEXOSStorage '{}' found for HydroReservoir '{}', skipping.", storage_name, reservoir.name
+            )
             continue
 
-        for reservoir in getattr(turbine, "reservoirs", None) or []:
-            location = getattr(reservoir, "reservoir_location", None)
-            location_str = (
-                location.value if hasattr(location, "value") else str(location) if location else "HEAD"
-            )
-            if location_str.upper() != "HEAD":
+        turbines = list(getattr(reservoir, "downstream_turbines", None) or [])
+        if not turbines and isinstance(ext, dict):
+            all_turbines = {t.name: t for t in context.source_system.get_components(HydroTurbine)}
+            turbines = [
+                all_turbines[pid]
+                for pid in (ext.get("plants") or [])
+                if isinstance(pid, str) and pid in all_turbines
+            ]
+
+        for turbine in turbines:
+            tname = getattr(turbine, "name", None)
+            if not tname:
                 continue
-
-            # Use same name resolution as get_head_storage_name getter
-            ext = getattr(reservoir, "ext", None)
-            base = None
-            if isinstance(ext, dict):
-                plant_name = ext.get("plant_name")
-                if plant_name:
-                    base = str(plant_name)
-            if base is None:
-                rname = reservoir.name
-                for suffix in ("_head", "_tail"):
-                    if rname.endswith(suffix):
-                        rname = rname[: -len(suffix)]
-                        break
-                base = rname
-
-            storage_name = f"{base}_head"
-            target_storage = storages_by_name.get(storage_name)
-            if target_storage is None:
-                logger.warning(
-                    "No PLEXOSStorage '{}' found for HydroTurbine '{}', skipping.",
-                    storage_name,
-                    turbine.name,
-                )
+            target_gen_name = display_name_index.get(tname, tname)
+            target_gen = generators_by_name.get(target_gen_name)
+            if target_gen is None:
+                logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", tname)
                 continue
-
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.HeadStorage)
             total_memberships += 1
 
@@ -288,7 +282,6 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
         if gen_name.endswith("_head"):
             storage = storages_by_name.get(gen_name)
             if storage is not None:
-                # Check if membership already exists
                 memberships = context.target_system.get_supplemental_attributes_with_component(
                     gen, PLEXOSMembership
                 )
@@ -304,8 +297,8 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
 def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
     """Create TailStorage memberships between generators and tail storages.
 
-    Drives linkage from HydroTurbine.reservoirs (reservoir_location == TAIL) to
-    avoid relying on name conventions. Also attaches time series to all tail storages.
+    Drives linkage from HydroReservoir.downstream_turbines (and ext["plants"] as fallback)
+    to avoid relying on name conventions. Also attaches time series to all tail storages.
     """
     from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
 
@@ -319,47 +312,48 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
             _attach_reservoir_time_series_to_storage(context, storage.name, storage)
 
     total_memberships = 0
-    # Original logic for HydroTurbine-based memberships
-    for turbine in context.source_system.get_components(HydroTurbine):
-        target_gen_name = display_name_index.get(turbine.name, turbine.name)
-        target_gen = generators_by_name.get(target_gen_name)
-        if target_gen is None:
-            logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", turbine.name)
+    # Iterate over HydroReservoir.downstream_turbines
+    for reservoir in context.source_system.get_components(HydroReservoir):
+        ext = getattr(reservoir, "ext", None)
+        base = None
+        if isinstance(ext, dict):
+            plant_name = ext.get("plant_name")
+            if plant_name:
+                base = str(plant_name)
+        if base is None:
+            rname = reservoir.name
+            for suffix in ("_head", "_tail"):
+                if rname.endswith(suffix):
+                    rname = rname[: -len(suffix)]
+                    break
+            base = rname
+
+        storage_name = f"{base}_tail"
+        target_storage = storages_by_name.get(storage_name)
+        if target_storage is None:
+            logger.debug(
+                "No PLEXOSStorage '{}' found for HydroReservoir '{}', skipping.", storage_name, reservoir.name
+            )
             continue
 
-        for reservoir in getattr(turbine, "reservoirs", None) or []:
-            location = getattr(reservoir, "reservoir_location", None)
-            location_str = (
-                location.value if hasattr(location, "value") else str(location) if location else "HEAD"
-            )
-            if location_str.upper() != "TAIL":
+        turbines = list(getattr(reservoir, "downstream_turbines", None) or [])
+        if not turbines and isinstance(ext, dict):
+            all_turbines = {t.name: t for t in context.source_system.get_components(HydroTurbine)}
+            turbines = [
+                all_turbines[pid]
+                for pid in (ext.get("plants") or [])
+                if isinstance(pid, str) and pid in all_turbines
+            ]
+
+        for turbine in turbines:
+            tname = getattr(turbine, "name", None)
+            if not tname:
                 continue
-
-            # Use same name resolution as get_tail_storage_name getter
-            ext = getattr(reservoir, "ext", None)
-            base = None
-            if isinstance(ext, dict):
-                plant_name = ext.get("plant_name")
-                if plant_name:
-                    base = str(plant_name)
-            if base is None:
-                rname = reservoir.name
-                for suffix in ("_head", "_tail"):
-                    if rname.endswith(suffix):
-                        rname = rname[: -len(suffix)]
-                        break
-                base = rname
-
-            storage_name = f"{base}_tail"
-            target_storage = storages_by_name.get(storage_name)
-            if target_storage is None:
-                logger.warning(
-                    "No PLEXOSStorage '{}' found for HydroTurbine '{}', skipping.",
-                    storage_name,
-                    turbine.name,
-                )
+            target_gen_name = display_name_index.get(tname, tname)
+            target_gen = generators_by_name.get(target_gen_name)
+            if target_gen is None:
+                logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", tname)
                 continue
-
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.TailStorage)
             total_memberships += 1
 
@@ -378,24 +372,6 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
                     _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
                     total_memberships += 1
     logger.info("Total {} TailStorage-Generator memberships created (including fallback).", total_memberships)
-
-
-def ensure_node_zone_memberships(context: PluginContext) -> None:
-    """Create Node->Zone memberships for all nodes and their load zones."""
-    bus_index = _bus_name_to_area_and_zone(context)
-    zones_by_name = {z.name: z for z in context.target_system.get_components(PLEXOSZone)}
-
-    total_memberships = 0
-    for node in context.target_system.get_components(PLEXOSNode):
-        _, zone_name = bus_index.get(node.name, (None, None))
-        if zone_name is None:
-            continue
-        zone = zones_by_name.get(zone_name)
-        if zone is not None:
-            _ensure_membership(context, node, zone, CollectionEnum.Zone)
-            total_memberships += 1
-
-    logger.info("Total {} Node-Zone memberships created.", total_memberships)
 
 
 def ensure_generator_node_memberships(context: PluginContext) -> None:
@@ -456,6 +432,61 @@ def ensure_generator_time_series(context: PluginContext) -> None:
             _attach_generator_time_series(context, source_gen.name, target_gen)
             total += 1
     logger.info("Ensured time series for {} generators.", total)
+
+
+def ensure_reserve_time_series(context: PluginContext) -> None:
+    """Attach reserve time series from source VariableReserve to translated PLEXOSReserve."""
+    source_reserves = {r.name: r for r in context.source_system.get_components(VariableReserve)}
+    base = getattr(getattr(context, "source_system", None), "base_power", None)
+    try:
+        system_base = float(base) if base is not None else 100.0
+    except (TypeError, ValueError):
+        system_base = 100.0
+
+    total = 0
+    for reserve in context.target_system.get_components(PLEXOSReserve):
+        source_reserve = source_reserves.get(reserve.name)
+        if source_reserve is None:
+            continue
+
+        if not context.source_system.time_series.has_time_series(source_reserve):
+            continue
+
+        for metadata in context.source_system.time_series.list_time_series_metadata(source_reserve):
+            features = getattr(metadata, "features", {}) or {}
+            ts_list = context.source_system.list_time_series(
+                source_reserve,
+                name=metadata.name,
+                **features,
+            )
+            if not ts_list:
+                continue
+
+            source_ts = ts_list[0]
+            ts_name = "min_provision" if source_ts.name == "requirement" else source_ts.name
+
+            ts_copy = deepcopy(source_ts)
+            ts_copy.name = ts_name
+
+            # Reserve requirement is represented in p.u. in Sienna; PLEXOS min_provision expects MW.
+            if ts_name in {"min_provision", "requirement"}:
+                try:
+                    ts_copy.data = ts_copy.data * system_base
+                except TypeError:
+                    ts_copy.data = [float(value) * system_base for value in ts_copy.data]
+
+            if context.target_system.has_time_series(
+                reserve,
+                name=ts_name,
+                time_series_type=type(source_ts),
+                **features,
+            ):
+                continue
+
+            context.target_system.add_time_series(ts_copy, reserve, **features)
+            total += 1
+
+    logger.info("Ensured reserve time series for {} associations.", total)
 
 
 def ensure_battery_node_memberships(context: PluginContext) -> None:

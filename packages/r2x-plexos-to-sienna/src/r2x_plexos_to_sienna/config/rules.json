@@ -56,8 +56,7 @@
       "reactive_power": "get_load_reactive_power",
       "max_active_power" : "get_load_max_active_power",
       "max_reactive_power" : "get_load_max_reactive_power",
-      "base_power" : "get_load_base_power",
-      "operation_cost": "get_load_operation_cost"
+      "base_power" : "get_load_base_power"
     },
     "source_type": "PLEXOSRegion",
     "target_type": "PowerLoad",
@@ -106,7 +105,6 @@
   {
     "defaults": {
       "category": "line",
-      "min_flow": 0.0,
       "reactive_power_flow": 0.0
     },
     "field_map": {

@@ -15,7 +15,7 @@ class ReedsToPlexosConfig(PluginConfig):
         description="Modules used to resolve ReEDS sources and PLEXOS targets.",
     )
     commit_technologies: Annotated[
-        list[str],
+        list[str] | None,
         Field(
             default_factory=list,
             description="Technologies to commit.",

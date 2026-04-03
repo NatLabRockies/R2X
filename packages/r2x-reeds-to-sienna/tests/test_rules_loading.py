@@ -8,8 +8,8 @@ from importlib.resources import files
 
 def test_rules_json_exists_and_loads() -> None:
     """Ensure the packaged rules file is present and valid JSON."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
-    assert rules_path.is_file(), "translation_rules.json missing"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
+    assert rules_path.is_file(), "rules.json missing"
 
     rules_data = json.loads(rules_path.read_text())
     assert isinstance(rules_data, list)
@@ -18,7 +18,7 @@ def test_rules_json_exists_and_loads() -> None:
 
 def test_has_region_bus_rule() -> None:
     """Verify ReEDSRegion maps to ACBus."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
@@ -28,7 +28,7 @@ def test_has_region_bus_rule() -> None:
 
 def test_has_region_to_area_rule() -> None:
     """Verify ReEDSRegion maps to Sienna Area."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
@@ -38,7 +38,7 @@ def test_has_region_to_area_rule() -> None:
 
 def test_has_variable_reserve_rule() -> None:
     """Verify ReEDSReserve maps to VariableReserve."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
@@ -49,7 +49,7 @@ def test_has_variable_reserve_rule() -> None:
 
 def test_has_generator_rules() -> None:
     """Verify ReEDS generators map to Sienna generator types."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     # Thermal generator
@@ -83,7 +83,7 @@ def test_has_generator_rules() -> None:
 
 def test_has_storage_rule() -> None:
     """Verify ReEDSStorage maps to EnergyReservoirStorage."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
@@ -94,7 +94,7 @@ def test_has_storage_rule() -> None:
 
 def test_has_interface_rule() -> None:
     """Verify ReEDSInterface maps to AreaInterchange."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
@@ -105,7 +105,7 @@ def test_has_interface_rule() -> None:
 
 def test_has_demand_rule() -> None:
     """Verify ReEDSDemand maps to PowerLoad."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
@@ -116,7 +116,7 @@ def test_has_demand_rule() -> None:
 
 def test_has_transmission_line_rule() -> None:
     """Verify ReEDSTransmissionLine maps to Line."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
@@ -127,7 +127,7 @@ def test_has_transmission_line_rule() -> None:
 
 def test_rules_have_required_fields() -> None:
     """Verify all rules have essential structure."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     for i, rule in enumerate(rules_data):
@@ -140,7 +140,7 @@ def test_rules_have_required_fields() -> None:
 
 def test_dependency_rules() -> None:
     """Verify rules with dependencies reference valid rule names."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     rule_names = {rule.get("name") for rule in rules_data if "name" in rule}
@@ -155,7 +155,7 @@ def test_dependency_rules() -> None:
 
 def test_bus_rule_is_first() -> None:
     """Verify region_bus rule comes before dependent rules."""
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     bus_rule_index = None

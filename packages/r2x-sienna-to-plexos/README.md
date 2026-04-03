@@ -28,7 +28,6 @@ from r2x_sienna_to_plexos.getters_utils import (
     ensure_generator_node_memberships,
     ensure_head_storage_generator_membership,
     ensure_interface_line_memberships,
-    ensure_node_zone_memberships,
     ensure_region_node_memberships,
     ensure_reserve_battery_memberships,
     ensure_reserve_generator_memberships,
@@ -109,7 +108,6 @@ apply_rules_to_context(context)
 ensure_region_node_memberships(context)
 ensure_generator_node_memberships(context)
 ensure_battery_node_memberships(context)
-ensure_node_zone_memberships(context)
 ensure_reserve_battery_memberships(context)
 ensure_reserve_generator_memberships(context)
 ensure_transformer_node_memberships(context)
@@ -168,7 +166,6 @@ After applying the main translation rules, the following membership helpers must
 | `ensure_region_node_memberships` | Links regions to their child nodes |
 | `ensure_generator_node_memberships` | Links generators to their buses |
 | `ensure_battery_node_memberships` | Links batteries to their buses |
-| `ensure_node_zone_memberships` | Links nodes to their load zones |
 | `ensure_reserve_generator_memberships` | Links reserves to contributing generators |
 | `ensure_reserve_battery_memberships` | Links reserves to contributing batteries |
 | `ensure_transformer_node_memberships` | Links transformers to their from/to nodes |

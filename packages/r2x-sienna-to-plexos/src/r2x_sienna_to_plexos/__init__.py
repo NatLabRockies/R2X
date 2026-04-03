@@ -26,14 +26,15 @@ from .getters_utils import (
     ensure_generator_node_memberships,
     ensure_head_storage_generator_membership,
     ensure_interface_line_memberships,
-    ensure_node_zone_memberships,
     ensure_region_node_memberships,
     ensure_reserve_battery_memberships,
     ensure_reserve_generator_memberships,
+    ensure_reserve_time_series,
     ensure_tail_storage_generator_membership,
     ensure_transformer_node_memberships,
 )
 from .plugin_config import SiennaToPlexosConfig
+from .translation import sienna_to_plexos
 
 __version__ = version("r2x_sienna_to_plexos")
 
@@ -46,12 +47,13 @@ __all__ = [
     "__version__",
     "SOURCE_GENERATOR_TYPES",
     "GEN_TYPE_STRING_MAP",
+    "sienna_to_plexos",
     "REEDS_COMPONENT_SUBSTRINGS",
     "ensure_region_node_memberships",
     "ensure_interface_line_memberships",
     "ensure_generator_node_memberships",
     "ensure_battery_node_memberships",
-    "ensure_node_zone_memberships",
+    "ensure_reserve_time_series",
     "ensure_reserve_battery_memberships",
     "ensure_reserve_generator_memberships",
     "ensure_transformer_node_memberships",

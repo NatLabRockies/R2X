@@ -21,7 +21,6 @@ from r2x_plexos.models import (
     PLEXOSNode,
     PLEXOSStorage,
     PLEXOSTransformer,
-    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
@@ -33,7 +32,6 @@ from r2x_sienna.models import (
     HydroReservoir,
     HydroTurbine,
     Line,
-    LoadZone,
     MonitoredLine,
     PhaseShiftingTransformer,
     PhaseShiftingTransformer3W,
@@ -376,19 +374,6 @@ def _lookup_target_node_by_source_area(
     if node is None:
         return Err(ValueError(f"No PLEXOSNode found with source area '{area_name}'"))
     return Ok(node)
-
-
-def _lookup_target_zone_by_name(context: PluginContext, zone_name: str) -> Result[Any, ValueError]:
-    """Return the translated zone with the given name."""
-    cache_key = "zone_name_index"
-    index = context._cache.get(cache_key)
-    if index is None:
-        index = {zone.name: zone for zone in context.target_system.get_components(PLEXOSZone)}
-        context._cache[cache_key] = index
-    zone = index.get(zone_name)
-    if zone is None:
-        return Err(ValueError(f"No PLEXOSZone found with name '{zone_name}'"))
-    return Ok(zone)
 
 
 def _lookup_source_generator(context: PluginContext, gen_name: str) -> Any | None:
@@ -799,6 +784,21 @@ def _compute_total_system_load(context: PluginContext) -> float:
     return total
 
 
+def _build_area_total_load_index(context: PluginContext) -> dict[str, float]:
+    """Map area_name (ARNAME or area.name) -> total load MW for all buses in that area."""
+    cached = context._cache.get("area_total_load_index")
+    if cached is not None:
+        return cached
+    area_buses = _build_area_buses_index(context)
+    loads_index = _build_bus_to_loads_index(context)
+    result: dict[str, float] = {}
+    for area_name, buses in area_buses.items():
+        total = sum(_get_load_mw(load) for bus in buses for load in loads_index.get(str(bus.uuid), []))
+        result[area_name] = total
+    context._cache["area_total_load_index"] = result
+    return result
+
+
 def _get_system_base_power(context: PluginContext) -> float:
     """Extract system base power from source_system.base_power or default to 100 MVA."""
     value = getattr(getattr(context, "source_system", None), "base_power", None)
@@ -879,17 +879,14 @@ def get_ac_voltage_magnitude_pu(source_component: ACBus, context: PluginContext)
 
 @getter
 def get_node_category(source_component: ACBus, context: PluginContext) -> Result[str, ValueError]:
-    """Return human-readable region name (ARNAME) from the bus's area ext, falling back to area.name."""
+    """Return the Area name for the bus, since Area maps to PLEXOSRegion."""
     area = getattr(source_component, "area", None)
     if area is not None:
         ext = getattr(area, "ext", None)
-        if isinstance(ext, dict):
-            arname = ext.get("ARNAME")
-            if arname:
-                return Ok(str(arname))
-        area_name = getattr(area, "name", None)
+        arname = (ext or {}).get("ARNAME") if isinstance(ext, dict) else None
+        area_name = str(arname) if arname else str(area.name) if isinstance(area, Area) else str(area)
         if area_name:
-            return Ok(str(area_name))
+            return Ok(area_name)
     return Err(ValueError(f"No area found for ACBus '{source_component.name}'"))
 
 
@@ -924,12 +921,20 @@ def get_load_participation_factor(
     if node_lpf_total > 0.0:
         return Ok(format_lpf(node_lpf_total))
 
-    # compute LPF as total_node_load / total_system_load
+    # compute LPF as node_load_MW / region_total_load_MW (nodes in each region must sum to 1.0)
+    area = getattr(source_component, "area", None)
+    area_key: str | None = None
+    if area is not None:
+        ext = getattr(area, "ext", None)
+        arname = (ext or {}).get("ARNAME") if isinstance(ext, dict) else None
+        area_key = str(arname) if arname else str(area.name)
+
     all_loads_index = _build_bus_to_loads_index(context)
     node_load = sum(_get_load_mw(load) for load in all_loads_index.get(bus_uuid_str, []))
-    total_load = _compute_total_system_load(context)
-    if total_load > 0.0:
-        return Ok(format_lpf(node_load / total_load))
+    area_total_load_index = _build_area_total_load_index(context)
+    region_load = area_total_load_index.get(area_key, 0.0) if area_key else 0.0
+    if region_load > 0.0:
+        return Ok(format_lpf(node_load / region_load))
 
     return Ok(0.0)
 
@@ -1336,13 +1341,19 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
 
 @getter
 def get_generator_commit(component: object, context: PluginContext) -> Result[int, ValueError]:
-    """Return 1 if technology is in commit_technologies list, -1 otherwise."""
+    """Return 1 if technology is in commit_technologies list or start cost is 0, -1 otherwise."""
     technology = getattr(component, "technology", "")
     defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
     with defaults_path.open() as f:
         defaults = json.load(f)
     commit_technologies = defaults.get("commit_technologies", [])
-    return Ok(1 if technology in commit_technologies else -1)
+    if technology in commit_technologies:
+        return Ok(1)
+    cost = getattr(component, "operation_cost", None)
+    start_up = get_magnitude(getattr(cost, "start_up", None)) if cost else None
+    if start_up is not None and float(start_up) == 0.0:
+        return Ok(1)
+    return Ok(-1)
 
 
 @getter
@@ -1381,38 +1392,6 @@ def get_heat_rate_incr3(source_component: object, context: PluginContext) -> Res
 
 
 @getter
-def get_initial_generation(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract initial generation in MW from active_power attribute, convert using base power.
-
-    Clamps the result to [0, max_capacity]:
-    - If value > max_capacity: clamp down (avoids Warning 110 upper bound).
-    - If 0 < value < min_stable and value >= 50% of min_stable: clamp up to min_stable (unit intended on).
-    - If 0 < value < min_stable and value < 50% of min_stable: set to 0 (treat as off).
-    """
-    power = get_magnitude(getattr(source_component, "active_power", None))
-    if power is None:
-        return Ok(0.0)
-    value = round(abs(float(power) * resolve_base_power(source_component)), 2)
-    if value <= 0.0:
-        return Ok(0.0)
-
-    max_cap_result = get_max_capacity(source_component, context)
-    max_cap = max_cap_result.unwrap() if isinstance(max_cap_result, Ok) else None
-
-    if max_cap is not None and value > max_cap:
-        value = max_cap
-
-    min_stable = get_generator_min_stable_level(source_component, context).unwrap()
-    if value < min_stable:
-        if value >= 0.5 * min_stable:
-            value = min_stable
-        else:
-            return Ok(0.0)
-
-    return Ok(value)
-
-
-@getter
 def get_min_up_time(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract minimum up time from time_limits or ext dict."""
     value = _get_time_limit(source_component, "up", "NARIS_Min_Up_Time")
@@ -1429,6 +1408,11 @@ def get_min_down_time(source_component: object, context: PluginContext) -> Resul
 @getter
 def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract maximum ramp up from ramp_limits, convert to MW/min; falls back to category default."""
+    try:
+        max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
+    except (TypeError, NotImplementedError, AttributeError, KeyError):
+        max_mw = 0.0
+
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
         value = abs(_ramp_value_to_float(source_component, ramp.get("up")))
@@ -1437,22 +1421,27 @@ def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[
     else:
         value = 0.0
 
+    # If value exceeds max capacity it is unreasonable (ramp in <1 min); fall back to default
+    if not math.isclose(max_mw, 0.0, rel_tol=0.0, abs_tol=1e-6) and value > max_mw:
+        value = 0.0
+
     if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
         value = abs(_get_ramp_default(source_component, context))
 
     if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        try:
-            max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
-        except (TypeError, NotImplementedError, AttributeError, KeyError):
-            max_mw = 0.0
-        value = max_mw / 60.0
+        value = max_mw
 
-    return Ok(max(value, 1e-3))
+    return Ok(max(value, 10))
 
 
 @getter
 def get_max_ramp_down(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract maximum ramp down from ramp_limits, convert to MW/min; falls back to category default."""
+    try:
+        max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
+    except (TypeError, NotImplementedError, AttributeError, KeyError):
+        max_mw = 0.0
+
     ramp = getattr(source_component, "ramp_limits", None)
     if isinstance(ramp, dict):
         value = abs(_ramp_value_to_float(source_component, ramp.get("down")))
@@ -1461,17 +1450,17 @@ def get_max_ramp_down(source_component: object, context: PluginContext) -> Resul
     else:
         value = 0.0
 
+    # If value exceeds max capacity it is unreasonable (ramp in <1 min); fall back to default
+    if not math.isclose(max_mw, 0.0, rel_tol=0.0, abs_tol=1e-6) and value > max_mw:
+        value = 0.0
+
     if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
         value = abs(_get_ramp_default(source_component, context))
 
     if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        try:
-            max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
-        except (TypeError, NotImplementedError, AttributeError, KeyError):
-            max_mw = 0.0
-        value = max_mw / 60.0
+        value = max_mw
 
-    return Ok(max(value, 1e-3))
+    return Ok(max(value, 10))
 
 
 @getter
@@ -1486,29 +1475,24 @@ def get_generator_name(source_component: object, context: PluginContext) -> Resu
 def get_generator_min_stable_level(
     source_component: object, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Extract minimum stable level from active_power_limits or compute as percentage of max capacity.
-    Ensures min_stable_level is in [0, max_capacity].
+    """Extract minimum stable level in MW from active_power_limits.min * base_power.
+    Falls back to min_stable_level_percentage * 100 if zero.
+    Returns 0.0 if the result exceeds max_capacity.
     """
     min_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "min")
-    if min_pu is not None:
-        min_stable = float(min_pu)
-    else:
-        category = _resolve_generator_category(source_component, context) or "gas-cc"
-        pct = _get_defaults(category, "min_stable_level_percentage")
-        try:
-            max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
-        except (TypeError, NotImplementedError, AttributeError, KeyError):
-            max_mw = 0.0
-        min_stable = round(pct * max_mw, 2)
+    min_mw = (float(min_pu) * resolve_base_power(source_component)) if min_pu is not None else 0.0
+    min_mw = abs(min_mw) if min_mw < 0 else min_mw  # ensure non-negative
 
-    # Clamp min_stable to [0, max_capacity]
-    min_stable = max(0.0, min_stable)
+    if math.isclose(min_mw, 0.0, abs_tol=1e-6):
+        category = _resolve_generator_category(source_component, context) or "gas-cc"
+        min_mw = _get_defaults(category, "min_stable_level_percentage") * 100.0
+
     max_cap_result = get_max_capacity(source_component, context)
     max_cap = max_cap_result.unwrap() if isinstance(max_cap_result, Ok) else None
-    if max_cap is not None and min_stable > max_cap:
-        min_stable = max_cap
+    if max_cap is not None and min_mw > max_cap:
+        return Ok(0.0)
 
-    return Ok(round(min_stable, 2))
+    return Ok(round(min_mw, 2))
 
 
 @getter
@@ -1899,9 +1883,12 @@ def get_reserve_duration(
 def get_reserve_min_provision(
     source_component: VariableReserve, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Get reserve requirement."""
+    """Get reserve requirement in MW (source requirement is p.u. of system base)."""
     requirement = getattr(source_component, "requirement", 0.0)
-    return Ok(requirement)
+    try:
+        return Ok(float(requirement) * _get_system_base_power(context))
+    except (TypeError, ValueError):
+        return Ok(0.0)
 
 
 @getter
@@ -2042,14 +2029,6 @@ def membership_collection_node_to(
 
 
 @getter
-def membership_collection_zone(
-    component: object, context: PluginContext
-) -> Result[CollectionEnum, ValueError]:
-    """Return the Zone collection enum."""
-    return Ok(CollectionEnum.Zone)
-
-
-@getter
 def membership_collection_head_storage(
     component: object, context: PluginContext
 ) -> Result[CollectionEnum, ValueError]:
@@ -2063,19 +2042,6 @@ def membership_collection_tail_storage(
 ) -> Result[CollectionEnum, ValueError]:
     """Return the Tail Storage collection enum."""
     return Ok(CollectionEnum.TailStorage)
-
-
-@getter
-def membership_node_child_zone(node: PLEXOSNode, context: PluginContext) -> Result[Any, ValueError]:
-    bus_index = _build_bus_name_index(context)
-    source_bus = bus_index.get(node.name)
-    if source_bus is None:
-        return Err(ValueError(f"No source ACBus found for node '{node.name}'"))
-    load_zone = getattr(source_bus, "load_zone", None)
-    if load_zone is None:
-        return Err(ValueError(f"Source bus '{source_bus.name}' has no load_zone"))
-    zone_name = load_zone.name if isinstance(load_zone, LoadZone) else str(load_zone)
-    return _lookup_target_zone_by_name(context, zone_name)
 
 
 @getter
@@ -2302,22 +2268,61 @@ def membership_transformer_to_parent_node(
     return _lookup_target_node_by_name(context, to_bus_name)
 
 
+def _build_reservoir_by_turbine_index(context: PluginContext) -> dict[str, Any]:
+    """Build a mapping from source turbine name to its HydroReservoir, using downstream_turbines and ext[\"plants\"]."""
+    cache_key = "_reservoir_by_turbine_index"
+    if (cached := context._cache.get(cache_key)) is not None:
+        return cached
+    index: dict[str, Any] = {}
+    for reservoir in context.source_system.get_components(HydroReservoir):
+        for turbine in getattr(reservoir, "downstream_turbines", None) or []:
+            tname = getattr(turbine, "name", None)
+            if tname and tname not in index:
+                index[tname] = reservoir
+        ext = getattr(reservoir, "ext", None)
+        if isinstance(ext, dict):
+            for plant_id in ext.get("plants") or []:
+                if isinstance(plant_id, str) and plant_id not in index:
+                    index[plant_id] = reservoir
+    # Also index by display name so target-side PLEXOSGenerator names resolve correctly
+    display_index = _build_generator_display_name_index(context)
+    for source_name, reservoir in list(index.items()):
+        display_name = display_index.get(source_name)
+        if display_name and display_name not in index:
+            index[display_name] = reservoir
+    context._cache[cache_key] = index
+    return index
+
+
 @getter
 def membership_head_storage_generator(
     generator: HydroTurbine, context: PluginContext
 ) -> Result[Any, ValueError]:
-    storage_index = _build_target_storage_name_index(context)
     gen_name = getattr(generator, "name", "")
+    storage_index = _build_target_storage_name_index(context)
+
+    # Primary: look up which reservoir owns this turbine
+    reservoir = _build_reservoir_by_turbine_index(context).get(gen_name)
+    if reservoir is not None:
+        ext = getattr(reservoir, "ext", None)
+        base = (
+            str(ext["plant_name"])
+            if isinstance(ext, dict) and ext.get("plant_name")
+            else _reservoir_base_name(reservoir.name)
+        )
+        storage_name = f"{base}_head"
+        target_storage = storage_index.get(storage_name.lower())
+        if target_storage is not None:
+            _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
+            return Ok(target_storage)
+
+    # Fallback: name-based convention
     storage_name = (
         gen_name.replace("_Turbine", "_Reservoir_head")
         if gen_name.endswith("_Turbine")
-        else f"{gen_name}_Reservoir_head"
+        else f"{gen_name}_head"
     )
     target_storage = storage_index.get(storage_name.lower())
-    if target_storage is None:
-        storage_name = f"{gen_name}_head"
-        target_storage = storage_index.get(storage_name.lower())
-
     if target_storage is None:
         logger.warning("No PLEXOSStorage found for '{}', skipping membership.", gen_name)
         return Err(ValueError(f"No PLEXOSStorage found for '{gen_name}'"))
@@ -2329,18 +2334,31 @@ def membership_head_storage_generator(
 def membership_tail_storage_generator(
     generator: HydroTurbine, context: PluginContext
 ) -> Result[Any, ValueError]:
-    storage_index = _build_target_storage_name_index(context)
     gen_name = getattr(generator, "name", "")
+    storage_index = _build_target_storage_name_index(context)
+
+    # Primary: look up which reservoir owns this turbine
+    reservoir = _build_reservoir_by_turbine_index(context).get(gen_name)
+    if reservoir is not None:
+        ext = getattr(reservoir, "ext", None)
+        base = (
+            str(ext["plant_name"])
+            if isinstance(ext, dict) and ext.get("plant_name")
+            else _reservoir_base_name(reservoir.name)
+        )
+        storage_name = f"{base}_tail"
+        target_storage = storage_index.get(storage_name.lower())
+        if target_storage is not None:
+            _attach_reservoir_time_series_to_storage(context, storage_name, target_storage)
+            return Ok(target_storage)
+
+    # Fallback: name-based convention
     storage_name = (
         gen_name.replace("_Turbine", "_Reservoir_tail")
         if gen_name.endswith("_Turbine")
-        else f"{gen_name}_Reservoir_tail"
+        else f"{gen_name}_tail"
     )
     target_storage = storage_index.get(storage_name.lower())
-    if target_storage is None:
-        storage_name = f"{gen_name}_tail"
-        target_storage = storage_index.get(storage_name.lower())
-
     if target_storage is None:
         logger.warning("No PLEXOSStorage found for '{}', skipping membership.", gen_name)
         return Err(ValueError(f"No PLEXOSStorage found for '{gen_name}'"))

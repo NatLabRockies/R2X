@@ -7,10 +7,12 @@ from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
 
-from r2x_core import PluginContext, Rule, System, apply_rules_to_context
+from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
+from r2x_reeds_to_sienna.plugin_config import ReEDSToSiennaConfig
 
 
-def perform_translation(context: PluginContext) -> System:
+@expose_plugin
+def reeds_to_sienna(system: System, config: ReEDSToSiennaConfig) -> System:
     """
     Perform the ReEDS to Sienna translation.
 
@@ -20,6 +22,7 @@ def perform_translation(context: PluginContext) -> System:
     Returns:
         The translated Sienna system.
     """
+    context = PluginContext(source_system=system, config=config)
     rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     context.rules = rules

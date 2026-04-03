@@ -9,10 +9,10 @@ from pydantic import Field
 from r2x_core import PluginConfig
 
 
-class PlexosToSiennaConfig(PluginConfig):
+class ReEDSToSiennaConfig(PluginConfig):
     models: tuple[str, ...] = Field(
-        default=("r2x_plexos.models", "r2x_sienna.models"),
-        description="Modules used to resolve PLEXOS sources and Sienna targets.",
+        default=("r2x_reeds.models", "r2x_sienna.models"),
+        description="Modules used to resolve ReEDS sources and Sienna targets.",
     )
     technology_mapping: Annotated[
         dict[str, dict[str, str]] | None,

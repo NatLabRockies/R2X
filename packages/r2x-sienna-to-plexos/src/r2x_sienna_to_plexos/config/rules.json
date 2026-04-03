@@ -1,8 +1,7 @@
 [
   {
     "defaults": {
-      "category": "node",
-      "load": 0.0
+      "category": "node"
     },
     "field_map": {
       "name": "name",
@@ -22,7 +21,7 @@
   },
   {
     "defaults": {
-      "category": "area"
+      "category": "sienna-regions"
     },
     "field_map": {
       "name": "name",
@@ -31,28 +30,11 @@
     },
     "getters": {
       "units": "get_area_units",
-      "name": "get_area_name",
       "load": "get_area_load",
       "ext": "get_region_ext"
     },
     "source_type": "Area",
     "target_type": "PLEXOSRegion",
-    "version": 1
-  },
-  {
-    "defaults": {
-      "category": "load-zone"
-    },
-    "field_map": {
-      "name": "name",
-      "uuid": "uuid",
-      "category": "category"
-    },
-    "getters": {
-      "units": "get_area_units"
-    },
-    "source_type": "LoadZone",
-    "target_type": "PLEXOSZone",
     "version": 1
   },
   {
@@ -67,8 +49,7 @@
       "uuid": "uuid",
       "category": "category",
       "reactance": "x",
-      "resistance": "r",
-      "fixed_flow": "active_power_flow"
+      "resistance": "r"
     },
     "getters": {
       "units": "get_availability",
@@ -92,8 +73,7 @@
       "uuid": "uuid",
       "category": "category",
       "reactance": "x",
-      "resistance": "r",
-      "fixed_flow": "active_power_flow"
+      "resistance": "r"
     },
     "getters": {
       "units": "get_availability",
@@ -117,8 +97,7 @@
       "uuid": "uuid",
       "category": "category",
       "reactance": "x",
-      "resistance": "r",
-      "fixed_flow": "active_power_flow"
+      "resistance": "r"
     },
     "getters": {
       "units": "get_availability",
@@ -140,8 +119,7 @@
       "uuid": "uuid",
       "resistance": "r",
       "reactance": "x",
-      "category": "category",
-      "fixed_flow": "active_power_flow"
+      "category": "category"
     },
     "getters": {
       "units": "get_availability",
@@ -162,8 +140,7 @@
       "name": "name",
       "uuid": "uuid",
       "category": "category",
-      "resistance": "r",
-      "fixed_flow": "active_power_flow"
+      "resistance": "r"
     },
     "getters": {
       "units": "get_availability",
@@ -183,8 +160,7 @@
     "field_map": {
       "name": "name",
       "uuid": "uuid",
-      "category": "category",
-      "fixed_flow": "active_power_flow"
+      "category": "category"
     },
     "getters": {
       "units": "get_availability",
@@ -418,7 +394,6 @@
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
       "heat_rate_incr3": "get_heat_rate_incr3",
-      "initial_generation": "get_initial_generation",
       "min_up_time": "get_min_up_time",
       "min_down_time": "get_min_down_time",
       "max_ramp_down": "get_max_ramp_down",
@@ -457,7 +432,6 @@
       "heat_rate_incr": "get_heat_rate_incr",
       "heat_rate_incr2": "get_heat_rate_incr2",
       "heat_rate_incr3": "get_heat_rate_incr3",
-      "initial_generation": "get_initial_generation",
       "min_up_time": "get_min_up_time",
       "min_down_time": "get_min_down_time",
       "max_ramp_down": "get_max_ramp_down",
@@ -534,7 +508,7 @@
   },
   {
     "defaults": {
-      "category": "hydtrb"
+      "category": "pumped-hydro"
     },
     "field_map": {
       "name": "name",
@@ -790,18 +764,6 @@
     "version": 1
   },
   {
-    "name": "node_zone_membership",
-    "system": "target",
-    "getters": {
-      "parent_object": "membership_parent_component",
-      "child_object": "membership_node_child_zone",
-      "collection": "membership_collection_zone"
-    },
-    "source_type": "PLEXOSNode",
-    "target_type": "PLEXOSMembership",
-    "version": 1
-  },
-  {
     "name": "reserve_generator_membership",
     "system": "target",
     "getters": {
@@ -826,21 +788,30 @@
     "version": 2
   },
   {
-    "name": "component_node_membership",
+    "name": "generator_node_membership",
     "system": "target",
     "getters": {
       "parent_object": "membership_parent_component",
       "child_object": "membership_component_child_node",
       "collection": "membership_collection_nodes"
     },
-    "source_type": [
-      "PLEXOSGenerator",
-      "PLEXOSBattery"
-    ],
+    "source_type": "PLEXOSGenerator",
     "target_type": "PLEXOSMembership",
     "version": 1
   },
-    {
+  {
+    "name": "battery_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_component_child_node",
+      "collection": "membership_collection_nodes"
+    },
+    "source_type": "PLEXOSBattery",
+    "target_type": "PLEXOSMembership",
+    "version": 2
+  },
+  {
     "name": "head_storage_membership",
     "system": "target",
     "getters": {
