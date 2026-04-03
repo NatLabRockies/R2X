@@ -29,6 +29,7 @@ from .getters_utils import (
     ensure_region_node_memberships,
     ensure_reserve_battery_memberships,
     ensure_reserve_generator_memberships,
+    ensure_reserve_time_series,
     ensure_tail_storage_generator_membership,
     ensure_transformer_node_memberships,
 )
@@ -52,6 +53,7 @@ __all__ = [
     "ensure_interface_line_memberships",
     "ensure_generator_node_memberships",
     "ensure_battery_node_memberships",
+    "ensure_reserve_time_series",
     "ensure_reserve_battery_memberships",
     "ensure_reserve_generator_memberships",
     "ensure_transformer_node_memberships",

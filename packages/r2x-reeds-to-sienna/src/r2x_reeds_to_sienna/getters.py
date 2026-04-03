@@ -269,9 +269,12 @@ def get_renewable_operation_cost(
     component: ReEDSVariableGenerator, context: PluginContext
 ) -> Result[RenewableGenerationCost, ValueError]:
     """Return zeroed renewable operation cost."""
+    zero_curve = CostCurve(value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS)
     return Ok(
         RenewableGenerationCost(
-            variable=CostCurve(value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS)
+            fixed=0.0,
+            variable=zero_curve,
+            curtailment_cost=zero_curve,
         )
     )
 

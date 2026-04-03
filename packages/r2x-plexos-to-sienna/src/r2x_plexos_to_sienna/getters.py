@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import re
+from copy import deepcopy
 from importlib.resources import files
 from typing import Any
 
+from infrasys import SingleTimeSeries
 from infrasys.cost_curves import CostCurve, FuelCurve
 from infrasys.value_curves import InputOutputCurve, LinearCurve
+from loguru import logger
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
     PLEXOSBattery,
@@ -22,7 +25,22 @@ from r2x_plexos.models import (
     PLEXOSTransformer,
     PLEXOSZone,
 )
-from r2x_sienna.models import ACBus, Arc, Area, LoadZone, VariableReserve
+from r2x_sienna.models import (
+    ACBus,
+    Arc,
+    Area,
+    EnergyReservoirStorage,
+    HydroDispatch,
+    HydroTurbine,
+    LoadZone,
+    PowerLoad,
+    RenewableDispatch,
+    RenewableNonDispatch,
+    SynchronousCondenser,
+    ThermalMultiStart,
+    ThermalStandard,
+    VariableReserve,
+)
 from r2x_sienna.models.costs import (
     HydroGenerationCost,
     HydroReservoirCost,
@@ -48,6 +66,103 @@ PLEXOS_NUMBER_BASE = 100100
 PLEXOS_NUMBER_COUNTER = PLEXOS_NUMBER_BASE
 PLEXOS_NUMBER_MAP = {}
 PLEXOS_NUMBER_USED = set()
+
+P2S_TS_PENDING_CACHE_KEY = "p2s_pending_ts"
+
+
+def _get_pending_ts_cache(context: PluginContext) -> dict[str, Any]:
+    cache = context._cache.setdefault(P2S_TS_PENDING_CACHE_KEY, {})
+    return cache
+
+
+def _pending_key_for_source(component: Any) -> str:
+    name = getattr(component, "name", "") or ""
+    cls_name = type(component).__name__
+    return f"{cls_name}:{name}"
+
+
+def _get_target_types_for_source(component: Any) -> list[type]:
+    if isinstance(component, PLEXOSGenerator):
+        return [
+            ThermalStandard,
+            ThermalMultiStart,
+            HydroDispatch,
+            HydroTurbine,
+            RenewableDispatch,
+            RenewableNonDispatch,
+            SynchronousCondenser,
+        ]
+    if isinstance(component, PLEXOSBattery):
+        return [EnergyReservoirStorage]
+    if isinstance(component, PLEXOSRegion):
+        return [PowerLoad]
+    if isinstance(component, PLEXOSReserve):
+        return [VariableReserve]
+    return []
+
+
+def _get_targets_by_name(context: PluginContext, source_component: Any) -> list[Any]:
+    name = getattr(source_component, "name", None)
+    if not name:
+        return []
+    targets: list[Any] = []
+    for target_type in _get_target_types_for_source(source_component):
+        targets.extend(
+            component
+            for component in context.target_system.get_components(target_type)
+            if getattr(component, "name", None) == name
+        )
+    return targets
+
+
+def _attach_source_time_series_if_target_exists(source_component: Any, context: PluginContext) -> bool:
+    if not context.source_system.time_series.has_time_series(source_component):
+        return True
+
+    metadata_list = list(context.source_system.time_series.list_time_series_metadata(source_component))
+    if not metadata_list:
+        return True
+
+    targets = _get_targets_by_name(context, source_component)
+    if not targets:
+        return False
+
+    for metadata in metadata_list:
+        features = getattr(metadata, "features", {}) or {}
+        ts_list = context.source_system.list_time_series(source_component, name=metadata.name, **features)
+        if not ts_list:
+            continue
+
+        source_ts = ts_list[0]
+        for target_component in targets:
+            if context.target_system.has_time_series(
+                target_component,
+                name=source_ts.name,
+                time_series_type=SingleTimeSeries,
+                **features,
+            ):
+                continue
+            try:
+                context.target_system.add_time_series(deepcopy(source_ts), target_component, **features)
+            except Exception:
+                logger.debug(
+                    "Failed attaching time series '{}' to '{}'",
+                    source_ts.name,
+                    getattr(target_component, "name", "<unknown>"),
+                )
+    return True
+
+
+def _sync_time_series_for_source(source_component: Any, context: PluginContext) -> None:
+    pending = _get_pending_ts_cache(context)
+
+    # Try flushing pending entries first so previous components can be attached as soon as targets exist.
+    for key, pending_source in list(pending.items()):
+        if _attach_source_time_series_if_target_exists(pending_source, context):
+            pending.pop(key, None)
+
+    if not _attach_source_time_series_if_target_exists(source_component, context):
+        pending[_pending_key_for_source(source_component)] = source_component
 
 
 def extract_number_from_name(name: str) -> int:
@@ -96,6 +211,8 @@ def get_load_bus(component: PLEXOSRegion, context: PluginContext) -> Result[ACBu
 
     Looks for a PLEXOSNode membership (collection=Region) and matches the node name to an ACBus.
     """
+    _sync_time_series_for_source(component, context)
+
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     node_name = None
     for m in memberships:
@@ -449,6 +566,8 @@ def get_gen_bus(
     Get the ACBus object for a generator by finding the connected node via memberships,
     then matching the node name to the ACBus in the target system.
     """
+    _sync_time_series_for_source(component, context)
+
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     bus_name = None
     for m in memberships:
@@ -727,6 +846,7 @@ def get_reserve_time_frame(component: PLEXOSGenerator, context: PluginContext) -
 @getter
 def get_reserve_requirement(component: PLEXOSGenerator, context: PluginContext) -> Result[float | None, Any]:
     """Get the value of required reserves in p.u (SYSTEM_BASE)."""
+    _sync_time_series_for_source(component, context)
     return Ok(getattr(component, "requirement", 0.0))
 
 

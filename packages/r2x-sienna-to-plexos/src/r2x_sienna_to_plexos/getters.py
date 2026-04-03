@@ -1883,9 +1883,12 @@ def get_reserve_duration(
 def get_reserve_min_provision(
     source_component: VariableReserve, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Get reserve requirement."""
+    """Get reserve requirement in MW (source requirement is p.u. of system base)."""
     requirement = getattr(source_component, "requirement", 0.0)
-    return Ok(requirement)
+    try:
+        return Ok(float(requirement) * _get_system_base_power(context))
+    except (TypeError, ValueError):
+        return Ok(0.0)
 
 
 @getter

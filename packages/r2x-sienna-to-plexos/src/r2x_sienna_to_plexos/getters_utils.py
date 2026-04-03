@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from infrasys.cost_curves import CostCurve, FuelCurve
@@ -431,6 +432,61 @@ def ensure_generator_time_series(context: PluginContext) -> None:
             _attach_generator_time_series(context, source_gen.name, target_gen)
             total += 1
     logger.info("Ensured time series for {} generators.", total)
+
+
+def ensure_reserve_time_series(context: PluginContext) -> None:
+    """Attach reserve time series from source VariableReserve to translated PLEXOSReserve."""
+    source_reserves = {r.name: r for r in context.source_system.get_components(VariableReserve)}
+    base = getattr(getattr(context, "source_system", None), "base_power", None)
+    try:
+        system_base = float(base) if base is not None else 100.0
+    except (TypeError, ValueError):
+        system_base = 100.0
+
+    total = 0
+    for reserve in context.target_system.get_components(PLEXOSReserve):
+        source_reserve = source_reserves.get(reserve.name)
+        if source_reserve is None:
+            continue
+
+        if not context.source_system.time_series.has_time_series(source_reserve):
+            continue
+
+        for metadata in context.source_system.time_series.list_time_series_metadata(source_reserve):
+            features = getattr(metadata, "features", {}) or {}
+            ts_list = context.source_system.list_time_series(
+                source_reserve,
+                name=metadata.name,
+                **features,
+            )
+            if not ts_list:
+                continue
+
+            source_ts = ts_list[0]
+            ts_name = "min_provision" if source_ts.name == "requirement" else source_ts.name
+
+            ts_copy = deepcopy(source_ts)
+            ts_copy.name = ts_name
+
+            # Reserve requirement is represented in p.u. in Sienna; PLEXOS min_provision expects MW.
+            if ts_name in {"min_provision", "requirement"}:
+                try:
+                    ts_copy.data = ts_copy.data * system_base
+                except TypeError:
+                    ts_copy.data = [float(value) * system_base for value in ts_copy.data]
+
+            if context.target_system.has_time_series(
+                reserve,
+                name=ts_name,
+                time_series_type=type(source_ts),
+                **features,
+            ):
+                continue
+
+            context.target_system.add_time_series(ts_copy, reserve, **features)
+            total += 1
+
+    logger.info("Ensured reserve time series for {} associations.", total)
 
 
 def ensure_battery_node_memberships(context: PluginContext) -> None:
