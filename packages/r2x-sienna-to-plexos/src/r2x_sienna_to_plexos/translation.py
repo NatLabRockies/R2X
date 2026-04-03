@@ -7,7 +7,8 @@ from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
 
-from r2x_core import PluginContext, Rule, System, apply_rules_to_context
+from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
+from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
 
 from .getters_utils import (
     ensure_battery_node_memberships,
@@ -23,7 +24,8 @@ from .getters_utils import (
 )
 
 
-def perform_translation(context: PluginContext) -> System:
+@expose_plugin
+def sienna_to_plexos(system: System, config: SiennaToPlexosConfig) -> System:
     """
     Perform the Sienna to PLEXOS translation.
 
@@ -33,6 +35,7 @@ def perform_translation(context: PluginContext) -> System:
     Returns:
         The translated PLEXOS system.
     """
+    context = PluginContext(source_system=system, config=config)
     rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     context.rules = rules
