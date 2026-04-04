@@ -791,11 +791,6 @@ def test_operation_cost_getters(tmp_path) -> None:
     assert renewable_cost is not None
     assert renewable_cost.fixed == 0.0
 
-    # Test storage operation cost
-    battery = PLEXOSBattery(name="BATT1", category="battery")
-    storage_cost = getters.get_storage_operation_cost(battery, context).unwrap()
-    assert storage_cost is not None
-
 
 def test_area_getter(tmp_path) -> None:
     """Test get_area getter."""

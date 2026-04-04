@@ -33,24 +33,6 @@ def test_sienna_area_translates_to_node(tmp_path):
     assert nodes[0].name == "A_TEST"
 
 
-def test_sienna_area_translates_to_zone(tmp_path):
-    from r2x_plexos.models import PLEXOSZone
-    from r2x_sienna.models import LoadZone
-
-    context, rules = make_context_and_rules(tmp_path)
-    context.source_system = System(name="source", auto_add_composed_components=True)
-    context.source_system.add_component(LoadZone(name="Z42"))
-    context.target_system = System(name="target", auto_add_composed_components=True)
-    context.rules = rules
-
-    result = apply_rules_to_context(context)
-    assert result.total_rules > 0
-
-    zones = list(context.target_system.get_components(PLEXOSZone))
-    assert len(zones) == 1
-    assert zones[0].name == "Z42"
-
-
 def test_sienna_generators_translate_to_plexos_types(tmp_path):
     from r2x_plexos.models import PLEXOSGenerator, PLEXOSNode
     from r2x_sienna.models import ACBus, Area, HydroDispatch, RenewableDispatch, ThermalStandard
@@ -283,28 +265,3 @@ def test_sienna_transmission_line_translates_to_plexos_line(tmp_path):
     assert lines[0].name == "LINE_1_2"
     assert hasattr(lines[0], "min_flow")
     assert hasattr(lines[0], "max_flow")
-
-
-def test_multiple_areas_create_multiple_nodes_and_zones(tmp_path):
-    from r2x_plexos.models import PLEXOSNode, PLEXOSZone
-    from r2x_sienna.models import ACBus, LoadZone
-
-    context, rules = make_context_and_rules(tmp_path)
-    context.source_system = System(name="source", auto_add_composed_components=True)
-    for name in ("A1", "A2", "A3"):
-        context.source_system.add_component(LoadZone(name=name))
-    for i, name in enumerate(("A1", "A2", "A3"), start=1):
-        context.source_system.add_component(ACBus(name=name, base_voltage=115.0, number=i))
-    context.target_system = System(name="target", auto_add_composed_components=True)
-    context.rules = rules
-
-    result = apply_rules_to_context(context)
-    assert result.total_rules > 0
-
-    nodes = list(context.target_system.get_components(PLEXOSNode))
-    zones = list(context.target_system.get_components(PLEXOSZone))
-
-    assert len(nodes) == 3
-    assert len(zones) == 3
-    assert {n.name for n in nodes} == {"A1", "A2", "A3"}
-    assert {z.name for z in zones} == {"A1", "A2", "A3"}

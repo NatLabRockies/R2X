@@ -277,6 +277,31 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.HeadStorage)
             total_memberships += 1
 
+    # Also support source models that expose reservoir links on HydroTurbine.reservoirs.
+    for turbine in context.source_system.get_components(HydroTurbine):
+        tname = getattr(turbine, "name", None)
+        if not tname:
+            continue
+        target_gen_name = display_name_index.get(tname, tname)
+        target_gen = generators_by_name.get(target_gen_name)
+        if target_gen is None:
+            continue
+
+        for reservoir in getattr(turbine, "reservoirs", None) or []:
+            location = getattr(getattr(reservoir, "reservoir_location", None), "value", None)
+            if str(location).upper() != "HEAD":
+                continue
+
+            rname = getattr(reservoir, "name", None)
+            if not rname:
+                continue
+            storage_name = rname if str(rname).endswith("_head") else f"{rname}_head"
+            target_storage = storages_by_name.get(storage_name)
+            if target_storage is None:
+                continue
+            _ensure_membership(context, target_gen, target_storage, CollectionEnum.HeadStorage)
+            total_memberships += 1
+
     # Fallback: For all generators and storages with matching _head names, ensure membership exists
     for gen_name, gen in generators_by_name.items():
         if gen_name.endswith("_head"):
@@ -353,6 +378,31 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
             target_gen = generators_by_name.get(target_gen_name)
             if target_gen is None:
                 logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", tname)
+                continue
+            _ensure_membership(context, target_gen, target_storage, CollectionEnum.TailStorage)
+            total_memberships += 1
+
+    # Also support source models that expose reservoir links on HydroTurbine.reservoirs.
+    for turbine in context.source_system.get_components(HydroTurbine):
+        tname = getattr(turbine, "name", None)
+        if not tname:
+            continue
+        target_gen_name = display_name_index.get(tname, tname)
+        target_gen = generators_by_name.get(target_gen_name)
+        if target_gen is None:
+            continue
+
+        for reservoir in getattr(turbine, "reservoirs", None) or []:
+            location = getattr(getattr(reservoir, "reservoir_location", None), "value", None)
+            if str(location).upper() != "TAIL":
+                continue
+
+            rname = getattr(reservoir, "name", None)
+            if not rname:
+                continue
+            storage_name = rname if str(rname).endswith("_tail") else f"{rname}_tail"
+            target_storage = storages_by_name.get(storage_name)
+            if target_storage is None:
                 continue
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.TailStorage)
             total_memberships += 1

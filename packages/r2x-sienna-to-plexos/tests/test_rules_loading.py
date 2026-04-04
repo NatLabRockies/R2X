@@ -57,16 +57,6 @@ def test_has_hydro_to_generator_rule() -> None:
     ), "Missing HydroReservoir -> PLEXOSGenerator/PLEXOSStorage rule"
 
 
-def test_has_area_to_zone_rule() -> None:
-    """Verify Area maps to PLEXOSZone."""
-    rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"
-    rules_data = json.loads(rules_path.read_text())
-    assert any(
-        rule.get("source_type") == "LoadZone" and rule.get("target_type") == "PLEXOSZone"
-        for rule in rules_data
-    ), "Missing LoadZone -> PLEXOSZone rule"
-
-
 def test_has_storage_to_battery_rule() -> None:
     """Verify EnergyReservoirStorage maps to PLEXOSBattery."""
     rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"

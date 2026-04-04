@@ -11,7 +11,7 @@ from r2x_core import DataStore, PluginConfig, PluginContext, Rule, System, apply
 
 
 def make_context_and_rules(tmp_path):
-    rules_path = files("r2x_reeds_to_sienna.config") / "translation_rules.json"
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
     store = DataStore.from_plugin_config(config, path=tmp_path)

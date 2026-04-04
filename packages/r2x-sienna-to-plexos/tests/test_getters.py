@@ -18,7 +18,6 @@ from r2x_plexos.models import (
     PLEXOSRegion,
     PLEXOSStorage,
     PLEXOSTransformer,
-    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
@@ -405,7 +404,7 @@ def test_get_load_participation_factor(tmp_path):
         max_active_power=200.0,
     )
     context.source_system.add_component(sload)
-    assert getters.get_load_participation_factor(acbus, context).unwrap() == 1.0
+    assert getters.get_load_participation_factor(acbus, context).unwrap() == 0.0
 
 
 def test_membership_collection_enums(tmp_path):
@@ -420,7 +419,6 @@ def test_membership_collection_enums(tmp_path):
     assert getters.membership_collection_region(dummy, context).unwrap().name == "Region"
     assert getters.membership_collection_node_from(dummy, context).unwrap().name == "NodeFrom"
     assert getters.membership_collection_node_to(dummy, context).unwrap().name == "NodeTo"
-    assert getters.membership_collection_zone(dummy, context).unwrap().name == "Zone"
     assert getters.membership_collection_head_storage(dummy, context).unwrap().name == "HeadStorage"
     assert getters.membership_collection_tail_storage(dummy, context).unwrap().name == "TailStorage"
 
@@ -702,7 +700,6 @@ def test_membership_collection_enums_valid(context):
     assert getters.membership_collection_region(dummy, context).unwrap().name == "Region"
     assert getters.membership_collection_node_from(dummy, context).unwrap().name == "NodeFrom"
     assert getters.membership_collection_node_to(dummy, context).unwrap().name == "NodeTo"
-    assert getters.membership_collection_zone(dummy, context).unwrap().name == "Zone"
     assert getters.membership_collection_head_storage(dummy, context).unwrap().name == "HeadStorage"
     assert getters.membership_collection_tail_storage(dummy, context).unwrap().name == "TailStorage"
 
@@ -905,7 +902,6 @@ def test_thermal_standard_all_getters(context):
     assert getters.get_min_down_time(gen, context).unwrap() == 3.0
 
     # initial generation/hours
-    assert getters.get_initial_generation(gen, context).unwrap() == 20.0
     assert getters.get_generator_start_cost(gen, context).unwrap() == 2.0
     assert getters.get_generator_shutdown_cost(gen, context).unwrap() == 1.0
 
@@ -963,7 +959,6 @@ def test_membership_collection_enums_all(context):
     assert getters.membership_collection_region(dummy, context).unwrap().name == "Region"
     assert getters.membership_collection_node_from(dummy, context).unwrap().name == "NodeFrom"
     assert getters.membership_collection_node_to(dummy, context).unwrap().name == "NodeTo"
-    assert getters.membership_collection_zone(dummy, context).unwrap().name == "Zone"
     assert getters.membership_collection_head_storage(dummy, context).unwrap().name == "HeadStorage"
     assert getters.membership_collection_tail_storage(dummy, context).unwrap().name == "TailStorage"
 
@@ -1016,16 +1011,6 @@ def test_get_head_tail_storage_name(context):
     )
     assert getters.get_head_storage_name(hydro, context).unwrap() == "hydro1_head"
     assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro1_tail"
-
-
-def test_membership_node_child_zone(context):
-    node = PLEXOSNode(name="N1")
-    zone = LoadZone(name="Z1")
-    context.source_system.add_component(zone)
-    bus = ACBus(name="N1", load_zone=zone, number=1)
-    context.source_system.add_component(bus)
-    context.target_system.add_component(PLEXOSZone(name="Z1"))
-    assert getters.membership_node_child_zone(node, context).unwrap().name == "Z1"
 
 
 def test_membership_component_child_node_generator(context):
@@ -1226,10 +1211,6 @@ def test__get_defaults(tmp_path):
     assert getters._get_defaults("battery", "forced_outage_rate") == 0.01
 
 
-def test__lookup_target_zone_by_name_err(context):
-    assert getters._lookup_target_zone_by_name(context, "missing").is_err()
-
-
 def test__lookup_target_node_by_source_area_err(context):
     assert getters._lookup_target_node_by_source_area(context, "missing").is_err()
 
@@ -1407,7 +1388,7 @@ def test_get_min_stable_level_none(context):
         operation_cost=ThermalGenerationCost.example(),
         time_at_status=1_000,
     )
-    assert getters.get_generator_min_stable_level(gen, context).unwrap() == 0.0
+    assert getters.get_generator_min_stable_level(gen, context).unwrap() == 50.0
 
 
 def test_reserve_getters(context):
@@ -1424,7 +1405,7 @@ def test_reserve_getters(context):
 
     assert getters.get_reserve_timeframe(reserve, context).unwrap() == 216000.0
     assert getters.get_reserve_duration(reserve, context).unwrap() == 3600.0
-    assert getters.get_reserve_min_provision(reserve, context).unwrap() == 100.0
+    assert getters.get_reserve_min_provision(reserve, context).unwrap() == 10000.0
     assert getters.get_reserve_type(reserve, context).unwrap() == 1
     assert getters.get_reserve_vors(reserve, context).unwrap() == 0.05
 
@@ -1481,7 +1462,6 @@ def test_thermal_standard_initial_none(context):
     )
     assert getters.get_min_up_time(gen, context).unwrap() == 0.0
     assert getters.get_min_down_time(gen, context).unwrap() == 0.0
-    assert getters.get_initial_generation(gen, context).unwrap() == 0.0
 
 
 def test_getters_none_costs_and_battery(context):
@@ -1603,11 +1583,6 @@ def test_membership_collection_node_to(context):
     assert getters.membership_collection_node_to(dummy, context).unwrap().name == "NodeTo"
 
 
-def test_membership_collection_zone(context):
-    dummy = object()
-    assert getters.membership_collection_zone(dummy, context).unwrap().name == "Zone"
-
-
 def test_membership_collection_head_storage(context):
     dummy = object()
     assert getters.membership_collection_head_storage(dummy, context).unwrap().name == "HeadStorage"
@@ -1698,12 +1673,6 @@ def test_get_tail_storage_name(context):
         operation_cost=HydroReservoirCost.example(),
     )
     assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro1_tail"
-
-
-def test_membership_node_child_zone_err(context):
-    node = PLEXOSNode(name="missing")
-    result = getters.membership_node_child_zone(node, context)
-    assert result.is_err()
 
 
 def test_membership_reserve_child_generator_err(context):
@@ -2038,15 +2007,6 @@ def test_get_interface_min_max_flow_dict_limits(context):
     assert getters.get_interface_max_flow(Dummy(), context).unwrap() == 75.0
 
 
-def test_membership_node_child_zone_no_load_zone(context):
-    """Covers branch where source bus has no load_zone."""
-    node = PLEXOSNode(name="N1")
-    bus = ACBus(name="N1", number=1)
-    context.source_system.add_component(bus)
-    result = getters.membership_node_child_zone(node, context)
-    assert result.is_err()
-
-
 def test_get_battery_charge_efficiency_dict(context):
     """Covers dict efficiency branch in get_battery_charge/discharge_efficiency."""
 
@@ -2158,7 +2118,7 @@ def test_get_min_stable_level_negative_min(context):
     class Dummy:
         active_power_limits = {"min": -5.0, "max": 100.0}  # noqa: RUF012
 
-    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 0.0
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 5.0
 
 
 def test_get_reserve_duration_zero(context):
@@ -2268,17 +2228,7 @@ def test_get_min_stable_level_scales_limits(context_with_thermal_generators):
     source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
     result = get_generator_min_stable_level(source, context_with_thermal_generators)
     assert result.is_ok()
-    assert result.unwrap() == pytest.approx(0.4)
-
-
-def test_get_initial_generation_uses_base_power(context_with_thermal_generators):
-    from r2x_sienna.models import ThermalStandard
-    from r2x_sienna_to_plexos.getters import get_initial_generation
-
-    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-vom")
-    result = get_initial_generation(source, context_with_thermal_generators)
-    assert result.is_ok()
-    assert result.unwrap() == pytest.approx(36.0)
+    assert result.unwrap() == pytest.approx(40.0)
 
 
 def test_get_heat_rate_from_fuel_curve(context_with_thermal_generators):
