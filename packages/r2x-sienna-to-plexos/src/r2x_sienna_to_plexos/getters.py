@@ -951,8 +951,29 @@ def is_slack_bus(source_component: ACBus, context: PluginContext) -> Result[int,
 
 @getter
 def get_area_units(source_component: Area, context: PluginContext) -> Result[float, ValueError]:
-    """Always return 1 for region units."""
-    return Ok(1.0)
+    """Return region units (1 active, 0 inactive) based on regional LPF viability.
+
+    Regions are deactivated when the sum of node load participation factors is zero,
+    which also covers regions with no effective load.
+    """
+    ext = getattr(source_component, "ext", None)
+    arname = (ext or {}).get("ARNAME") if isinstance(ext, dict) else None
+    area_name = str(arname) if arname else str(getattr(source_component, "name", ""))
+
+    buses = _build_area_buses_index(context).get(area_name, [])
+    if not buses:
+        return Ok(0.0)
+
+    lpf_sum = 0.0
+    for bus in buses:
+        result = get_load_participation_factor(bus, context)
+        match result:
+            case Ok(value):
+                lpf_sum += float(value)
+            case Err(_):
+                continue
+
+    return Ok(0.0 if math.isclose(lpf_sum, 0.0, rel_tol=0.0, abs_tol=1e-9) else 1.0)
 
 
 @getter
