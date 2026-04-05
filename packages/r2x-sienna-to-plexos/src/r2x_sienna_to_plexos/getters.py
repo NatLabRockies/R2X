@@ -985,7 +985,9 @@ def get_line_min_flow(
     | TwoTerminalVSCLine,
     context: PluginContext,
 ) -> Result[float, ValueError]:
-    """Extract line min flow as float from source component negative rating."""
+    """Extract line min flow as float from source component negative rating.
+    """
+    base_power = _get_system_base_power(context)
     min_flow = getattr(source_component, "rating", None)
     if min_flow is not None:
         magnitude = get_magnitude(min_flow)
@@ -997,13 +999,17 @@ def get_line_min_flow(
             else None
         )
         if value is not None:
-            if abs(value) > 1e6:
+            flow = float(-abs(value)) * base_power
+            if abs(flow) > 99999.0:
                 return Ok(-99999.0)
-            return Ok(float(-abs(value)) * _get_system_base_power(context))
+            return Ok(flow)
 
     val = _get_minmax_value(getattr(source_component, "active_power_limits_to", None), "min")
-    if val is not None and abs(val) <= 1e6:
-        return Ok(float(val) * _get_system_base_power(context))
+    if val is not None:
+        flow = float(val) * base_power
+        if abs(flow) > 99999.0:
+            return Ok(-99999.0)
+        return Ok(flow)
 
     return Ok(-99999.0)
 
@@ -1018,7 +1024,9 @@ def get_line_max_flow(
     | TwoTerminalVSCLine,
     context: PluginContext,
 ) -> Result[float, ValueError]:
-    """Extract line max flow as float from source component rating."""
+    """Extract line max flow as float from source component rating.
+    """
+    base_power = _get_system_base_power(context)
     max_flow = getattr(source_component, "rating", None)
     if max_flow is not None:
         magnitude = get_magnitude(max_flow)
@@ -1030,13 +1038,17 @@ def get_line_max_flow(
             else None
         )
         if value is not None:
-            if abs(value) > 1e6:
+            flow = float(abs(value)) * base_power
+            if abs(flow) > 99999.0:
                 return Ok(99999.0)
-            return Ok(float(abs(value)) * _get_system_base_power(context))
+            return Ok(flow)
 
     val = _get_minmax_value(getattr(source_component, "active_power_limits_from", None), "max")
-    if val is not None and abs(val) <= 1e6:
-        return Ok(float(abs(val)) * _get_system_base_power(context))
+    if val is not None:
+        flow = float(abs(val)) * base_power
+        if abs(flow) > 99999.0:
+            return Ok(99999.0)
+        return Ok(flow)
 
     return Ok(99999.0)
 
