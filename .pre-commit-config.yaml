@@ -22,14 +22,24 @@ repos:
         types_or: [python, pyi]
 
       - id: taplo-format
+        name: taplo format
         entry: uv run taplo fmt --check
         language: system
         types_or: [toml]
 
       - id: taplo-lint
+        name: taplo lint
         entry: uv run taplo check
         language: system
         types_or: [toml]
+
+      - id: pytest
+        name: pytest (quick)
+        entry: uv run pytest -q -m "not slow" --maxfail=1 --disable-warnings
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -49,17 +59,6 @@ repos:
       - id: commitizen
         stages:
           - commit-msg
-        pass_filenames: false
-
-  - repo: local
-    hooks:
-      - id: pytest
-        name: pytest (quick)
-        entry: uv run pytest -q -m "not slow" --maxfail=1 --disable-warnings
-        language: system
-        types: [python]
-        pass_filenames: false
-        stages: [pre-push]
 
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.9.4
