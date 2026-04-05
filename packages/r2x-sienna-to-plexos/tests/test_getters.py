@@ -987,7 +987,7 @@ def test_get_head_tail_storage_uuid(context):
 
 def test_get_area_units_and_load(context):
     area = Area(name="A1", category="region")
-    assert getters.get_area_units(area, context).unwrap() == 1.0
+    assert getters.get_area_units(area, context).unwrap() == 0.0
     assert getters.get_area_load(area, context).unwrap() == 0.0
 
 
@@ -1631,6 +1631,18 @@ def test_get_tail_storage_uuid(context):
 
 def test_get_area_units(context):
     area = Area(name="A1", category="region")
+    assert getters.get_area_units(area, context).unwrap() == 0.0
+
+
+def test_get_area_units_active_when_region_has_positive_lpf(context):
+    area = Area(name="A1", category="region")
+    bus = ACBus(name="N1", area=area, base_voltage=115.0, number=1)
+    load = PowerLoad(name="Load-1", bus=bus, max_active_power=100.0)
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(bus)
+    context.source_system.add_component(load)
+
     assert getters.get_area_units(area, context).unwrap() == 1.0
 
 
