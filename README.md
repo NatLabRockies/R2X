@@ -22,7 +22,7 @@ ReEDS, PLEXOS, Sienna — any direction.
 
 This repo houses the translation plugins for the
 [r2x](https://github.com/NatlabRockies/r2x-cli) ecosystem. The
-[r2x CLI](https://github.com/NatlabRockies/r2x-cli) is the
+[r2x-cli](https://github.com/NatlabRockies/r2x-cli) is the
 orchestrator for all r2x plugins — parsers, transforms,
 translations, and exporters. It discovers installed plugins, chains
 them into pipelines, and manages Python environments.
@@ -42,11 +42,11 @@ handling any derived values.
 ### Prerequisites
 
 - Python 3.11, 3.12, or 3.13
-- The [`r2x` CLI](https://github.com/NatlabRockies/r2x-cli)
+- The [`r2x-cli`](https://github.com/NatlabRockies/r2x-cli)
 
 ### Install the CLI
 
-See the [r2x-cli README](https://github.com/NatlabRockies/r2x-cli)
+See the [`r2x-cli` README](https://github.com/NatlabRockies/r2x-cli)
 for install instructions. The CLI manages its own Python environment
 and handles plugin installation.
 
@@ -161,7 +161,7 @@ complete examples.
 
 ```mermaid
 graph LR
-    subgraph "r2x CLI · Rust"
+    subgraph "r2x-cli · Rust"
         CLI[Pipeline Runner]
     end
 
