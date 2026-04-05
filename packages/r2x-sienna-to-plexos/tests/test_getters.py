@@ -59,7 +59,7 @@ from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput
 from r2x_sienna.units import ActivePower
 from r2x_sienna_to_plexos import getters
 
-from r2x_core import DataStore, PluginConfig, PluginContext, System
+from r2x_core import DataStore, Ok, PluginConfig, PluginContext, System
 
 from .fixtures.five_bus_systems import (
     system_complete,
@@ -810,6 +810,36 @@ def test_get_vom_cost(context):
         ),
     )
     assert getters.get_generator_vom_cost(gen, context).unwrap() == 5.0
+
+
+def test_get_thermal_generator_units_zero_when_fuel_price_zero(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(0.0))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+
+
+def test_get_thermal_generator_units_zero_when_heat_rate_zero(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(0.0))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+
+
+def test_get_thermal_generator_units_one_when_inputs_present(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
 
 
 def test_get_turbine_pump_load_and_efficiency(context):
