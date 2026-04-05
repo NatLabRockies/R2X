@@ -1006,8 +1006,7 @@ def get_line_min_flow(
     | TwoTerminalVSCLine,
     context: PluginContext,
 ) -> Result[float, ValueError]:
-    """Extract line min flow as float from source component negative rating.
-    """
+    """Extract line min flow as float from source component negative rating."""
     base_power = _get_system_base_power(context)
     min_flow = getattr(source_component, "rating", None)
     if min_flow is not None:
@@ -1045,8 +1044,7 @@ def get_line_max_flow(
     | TwoTerminalVSCLine,
     context: PluginContext,
 ) -> Result[float, ValueError]:
-    """Extract line max flow as float from source component rating.
-    """
+    """Extract line max flow as float from source component rating."""
     base_power = _get_system_base_power(context)
     max_flow = getattr(source_component, "rating", None)
     if max_flow is not None:
@@ -1345,6 +1343,38 @@ def get_fuel_price(
         if price is not None:
             return Ok(round(float(price), 2))
     return Ok(0.0)
+
+
+@getter
+def get_thermal_generator_units(
+    source_component: ThermalStandard | ThermalMultiStart, context: PluginContext
+) -> Result[int, ValueError]:
+    """Deactivate thermal generators with missing marginal-cost inputs.
+
+    If fuel price or heat rate resolves to zero, set units to 0 so the device is
+    not treated as nearly free generation in PLEXOS.
+    """
+    fuel_price = 0.0
+    heat_rate = 0.0
+
+    match get_fuel_price(source_component, context):
+        case Ok(value):
+            fuel_price = float(value)
+        case Err(_):
+            fuel_price = 0.0
+
+    match get_heat_rate(source_component, context):
+        case Ok(value):
+            heat_rate = float(value)
+        case Err(_):
+            heat_rate = 0.0
+
+    if math.isclose(fuel_price, 0.0, rel_tol=0.0, abs_tol=1e-9) or math.isclose(
+        heat_rate, 0.0, rel_tol=0.0, abs_tol=1e-9
+    ):
+        return Ok(0)
+
+    return Ok(1)
 
 
 @getter

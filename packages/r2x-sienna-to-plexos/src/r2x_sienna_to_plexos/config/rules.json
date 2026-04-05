@@ -384,6 +384,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "units": "get_thermal_generator_units",
       "commit": "get_generator_commit",
       "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
@@ -422,6 +423,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "units": "get_thermal_generator_units",
       "commit": "get_generator_commit",
       "category": "get_generator_category",
       "fuel_price": "get_fuel_price",
