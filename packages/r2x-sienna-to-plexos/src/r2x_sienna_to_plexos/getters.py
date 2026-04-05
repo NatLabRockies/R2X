@@ -1354,6 +1354,14 @@ def get_thermal_generator_units(
     If fuel price or heat rate resolves to zero, set units to 0 so the device is
     not treated as nearly free generation in PLEXOS.
     """
+    ext = getattr(source_component, "ext", None)
+    if isinstance(ext, dict):
+        plant_name = str(ext.get("plant_name", "")).strip().lower()
+        state = str(ext.get("state", "")).strip().upper()
+        # Explicitly deactivate the known mismapped TX "Monticello" units.
+        if plant_name == "monticello" and state == "TX":
+            return Ok(0)
+
     fuel_price = 0.0
     heat_rate = 0.0
 
