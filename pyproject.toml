@@ -2,61 +2,61 @@
 name = "r2x"
 version = "2.0.0"
 authors = [
-    { name = "pesap", email = "pesap@users.noreply.github.com" },
-    { name = "kodiobika", email = "kodiobika@users.noreply.github.com" },
-    { name = "Vivienne Liu", email = "vivienne.liu@nrel.gov"},
-    { name = "Micah Webb", email = "micahpw@user.noreply.github.com"},
-    { name = "Kinshuk Panda", email = "7632244+k1nshuk@users.noreply.github.com"},
-    { name = "mcllerena", email = "mcllerena@users.noreply.github.com"},
-    { name = "jarry7", email = "27745389+jarry7@users.noreply.github.com"},
+  { name = "pesap", email = "pesap@users.noreply.github.com" },
+  { name = "kodiobika", email = "kodiobika@users.noreply.github.com" },
+  { name = "Vivienne Liu", email = "vivienne.liu@nrel.gov" },
+  { name = "Micah Webb", email = "micahpw@user.noreply.github.com" },
+  { name = "Kinshuk Panda", email = "7632244+k1nshuk@users.noreply.github.com" },
+  { name = "mcllerena", email = "mcllerena@users.noreply.github.com" },
+  { name = "jarry7", email = "27745389+jarry7@users.noreply.github.com" },
 ]
 maintainers = [
-    { name = "pesap", email = "pesap@users.noreply.github.com" },
-    { name = "Kinshuk Panda", email = "7632244+k1nshuk@users.noreply.github.com"},
-    { name = "mcllerena", email = "mcllerena@users.noreply.github.com"},
-    { name = "jarry7", email = "27745389+jarry7@users.noreply.github.com"},
-    { name = "kodiobika", email = "kodiobika@users.noreply.github.com" },
+  { name = "pesap", email = "pesap@users.noreply.github.com" },
+  { name = "Kinshuk Panda", email = "7632244+k1nshuk@users.noreply.github.com" },
+  { name = "mcllerena", email = "mcllerena@users.noreply.github.com" },
+  { name = "jarry7", email = "27745389+jarry7@users.noreply.github.com" },
+  { name = "kodiobika", email = "kodiobika@users.noreply.github.com" },
 ]
 description = "Translation Plugins for mainstream models."
 readme = "README.md"
-license = {file = "LICENSE.txt"}
+license = { file = "LICENSE.txt" }
 requires-python = ">=3.11, <3.14"
 keywords = [
-    "power-systems",
-    "energy-modeling",
-    "model-translation",
-    "reeds",
-    "plexos",
-    "sienna",
-    "plugin-architecture",
+  "power-systems",
+  "energy-modeling",
+  "model-translation",
+  "reeds",
+  "plexos",
+  "sienna",
+  "plugin-architecture",
 ]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: BSD License",
-    "Natural Language :: English",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: File Formats :: JSON",
-    "Topic :: Scientific/Engineering",
-    "Topic :: Scientific/Engineering :: Information Analysis",
-    "Topic :: Scientific/Engineering :: Interface Engine/Protocol Translator",
-    "Topic :: Software Development :: Build Tools",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Typing :: Typed",
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: BSD License",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: File Formats :: JSON",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Scientific/Engineering :: Interface Engine/Protocol Translator",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
 ]
 dependencies = [
-    "r2x-sienna-to-plexos",
-    "r2x-plexos-to-sienna",
-    "r2x-reeds-to-plexos",
-    "r2x-reeds-to-sienna",
-    "r2x-plexos",
-    "r2x-sienna",
-    "r2x-core",
-    "r2x-reeds",
+  "r2x-sienna-to-plexos",
+  "r2x-plexos-to-sienna",
+  "r2x-reeds-to-plexos",
+  "r2x-reeds-to-sienna",
+  "r2x-plexos",
+  "r2x-sienna",
+  "r2x-core",
+  "r2x-reeds",
 ]
 
 [project.urls]
@@ -68,24 +68,25 @@ Changelog = "https://nrel.github.io/r2x/CHANGELOG.html"
 
 [dependency-groups]
 dev = [
-    "h5py-stubs>=0.1.2,<1.0.0",
-    "mypy>=1.18.2,<2.0.0",
-    "pre-commit>=4.5.0,<5.0.0",
-    "pytest>=8.3.0,<9.0.0",
-    "pytest-cov>=5.0.0,<6.0.0",
-    "ruff>=0.6.8,<0.7.0",
-    "ty>=0.0.2",
+  "h5py-stubs>=0.1.2,<1.0.0",
+  "mypy>=1.18.2,<2.0.0",
+  "pre-commit>=4.5.0,<5.0.0",
+  "pytest>=8.3.0,<9.0.0",
+  "pytest-cov>=5.0.0,<6.0.0",
+  "ruff>=0.6.8,<0.7.0",
+  "taplo>=0.9.3,<1.0.0",
+  "ty>=0.0.2",
 ]
 docs = [
-    "autodoc-pydantic",
-    "docstr-coverage",
-    "furo",
-    "ghp-import",
-    "myst-parser",
-    "sphinx",
-    "sphinx-copybutton",
-    "sphinx-reports",
-    "sphinx-tabs",
+  "autodoc-pydantic",
+  "docstr-coverage",
+  "furo",
+  "ghp-import",
+  "myst-parser",
+  "sphinx",
+  "sphinx-copybutton",
+  "sphinx-reports",
+  "sphinx-tabs",
 ]
 
 [build-system]
@@ -96,7 +97,6 @@ build-backend = "uv_build"
 r2x-sienna-to-plexos = { workspace = true }
 r2x-plexos-to-sienna = { workspace = true }
 r2x-reeds-to-plexos = { workspace = true }
-r2x-core = { git = "https://github.com/NREL/r2x-core", branch = "main" }
 r2x-reeds-to-sienna = { workspace = true }
 r2x-sienna = { git = "ssh://git@github.com/NREL-Sienna/r2x-sienna", branch = "main" }
 
@@ -106,9 +106,7 @@ members = ["packages/*"]
 [tool.mypy]
 strict = true
 exclude = ["tests/"]
-plugins = [
-  "pydantic.mypy"
-]
+plugins = ["pydantic.mypy"]
 mypy_path = [
   "packages/r2x-sienna-to-plexos/src",
   "packages/r2x-reeds-to-plexos/src",
@@ -120,48 +118,42 @@ mypy_path = [
 pythonpath = ["src"]
 testpaths = ["tests", "packages"]
 addopts = [
-    "--cov=packages",
-    "--cov-report=term-missing:skip-covered",
-    "--cov-report=html",
-    "--cov-report=json",
-    "--strict-markers",
-    "-v",
+  "--cov=packages",
+  "--cov-report=term-missing:skip-covered",
+  "--cov-report=html",
+  "--cov-report=json",
+  "--strict-markers",
+  "-v",
 ]
 markers = [
-    "unit: Fast unit tests with no external dependencies",
-    "integration: Integration tests requiring system setup",
-    "slow: Slow tests (>1s)",
+  "unit: Fast unit tests with no external dependencies",
+  "integration: Integration tests requiring system setup",
+  "slow: Slow tests (>1s)",
 ]
 
 [tool.ruff]
 line-length = 110
-extend-exclude = [
-    ".venv",
-    "venv",
-    "build",
-    "dist",
-    "*.egg-info",
-]
+extend-exclude = [".venv", "venv", "build", "dist", "*.egg-info"]
 
 [tool.ruff.lint]
 select = [
-    "D",      # pyddoc
-    "E",      # pycodestyle errors
-    "W",      # pycodestyle warnings
-    "F",      # pyflakes
-    "I",      # isort
-    "N",      # pep8-naming
-    "UP",     # pyupgrade
-    "B",      # flake8-bugbear
-    "C4",     # flake8-comprehensions
-    "SIM",    # flake8-simplify
-    "PIE",    # flake8-pie
-    "PERF",   # perflint (performance)
-    "RUF",    # ruff-specific rules
+  "D",    # pyddoc
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "N",    # pep8-naming
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "C4",   # flake8-comprehensions
+  "SIM",  # flake8-simplify
+  "PIE",  # flake8-pie
+  "PERF", # perflint (performance)
+  "RUF",  # ruff-specific rules
 ]
 ignore = [
-    "E501",   # Line too long (handled by formatter)
-    "B027",   # Empty method in abstract class without @abstractmethod (intentional for hooks)
+  "E501", # Line too long (handled by formatter)
+  "B027", # Empty method in abstract class without @abstractmethod (intentional for hooks)
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -173,7 +165,13 @@ convention = "numpy"
 
 [tool.ruff.lint.isort]
 known-first-party = ["r2x_core"]
-section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+section-order = [
+  "future",
+  "standard-library",
+  "third-party",
+  "first-party",
+  "local-folder",
+]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

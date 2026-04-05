@@ -21,6 +21,16 @@ repos:
         language: system
         types_or: [python, pyi]
 
+      - id: taplo-format
+        entry: uv run taplo fmt --check
+        language: system
+        types_or: [toml]
+
+      - id: taplo-lint
+        entry: uv run taplo check
+        language: system
+        types_or: [toml]
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
