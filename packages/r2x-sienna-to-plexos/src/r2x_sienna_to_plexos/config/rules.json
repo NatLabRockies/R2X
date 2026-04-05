@@ -613,7 +613,8 @@
   },
   {
     "defaults": {
-      "category": "syn-cond"
+      "category": "syn-cond",
+      "units": 0
     },
     "field_map": {
       "name": "name",
@@ -624,21 +625,12 @@
       "name": "get_generator_name",
       "commit": "get_generator_commit",
       "category": "get_generator_category",
-      "fuel_price": "get_fuel_price",
       "rating": "get_generator_rating",
       "max_capacity": "get_max_capacity",
-      "min_down_time": "get_min_down_time",
-      "min_up_time": "get_min_up_time",
       "min_stable_level": "get_generator_min_stable_level",
       "forced_outage_rate": "get_generator_forced_outage_rate",
       "maintenance_rate": "get_generator_maintenance_rate",
       "mean_time_to_repair": "get_generator_mean_time_to_repair",
-      "vom_charge": "get_generator_vom_cost",
-      "heat_rate": "get_heat_rate",
-      "heat_rate_base": "get_heat_rate_base",
-      "heat_rate_incr": "get_heat_rate_incr",
-      "heat_rate_incr2": "get_heat_rate_incr2",
-      "heat_rate_incr3": "get_heat_rate_incr3",
       "ext": "get_component_ext"
     },
     "source_type": "SynchronousCondenser",
