@@ -1004,24 +1004,48 @@ def test_head_tail_memberships_from_ext_plants_and_fallback_name_matching(contex
     fallback_head = PLEXOSStorage(name="Fallback_head")
     fallback_tail = PLEXOSStorage(name="Fallback_tail")
 
-    for component in [gen_t1, gen_fallback_head, gen_fallback_tail, storage_head, storage_tail, fallback_head, fallback_tail]:
+    for component in [
+        gen_t1,
+        gen_fallback_head,
+        gen_fallback_tail,
+        storage_head,
+        storage_tail,
+        fallback_head,
+        fallback_tail,
+    ]:
         context.target_system.add_component(component)
 
-    monkeypatch.setattr(getters_utils, "_attach_reservoir_time_series_to_storage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        getters_utils, "_attach_reservoir_time_series_to_storage", lambda *_args, **_kwargs: None
+    )
 
     getters_utils.ensure_head_storage_generator_membership(context)
     getters_utils.ensure_tail_storage_generator_membership(context)
 
-    head_memberships = context.target_system.get_supplemental_attributes_with_component(gen_t1, PLEXOSMembership)
-    assert any(m.collection == CollectionEnum.HeadStorage and m.child_object.name == "PlantA_head" for m in head_memberships)
+    head_memberships = context.target_system.get_supplemental_attributes_with_component(
+        gen_t1, PLEXOSMembership
+    )
+    assert any(
+        m.collection == CollectionEnum.HeadStorage and m.child_object.name == "PlantA_head"
+        for m in head_memberships
+    )
 
-    tail_memberships = context.target_system.get_supplemental_attributes_with_component(gen_t1, PLEXOSMembership)
-    assert any(m.collection == CollectionEnum.TailStorage and m.child_object.name == "PlantA_tail" for m in tail_memberships)
+    tail_memberships = context.target_system.get_supplemental_attributes_with_component(
+        gen_t1, PLEXOSMembership
+    )
+    assert any(
+        m.collection == CollectionEnum.TailStorage and m.child_object.name == "PlantA_tail"
+        for m in tail_memberships
+    )
 
-    fallback_h = context.target_system.get_supplemental_attributes_with_component(gen_fallback_head, PLEXOSMembership)
+    fallback_h = context.target_system.get_supplemental_attributes_with_component(
+        gen_fallback_head, PLEXOSMembership
+    )
     assert any(m.collection == CollectionEnum.HeadStorage for m in fallback_h)
 
-    fallback_t = context.target_system.get_supplemental_attributes_with_component(gen_fallback_tail, PLEXOSMembership)
+    fallback_t = context.target_system.get_supplemental_attributes_with_component(
+        gen_fallback_tail, PLEXOSMembership
+    )
     assert any(m.collection == CollectionEnum.TailStorage for m in fallback_t)
 
 
@@ -1029,7 +1053,9 @@ def test_generator_node_memberships_deduplicate_same_target_node(context, monkey
     import r2x_sienna_to_plexos.getters as getters_mod
     import r2x_sienna_to_plexos.getters_mappings as mappings_mod
 
-    monkeypatch.setattr(getters_mod, "_build_generator_display_name_index", lambda _ctx: {"SRC1": "GEN_A", "SRC2": "GEN_A"})
+    monkeypatch.setattr(
+        getters_mod, "_build_generator_display_name_index", lambda _ctx: {"SRC1": "GEN_A", "SRC2": "GEN_A"}
+    )
     monkeypatch.setattr(mappings_mod, "SOURCE_GENERATOR_TYPES", [dict])
 
     bus = types.SimpleNamespace(name="N1")
