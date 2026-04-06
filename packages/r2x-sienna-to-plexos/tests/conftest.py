@@ -29,7 +29,11 @@ pytest_plugins = [
 def caplog(caplog):
     from r2x_core.logger import setup_logging
 
-    setup_logging(level="TRACE", module="r2x_sienna_to_plexos", tracing=True)
+    try:
+        setup_logging(level="TRACE", module="r2x_sienna_to_plexos", tracing=True)
+    except TypeError:
+        # Backward-compatible fallback for older setup_logging signatures.
+        setup_logging()
 
     yield caplog
     logger.remove()
