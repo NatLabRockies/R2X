@@ -2018,6 +2018,21 @@ def test_get_max_capacity_zero_from_sienna(context):
     assert getters.get_max_capacity(d, context).unwrap() == 55.0
 
 
+def test_get_max_capacity_uses_default_when_below_ten_mw(context):
+    expected = round(getters._get_defaults("gas-cc", "max_capacity_MW"), 2)
+
+    class DummyFromRating:
+        rating = 1.1
+        base_power = 1.0
+
+    class DummyFromLimits:
+        rating = None
+        active_power_limits = {"max": 9.5}  # noqa: RUF012
+
+    assert getters.get_max_capacity(DummyFromRating(), context).unwrap() == expected
+    assert getters.get_max_capacity(DummyFromLimits(), context).unwrap() == expected
+
+
 def test_get_component_rating_no_base_power(context):
     """Covers get_component_rating when rating is not None but base_power missing."""
 
@@ -2246,8 +2261,19 @@ def test_get_min_stable_level_negative_min(context):
 
     class Dummy:
         active_power_limits = {"min": -5.0, "max": 100.0}  # noqa: RUF012
+        base_power = 1.0
 
-    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 5.0
+    # |min| = 5 MW (<10 MW), so enforce 50% of max capacity (100 MW).
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 50.0
+
+
+def test_get_min_stable_level_tiny_value_uses_half_max_capacity(context):
+    class Dummy:
+        active_power_limits = {"min": 0.02, "max": 29.9}  # noqa: RUF012
+        rating = 29.9
+        base_power = 1.0
+
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 14.95
 
 
 def test_get_min_stable_level_fallback_is_capped_to_half_max_capacity(monkeypatch, context):
@@ -2265,6 +2291,23 @@ def test_get_min_stable_level_fallback_is_capped_to_half_max_capacity(monkeypatc
 
     # fallback value = 2.0 * 100 = 200 MW, max capacity = 80 MW -> clamp to 40 MW
     assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 40.0
+
+
+def test_get_min_stable_level_zero_fallback_uses_half_max_capacity(monkeypatch, context):
+    class Dummy:
+        active_power_limits = {"min": 0.0}  # noqa: RUF012
+        rating = 60.0
+        base_power = 1.0
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "gas-cc")
+    monkeypatch.setattr(
+        getters,
+        "_get_defaults",
+        lambda _category, key: 0.0 if key == "min_stable_level_percentage" else 0.0,
+    )
+
+    # fallback value = 0.0, max capacity = 60 MW -> force to 30 MW
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 30.0
 
 
 def test_get_reserve_duration_zero(context):

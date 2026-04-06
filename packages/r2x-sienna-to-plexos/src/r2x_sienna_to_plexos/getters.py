@@ -1473,17 +1473,37 @@ def get_thermal_generator_units(
 
 @getter
 def get_max_capacity(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract maximum capacity in MW from rating, active_power_limits, or max_active_power, and return as float."""
+    """Extract maximum capacity in MW from rating, active_power_limits, or max_active_power.
+
+    If extracted capacity is below 10 MW, replace it with the category-level
+    ``max_capacity_MW`` default.
+    """
+
+    def _apply_small_capacity_default(capacity_mw: float) -> float:
+        """Replace tiny capacities with category default max capacity."""
+        if capacity_mw >= 10.0:
+            return round(capacity_mw, 2)
+
+        category = _resolve_generator_category(source_component, context) or "gas-cc"
+        default_max = _get_defaults(category, "max_capacity_MW")
+
+        if math.isclose(default_max, 0.0, rel_tol=0.0, abs_tol=1e-9):
+            # Backstop for categories that may not define max_capacity_MW.
+            default_max = _get_defaults(category, "capacity_MW")
+
+        return round(default_max, 2) if default_max > 0.0 else round(capacity_mw, 2)
+
     rating = getattr(source_component, "rating", None)
     rating_value = get_magnitude(rating)
     if rating_value is not None:
-        return Ok(round(abs(float(rating_value) * resolve_base_power(source_component)), 2))
+        capacity = abs(float(rating_value) * resolve_base_power(source_component))
+        return Ok(_apply_small_capacity_default(capacity))
 
     limits = getattr(source_component, "active_power_limits", None)
     if isinstance(limits, dict):
         max_value = limits.get("max")
         if isinstance(max_value, int | float):
-            return Ok(round(abs(float(max_value)), 2))
+            return Ok(_apply_small_capacity_default(abs(float(max_value))))
 
     try:
         value = sienna_get_max_active_power(source_component)
@@ -1491,7 +1511,7 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
         value = None
 
     if value is not None:
-        return Ok(round(abs(float(value)), 2))
+        return Ok(_apply_small_capacity_default(abs(float(value))))
 
     return Err(ValueError("active_power_limits or rating missing"))
 
@@ -1636,22 +1656,33 @@ def get_generator_min_stable_level(
     """Extract minimum stable level in MW from active_power_limits.min * base_power.
     Falls back to min_stable_level_percentage * 100 if zero.
     If fallback value exceeds max_capacity, clamp to 50% of max_capacity.
+    If the original min stable level is below 10 MW, use 50% of max_capacity.
     """
     min_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "min")
     min_mw = (float(min_pu) * resolve_base_power(source_component)) if min_pu is not None else 0.0
     min_mw = abs(min_mw) if min_mw < 0 else min_mw  # ensure non-negative
 
+    max_capacity_mw = None
+    match get_max_capacity(source_component, context):
+        case Ok(max_capacity):
+            max_capacity_mw = float(max_capacity)
+        case Err(_):
+            max_capacity_mw = None
+
     if math.isclose(min_mw, 0.0, abs_tol=1e-6):
         category = _resolve_generator_category(source_component, context) or "gas-cc"
         min_mw = _get_defaults(category, "min_stable_level_percentage") * 100.0
 
-        match get_max_capacity(source_component, context):
-            case Ok(max_capacity):
-                max_capacity = float(max_capacity)
-                if max_capacity > 0.0 and min_mw > max_capacity:
-                    min_mw = 0.5 * max_capacity
-            case Err(_):
-                pass
+        if max_capacity_mw is not None and max_capacity_mw > 0.0 and min_mw > max_capacity_mw:
+            min_mw = 0.5 * max_capacity_mw
+
+    # If the source min stable level is tiny (<10 MW), use 50% of max capacity.
+    if min_mw < 10.0 and max_capacity_mw is not None and max_capacity_mw > 0.0:
+        min_mw = 0.5 * max_capacity_mw
+
+    # Enforce non-zero fallback when min stable level still resolves to 0.0.
+    if math.isclose(min_mw, 0.0, abs_tol=1e-6) and max_capacity_mw is not None and max_capacity_mw > 0.0:
+        min_mw = 0.5 * max_capacity_mw
 
     return Ok(round(min_mw, 2))
 
