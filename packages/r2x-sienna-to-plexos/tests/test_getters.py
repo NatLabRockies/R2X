@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import types
 from datetime import datetime, timedelta
+from typing import ClassVar
 
 import pytest
 from infrasys.cost_curves import FuelCurve, UnitSystem
@@ -59,7 +60,7 @@ from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput
 from r2x_sienna.units import ActivePower
 from r2x_sienna_to_plexos import getters
 
-from r2x_core import DataStore, PluginConfig, PluginContext, System
+from r2x_core import DataStore, Ok, PluginConfig, PluginContext, System
 
 from .fixtures.five_bus_systems import (
     system_complete,
@@ -812,6 +813,122 @@ def test_get_vom_cost(context):
     assert getters.get_generator_vom_cost(gen, context).unwrap() == 5.0
 
 
+def test_get_thermal_generator_units_zero_when_fuel_price_zero(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(0.0))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+
+
+def test_get_thermal_generator_units_zero_when_heat_rate_zero(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(0.0))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+
+
+def test_get_thermal_generator_units_one_when_inputs_present(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
+
+
+def test_get_thermal_generator_units_zero_for_monticello_tx(monkeypatch, context):
+    class DummyThermal:
+        ext = {"plant_name": "Monticello", "state": "TX"}  # noqa: RUF012
+
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+
+
+def test_get_thermal_generator_units_keeps_monticello_mn_active(monkeypatch, context):
+    class DummyThermal:
+        ext = {"plant_name": "Monticello Nuclear Facility", "state": "MN"}  # noqa: RUF012
+
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
+
+
+def test_get_generator_category_avoids_substring_nuclear_false_positive(monkeypatch, context):
+    class DummyGenerator:
+        name = "wind_plant_component"
+        ext = {"plant_name": "Monticello Wind Farm"}  # noqa: RUF012
+        prime_mover_type = None
+        fuel = None
+
+    monkeypatch.setattr(getters, "_build_nuclear_plant_name_set", lambda _ctx: {"monticello"})
+    monkeypatch.setattr(getters, "_build_nuclear_plant_name_state_set", lambda _ctx: set())
+    monkeypatch.setattr(getters, "_build_oil_plant_name_set", lambda _ctx: set())
+    monkeypatch.setattr(getters, "_build_oil_plant_name_state_set", lambda _ctx: set())
+
+    assert getters.get_generator_category(DummyGenerator(), context).is_err()
+
+
+def test_get_generator_category_uses_state_for_nuclear_matching(monkeypatch, context):
+    class DummyGenerator:
+        name = "gen"
+        ext = {"plant_name": "Monticello", "state": "TX"}  # noqa: RUF012
+        prime_mover_type = None
+        fuel = None
+
+    monkeypatch.setattr(getters, "_build_nuclear_plant_name_set", lambda _ctx: set())
+    monkeypatch.setattr(
+        getters,
+        "_build_nuclear_plant_name_state_set",
+        lambda _ctx: {("monticello", "MN")},
+    )
+    monkeypatch.setattr(getters, "_build_oil_plant_name_set", lambda _ctx: set())
+    monkeypatch.setattr(getters, "_build_oil_plant_name_state_set", lambda _ctx: set())
+
+    assert getters.get_generator_category(DummyGenerator(), context).is_err()
+
+
+def test_get_generator_category_matches_nuclear_with_same_state(monkeypatch, context):
+    class DummyGenerator:
+        name = "gen"
+        ext: ClassVar[dict[str, str]] = {"plant_name": "Monticello", "state": "MN"}
+        prime_mover_type = None
+        fuel = None
+
+    monkeypatch.setattr(getters, "_build_nuclear_plant_name_set", lambda _ctx: set())
+    monkeypatch.setattr(
+        getters,
+        "_build_nuclear_plant_name_state_set",
+        lambda _ctx: {("monticello", "MN")},
+    )
+    monkeypatch.setattr(getters, "_build_oil_plant_name_set", lambda _ctx: set())
+    monkeypatch.setattr(getters, "_build_oil_plant_name_state_set", lambda _ctx: set())
+
+    assert getters.get_generator_category(DummyGenerator(), context).unwrap() == "nuclear"
+
+
+def test_get_generator_category_prioritizes_nuclear_keyword_over_prime_mover(context):
+    class DummyPrimeMover:
+        name = "ST"
+
+    class DummyGenerator:
+        name = "MonticelliNuclearFacility_1"
+        ext = {}  # noqa: RUF012
+        prime_mover_type = DummyPrimeMover()
+        fuel = None
+
+    assert getters.get_generator_category(DummyGenerator(), context).unwrap() == "nuclear"
+
+
 def test_get_turbine_pump_load_and_efficiency(context):
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     context.source_system.add_component(bus1)
@@ -987,7 +1104,7 @@ def test_get_head_tail_storage_uuid(context):
 
 def test_get_area_units_and_load(context):
     area = Area(name="A1", category="region")
-    assert getters.get_area_units(area, context).unwrap() == 1.0
+    assert getters.get_area_units(area, context).unwrap() == 0.0
     assert getters.get_area_load(area, context).unwrap() == 0.0
 
 
@@ -1631,6 +1748,18 @@ def test_get_tail_storage_uuid(context):
 
 def test_get_area_units(context):
     area = Area(name="A1", category="region")
+    assert getters.get_area_units(area, context).unwrap() == 0.0
+
+
+def test_get_area_units_active_when_region_has_positive_lpf(context):
+    area = Area(name="A1", category="region")
+    bus = ACBus(name="N1", area=area, base_voltage=115.0, number=1)
+    load = PowerLoad(name="Load-1", bus=bus, max_active_power=100.0)
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(bus)
+    context.source_system.add_component(load)
+
     assert getters.get_area_units(area, context).unwrap() == 1.0
 
 
@@ -2268,6 +2397,36 @@ def test_get_heat_rate_multiband_returns_property(context_with_thermal_generator
     incr_prop = get_heat_rate_incr(source, context_with_thermal_generators).unwrap()
     assert hasattr(incr_prop, "get_bands")
     assert incr_prop.get_bands() == [1, 2]
+
+
+def test_heat_rate_getters_return_absolute_values(monkeypatch, context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import (
+        get_heat_rate,
+        get_heat_rate_base,
+        get_heat_rate_incr,
+        get_heat_rate_incr2,
+        get_heat_rate_incr3,
+    )
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
+    monkeypatch.setattr(
+        getters,
+        "compute_heat_rate_data",
+        lambda _component: {
+            "heat_rate": -9.2,
+            "heat_rate_base": -120.0,
+            "heat_rate_incr": -9.8,
+            "heat_rate_incr2": -0.03,
+            "heat_rate_incr3": -0.0005,
+        },
+    )
+
+    assert get_heat_rate(source, context_with_thermal_generators).unwrap() == pytest.approx(9.2)
+    assert get_heat_rate_base(source, context_with_thermal_generators).unwrap() == pytest.approx(120.0)
+    assert get_heat_rate_incr(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
+    assert get_heat_rate_incr2(source, context_with_thermal_generators).unwrap() == pytest.approx(0.03)
+    assert get_heat_rate_incr3(source, context_with_thermal_generators).unwrap() == pytest.approx(0.0005)
 
 
 def _disable_time_series(sys):

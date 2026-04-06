@@ -843,3 +843,205 @@ def test_generator_reserve_interface_and_battery_memberships(context, monkeypatc
         interface, PLEXOSMembership
     )
     assert any(m.collection == CollectionEnum.Lines for m in interface_memberships)
+
+
+def test_ensure_reserve_time_series_scales_sequence_data(context, monkeypatch):
+    source_reserve = VariableReserve(
+        name="RES_SEQ",
+        reserve_type=ReserveType.SPINNING,
+        vors=10.0,
+        max_participation_factor=0.5,
+        direction="UP",
+        requirement=100.0,
+    )
+    target_reserve = PLEXOSReserve(name="RES_SEQ")
+    context.source_system.add_component(source_reserve)
+    context.target_system.add_component(target_reserve)
+
+    metadata = types.SimpleNamespace(name="requirement", features={"scenario": "base"})
+    source_ts = types.SimpleNamespace(name="requirement", data=[1.0, 0.5], features={"scenario": "base"})
+
+    context.source_system.base_power = "not-a-number"
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: [metadata],
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, name=None, **_kwargs: [source_ts],
+    )
+
+    added = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    context.target_system.add_time_series = lambda ts, reserve, **features: added.append(
+        (ts, reserve, features)
+    )
+
+    getters_utils.ensure_reserve_time_series(context)
+
+    assert len(added) == 1
+    ts, reserve, features = added[0]
+    assert reserve.name == "RES_SEQ"
+    assert ts.name == "min_provision"
+    assert ts.data == [100.0, 50.0]
+    assert features == {"scenario": "base"}
+
+
+def test_ensure_reserve_time_series_skips_when_target_has_series(context, monkeypatch):
+    source_reserve = VariableReserve(
+        name="RES_EXISTS",
+        reserve_type=ReserveType.SPINNING,
+        vors=10.0,
+        max_participation_factor=0.5,
+        direction="UP",
+        requirement=100.0,
+    )
+    target_reserve = PLEXOSReserve(name="RES_EXISTS")
+    context.source_system.add_component(source_reserve)
+    context.target_system.add_component(target_reserve)
+
+    metadata = types.SimpleNamespace(name="requirement", features={})
+    source_ts = types.SimpleNamespace(name="requirement", data=[1.0], features={})
+
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: [metadata],
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, name=None, **_kwargs: [source_ts],
+    )
+
+    added = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: True
+    context.target_system.add_time_series = lambda *args, **kwargs: added.append((args, kwargs))
+
+    getters_utils.ensure_reserve_time_series(context)
+
+    assert added == []
+
+
+def test_ensure_membership_deduplicates_existing_membership(context):
+    parent = PLEXOSGenerator(name="PARENT_GEN")
+    child = PLEXOSNode(name="CHILD_NODE")
+    context.target_system.add_component(parent)
+    context.target_system.add_component(child)
+
+    getters_utils._ensure_membership(context, parent, child, CollectionEnum.Nodes)
+    getters_utils._ensure_membership(context, parent, child, CollectionEnum.Nodes)
+
+    memberships = context.target_system.get_supplemental_attributes_with_component(child, PLEXOSMembership)
+    assert len([m for m in memberships if m.collection == CollectionEnum.Nodes]) == 1
+
+
+def test_attach_reservoir_time_series_scales_max_active_power_from_turbine_limits(context, monkeypatch):
+    storage = PLEXOSStorage(name="Plant_Reservoir_head")
+    context.target_system.add_component(storage)
+
+    reservoir = types.SimpleNamespace(name="Plant_Reservoir", ext={})
+    turbine = types.SimpleNamespace(name="Plant_Turbine", active_power_limits={"max": 2.0}, base_power=50.0)
+    source_ts = types.SimpleNamespace(
+        name="max_active_power",
+        data=[0.5, 1.0],
+        initial_timestamp=datetime(2025, 1, 1),
+        resolution=timedelta(hours=1),
+        features={},
+    )
+
+    def source_get_components(comp_type):
+        name = getattr(comp_type, "__name__", "")
+        if name == "HydroReservoir":
+            return [reservoir]
+        if name == "HydroTurbine":
+            return [turbine]
+        return []
+
+    context.source_system.get_components = source_get_components
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(context.source_system, "list_time_series", lambda _component: [source_ts])
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    monkeypatch.setattr(getters_utils, "resolve_base_power", lambda _component: 50.0)
+
+    getters_utils._attach_reservoir_time_series_to_storage(context, storage.name, storage)
+
+    assert len(attached) == 1
+    assert list(attached[0].data) == [50.0, 100.0]
+
+
+def test_head_tail_memberships_from_ext_plants_and_fallback_name_matching(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    monkeypatch.setattr(getters_mod, "_build_generator_display_name_index", lambda _ctx: {"T1": "GEN_T1"})
+
+    reservoir = types.SimpleNamespace(name="ReservoirA", ext={"plant_name": "PlantA", "plants": ["T1"]})
+    turbine = types.SimpleNamespace(name="T1", reservoirs=[])
+
+    def source_get_components(comp_type):
+        name = getattr(comp_type, "__name__", "")
+        if name == "HydroReservoir":
+            return [reservoir]
+        if name == "HydroTurbine":
+            return [turbine]
+        return []
+
+    context.source_system.get_components = source_get_components
+
+    gen_t1 = PLEXOSGenerator(name="GEN_T1")
+    gen_fallback_head = PLEXOSGenerator(name="Fallback_head")
+    gen_fallback_tail = PLEXOSGenerator(name="Fallback_tail")
+    storage_head = PLEXOSStorage(name="PlantA_head")
+    storage_tail = PLEXOSStorage(name="PlantA_tail")
+    fallback_head = PLEXOSStorage(name="Fallback_head")
+    fallback_tail = PLEXOSStorage(name="Fallback_tail")
+
+    for component in [gen_t1, gen_fallback_head, gen_fallback_tail, storage_head, storage_tail, fallback_head, fallback_tail]:
+        context.target_system.add_component(component)
+
+    monkeypatch.setattr(getters_utils, "_attach_reservoir_time_series_to_storage", lambda *_args, **_kwargs: None)
+
+    getters_utils.ensure_head_storage_generator_membership(context)
+    getters_utils.ensure_tail_storage_generator_membership(context)
+
+    head_memberships = context.target_system.get_supplemental_attributes_with_component(gen_t1, PLEXOSMembership)
+    assert any(m.collection == CollectionEnum.HeadStorage and m.child_object.name == "PlantA_head" for m in head_memberships)
+
+    tail_memberships = context.target_system.get_supplemental_attributes_with_component(gen_t1, PLEXOSMembership)
+    assert any(m.collection == CollectionEnum.TailStorage and m.child_object.name == "PlantA_tail" for m in tail_memberships)
+
+    fallback_h = context.target_system.get_supplemental_attributes_with_component(gen_fallback_head, PLEXOSMembership)
+    assert any(m.collection == CollectionEnum.HeadStorage for m in fallback_h)
+
+    fallback_t = context.target_system.get_supplemental_attributes_with_component(gen_fallback_tail, PLEXOSMembership)
+    assert any(m.collection == CollectionEnum.TailStorage for m in fallback_t)
+
+
+def test_generator_node_memberships_deduplicate_same_target_node(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+    import r2x_sienna_to_plexos.getters_mappings as mappings_mod
+
+    monkeypatch.setattr(getters_mod, "_build_generator_display_name_index", lambda _ctx: {"SRC1": "GEN_A", "SRC2": "GEN_A"})
+    monkeypatch.setattr(mappings_mod, "SOURCE_GENERATOR_TYPES", [dict])
+
+    bus = types.SimpleNamespace(name="N1")
+    src1 = types.SimpleNamespace(name="SRC1", bus=bus)
+    src2 = types.SimpleNamespace(name="SRC2", bus=bus)
+    context.source_system.get_components = lambda comp_type: [src1, src2] if comp_type is dict else []
+
+    context.target_system.add_component(PLEXOSGenerator(name="GEN_A"))
+    context.target_system.add_component(PLEXOSNode(name="N1"))
+
+    getters_utils.ensure_generator_node_memberships(context)
+
+    gen = context.target_system.get_component(PLEXOSGenerator, "GEN_A")
+    memberships = context.target_system.get_supplemental_attributes_with_component(gen, PLEXOSMembership)
+    assert len([m for m in memberships if m.collection == CollectionEnum.Nodes]) == 1

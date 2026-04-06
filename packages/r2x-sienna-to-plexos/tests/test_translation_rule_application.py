@@ -1,7 +1,10 @@
 """Translation rule application tests for Sienna-to-PLEXOS."""
 
 import json
+import types
 from importlib.resources import files
+
+from r2x_sienna_to_plexos import translation as translation_module
 
 from r2x_core import DataStore, PluginConfig, PluginContext, Rule, System, apply_rules_to_context
 
@@ -265,3 +268,104 @@ def test_sienna_transmission_line_translates_to_plexos_line(tmp_path):
     assert lines[0].name == "LINE_1_2"
     assert hasattr(lines[0], "min_flow")
     assert hasattr(lines[0], "max_flow")
+
+
+def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
+    calls = []
+
+    class FakeRulesPath:
+        def read_text(self):
+            return "[]"
+
+    class FakeConfigDir:
+        def __truediv__(self, _name):
+            return FakeRulesPath()
+
+    class FakeSystem:
+        def __init__(self, name, auto_add_composed_components=True, time_series_manager=None):
+            self.name = name
+            self.auto_add_composed_components = auto_add_composed_components
+            self.time_series_manager = time_series_manager
+
+        def get_time_series_directory(self):
+            return tmp_path
+
+    def _mark(step_name):
+        def _inner(_context):
+            calls.append(step_name)
+
+        return _inner
+
+    monkeypatch.setattr(translation_module, "files", lambda _pkg: FakeConfigDir())
+    monkeypatch.setattr(translation_module, "System", FakeSystem)
+    monkeypatch.setattr(translation_module, "create_in_memory_db", lambda: object())
+    monkeypatch.setattr(translation_module, "TimeSeriesManager", lambda *args, **kwargs: object())
+    monkeypatch.setattr(translation_module.Rule, "from_records", lambda records: ["rule"])
+    monkeypatch.setattr(translation_module, "apply_rules_to_context", lambda _ctx: calls.append("apply"))
+
+    monkeypatch.setattr(translation_module, "ensure_generator_time_series", _mark("gen_ts"))
+    monkeypatch.setattr(translation_module, "ensure_reserve_time_series", _mark("reserve_ts"))
+    monkeypatch.setattr(translation_module, "ensure_region_node_memberships", _mark("region_node"))
+    monkeypatch.setattr(translation_module, "ensure_generator_node_memberships", _mark("gen_node"))
+    monkeypatch.setattr(translation_module, "ensure_battery_node_memberships", _mark("battery_node"))
+    monkeypatch.setattr(translation_module, "ensure_reserve_battery_memberships", _mark("reserve_battery"))
+    monkeypatch.setattr(translation_module, "ensure_reserve_generator_memberships", _mark("reserve_gen"))
+    monkeypatch.setattr(translation_module, "ensure_transformer_node_memberships", _mark("trf_node"))
+    monkeypatch.setattr(translation_module, "ensure_interface_line_memberships", _mark("iface_line"))
+    monkeypatch.setattr(translation_module, "ensure_head_storage_generator_membership", _mark("head"))
+    monkeypatch.setattr(translation_module, "ensure_tail_storage_generator_membership", _mark("tail"))
+
+    source = FakeSystem(name="source")
+    result = translation_module.sienna_to_plexos(source, config=types.SimpleNamespace())
+
+    assert result.name == "PLEXOS"
+    assert calls == [
+        "apply",
+        "gen_ts",
+        "reserve_ts",
+        "region_node",
+        "gen_node",
+        "battery_node",
+        "reserve_battery",
+        "reserve_gen",
+        "trf_node",
+        "iface_line",
+        "head",
+        "tail",
+    ]
+
+
+def test_fixture_coverage_context_rules_and_time_series(
+    caplog,
+    context_with_versioned_rules,
+    context_with_bus_and_load,
+    context_with_thermal_generators,
+    rule_multifield,
+    rule_with_all_features,
+    rule_list_versioned,
+    rules_from_config,
+    vre_single_time_series,
+    load_single_time_series,
+    wind_single_time_series,
+    hydro_single_time_series,
+):
+    assert caplog is not None
+    assert context_with_versioned_rules.rules
+    assert context_with_bus_and_load.source_system is not None
+    assert context_with_thermal_generators.source_system is not None
+
+    max_capacity_getter = rule_multifield.getters["Max Capacity"]
+    comp = types.SimpleNamespace(rating=2.0, base_power=100.0)
+    assert max_capacity_getter(None, comp).unwrap() == 200.0
+
+    total_rating_getter = rule_with_all_features.getters["total_rating"]
+    comp2 = types.SimpleNamespace(base_rating=80.0, premium_rating=20.0)
+    assert total_rating_getter(None, comp2).unwrap() == 100.0
+
+    assert {rule.version for rule in rule_list_versioned} == {1, 2}
+    assert len(rules_from_config) > 0
+
+    assert len(vre_single_time_series.data) == 24
+    assert len(load_single_time_series.data) == 24
+    assert len(wind_single_time_series.data) == 24
+    assert len(hydro_single_time_series.data) == 24

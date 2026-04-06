@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 
 # Add this near the top, after imports
 from collections import defaultdict
@@ -85,7 +86,8 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
             return GEN_TYPE_STRING_MAP.get(gen_type, gen_type)
 
     # ReEDS name pattern
-    name = (getattr(source_component, "name", "") or "").lower()
+    raw_name = getattr(source_component, "name", "") or ""
+    name = raw_name.lower()
     if name.startswith("reeds"):
         for substr, tech in REEDS_COMPONENT_SUBSTRINGS:
             if substr in name:
@@ -101,28 +103,19 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
             if suffix == cat or suffix.startswith(cat + "_"):
                 return cat
 
-    # Nuclear plant name matching — check component name and plant_name from ext
-    nuclear_names = _build_nuclear_plant_name_set(context)
-    candidate_names = [name]
+    # Treat explicit "nuclear" naming as high-confidence and avoid falling back to
+    # broad prime-mover mappings that can misclassify these units as thermal/coal.
+    candidate_names = [_normalize_plant_name(raw_name)]
     if isinstance(ext, dict):
         plant_name = ext.get("plant_name")
         if plant_name:
-            candidate_names.append(str(plant_name).lower())
-    for candidate in candidate_names:
-        if candidate:
-            for nuclear_name in nuclear_names:
-                if nuclear_name in candidate or candidate in nuclear_name:
-                    return "nuclear"
+            candidate_names.append(_normalize_plant_name(str(plant_name)))
+    candidate_names = [c for c in dict.fromkeys(candidate_names) if c]
 
-    # Oil plant name matching — check component name and plant_name from ext
-    oil_names = _build_oil_plant_name_set(context)
-    for candidate in candidate_names:  # candidate_names was already built for nuclear check
-        if candidate:
-            for oil_name in oil_names:
-                if oil_name in candidate or candidate in oil_name:
-                    return "oil"
+    if any(_contains_nuclear_token(candidate) for candidate in candidate_names):
+        return "nuclear"
 
-    # Get it from defaults as prime mover mapping if available
+    # Get category from prime mover mapping when available (higher confidence than name heuristics).
     prime_mover = getattr(source_component, "prime_mover_type", None)
     fuel = getattr(source_component, "fuel", None)
 
@@ -154,7 +147,48 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
         if tech:
             return tech
 
+    # Name-based association for oil/nuclear is exact-match and state-aware when possible.
+    source_state = _normalize_state((ext or {}).get("state")) if isinstance(ext, dict) else None
+
+    nuclear_names = _build_nuclear_plant_name_set(context)
+    nuclear_name_state = _build_nuclear_plant_name_state_set(context)
+    oil_names = _build_oil_plant_name_set(context)
+    oil_name_state = _build_oil_plant_name_state_set(context)
+
+    for candidate in candidate_names:
+        if source_state and (candidate, source_state) in nuclear_name_state:
+            return "nuclear"
+        if source_state and (candidate, source_state) in oil_name_state:
+            return "oil"
+
+        if candidate in nuclear_names:
+            return "nuclear"
+        if candidate in oil_names:
+            return "oil"
+
     return None
+
+
+def _normalize_plant_name(name: str) -> str:
+    """Normalize plant names for reliable exact matching."""
+    raw = str(name)
+    # Split CamelCase words before punctuation cleanup (e.g., NuclearFacility -> Nuclear Facility).
+    raw = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", raw)
+    cleaned = re.sub(r"[^a-z0-9]+", " ", raw.lower())
+    return " ".join(cleaned.split())
+
+
+def _contains_nuclear_token(name: str) -> bool:
+    """Return True when normalized name contains a standalone 'nuclear' token."""
+    return bool(re.search(r"\bnuclear\b", name))
+
+
+def _normalize_state(value: Any) -> str | None:
+    """Normalize state to two-letter uppercase when available."""
+    if value is None:
+        return None
+    state = str(value).strip().upper()
+    return state if state else None
 
 
 def _build_target_storage_name_index(context: PluginContext) -> dict[str, Any]:
@@ -247,7 +281,7 @@ def _build_oil_plant_name_set(context: PluginContext) -> set[str]:
     with plants_path.open() as f:
         plants_data = json.load(f)
     name_set = {
-        p["power Plant Name"].lower()
+        _normalize_plant_name(p["power Plant Name"])
         for p in plants_data
         if isinstance(p.get("Primary Energy Source"), str)
         and p["Primary Energy Source"].lower() == "petroleum"
@@ -255,6 +289,32 @@ def _build_oil_plant_name_set(context: PluginContext) -> set[str]:
     }
     context._cache["oil_plant_name_set"] = name_set
     return name_set
+
+
+def _build_oil_plant_name_state_set(context: PluginContext) -> set[tuple[str, str]]:
+    """Build normalized petroleum (plant_name, state) set from us_power_plants.json, cached."""
+    cached = context._cache.get("oil_plant_name_state_set")
+    if cached is not None:
+        return cached
+    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
+    with plants_path.open() as f:
+        plants_data = json.load(f)
+
+    result: set[tuple[str, str]] = set()
+    for plant in plants_data:
+        if not isinstance(plant.get("Primary Energy Source"), str):
+            continue
+        if plant["Primary Energy Source"].lower() != "petroleum":
+            continue
+        if not isinstance(plant.get("power Plant Name"), str):
+            continue
+        state = _normalize_state(plant.get("State"))
+        if state is None:
+            continue
+        result.add((_normalize_plant_name(plant["power Plant Name"]), state))
+
+    context._cache["oil_plant_name_state_set"] = result
+    return result
 
 
 def _build_nuclear_plant_name_set(context: PluginContext) -> set[str]:
@@ -267,14 +327,14 @@ def _build_nuclear_plant_name_set(context: PluginContext) -> set[str]:
     defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
     with defaults_path.open() as f:
         defaults_data = json.load(f)
-    name_set = {p["name"].lower() for p in defaults_data.get("nuclear_plants", [])}
+    name_set = {_normalize_plant_name(p["name"]) for p in defaults_data.get("nuclear_plants", [])}
 
     # From us_power_plants.json filtered by Primary Energy Source == "nuclear"
     plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
     with plants_path.open() as f:
         plants_data = json.load(f)
     name_set |= {
-        p["power Plant Name"].lower()
+        _normalize_plant_name(p["power Plant Name"])
         for p in plants_data
         if isinstance(p.get("Primary Energy Source"), str)
         and p["Primary Energy Source"].lower() == "nuclear"
@@ -283,6 +343,32 @@ def _build_nuclear_plant_name_set(context: PluginContext) -> set[str]:
 
     context._cache["nuclear_plant_name_set"] = name_set
     return name_set
+
+
+def _build_nuclear_plant_name_state_set(context: PluginContext) -> set[tuple[str, str]]:
+    """Build normalized nuclear (plant_name, state) set from us_power_plants.json, cached."""
+    cached = context._cache.get("nuclear_plant_name_state_set")
+    if cached is not None:
+        return cached
+    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
+    with plants_path.open() as f:
+        plants_data = json.load(f)
+
+    result: set[tuple[str, str]] = set()
+    for plant in plants_data:
+        if not isinstance(plant.get("Primary Energy Source"), str):
+            continue
+        if plant["Primary Energy Source"].lower() != "nuclear":
+            continue
+        if not isinstance(plant.get("power Plant Name"), str):
+            continue
+        state = _normalize_state(plant.get("State"))
+        if state is None:
+            continue
+        result.add((_normalize_plant_name(plant["power Plant Name"]), state))
+
+    context._cache["nuclear_plant_name_state_set"] = result
+    return result
 
 
 def _build_area_buses_index(context: PluginContext) -> dict[str, list[Any]]:
@@ -951,8 +1037,29 @@ def is_slack_bus(source_component: ACBus, context: PluginContext) -> Result[int,
 
 @getter
 def get_area_units(source_component: Area, context: PluginContext) -> Result[float, ValueError]:
-    """Always return 1 for region units."""
-    return Ok(1.0)
+    """Return region units (1 active, 0 inactive) based on regional LPF viability.
+
+    Regions are deactivated when the sum of node load participation factors is zero,
+    which also covers regions with no effective load.
+    """
+    ext = getattr(source_component, "ext", None)
+    arname = (ext or {}).get("ARNAME") if isinstance(ext, dict) else None
+    area_name = str(arname) if arname else str(getattr(source_component, "name", ""))
+
+    buses = _build_area_buses_index(context).get(area_name, [])
+    if not buses:
+        return Ok(0.0)
+
+    lpf_sum = 0.0
+    for bus in buses:
+        result = get_load_participation_factor(bus, context)
+        match result:
+            case Ok(value):
+                lpf_sum += float(value)
+            case Err(_):
+                continue
+
+    return Ok(0.0 if math.isclose(lpf_sum, 0.0, rel_tol=0.0, abs_tol=1e-9) else 1.0)
 
 
 @getter
@@ -986,6 +1093,7 @@ def get_line_min_flow(
     context: PluginContext,
 ) -> Result[float, ValueError]:
     """Extract line min flow as float from source component negative rating."""
+    base_power = _get_system_base_power(context)
     min_flow = getattr(source_component, "rating", None)
     if min_flow is not None:
         magnitude = get_magnitude(min_flow)
@@ -997,13 +1105,17 @@ def get_line_min_flow(
             else None
         )
         if value is not None:
-            if abs(value) > 1e6:
+            flow = float(-abs(value)) * base_power
+            if abs(flow) > 99999.0:
                 return Ok(-99999.0)
-            return Ok(float(-abs(value)) * _get_system_base_power(context))
+            return Ok(flow)
 
     val = _get_minmax_value(getattr(source_component, "active_power_limits_to", None), "min")
-    if val is not None and abs(val) <= 1e6:
-        return Ok(float(val) * _get_system_base_power(context))
+    if val is not None:
+        flow = float(val) * base_power
+        if abs(flow) > 99999.0:
+            return Ok(-99999.0)
+        return Ok(flow)
 
     return Ok(-99999.0)
 
@@ -1019,6 +1131,7 @@ def get_line_max_flow(
     context: PluginContext,
 ) -> Result[float, ValueError]:
     """Extract line max flow as float from source component rating."""
+    base_power = _get_system_base_power(context)
     max_flow = getattr(source_component, "rating", None)
     if max_flow is not None:
         magnitude = get_magnitude(max_flow)
@@ -1030,13 +1143,17 @@ def get_line_max_flow(
             else None
         )
         if value is not None:
-            if abs(value) > 1e6:
+            flow = float(abs(value)) * base_power
+            if abs(flow) > 99999.0:
                 return Ok(99999.0)
-            return Ok(float(abs(value)) * _get_system_base_power(context))
+            return Ok(flow)
 
     val = _get_minmax_value(getattr(source_component, "active_power_limits_from", None), "max")
-    if val is not None and abs(val) <= 1e6:
-        return Ok(float(abs(val)) * _get_system_base_power(context))
+    if val is not None:
+        flow = float(abs(val)) * base_power
+        if abs(flow) > 99999.0:
+            return Ok(99999.0)
+        return Ok(flow)
 
     return Ok(99999.0)
 
@@ -1315,6 +1432,46 @@ def get_fuel_price(
 
 
 @getter
+def get_thermal_generator_units(
+    source_component: ThermalStandard | ThermalMultiStart, context: PluginContext
+) -> Result[int, ValueError]:
+    """Deactivate thermal generators with missing marginal-cost inputs.
+
+    If fuel price or heat rate resolves to zero, set units to 0 so the device is
+    not treated as nearly free generation in PLEXOS.
+    """
+    ext = getattr(source_component, "ext", None)
+    if isinstance(ext, dict):
+        plant_name = str(ext.get("plant_name", "")).strip().lower()
+        state = str(ext.get("state", "")).strip().upper()
+        # Explicitly deactivate the known mismapped TX "Monticello" units.
+        if plant_name == "monticello" and state == "TX":
+            return Ok(0)
+
+    fuel_price = 0.0
+    heat_rate = 0.0
+
+    match get_fuel_price(source_component, context):
+        case Ok(value):
+            fuel_price = float(value)
+        case Err(_):
+            fuel_price = 0.0
+
+    match get_heat_rate(source_component, context):
+        case Ok(value):
+            heat_rate = float(value)
+        case Err(_):
+            heat_rate = 0.0
+
+    if math.isclose(fuel_price, 0.0, rel_tol=0.0, abs_tol=1e-9) or math.isclose(
+        heat_rate, 0.0, rel_tol=0.0, abs_tol=1e-9
+    ):
+        return Ok(0)
+
+    return Ok(1)
+
+
+@getter
 def get_max_capacity(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract maximum capacity in MW from rating, active_power_limits, or max_active_power, and return as float."""
     rating = getattr(source_component, "rating", None)
@@ -1360,35 +1517,36 @@ def get_generator_commit(component: object, context: PluginContext) -> Result[in
 def get_heat_rate(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract heat_rate from computed heat rate data, round to 2 decimals, and return as float (units='GJ/MWh')"""
     value = compute_heat_rate_data(source_component).get("heat_rate")
-    return Ok(float(value) if value is not None else 0.0)
+    return Ok(abs(float(value)) if value is not None else 0.0)
 
 
 @getter
 def get_heat_rate_base(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract heat_rate_base from computed heat rate data, round to 2 decimals, and return as float (units='GJ/h')"""
     value = compute_heat_rate_data(source_component).get("heat_rate_base")
-    return Ok(float(value) if value is not None else 0.0)
+    return Ok(abs(float(value)) if value is not None else 0.0)
 
 
 @getter
 def get_heat_rate_incr(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract heat_rate_incr from computed heat rate data and return as float (units='GJ/MWh')"""
     value = compute_heat_rate_data(source_component).get("heat_rate_incr")
-    return Ok(coerce_value(value))
+    coerced = coerce_value(value)
+    return Ok(abs(coerced) if isinstance(coerced, float) else coerced)
 
 
 @getter
 def get_heat_rate_incr2(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract heat_rate_incr2 from computed heat rate data, round to 2 decimals, and return as float (units='GJ/MWh^2')"""
     value = compute_heat_rate_data(source_component).get("heat_rate_incr2")
-    return Ok(float(value) if value is not None else 0.0)
+    return Ok(abs(float(value)) if value is not None else 0.0)
 
 
 @getter
 def get_heat_rate_incr3(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract heat_rate_incr3 from computed heat rate data, round to 2 decimals, and return as float (units='GJ/MWh^3')"""
     value = compute_heat_rate_data(source_component).get("heat_rate_incr3")
-    return Ok(float(value) if value is not None else 0.0)
+    return Ok(abs(float(value)) if value is not None else 0.0)
 
 
 @getter

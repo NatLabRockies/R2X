@@ -67,6 +67,25 @@ def test_has_storage_to_battery_rule() -> None:
     ), "Missing EnergyReservoirStorage -> PLEXOSBattery rule"
 
 
+def test_synchronous_condenser_rule_defaults_to_units_zero() -> None:
+    """Verify SynchronousCondenser generators are exported deactivated for PLEXOS."""
+    rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"
+    rules_data = json.loads(rules_path.read_text())
+
+    syn_cond_rule = next(
+        (
+            rule
+            for rule in rules_data
+            if rule.get("source_type") == "SynchronousCondenser"
+            and rule.get("target_type") == "PLEXOSGenerator"
+        ),
+        None,
+    )
+
+    assert syn_cond_rule is not None, "Missing SynchronousCondenser -> PLEXOSGenerator rule"
+    assert syn_cond_rule.get("defaults", {}).get("units") == 0
+
+
 def test_rules_have_required_fields() -> None:
     """Verify all rules have essential structure."""
     rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"
