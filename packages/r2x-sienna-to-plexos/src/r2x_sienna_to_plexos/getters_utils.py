@@ -65,12 +65,28 @@ def _ensure_membership(
     collection : CollectionEnum
         The collection type for the membership
     """
+    # Avoid creating duplicate memberships for the same parent/child/collection.
+    existing = context.target_system.get_supplemental_attributes_with_component(
+        child_object,
+        PLEXOSMembership,
+    )
+    for membership in existing:
+        if (
+            membership.parent_object == parent_object
+            and membership.child_object == child_object
+            and membership.collection == collection
+        ):
+            return
+
     membership = PLEXOSMembership(
         parent_object=parent_object,
         child_object=child_object,
         collection=collection,
     )
+    # Register on both endpoints so downstream consumers can discover memberships
+    # regardless of traversal direction.
     context.target_system.add_supplemental_attribute(parent_object, membership)
+    context.target_system.add_supplemental_attribute(child_object, membership)
 
 
 def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | None, str | None]]:

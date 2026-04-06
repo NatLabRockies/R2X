@@ -24,12 +24,12 @@
       "category": "sienna-regions"
     },
     "field_map": {
-      "name": "name",
       "uuid": "uuid",
       "category": "category"
     },
     "getters": {
       "units": "get_area_units",
+      "name": "get_area_name",
       "load": "get_area_load",
       "ext": "get_region_ext"
     },
