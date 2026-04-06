@@ -2250,6 +2250,23 @@ def test_get_min_stable_level_negative_min(context):
     assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 5.0
 
 
+def test_get_min_stable_level_fallback_is_capped_to_half_max_capacity(monkeypatch, context):
+    class Dummy:
+        active_power_limits = {"min": 0.0}  # noqa: RUF012
+        rating = 80.0
+        base_power = 1.0
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "gas-cc")
+    monkeypatch.setattr(
+        getters,
+        "_get_defaults",
+        lambda _category, key: 2.0 if key == "min_stable_level_percentage" else 0.0,
+    )
+
+    # fallback value = 2.0 * 100 = 200 MW, max capacity = 80 MW -> clamp to 40 MW
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 40.0
+
+
 def test_get_reserve_duration_zero(context):
     """Covers get_reserve_duration with 0 sustained_time."""
     reserve = VariableReserve(

@@ -1635,7 +1635,7 @@ def get_generator_min_stable_level(
 ) -> Result[float, ValueError]:
     """Extract minimum stable level in MW from active_power_limits.min * base_power.
     Falls back to min_stable_level_percentage * 100 if zero.
-    Returns 0.0 if the result exceeds max_capacity.
+    If fallback value exceeds max_capacity, clamp to 50% of max_capacity.
     """
     min_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "min")
     min_mw = (float(min_pu) * resolve_base_power(source_component)) if min_pu is not None else 0.0
@@ -1645,10 +1645,13 @@ def get_generator_min_stable_level(
         category = _resolve_generator_category(source_component, context) or "gas-cc"
         min_mw = _get_defaults(category, "min_stable_level_percentage") * 100.0
 
-    max_cap_result = get_max_capacity(source_component, context)
-    max_cap = max_cap_result.unwrap() if isinstance(max_cap_result, Ok) else None
-    if max_cap is not None and min_mw > max_cap:
-        return Ok(0.0)
+        match get_max_capacity(source_component, context):
+            case Ok(max_capacity):
+                max_capacity = float(max_capacity)
+                if max_capacity > 0.0 and min_mw > max_capacity:
+                    min_mw = 0.5 * max_capacity
+            case Err(_):
+                pass
 
     return Ok(round(min_mw, 2))
 
