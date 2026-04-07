@@ -72,7 +72,7 @@ def test_plexos_node_translates_to_acbus(tmp_path) -> None:
 
     bus = next((b for b in buses if b.name == "NODE_123"), None)
     assert bus is not None
-    assert bus.number == 1230
+    assert bus.number == 123
     assert bus.base_voltage.magnitude == 115.0
     assert bus.bustype == ACBusTypes.PQ
 

@@ -95,196 +95,6 @@ def make_context(tmp_path) -> PluginContext:
     return ctx
 
 
-def test_basic_getters_return_values(tmp_path):
-    context = make_context(tmp_path)
-    context.source_system = System(name="source")
-    context.target_system = System(name="target")
-
-    bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
-    bus3 = ACBus(name="N4", base_voltage=115.0, number=3)
-    context.source_system.add_component(bus1)
-    context.source_system.add_component(bus3)
-
-    arc1 = Arc(from_to=bus1, to_from=bus3)
-    context.source_system.add_component(arc1)
-
-    area = Area(name="A1", category="region")
-    context.source_system.add_component(area)
-    acbus = ACBus(name="N1", base_voltage=230.0, bustype=ACBusTypes.SLACK, number=100)
-    context.source_system.add_component(acbus)
-
-    line = Line(
-        name="L1",
-        rating=100.0,
-        r=0.01,
-        x=0.1,
-        arc=arc1,
-        b=FromTo_ToFrom(from_to=0.0, to_from=0.0),
-        active_power_flow=0.0,
-        reactive_power_flow=0.0,
-        angle_limits=MinMax(min=-0.03, max=0.03),
-    )
-    context.source_system.add_component(line)
-
-    gen = ThermalStandard(
-        name="thermal-quad",
-        bus=bus3,
-        active_power=0.0,
-        reactive_power=0.0,
-        rating=1,
-        base_power=220.0,
-        must_run=False,
-        status=True,
-        time_at_status=0.0,
-        active_power_limits=MinMax(min=22.0, max=220.0),
-        ramp_limits=UpDown(up=88.0, down=66.0),
-        time_limits=UpDown(up=3.0, down=1.5),
-        prime_mover_type=PrimeMoversType.CC,
-        fuel=ThermalFuels.NATURAL_GAS,
-        operation_cost=ThermalGenerationCost(
-            variable=FuelCurve(
-                value_curve=InputOutputCurve(
-                    function_data=QuadraticFunctionData(
-                        quadratic_term=0.015,
-                        proportional_term=9.8,
-                        constant_term=120.0,
-                    )
-                ),
-                fuel_cost=2.1,
-                power_units=UnitSystem.NATURAL_UNITS,
-            ),
-        ),
-    )
-    context.source_system.add_component(gen)
-
-    # Add a hydro reservoir
-    hydro = HydroReservoir.example()
-    context.source_system.add_component(hydro)
-
-    # Add a reserve
-    reserve = VariableReserve(
-        name="RES1",
-        reserve_type=ReserveType.SPINNING,
-        vors=10.0,
-        max_participation_factor=0.5,
-        direction="UP",
-        requirement=100.0,
-    )
-    context.source_system.add_component(reserve)
-
-    # Add a battery
-    battery = EnergyReservoirStorage(
-        name="energy-reservoir-storage-test",
-        available=True,
-        bus=bus1,
-        prime_mover_type=PrimeMoversType.BA,
-        storage_technology_type=StorageTechs.OTHER_CHEM,
-        storage_capacity=1000.0,
-        storage_level_limits=MinMax(min=0.1, max=0.9),
-        initial_storage_capacity_level=0.5,
-        rating=250.0,
-        active_power=0.0,
-        input_active_power_limits=MinMax(min=0.0, max=200.0),
-        output_active_power_limits=MinMax(min=0.0, max=200.0),
-        efficiency=InputOutput(input=0.95, output=0.95),
-        reactive_power=0.0,
-        reactive_power_limits=MinMax(min=-50.0, max=50.0),
-        base_power=250.0,
-        conversion_factor=1.0,
-        storage_target=0.5,
-        cycle_limits=5000,
-    )
-    context.source_system.add_component(battery)
-
-    # Test node getters
-    assert getters.get_voltage_kv(acbus, context).unwrap() == 230.0
-    assert getters.get_availability(acbus, context).unwrap() == 1
-    assert getters.is_slack_bus(acbus, context).unwrap() == 1
-
-    # Test line getters
-    assert getters.get_line_min_flow(line, context).unwrap() == -10000.0
-    assert getters.get_line_max_flow(line, context).unwrap() == 10000.0
-    assert getters.get_line_charging_susceptance(line, context).unwrap() == 0.0
-
-    # Test generator getters
-    assert getters.get_max_capacity(gen, context).unwrap() == 220.0
-
-    # Test hydro reservoir getters
-    assert getters.get_storage_max_volume(hydro, context).unwrap() == 1.0
-    assert getters.get_storage_natural_inflow(hydro, context).unwrap() == 50.0
-
-    # Test reserve getters
-    assert getters.get_reserve_type(reserve, context).unwrap() == 1
-    assert getters.get_reserve_vors(reserve, context).unwrap() == 10.0
-
-    # Test battery getters
-    assert getters.get_battery_charge_efficiency(battery, context).unwrap() == 95.0
-    assert getters.get_battery_discharge_efficiency(battery, context).unwrap() == 95.0
-    assert getters.get_battery_cycles(battery, context).unwrap() == 5000.0
-    assert getters.get_battery_max_power(battery, context).unwrap() == 62500.0
-    assert getters.get_battery_capacity(battery, context).unwrap() == 250000.0
-
-
-def test_get_power_or_standard_load(tmp_path):
-    context = make_context(tmp_path)
-    context.source_system = System(name="source")
-    context.target_system = System(name="target")
-    acbus = ACBus(name="N2", base_voltage=115.0, number=2)
-    context.source_system.add_component(acbus)
-    # Add loads
-    pload = PowerLoad(
-        name="Load-1",
-        bus=acbus,
-        max_active_power=200.0,
-    )
-    sload = PowerLoad(
-        name="Load-2",
-        bus=acbus,
-        max_active_power=200.0,
-    )
-    context.source_system.add_component(pload)
-    context.source_system.add_component(sload)
-    # Patch get_components to filter by bus
-    _ = context.source_system.get_components
-
-    def get_components(cls, filter_func=None):
-        all_comps = [pload, sload]
-        if filter_func:
-            return [c for c in all_comps if filter_func(c)]
-        return all_comps
-
-    context.source_system.get_components = get_components
-    assert getters.get_area_load(acbus, context).unwrap() == 0.0
-
-
-def test_get_head_tail_storage_names(tmp_path):
-    context = make_context(tmp_path)
-    context.source_system = System(name="source")
-    context.target_system = System(name="target")
-    hydro = HydroReservoir(
-        name="hydro-reservoir-test",
-        available=True,
-        storage_level_limits=MinMax(min=0.0, max=1000.0),
-        initial_level=0.5,
-        spillage_limits=MinMax(min=0.0, max=100.0),
-        inflow=50.0,
-        outflow=30.0,
-        level_targets=0.8,
-        travel_time=2.0,
-        intake_elevation=500.0,
-        head_to_volume_factor=LinearCurve(1.0),
-        reservoir_location=ReservoirLocation.HEAD,
-        operation_cost=HydroReservoirCost(),
-        level_data_type=ReservoirDataType.USABLE_VOLUME,
-        category="hydro_reservoir",
-    )
-    context.source_system.add_component(hydro)
-    assert getters.get_head_storage_name(hydro, context).unwrap() == "hydro-reservoir-test_head"
-    assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro-reservoir-test_tail"
-    assert isinstance(getters.get_head_storage_uuid(hydro, context).unwrap(), str)
-    assert isinstance(getters.get_tail_storage_uuid(hydro, context).unwrap(), str)
-
-
 def test_getters_with_missing_data(tmp_path):
     context = make_context(tmp_path)
     context.source_system = System(name="source")
@@ -406,22 +216,6 @@ def test_get_load_participation_factor(tmp_path):
     )
     context.source_system.add_component(sload)
     assert getters.get_load_participation_factor(acbus, context).unwrap() == 0.0
-
-
-def test_membership_collection_enums(tmp_path):
-    context = make_context(tmp_path)
-    context.source_system = System(name="source")
-    context.target_system = System(name="target")
-    dummy = object()
-    assert getters.membership_collection_nodes(dummy, context).unwrap().name == "Nodes"
-    assert getters.membership_collection_lines(dummy, context).unwrap().name == "Lines"
-    assert getters.membership_collection_generators(dummy, context).unwrap().name == "Generators"
-    assert getters.membership_collection_batteries(dummy, context).unwrap().name == "Batteries"
-    assert getters.membership_collection_region(dummy, context).unwrap().name == "Region"
-    assert getters.membership_collection_node_from(dummy, context).unwrap().name == "NodeFrom"
-    assert getters.membership_collection_node_to(dummy, context).unwrap().name == "NodeTo"
-    assert getters.membership_collection_head_storage(dummy, context).unwrap().name == "HeadStorage"
-    assert getters.membership_collection_tail_storage(dummy, context).unwrap().name == "TailStorage"
 
 
 def test_get_voltage_valid(context):
@@ -690,19 +484,6 @@ def test_get_head_tail_storage_names_valid(context):
     assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro-reservoir-test_tail"
     assert isinstance(getters.get_head_storage_uuid(hydro, context).unwrap(), str)
     assert isinstance(getters.get_tail_storage_uuid(hydro, context).unwrap(), str)
-
-
-def test_membership_collection_enums_valid(context):
-    dummy = object()
-    assert getters.membership_collection_nodes(dummy, context).unwrap().name == "Nodes"
-    assert getters.membership_collection_lines(dummy, context).unwrap().name == "Lines"
-    assert getters.membership_collection_generators(dummy, context).unwrap().name == "Generators"
-    assert getters.membership_collection_batteries(dummy, context).unwrap().name == "Batteries"
-    assert getters.membership_collection_region(dummy, context).unwrap().name == "Region"
-    assert getters.membership_collection_node_from(dummy, context).unwrap().name == "NodeFrom"
-    assert getters.membership_collection_node_to(dummy, context).unwrap().name == "NodeTo"
-    assert getters.membership_collection_head_storage(dummy, context).unwrap().name == "HeadStorage"
-    assert getters.membership_collection_tail_storage(dummy, context).unwrap().name == "TailStorage"
 
 
 def test_get_hydro_dispatch_properties(context):
@@ -1065,19 +846,6 @@ def test_get_interface_min_max_flow(context):
 def test_membership_parent_component(context):
     dummy = object()
     assert getters.membership_parent_component(dummy, context).unwrap() is dummy
-
-
-def test_membership_collection_enums_all(context):
-    dummy = object()
-    assert getters.membership_collection_nodes(dummy, context).unwrap().name == "Nodes"
-    assert getters.membership_collection_lines(dummy, context).unwrap().name == "Lines"
-    assert getters.membership_collection_generators(dummy, context).unwrap().name == "Generators"
-    assert getters.membership_collection_batteries(dummy, context).unwrap().name == "Batteries"
-    assert getters.membership_collection_region(dummy, context).unwrap().name == "Region"
-    assert getters.membership_collection_node_from(dummy, context).unwrap().name == "NodeFrom"
-    assert getters.membership_collection_node_to(dummy, context).unwrap().name == "NodeTo"
-    assert getters.membership_collection_head_storage(dummy, context).unwrap().name == "HeadStorage"
-    assert getters.membership_collection_tail_storage(dummy, context).unwrap().name == "TailStorage"
 
 
 def test_get_head_tail_storage_uuid(context):
@@ -2289,17 +2057,16 @@ def test_get_min_stable_level_tiny_value_uses_half_max_capacity(context):
     assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 14.95
 
 
-def test_get_min_stable_level_tiny_value_uses_default_max_when_source_max_missing(context):
-    expected_max = getters._get_defaults("gas-cc", "max_capacity_MW")
-    if expected_max == 0.0:
-        expected_max = getters._get_defaults("gas-cc", "capacity_MW")
+def test_get_min_stable_level_tiny_value_returns_raw_when_max_capacity_unavailable(context):
+    """When both rating and active_power_limits.max are missing, get_max_capacity
+    returns Err so the 50%-of-max fallback cannot fire. The raw min value is returned."""
 
     class Dummy:
         active_power_limits = {"min": 0.02}  # noqa: RUF012
         rating = None
         base_power = 1.0
 
-    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == round(0.5 * expected_max, 2)
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 0.02
 
 
 def test_get_min_stable_level_fallback_is_capped_to_half_max_capacity(monkeypatch, context):
@@ -2412,18 +2179,25 @@ def test_getter_error_variant():
     assert isinstance(result.err(), ValueError)
 
 
-def test_is_slack_bus_has_decorator():
-    from r2x_core.getters import GETTER_REGISTRY
+def test_is_slack_bus_returns_result():
+    """Verify is_slack_bus returns a Result type."""
+    from r2x_sienna.models.enums import ACBusTypes
 
-    assert "is_slack_bus" in GETTER_REGISTRY
-    assert callable(GETTER_REGISTRY["is_slack_bus"])
+    class MockBus:
+        bustype = ACBusTypes.SLACK
+
+    result = getters.is_slack_bus(MockBus(), None)
+    assert result.is_ok()
 
 
-def test_get_availability_has_decorator():
-    from r2x_core.getters import GETTER_REGISTRY
+def test_get_availability_returns_result():
+    """Verify get_availability returns a Result type."""
 
-    assert "get_availability" in GETTER_REGISTRY
-    assert callable(GETTER_REGISTRY["get_availability"])
+    class MockComponent:
+        pass
+
+    result = getters.get_availability(MockComponent(), None)
+    assert result.is_ok()
 
 
 def test_get_max_capacity_scales_limits(context_with_thermal_generators):

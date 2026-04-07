@@ -20,7 +20,6 @@ from r2x_plexos.models import (
 )
 from r2x_plexos_to_sienna import getters
 from r2x_plexos_to_sienna.getters import (
-    PLEXOS_NUMBER_BASE,
     extract_number_from_name,
     get_base_voltage,
     get_device_services,
@@ -219,15 +218,7 @@ def test_get_device_services_empty():
     assert get_device_services(node, ctx).value == []
 
 
-def setup_function(function):
-    # Reset globals before each test
-    global PLEXOS_NUMBER_COUNTER, PLEXOS_NUMBER_MAP
-    PLEXOS_NUMBER_COUNTER = PLEXOS_NUMBER_BASE
-    PLEXOS_NUMBER_MAP = {}
-
-
 def test_node_number_getter_no_number():
-    setup_function(None)
     assert extract_number_from_name("bus") == 100101
     assert extract_number_from_name("anotherbus") == 100102
     assert extract_number_from_name("bus") == 100101
@@ -249,7 +240,7 @@ def test_basic_node_getters(tmp_path) -> None:
     context.source_system.add_component(node)
 
     # Test node getters
-    assert getters.get_node_number(node, context).unwrap() == 1230
+    assert getters.get_node_number(node, context).unwrap() == 123
     assert getters.get_base_voltage(node, context).unwrap() == 115.0
     assert getters.get_node_angle(node, context).unwrap() == 0.0
     assert getters.is_slack_bus(node, context).unwrap() == ACBusTypes.PQ

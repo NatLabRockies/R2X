@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
+import pytest
 
-# Ensure the package src is importable without requiring installation.
-ROOT = Path(__file__).resolve().parents[2]
-SRC_DIR = ROOT / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
+
+@pytest.fixture(autouse=True)
+def _reset_plexos_number_state():
+    """Reset the global number-extraction state before each test.
+
+    extract_number_from_name uses module-level globals to track assigned bus
+    numbers. Without resetting, tests become order-dependent because numbers
+    accumulate in PLEXOS_NUMBER_USED across the session.
+    """
+    import r2x_plexos_to_sienna.getters as g
+
+    g.PLEXOS_NUMBER_COUNTER = g.PLEXOS_NUMBER_BASE
+    g.PLEXOS_NUMBER_MAP = {}
+    g.PLEXOS_NUMBER_USED = set()

@@ -21,9 +21,16 @@ repos:
         language: system
         types_or: [python, pyi]
 
+      # - id: ty
+      #   name: ty
+      #   entry: uv run ty check ./packages/
+      #   language: system
+      #   types: [python]
+      #   pass_filenames: false
+
       - id: taplo-format
         name: taplo format
-        entry: uv run taplo fmt --check
+        entry: uv run taplo fmt
         language: system
         types_or: [toml]
 
