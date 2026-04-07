@@ -72,7 +72,8 @@ runs:
       shell: bash
       env:
         UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache
-      run: uv sync ${{ inputs.sync-args }}
+        SYNC_ARGS: ${{ inputs.sync-args }}
+      run: uv sync $SYNC_ARGS
 
     - name: Save uv cache
       if: ${{ inputs.save-uv-cache == 'true' && steps.uv-cache-restore.outputs.cache-hit != 'true' }}
