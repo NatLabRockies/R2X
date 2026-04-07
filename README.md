@@ -7,7 +7,7 @@ ReEDS, PLEXOS, Sienna — any direction.
 <div align="center">
 
 [![Python](https://img.shields.io/pypi/pyversions/r2x.svg)](https://pypi.python.org/pypi/r2x)
-[![CI](https://github.com/NatlabRockies/r2x/actions/workflows/CI.yaml/badge.svg)](https://github.com/NatlabRockies/r2x/actions/workflows/CI.yaml)
+[![CI](https://github.com/NatlabRockies/r2x/actions/workflows/ci.yaml/badge.svg)](https://github.com/NatlabRockies/r2x/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/gh/NatlabRockies/r2x/branch/main/graph/badge.svg)](https://codecov.io/gh/NatlabRockies/r2x)
 [![Docs](https://github.com/NatlabRockies/R2X/actions/workflows/docs-build.yaml/badge.svg?branch=main)](https://natlabrockies.github.io/R2X/)
 [![License](https://img.shields.io/pypi/l/r2x.svg)](./LICENSE.txt)

@@ -53,10 +53,6 @@ dependencies = [
   "r2x-plexos-to-sienna",
   "r2x-reeds-to-plexos",
   "r2x-reeds-to-sienna",
-  "r2x-plexos",
-  "r2x-sienna",
-  "r2x-core",
-  "r2x-reeds",
 ]
 
 [project.urls]
@@ -107,12 +103,7 @@ members = ["packages/*"]
 strict = true
 exclude = ["tests/"]
 plugins = ["pydantic.mypy"]
-mypy_path = [
-  "packages/r2x-sienna-to-plexos/src",
-  "packages/r2x-reeds-to-plexos/src",
-  "packages/r2x-reeds-to-sienna/src",
-  "packages/r2x-plexos-to-sienna/src",
-]
+mypy_path = ["packages/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

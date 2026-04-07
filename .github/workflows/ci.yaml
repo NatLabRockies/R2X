@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - ".github/labeler.yaml"
+      - ".github/dependabot.yml"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - ".github/labeler.yaml"
+      - ".github/dependabot.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.9.4"
+
+jobs:
+  prek:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: Prek hooks (lint/format/spell/type, all files)
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup uv environment
+        uses: ./.github/actions/setup-uv-env
+        with:
+          uv-version: ${{ env.UV_VERSION }}
+          python-version-file: "pyproject.toml"
+
+      - name: Run prek
+        run: uv run prek run --show-diff-on-failure --color=always --all-files --hook-stage pre-push
+
+  pytest:
+    name: Tests ${{ matrix.os }} / py${{ matrix.python }}
+    needs: prek
+    timeout-minutes: 30
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup uv environment
+        uses: ./.github/actions/setup-uv-env
+        with:
+          uv-version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python }}
+
+      - name: Running package tests
+        run: |
+          uv run pytest --cov --cov-report=xml
+
+      - name: Upload coverage reports to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  package:
+    name: Package smoke test (${{ matrix.package }})
+    needs: prek  # runs in parallel with pytest; doesn't need test results
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - r2x
+          - r2x-plexos-to-sienna
+          - r2x-reeds-to-plexos
+          - r2x-reeds-to-sienna
+          - r2x-sienna-to-plexos
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup uv environment
+        uses: ./.github/actions/setup-uv-env
+        with:
+          uv-version: ${{ env.UV_VERSION }}
+          python-version-file: "pyproject.toml"
+
+      # Uses pip (not uv) intentionally: verifies the wheel installs
+      # correctly outside the uv ecosystem.
+      - name: Build and install wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg="${{ matrix.package }}"
+          rm -rf dist pkgtest
+          uv build --package "$pkg" --out-dir dist --sdist --wheel
+          python -m venv pkgtest
+          source pkgtest/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.whl
+          python - <<PY
+          import importlib.metadata as md
+
+          pkg = "${pkg}"
+          print(f"{pkg} version: {md.version(pkg)}")
+          transform_eps = [
+              ep.name
+              for ep in md.entry_points(group="r2x.transforms")
+              if ep.dist and ep.dist.name == pkg
+          ]
+          print(f"{pkg} transform entry points: {transform_eps}")
+          PY

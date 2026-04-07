@@ -1,6 +1,6 @@
 [project]
 name = "r2x-plexos-to-sienna"
-version = "0.0.0"
+version = "0.1.0"
 description = "Translation helpers for PLEXOS-to-Sienna interoperability."
 requires-python = ">=3.11, <3.14"
 dependencies = ["r2x-plexos>=0.1.2,<1.0.0", "r2x-sienna>=0.1.0,<1.0.0"]
@@ -10,3 +10,7 @@ plexos-to-sienna = "r2x_plexos_to_sienna.translation:plexos_to_sienna"
 
 [tool.setuptools.package-data]
 r2x_plexos_to_sienna = ["config/*.json"]
+
+[build-system]
+requires = ["uv_build>=0.8.22,<0.9.0"]
+build-backend = "uv_build"

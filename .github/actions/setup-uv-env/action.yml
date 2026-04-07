@@ -1,0 +1,82 @@
+name: Setup uv environment
+description: Restore uv cache, install Python and uv, and optionally sync dependencies.
+
+inputs:
+  python-version:
+    description: Python version to install (for matrix jobs). Leave empty to use python-version-file.
+    required: false
+    default: ""
+  python-version-file:
+    description: File that defines the Python version when python-version is not set.
+    required: false
+    default: "pyproject.toml"
+  uv-version:
+    description: uv version to install. No default; callers must pass this explicitly.
+    required: true
+  lockfile-path:
+    description: File(s) hashed for uv cache key.
+    required: false
+    default: "uv.lock"
+  install-python:
+    description: Whether to install Python.
+    required: false
+    default: "true"
+  sync-dependencies:
+    description: Whether to run uv sync.
+    required: false
+    default: "true"
+  sync-args:
+    description: Arguments passed to uv sync.
+    required: false
+    default: "--all-groups"
+  save-uv-cache:
+    description: Whether to save uv cache updates.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Restore uv cache
+      id: uv-cache-restore
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+      with:
+        path: ${{ github.workspace }}/.uv-cache
+        key: ${{ runner.os }}-uv-${{ inputs.uv-version }}-py${{ inputs.python-version || 'from-file' }}-${{ hashFiles(inputs.lockfile-path) }}
+        restore-keys: |
+          ${{ runner.os }}-uv-${{ inputs.uv-version }}-py${{ inputs.python-version || 'from-file' }}-
+          ${{ runner.os }}-uv-${{ inputs.uv-version }}-
+
+    - name: Set up Python (explicit version)
+      if: ${{ inputs.install-python == 'true' && inputs.python-version != '' }}
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Set up Python (from file)
+      if: ${{ inputs.install-python == 'true' && inputs.python-version == '' }}
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      with:
+        python-version-file: ${{ inputs.python-version-file }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      env:
+        UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache
+      with:
+        version: ${{ inputs.uv-version }}
+        enable-cache: false
+
+    - name: Sync dependencies
+      if: ${{ inputs.sync-dependencies == 'true' }}
+      shell: bash
+      env:
+        UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache
+      run: uv sync ${{ inputs.sync-args }}
+
+    - name: Save uv cache
+      if: ${{ inputs.save-uv-cache == 'true' && steps.uv-cache-restore.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+      with:
+        path: ${{ github.workspace }}/.uv-cache
+        key: ${{ runner.os }}-uv-${{ inputs.uv-version }}-py${{ inputs.python-version || 'from-file' }}-${{ hashFiles(inputs.lockfile-path) }}

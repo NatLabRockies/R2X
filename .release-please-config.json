@@ -1,0 +1,73 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "pull-request-title-pattern": "chore: release ${component} v${version}",
+  "separate-pull-requests": true,
+  "include-component-in-tag": true,
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "r2x",
+      "component": "r2x",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "pyproject.toml",
+          "jsonpath": "$.project.version"
+        }
+      ]
+    },
+    "packages/r2x-plexos-to-sienna": {
+      "release-type": "python",
+      "package-name": "r2x-plexos-to-sienna",
+      "component": "r2x-plexos-to-sienna",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "packages/r2x-plexos-to-sienna/pyproject.toml",
+          "jsonpath": "$.project.version"
+        }
+      ]
+    },
+    "packages/r2x-reeds-to-plexos": {
+      "release-type": "python",
+      "package-name": "r2x-reeds-to-plexos",
+      "component": "r2x-reeds-to-plexos",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "packages/r2x-reeds-to-plexos/pyproject.toml",
+          "jsonpath": "$.project.version"
+        }
+      ]
+    },
+    "packages/r2x-reeds-to-sienna": {
+      "release-type": "python",
+      "package-name": "r2x-reeds-to-sienna",
+      "component": "r2x-reeds-to-sienna",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "packages/r2x-reeds-to-sienna/pyproject.toml",
+          "jsonpath": "$.project.version"
+        }
+      ]
+    },
+    "packages/r2x-sienna-to-plexos": {
+      "release-type": "python",
+      "package-name": "r2x-sienna-to-plexos",
+      "component": "r2x-sienna-to-plexos",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "packages/r2x-sienna-to-plexos/pyproject.toml",
+          "jsonpath": "$.project.version"
+        }
+      ]
+    }
+  }
+}

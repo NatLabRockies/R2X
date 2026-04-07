@@ -1,176 +1,112 @@
 name: Release
-permissions:
-  contents: write
-  id-token: write
+
+# Release flow driven directly by release-please outputs:
+# - release-please decides which package paths were released (`paths_released`)
+# - we only build and publish those released packages
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_type:
-        description: Select release type
-        required: true
-        type: choice
-        options:
-          - alpha
-          - beta
-          - dev
-          - patch
-          - minor
-          - rc
-          - major
-      release_name:
-        description: "Optional: Release Name"
-        required: false
-        type: string
-      release_body:
-        description: "Optional: Release Body"
-        required: false
-        type: string
+  push:
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.9.4"
 
 jobs:
-  determine-version:
+  release-please:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
-      RELEASE_TYPE: ${{ steps.release_type.outputs.RELEASE_TYPE  }}
+      releases_created: ${{ steps.rp.outputs.releases_created }}
+      paths_released: ${{ steps.rp.outputs.paths_released }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Determine version bump
-        if: github.event_name == 'workflow_dispatch'
-        id: release_type
-        run: |
-          echo "RELEASE_TYPE=${{ github.event.inputs.release_type }}" >> $GITHUB_OUTPUT
+      - name: Run release-please
+        id: rp
+        uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: main
 
-  bumpversion:
-    needs: determine-version
-    runs-on: "ubuntu-latest"
-    outputs:
-      version: ${{ steps.version.outputs.version  }}
+  build:
+    needs: [release-please]
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          token: ${{ secrets.BOT_TOKEN }}
+          persist-credentials: false
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-
-      - name: "Set up Python"
-        uses: actions/setup-python@v5
+      - name: Setup uv environment
+        uses: ./.github/actions/setup-uv-env
         with:
+          uv-version: ${{ env.UV_VERSION }}
           python-version-file: "pyproject.toml"
+          sync-dependencies: "false"
 
-      - name: Install the project
-        run: uv sync --all-extras --dev
+      - name: Validate workspace dependency declarations
+        run: python scripts/freeze_internal_deps.py --check --mode workspace
 
-      - name: Bump version using hatch
-        id: version
-        run: |
-          uvx hatch version ${{ needs.determine-version.outputs.RELEASE_TYPE }}
-          echo "NEW_VERSION=$(uvx hatch version)" >> $GITHUB_ENV
-          echo "version=$(uvx hatch version)" >> $GITHUB_OUTPUT
-
-      - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v6
-        id: import-gpg
-        with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.GPG_PASS }}
-          git_user_signingkey: true
-          git_commit_gpgsign: true
-          git_tag_gpgsign: true
-          git_config_global: true
-
-      - name: Adding changes
-        run: git add src/r2x/__version__.py
-
-      - name: Commit new version
+      - name: Build released packages
         shell: bash
+        env:
+          PATHS_RELEASED: ${{ needs.release-please.outputs.paths_released }}
         run: |
-          git config commit.gpgsign true
-          git config --global user.email "${{ steps.import-gpg.outputs.email }}"
-          git config --global user.name "${{ steps.import-gpg.outputs.name }}"
-          git commit -S -m "Bump version to v${{ env.NEW_VERSION}}"
-          git tag -s v${{ env.NEW_VERSION }} -m "Release version ${{ env.NEW_VERSION }}"
-          git push origin main --tags
+          set -euo pipefail
 
-      - name: Build package
-        run: |
-          uv build
+          packages=""
+          for path in $(echo "$PATHS_RELEASED" | jq -r '.[]'); do
+            [[ "$path" == "." ]] && pkg="r2x" || pkg=$(basename "$path")
+            packages="${packages:+$packages }$pkg"
+          done
 
-      - name: Store the distribution packages
-        uses: actions/upload-artifact@v4
+          [[ -z "$packages" ]] && { echo "::error::No released packages to build"; exit 1; }
+
+          for pkg in $packages; do
+            echo "::group::Building $pkg"
+            uv build --package "$pkg" --out-dir dist --sdist --wheel
+            echo "::endgroup::"
+          done
+
+          ls -lah dist/
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: python-package-distributions
+          name: pypi-dists
           path: dist/
 
-  publish-testpypi:
-    needs:
-      - bumpversion
+  publish:
+    needs: [release-please, build]
+    if: needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/r2x
-    steps:
-      - name: Download all the dists
-        uses: actions/download-artifact@v4
-        with:
-          name: python-package-distributions
-          path: dist/
-
-      - name: Publish package to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
-  publish-pypi:
-    needs:
-      - bumpversion
-      - publish-testpypi
-    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
     environment:
       name: pypi
-      url: https://pypi.org/p/r2x
     steps:
-      - name: Download all the dists
-        uses: actions/download-artifact@v4
+      - name: Download distributions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: python-package-distributions
+          name: pypi-dists
           path: dist/
-      - name: Publish distribution 📦 to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
 
-  github-release:
-    name: >-
-      Sign the Python 🐍 distribution 📦 with Sigstore
-      and upload them to GitHub Release
-    needs:
-      - bumpversion
-      - publish-pypi
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download all the dists
-        uses: actions/download-artifact@v4
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         with:
-          name: python-package-distributions
-          path: dist/
-      - name: Sign the dists with Sigstore
-        uses: sigstore/gh-action-sigstore-python@v3.0.0
-        with:
-          inputs: >-
-            ./dist/*.tar.gz
-            ./dist/*.whl
-      - name: Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create
-          "v${{ needs.bumpversion.outputs.version }}"
-          --repo "$GITHUB_REPOSITORY"
-          --generate-notes
-      - name: Upload artifact signatures to GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: >-
-          gh release upload
-          "v${{ needs.bumpversion.outputs.version }}" dist/**
-          --repo "$GITHUB_REPOSITORY"
+          packages-dir: dist/
