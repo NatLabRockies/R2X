@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from infrasys.cost_curves import CostCurve, FuelCurve, LinearCurve
+from infrasys.cost_curves import CostCurve, FuelCurve, LinearCurve, UnitSystem as InfraUnitSystem
 from r2x_sienna.models import ACBus, Arc
 from r2x_sienna.models.costs import HydroGenerationCost, RenewableGenerationCost, ThermalGenerationCost
 from r2x_sienna.models.enums import ACBusTypes, PrimeMoversType, StorageTechs, ThermalFuels
 from r2x_sienna.models.named_tuples import FromTo_ToFrom, InputOutput, MinMax, UpDown
 from r2x_sienna.units import ureg
 
-from r2x_core import Err, Ok, Result, UnitSystem
+from r2x_core import Err, Ok, Result
 from r2x_core.getters import getter
 
 if TYPE_CHECKING:
@@ -40,11 +40,15 @@ def _ok_num(val: float | int) -> Result[float | int, ValueError]:
     return cast(Result[float | int, ValueError], Ok(val))
 
 
-def _lookup_area(context: PluginContext, name: str | None) -> Area | None:  # type: ignore[name-defined]
+def _target_system(context: PluginContext) -> Any:
+    return cast(Any, context.target_system)
+
+
+def _lookup_area(context: PluginContext, name: str | None) -> Area | None:
     """Helper to find a target Area by name."""
     from r2x_sienna.models import Area
 
-    for area in context.target_system.get_components(Area):
+    for area in _target_system(context).get_components(Area):
         if getattr(area, "name", None) == name:
             return area
     return None
@@ -80,7 +84,7 @@ def unique_component_name(component: object, context: PluginContext) -> Result[s
     base_name = getattr(component, "name", "")
     name = base_name
     i = 1
-    existing_names = {getattr(c, "name", None) for c in context.target_system.get_components(ThermalStandard)}
+    existing_names = {getattr(c, "name", None) for c in _target_system(context).get_components(ThermalStandard)}
     while name in existing_names:
         name = f"{base_name}_{i}"
         i += 1
@@ -189,7 +193,7 @@ def get_arc_for_line(component: ReEDSTransmissionLine, context: PluginContext):
     # Find buses by area name (region name)
     from_bus_obj = None
     to_bus_obj = None
-    for bus in context.target_system.get_components(ACBus):
+    for bus in _target_system(context).get_components(ACBus):
         if getattr(getattr(bus, "area", None), "name", None) == from_region_name:
             from_bus_obj = bus
         if getattr(getattr(bus, "area", None), "name", None) == to_region_name:
@@ -199,7 +203,7 @@ def get_arc_for_line(component: ReEDSTransmissionLine, context: PluginContext):
         return Err(ValueError(f"ACBus not found for Arc: from={from_region_name}, to={to_region_name}"))
 
     # Check for existing Arc between these buses (in either direction)
-    for arc in context.target_system.get_components(Arc):
+    for arc in _target_system(context).get_components(Arc):
         if (arc.from_to == from_bus_obj and arc.to_from == to_bus_obj) or (
             arc.from_to == to_bus_obj and arc.to_from == from_bus_obj
         ):
@@ -258,7 +262,7 @@ def get_thermal_operation_cost(
             shut_down=0.0,
             start_up=0.0,
             variable=FuelCurve(
-                value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS, fuel_cost=0.0
+                value_curve=LinearCurve(0.0), power_units=InfraUnitSystem.NATURAL_UNITS, fuel_cost=0.0
             ),
         )
     )
@@ -269,7 +273,7 @@ def get_renewable_operation_cost(
     component: ReEDSVariableGenerator, context: PluginContext
 ) -> Result[RenewableGenerationCost, ValueError]:
     """Return zeroed renewable operation cost."""
-    zero_curve = CostCurve(value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS)
+    zero_curve = CostCurve(value_curve=LinearCurve(0.0), power_units=InfraUnitSystem.NATURAL_UNITS)
     return Ok(
         RenewableGenerationCost(
             fixed=0.0,
@@ -371,7 +375,7 @@ def get_area_from(component: ReEDSInterface, context: PluginContext) -> Result[A
     """Resolve the source Area for an interchange."""
     from r2x_sienna.models import Area
 
-    target_areas = list(context.target_system.get_components(Area))
+    target_areas = list(_target_system(context).get_components(Area))
     name = getattr(getattr(component, "from_region", None), "name", None)
     for area in target_areas:
         if getattr(area, "name", None) == name:
@@ -384,7 +388,7 @@ def get_area_to(component: ReEDSInterface, context: PluginContext) -> Result[Are
     """Resolve the destination Area for an interchange."""
     from r2x_sienna.models import Area
 
-    target_areas = list(context.target_system.get_components(Area))
+    target_areas = list(_target_system(context).get_components(Area))
     name = getattr(getattr(component, "to_region", None), "name", None)
     for area in target_areas:
         if getattr(area, "name", None) == name:
@@ -510,7 +514,7 @@ def get_bus_for_region(component: object, context: PluginContext) -> Result[ACBu
     if not bus_name:
         return Err(ValueError("Could not determine region for component"))
 
-    for bus in context.target_system.get_components(ACBus):
+    for bus in _target_system(context).get_components(ACBus):
         if getattr(bus, "name", "") == bus_name:
             return Ok(bus)
     return Err(ValueError(f"No bus found with name {bus_name}"))
@@ -588,7 +592,7 @@ def demand_max_reactive_power(
 
 
 @getter
-def hydro_rating(component: ReEDSHydroGenerator, context: PluginContext) -> Result[float | int, ValueError]:  # type: ignore[name-defined]
+def hydro_rating(component: ReEDSHydroGenerator, context: PluginContext) -> Result[float | int, ValueError]:
     """Map capacity to rating/base_power."""
     return _ok_num(float(getattr(component, "capacity", 0.0) or 0.0))
 
@@ -596,7 +600,7 @@ def hydro_rating(component: ReEDSHydroGenerator, context: PluginContext) -> Resu
 @getter
 def hydro_active_power_limits(
     component: ReEDSHydroGenerator, context: PluginContext
-) -> Result[MinMax, ValueError]:  # type: ignore[name-defined]
+) -> Result[MinMax, ValueError]:
     """Min/max active power limits for hydro."""
     cap = float(getattr(component, "capacity", 0.0) or 0.0)
     return Ok(MinMax(min=0.0, max=cap))
@@ -612,7 +616,7 @@ def hydro_ramp_limits(component: ReEDSHydroGenerator, context: PluginContext) ->
 
 
 @getter
-def hydro_time_limits(component: ReEDSHydroGenerator, context: PluginContext) -> Result[MinMax, ValueError]:
+def hydro_time_limits(component: ReEDSHydroGenerator, context: PluginContext) -> Result[UpDown, ValueError]:
     """Min/max time limits for hydro."""
     min_up_time = float(getattr(component, "min_up_time", 0.0) or 0.0)
     min_down_time = float(getattr(component, "min_down_time", 0.0) or 0.0)
@@ -622,7 +626,7 @@ def hydro_time_limits(component: ReEDSHydroGenerator, context: PluginContext) ->
 @getter
 def hydro_operation_cost(
     component: ReEDSHydroGenerator, context: PluginContext
-) -> Result[HydroGenerationCost, ValueError]:  # type: ignore[name-defined]
+) -> Result[HydroGenerationCost, ValueError]:
     """Return zeroed hydro cost."""
     from r2x_sienna.models.costs import HydroGenerationCost
 
@@ -630,7 +634,9 @@ def hydro_operation_cost(
         HydroGenerationCost(
             fixed=0.0,
             variable=CostCurve(
-                value_curve=LinearCurve(10), power_units=UnitSystem.NATURAL_UNITS, vom_cost=LinearCurve(5.0)
+                value_curve=LinearCurve(10),
+                power_units=InfraUnitSystem.NATURAL_UNITS,
+                vom_cost=LinearCurve(5.0),
             ),
         )
     )

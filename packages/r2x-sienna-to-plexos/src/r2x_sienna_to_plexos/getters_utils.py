@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from infrasys.cost_curves import CostCurve, FuelCurve
 from infrasys.function_data import LinearFunctionData, PiecewiseLinearData, QuadraticFunctionData, XYCoords
@@ -36,7 +36,7 @@ from r2x_sienna.models import (
     TransmissionInterface,
     VariableReserve,
 )
-from r2x_sienna.units import get_magnitude  # type: ignore[import-untyped]
+from r2x_sienna.units import get_magnitude
 
 if TYPE_CHECKING:
     from r2x_core import PluginContext
@@ -44,6 +44,14 @@ if TYPE_CHECKING:
 InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData]
 
 _SIENNA_TRANSFORMER_TYPES = (Transformer2W, TapTransformer, PhaseShiftingTransformer)
+
+
+def _source_system(context: PluginContext) -> Any:
+    return cast(Any, context.source_system)
+
+
+def _target_system(context: PluginContext) -> Any:
+    return cast(Any, context.target_system)
 
 
 def _ensure_membership(
@@ -66,7 +74,7 @@ def _ensure_membership(
         The collection type for the membership
     """
     # Avoid creating duplicate memberships for the same parent/child/collection.
-    existing = context.target_system.get_supplemental_attributes_with_component(
+    existing = _target_system(context).get_supplemental_attributes_with_component(
         child_object,
         PLEXOSMembership,
     )
@@ -85,8 +93,8 @@ def _ensure_membership(
     )
     # Register on both endpoints so downstream consumers can discover memberships
     # regardless of traversal direction.
-    context.target_system.add_supplemental_attribute(parent_object, membership)
-    context.target_system.add_supplemental_attribute(child_object, membership)
+    _target_system(context).add_supplemental_attribute(parent_object, membership)
+    _target_system(context).add_supplemental_attribute(child_object, membership)
 
 
 def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | None, str | None]]:
@@ -97,7 +105,7 @@ def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | 
         return cached
 
     result: dict[str, tuple[str | None, str | None]] = {}
-    for bus in context.source_system.get_components(ACBus):
+    for bus in _source_system(context).get_components(ACBus):
         area = getattr(bus, "area", None)
         area_name: str | None = None
         if isinstance(area, Area):
@@ -126,12 +134,12 @@ def _attach_reservoir_time_series_to_storage(
     base_name = storage_name[:-5] if storage_name.endswith(("_head", "_tail")) else storage_name
 
     source_reservoir = None
-    for r in context.source_system.get_components(HydroReservoir):
+    for r in _source_system(context).get_components(HydroReservoir):
         if r.name == base_name:
             source_reservoir = r
             break
     if source_reservoir is None:
-        for r in context.source_system.get_components(HydroReservoir):
+        for r in _source_system(context).get_components(HydroReservoir):
             if base_name in r.name:
                 source_reservoir = r
                 break
@@ -139,7 +147,7 @@ def _attach_reservoir_time_series_to_storage(
         logger.warning("No source HydroReservoir found for '{}', skipping time series attachment.", base_name)
         return
 
-    if not context.source_system.time_series.has_time_series(source_reservoir):
+    if not _source_system(context).time_series.has_time_series(source_reservoir):
         return
 
     import numpy as np
@@ -155,7 +163,7 @@ def _attach_reservoir_time_series_to_storage(
         max_mw = abs(float(naris_pmax))
     else:
         turbine_base = base_name[: -len("_Reservoir")] if base_name.endswith("_Reservoir") else base_name
-        for t in context.source_system.get_components(HydroTurbine):
+        for t in _source_system(context).get_components(HydroTurbine):
             t_base = t.name[: -len("_Turbine")] if t.name.endswith("_Turbine") else t.name
             if t_base == turbine_base:
                 limits = getattr(t, "active_power_limits", None)
@@ -174,17 +182,17 @@ def _attach_reservoir_time_series_to_storage(
                             max_mw = abs(raw) * resolve_base_power(t)
                 break
 
-    for ts in context.source_system.list_time_series(source_reservoir):
-        ts_name = "natural_inflow" if ts.name == "inflow" else ts.name
-        ts_features = getattr(ts, "features", {})
-        if not context.target_system.has_time_series(
+    for typed_ts in _source_system(context).list_time_series(source_reservoir):
+        ts_name = "natural_inflow" if typed_ts.name == "inflow" else typed_ts.name
+        ts_features = getattr(typed_ts, "features", {})
+        if not _target_system(context).has_time_series(
             target_storage,
             name=ts_name,
             time_series_type=SingleTimeSeries,
             **ts_features,
         ):
-            data = np.asarray(ts.data)
-            if ts.name == "max_active_power":
+            data = np.asarray(typed_ts.data)
+            if typed_ts.name == "max_active_power":
                 if max_mw > 0.0:
                     data = data * max_mw
                 else:
@@ -195,10 +203,10 @@ def _attach_reservoir_time_series_to_storage(
             fresh_ts = SingleTimeSeries.from_array(
                 data=data,
                 name=ts_name,
-                initial_timestamp=ts.initial_timestamp,
-                resolution=ts.resolution,
+                initial_timestamp=typed_ts.initial_timestamp,
+                resolution=typed_ts.resolution,
             )
-            context.target_system.add_time_series(fresh_ts, target_storage, **ts_features)
+            _target_system(context).add_time_series(fresh_ts, target_storage, **ts_features)
             logger.success("Attached time series {} to storage {}", ts_name, storage_name)
 
 
@@ -208,10 +216,10 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
     Area maps to PLEXOSRegion, so regions are looked up by area_name.
     """
     bus_index = _bus_name_to_area_and_zone(context)
-    regions_by_name = {r.name: r for r in context.target_system.get_components(PLEXOSRegion)}
+    regions_by_name = {r.name: r for r in _target_system(context).get_components(PLEXOSRegion)}
 
     total_memberships = 0
-    for node in context.target_system.get_components(PLEXOSNode):
+    for node in _target_system(context).get_components(PLEXOSNode):
         area_name, _ = bus_index.get(node.name, (None, None))
         if area_name is None:
             continue
@@ -239,17 +247,17 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
     from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
 
     display_name_index = _build_generator_display_name_index(context)
-    generators_by_name = {g.name: g for g in context.target_system.get_components(PLEXOSGenerator)}
-    storages_by_name = {s.name: s for s in context.target_system.get_components(PLEXOSStorage)}
+    generators_by_name = {g.name: g for g in _target_system(context).get_components(PLEXOSGenerator)}
+    storages_by_name = {s.name: s for s in _target_system(context).get_components(PLEXOSStorage)}
 
     # Attach time series to ALL head storages regardless of membership
-    for storage in context.target_system.get_components(PLEXOSStorage):
+    for storage in _target_system(context).get_components(PLEXOSStorage):
         if storage.name.endswith("_head"):
             _attach_reservoir_time_series_to_storage(context, storage.name, storage)
 
     total_memberships = 0
     # Iterate over HydroReservoir.downstream_turbines
-    for reservoir in context.source_system.get_components(HydroReservoir):
+    for reservoir in _source_system(context).get_components(HydroReservoir):
         ext = getattr(reservoir, "ext", None)
         base = None
         if isinstance(ext, dict):
@@ -274,7 +282,7 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
 
         turbines = list(getattr(reservoir, "downstream_turbines", None) or [])
         if not turbines and isinstance(ext, dict):
-            all_turbines = {t.name: t for t in context.source_system.get_components(HydroTurbine)}
+            all_turbines = {t.name: t for t in _source_system(context).get_components(HydroTurbine)}
             turbines = [
                 all_turbines[pid]
                 for pid in (ext.get("plants") or [])
@@ -294,7 +302,7 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
             total_memberships += 1
 
     # Also support source models that expose reservoir links on HydroTurbine.reservoirs.
-    for turbine in context.source_system.get_components(HydroTurbine):
+    for turbine in _source_system(context).get_components(HydroTurbine):
         tname = getattr(turbine, "name", None)
         if not tname:
             continue
@@ -323,7 +331,7 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
         if gen_name.endswith("_head"):
             storage = storages_by_name.get(gen_name)
             if storage is not None:
-                memberships = context.target_system.get_supplemental_attributes_with_component(
+                memberships = _target_system(context).get_supplemental_attributes_with_component(
                     gen, PLEXOSMembership
                 )
                 if not any(
@@ -344,17 +352,17 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
     from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
 
     display_name_index = _build_generator_display_name_index(context)
-    generators_by_name = {g.name: g for g in context.target_system.get_components(PLEXOSGenerator)}
-    storages_by_name = {s.name: s for s in context.target_system.get_components(PLEXOSStorage)}
+    generators_by_name = {g.name: g for g in _target_system(context).get_components(PLEXOSGenerator)}
+    storages_by_name = {s.name: s for s in _target_system(context).get_components(PLEXOSStorage)}
 
     # Attach time series to ALL tail storages regardless of membership
-    for storage in context.target_system.get_components(PLEXOSStorage):
+    for storage in _target_system(context).get_components(PLEXOSStorage):
         if storage.name.endswith("_tail"):
             _attach_reservoir_time_series_to_storage(context, storage.name, storage)
 
     total_memberships = 0
     # Iterate over HydroReservoir.downstream_turbines
-    for reservoir in context.source_system.get_components(HydroReservoir):
+    for reservoir in _source_system(context).get_components(HydroReservoir):
         ext = getattr(reservoir, "ext", None)
         base = None
         if isinstance(ext, dict):
@@ -379,7 +387,7 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
 
         turbines = list(getattr(reservoir, "downstream_turbines", None) or [])
         if not turbines and isinstance(ext, dict):
-            all_turbines = {t.name: t for t in context.source_system.get_components(HydroTurbine)}
+            all_turbines = {t.name: t for t in _source_system(context).get_components(HydroTurbine)}
             turbines = [
                 all_turbines[pid]
                 for pid in (ext.get("plants") or [])
@@ -399,7 +407,7 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
             total_memberships += 1
 
     # Also support source models that expose reservoir links on HydroTurbine.reservoirs.
-    for turbine in context.source_system.get_components(HydroTurbine):
+    for turbine in _source_system(context).get_components(HydroTurbine):
         tname = getattr(turbine, "name", None)
         if not tname:
             continue
@@ -428,7 +436,7 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
         if gen_name.endswith("_tail"):
             storage = storages_by_name.get(gen_name)
             if storage is not None:
-                memberships = context.target_system.get_supplemental_attributes_with_component(
+                memberships = _target_system(context).get_supplemental_attributes_with_component(
                     gen, PLEXOSMembership
                 )
                 if not any(
@@ -447,12 +455,12 @@ def ensure_generator_node_memberships(context: PluginContext) -> None:
 
     source_generators: dict[str, Any] = {}
     for gen_type in SOURCE_GENERATOR_TYPES:
-        for gen in context.source_system.get_components(gen_type):
+        for gen in _source_system(context).get_components(gen_type):
             source_generators[gen.name] = gen
 
     display_name_index = _build_generator_display_name_index(context)
-    target_generators = {g.name: g for g in context.target_system.get_components(PLEXOSGenerator)}
-    nodes_by_name = {n.name: n for n in context.target_system.get_components(PLEXOSNode)}
+    target_generators = {g.name: g for g in _target_system(context).get_components(PLEXOSGenerator)}
+    nodes_by_name = {n.name: n for n in _target_system(context).get_components(PLEXOSNode)}
 
     total_memberships = 0
     cached: set[tuple[str, str]] = set()
@@ -486,11 +494,11 @@ def ensure_generator_time_series(context: PluginContext) -> None:
     from .getters_mappings import SOURCE_GENERATOR_TYPES
 
     display_name_index = _build_generator_display_name_index(context)
-    target_generators = {g.name: g for g in context.target_system.get_components(PLEXOSGenerator)}
+    target_generators = {g.name: g for g in _target_system(context).get_components(PLEXOSGenerator)}
 
     total = 0
     for gen_type in SOURCE_GENERATOR_TYPES:
-        for source_gen in context.source_system.get_components(gen_type):
+        for source_gen in _source_system(context).get_components(gen_type):
             target_name = display_name_index.get(source_gen.name, source_gen.name)
             target_gen = target_generators.get(target_name)
             if target_gen is None:
@@ -502,7 +510,7 @@ def ensure_generator_time_series(context: PluginContext) -> None:
 
 def ensure_reserve_time_series(context: PluginContext) -> None:
     """Attach reserve time series from source VariableReserve to translated PLEXOSReserve."""
-    source_reserves = {r.name: r for r in context.source_system.get_components(VariableReserve)}
+    source_reserves = {r.name: r for r in _source_system(context).get_components(VariableReserve)}
     base = getattr(getattr(context, "source_system", None), "base_power", None)
     try:
         system_base = float(base) if base is not None else 100.0
@@ -510,17 +518,17 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
         system_base = 100.0
 
     total = 0
-    for reserve in context.target_system.get_components(PLEXOSReserve):
+    for reserve in _target_system(context).get_components(PLEXOSReserve):
         source_reserve = source_reserves.get(reserve.name)
         if source_reserve is None:
             continue
 
-        if not context.source_system.time_series.has_time_series(source_reserve):
+        if not _source_system(context).time_series.has_time_series(source_reserve):
             continue
 
-        for metadata in context.source_system.time_series.list_time_series_metadata(source_reserve):
+        for metadata in _source_system(context).time_series.list_time_series_metadata(source_reserve):
             features = getattr(metadata, "features", {}) or {}
-            ts_list = context.source_system.list_time_series(
+            ts_list = _source_system(context).list_time_series(
                 source_reserve,
                 name=metadata.name,
                 **features,
@@ -528,28 +536,28 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
             if not ts_list:
                 continue
 
-            source_ts = ts_list[0]
-            ts_name = "min_provision" if source_ts.name == "requirement" else source_ts.name
+            typed_source_ts = ts_list[0]
+            ts_name = "min_provision" if typed_source_ts.name == "requirement" else typed_source_ts.name
 
-            ts_copy = deepcopy(source_ts)
-            ts_copy.name = ts_name
+            ts_copy_any = deepcopy(typed_source_ts)
+            ts_copy_any.name = ts_name
 
             # Reserve requirement is represented in p.u. in Sienna; PLEXOS min_provision expects MW.
             if ts_name in {"min_provision", "requirement"}:
                 try:
-                    ts_copy.data = ts_copy.data * system_base
+                    ts_copy_any.data = ts_copy_any.data * system_base
                 except TypeError:
-                    ts_copy.data = [float(value) * system_base for value in ts_copy.data]
+                    ts_copy_any.data = [float(value) * system_base for value in ts_copy_any.data]
 
-            if context.target_system.has_time_series(
+            if _target_system(context).has_time_series(
                 reserve,
                 name=ts_name,
-                time_series_type=type(source_ts),
+                time_series_type=type(typed_source_ts),
                 **features,
             ):
                 continue
 
-            context.target_system.add_time_series(ts_copy, reserve, **features)
+            _target_system(context).add_time_series(ts_copy_any, reserve, **features)
             total += 1
 
     logger.info("Ensured reserve time series for {} associations.", total)
@@ -557,11 +565,11 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
 
 def ensure_battery_node_memberships(context: PluginContext) -> None:
     """Ensure every translated battery has a node membership based on its source bus."""
-    target_batteries = {b.name: b for b in context.target_system.get_components(PLEXOSBattery)}
-    nodes_by_name = {n.name: n for n in context.target_system.get_components(PLEXOSNode)}
+    target_batteries = {b.name: b for b in _target_system(context).get_components(PLEXOSBattery)}
+    nodes_by_name = {n.name: n for n in _target_system(context).get_components(PLEXOSNode)}
 
     total_memberships = 0
-    for battery in context.source_system.get_components(EnergyReservoirStorage):
+    for battery in _source_system(context).get_components(EnergyReservoirStorage):
         target_battery = target_batteries.get(battery.name)
         if target_battery is None:
             continue
@@ -581,13 +589,13 @@ def ensure_reserve_generator_memberships(context: PluginContext) -> None:
     from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
     from r2x_sienna_to_plexos.getters_mappings import SOURCE_GENERATOR_TYPES
 
-    reserves_by_name = {r.name: r for r in context.target_system.get_components(PLEXOSReserve)}
-    generators_by_name = {g.name: g for g in context.target_system.get_components(PLEXOSGenerator)}
+    reserves_by_name = {r.name: r for r in _target_system(context).get_components(PLEXOSReserve)}
+    generators_by_name = {g.name: g for g in _target_system(context).get_components(PLEXOSGenerator)}
     display_name_index = _build_generator_display_name_index(context)
 
     reserve_to_generators: dict[str, list[Any]] = {}
     for gen_type in SOURCE_GENERATOR_TYPES:
-        for gen in context.source_system.get_components(gen_type):
+        for gen in _source_system(context).get_components(gen_type):
             for service in getattr(gen, "services", None) or []:
                 sname = getattr(service, "name", None)
                 if sname and sname in reserves_by_name:
@@ -607,11 +615,11 @@ def ensure_reserve_generator_memberships(context: PluginContext) -> None:
 
 def ensure_reserve_battery_memberships(context: PluginContext) -> None:
     """Create Reserve->Battery memberships by checking the services of each source battery."""
-    reserves_by_name = {r.name: r for r in context.target_system.get_components(PLEXOSReserve)}
-    batteries_by_name = {b.name: b for b in context.target_system.get_components(PLEXOSBattery)}
+    reserves_by_name = {r.name: r for r in _target_system(context).get_components(PLEXOSReserve)}
+    batteries_by_name = {b.name: b for b in _target_system(context).get_components(PLEXOSBattery)}
 
     total_memberships = 0
-    for source_battery in context.source_system.get_components(EnergyReservoirStorage):
+    for source_battery in _source_system(context).get_components(EnergyReservoirStorage):
         target_battery = batteries_by_name.get(source_battery.name)
         if target_battery is None:
             continue
@@ -630,13 +638,13 @@ def ensure_transformer_node_memberships(context: PluginContext) -> None:
     """Create Transformer->Node memberships (both from and to) for all transformers."""
     source_transformers_by_name: dict[str, Any] = {}
     for tf_type in _SIENNA_TRANSFORMER_TYPES:
-        for tf in context.source_system.get_components(tf_type):  # type: ignore[arg-type]
+        for tf in _source_system(context).get_components(tf_type):
             source_transformers_by_name[tf.name] = tf
 
-    nodes_by_name = {n.name: n for n in context.target_system.get_components(PLEXOSNode)}
+    nodes_by_name = {n.name: n for n in _target_system(context).get_components(PLEXOSNode)}
 
     total_memberships = 0
-    for transformer in context.target_system.get_components(PLEXOSTransformer):
+    for transformer in _target_system(context).get_components(PLEXOSTransformer):
         source_tf = source_transformers_by_name.get(transformer.name)
         if source_tf is None or not hasattr(source_tf, "arc"):
             continue
@@ -660,12 +668,12 @@ def ensure_transformer_node_memberships(context: PluginContext) -> None:
 def ensure_interface_line_memberships(context: PluginContext) -> None:
     """Create Interface->Line memberships for all interfaces and their lines."""
     source_interfaces_by_name = {
-        i.name: i for i in context.source_system.get_components(TransmissionInterface)
+        i.name: i for i in _source_system(context).get_components(TransmissionInterface)
     }
-    lines_by_name = {ln.name: ln for ln in context.target_system.get_components(PLEXOSLine)}
+    lines_by_name = {ln.name: ln for ln in _target_system(context).get_components(PLEXOSLine)}
 
     total_memberships = 0
-    for interface in context.target_system.get_components(PLEXOSInterface):
+    for interface in _target_system(context).get_components(PLEXOSInterface):
         source_intf = source_interfaces_by_name.get(interface.name)
         if source_intf is None:
             continue
@@ -680,10 +688,10 @@ def ensure_interface_line_memberships(context: PluginContext) -> None:
 
 def ensure_pumped_hydro_storage_memberships(context: PluginContext) -> None:
     """Create Generator->Storage memberships for pumped hydro generators."""
-    storages_by_name = {s.name: s for s in context.target_system.get_components(PLEXOSStorage)}
+    storages_by_name = {s.name: s for s in _target_system(context).get_components(PLEXOSStorage)}
 
     total_memberships = 0
-    for gen in context.target_system.get_components(PLEXOSGenerator):
+    for gen in _target_system(context).get_components(PLEXOSGenerator):
         if gen.name.endswith("_head"):
             storage = storages_by_name.get(gen.name)
             if storage is not None:

@@ -73,6 +73,18 @@ PLEXOS_NUMBER_USED = set()
 P2S_TS_PENDING_CACHE_KEY = "p2s_pending_ts"
 
 
+def _first_numeric(value: Any) -> float:
+    """Extract a scalar float from raw values or vector-like wrappers."""
+    values = getattr(value, "values", None)
+    if values is not None:
+        values_any: Any = values
+        try:
+            return float(values_any[0])
+        except Exception:
+            pass
+    return float(value)
+
+
 def _get_pending_ts_cache(context: PluginContext) -> dict[str, Any]:
     cache = context._cache.setdefault(P2S_TS_PENDING_CACHE_KEY, {})
     return cache
@@ -433,10 +445,7 @@ def get_line_conductance(component: PLEXOSLine, context: PluginContext) -> Resul
     """Get the conductance of a line as a FromTo_ToFrom namedtuple (g = 1/r)."""
     r = None
     if hasattr(component, "resistance") and component.resistance:
-        if hasattr(component.resistance, "values") and component.resistance.values:
-            r = float(component.resistance.values[0])
-        else:
-            r = float(component.resistance)
+        r = _first_numeric(component.resistance)
     if r and r != 0.0:
         g = 1.0 / r
         return Ok(FromTo_ToFrom(from_to=g, to_from=g))
@@ -466,10 +475,7 @@ def get_line_susceptance(component: PLEXOSLine, context: PluginContext) -> Resul
     """Get the susceptance of a line as a FromTo_ToFrom namedtuple."""
     value = None
     if hasattr(component, "susceptance") and component.susceptance:
-        if hasattr(component.susceptance, "values") and component.susceptance.values:
-            value = float(component.susceptance.values[0])
-        else:
-            value = float(component.susceptance)
+        value = _first_numeric(component.susceptance)
     if value is not None:
         return Ok(FromTo_ToFrom(from_to=value, to_from=value))
     return Ok(FromTo_ToFrom(from_to=0.0, to_from=0.0))
@@ -494,9 +500,7 @@ def get_line_flow_limits(component: PLEXOSLine, context: PluginContext) -> Resul
 def get_line_losses(component: PLEXOSLine, context: PluginContext) -> Result[float, Any]:
     """Get the losses of a line (if available)."""
     value = getattr(component, "losses", 0.0)
-    if hasattr(value, "values") and value.values:
-        value = float(value.values[0])
-    return Ok(float(value))
+    return Ok(_first_numeric(value))
 
 
 @getter

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from importlib.resources import files
+from typing import Any, cast
 
 from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
@@ -27,7 +28,8 @@ def reeds_to_sienna(system: System, config: ReEDSToSiennaConfig) -> System:
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     context.rules = rules
 
-    tmp_ts_dir = context.source_system.get_time_series_directory()
+    source_system = cast(Any, context.source_system)
+    tmp_ts_dir = source_system.get_time_series_directory()
     connection = create_in_memory_db()
     ts_manager = TimeSeriesManager(
         connection,
