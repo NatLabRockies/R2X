@@ -1,7 +1,7 @@
 <h1 align="center">R2X</h1>
 <p align="center">
 Translation plugins for power system models.<br>
-ReEDS, PLEXOS, Sienna — any direction.
+ReEDS, PLEXOS, Sienna
 </p>
 
 <div align="center">
@@ -30,7 +30,7 @@ them into pipelines, and manages Python environments.
 The plugins in this repo handle the translation step: converting
 a parsed source system into a target format. They sit between
 parsers (like `reeds-parser` or `sienna-parser`) and exporters
-(like `plexos` or `sienna-exporter`), all of which are separate
+(like `plexos-parser` or `sienna-exporter`), all of which are separate
 packages the CLI can chain together.
 
 Translations are driven by declarative JSON rules that map source
@@ -112,9 +112,9 @@ variables:
 
 pipelines:
   reeds-to-plexos:
-    - reeds-parser          # from r2x-reeds
-    - reeds-to-plexos       # from this repo
-    - plexos                # from r2x-plexos
+    - r2x-reeds.reeds-parser           # from r2x-reeds
+    - r2x-reeds-to-plexos.translation  # from this repo
+    - r2x-plexos.plexos-exporter       # from r2x-plexos
 
 config:
   reeds-parser:

@@ -1,106 +1,55 @@
-# Welcome to R2X's documentation!
+# R2X Translation Plugins
 
-R2X is a translating framework for inputs/outputs of power system model to “X” model(s).
+Translation plugins for power system models.
+ReEDS, PLEXOS, Sienna — any direction.
 
+This repo houses the translation plugins for the
+[r2x-cli](https://github.com/NatlabRockies/r2x-cli) ecosystem.
+For the core framework (plugin architecture, rules engine, System,
+DataStore, units), see
+[r2x-core](https://nrel.github.io/r2x-core/).
 
-## Model coverage
+## Translation Plugins
 
-![ARTEX](_static/model_coverage.png)
+| Package | Direction | Rules |
+| --- | --- | ---: |
+| [`r2x-reeds-to-plexos`](https://github.com/NatlabRockies/R2X/tree/main/packages/r2x-reeds-to-plexos) | ReEDS → PLEXOS | 34 |
+| [`r2x-reeds-to-sienna`](https://github.com/NatlabRockies/R2X/tree/main/packages/r2x-reeds-to-sienna) | ReEDS → Sienna | — |
+| [`r2x-plexos-to-sienna`](https://github.com/NatlabRockies/R2X/tree/main/packages/r2x-plexos-to-sienna) | PLEXOS → Sienna | 21 |
+| [`r2x-sienna-to-plexos`](https://github.com/NatlabRockies/R2X/tree/main/packages/r2x-sienna-to-plexos) | Sienna → PLEXOS | 44 |
 
+## Model Compatibility
 
+| R2X Version | Supported Inputs | Supported Outputs |
+| --- | --- | --- |
+| 2.0 | ReEDS (v2024.8.0) | PLEXOS (9.0, 9.2, 10, 11) |
+|     | Sienna (PSY 4.0) | Sienna (PSY 4.0, 5.0) |
+|     | PLEXOS (9.0, 9.2, 10, 11) | |
+
+## Ecosystem
+
+| Package | Description |
+| --- | --- |
+| [r2x-cli](https://github.com/NatlabRockies/r2x-cli) | Rust CLI that discovers, installs, and runs any r2x plugin |
+| [r2x-core](https://github.com/NatlabRockies/r2x-core) | Shared plugin framework: `PluginContext`, `Rule`, `System`, `@getter` registry |
+| [r2x-reeds](https://github.com/NatlabRockies/r2x-reeds) | ReEDS parser, transform plugins, and component models |
+| [r2x-plexos](https://github.com/NatlabRockies/r2x-plexos) | PLEXOS parser/exporter and component models |
+| [r2x-sienna](https://github.com/NREL-Sienna/r2x-sienna) | Sienna parser/exporter and PowerSystems.jl-compatible models |
+| [infrasys](https://github.com/NatlabRockies/infrasys) | Foundational System container and time series management |
+| [plexosdb](https://github.com/NatlabRockies/plexosdb) | Standalone PLEXOS XML database reader/writer |
 
 ## Roadmap
 
-If you're curious about what we're working on, check out the roadmap:
-
-- [Active issues](https://github.com/NREL/R2X/issues?q=is%3Aopen+is%3Aissue+label%3A%22Working+on+it+%F0%9F%92%AA%22+sort%3Aupdated-asc): Issues that we are actively working on.
-- [Prioritized backlog](https://github.com/NREL/R2X/issues?q=is%3Aopen+is%3Aissue+label%3ABacklog): Issues we'll be working on next.
-- [Nice-to-have](https://github.com/NREL/R2X/labels/Optional): Nice to have features or Issues to fix. Anyone can start working on (please let us know before you do).
-- [Ideas](https://github.com/NREL/R2X/issues?q=is%3Aopen+is%3Aissue+label%3AIdea): Future work or ideas for R2X.
-
-
-
-## List of parsers
-
-```{eval-rst}
-.. autosummary::
-   :nosignatures:
-
-   ~r2x.parser.reeds.ReEDSParser
-   ~r2x.parser.plexos.PlexosParser
-```
-
-## List of exporters
-
-```{eval-rst}
-.. autosummary::
-   :nosignatures:
-
-   ~r2x.exporter.plexos.PlexosExporter
-   ~r2x.exporter.sienna.SiennaExporter
-```
-
-## Model compatibility
-
-| R2X Version  | Supported Input Model Versions           | Supported Output Model Versions          |
-|--------------|----------------------------------------- |----------------------------------------- |
-|     1.0      | ReEDS (v2024.8.0)                        | PLEXOS (9.0, 9.2, 10)                    |
-|              | Sienna (PSY 3.0)                         | Sienna (PSY 3.0, 4.0)                    |
-|              | PLEXOS (9.0, 9.2, 10)                    |                                          |
-
+- [Active issues](https://github.com/NatlabRockies/R2X/issues?q=is%3Aopen+is%3Aissue+label%3A%22Working+on+it+%F0%9F%92%AA%22+sort%3Aupdated-asc):
+  Currently in progress.
+- [Prioritized backlog](https://github.com/NatlabRockies/R2X/issues?q=is%3Aopen+is%3Aissue+label%3ABacklog):
+  Up next.
+- [Nice-to-have](https://github.com/NatlabRockies/R2X/labels/Optional):
+  Community contributions welcome.
+- [Ideas](https://github.com/NatlabRockies/R2X/issues?q=is%3Aopen+is%3Aissue+label%3AIdea):
+  Future directions for R2X.
 
 ```{toctree}
 :hidden: true
-install.md
-usage.md
-howtos.md
 CHANGELOG.md
-troubleshoot.md
-```
-
-```{toctree}
-:caption: Developer Guide
-:hidden: true
-
-dev/develop.md
-dev/git.md
-```
-
-```{toctree}
-:caption: Modeling PCM
-:hidden: true
-
-model/logic.md
-model/diagram.md
-model/models.md
-model/data_models.md
-model/terminology.md
-```
-
-
-```{toctree}
-:caption: Zonal to Nodal
-:hidden: true
-
-nodal.md
-```
-
-```{toctree}
-:caption: Plexos Utils
-:hidden: true
-
-dev/plexosdb.md
-```
-
-```{toctree}
-:caption: API Documentation
-:hidden: true
-
-api/enums.md
-api/config.md
-api/system.md
-api/plexos.md
-api/models.md
-api/parsers.md
-api/exporters.md
 ```

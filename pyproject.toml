@@ -75,15 +75,12 @@ dev = [
   "ty>=0.0.2",
 ]
 docs = [
-  "autodoc-pydantic",
-  "docstr-coverage",
   "furo",
   "ghp-import",
   "myst-parser",
   "sphinx",
   "sphinx-copybutton",
-  "sphinx-reports",
-  "sphinx-tabs",
+  "sphinxcontrib-mermaid",
 ]
 
 [build-system]
