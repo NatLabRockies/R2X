@@ -67,9 +67,12 @@ def _get_defaults(technology: str, key: str) -> float:
         return 0.0
 
 
-def _lookup_target_node(context: PluginContext, region_name: str) -> Result[PLEXOSNode, ValueError]:
+def _lookup_target_node(context: PluginContext, region_name: str) -> Result[Any, ValueError]:
     """Return the translated node for a given region name."""
     from r2x_plexos.models import PLEXOSNode
+
+    if context.target_system is None:
+        return Err(ValueError("Target system is not set"))
 
     for node in context.target_system.get_components(PLEXOSNode):
         if node.name == region_name:
@@ -80,6 +83,9 @@ def _lookup_target_node(context: PluginContext, region_name: str) -> Result[PLEX
 def _lookup_source_generator(context: PluginContext, name: str) -> Any | None:
     """Find a ReEDS generator-like component by name."""
     from r2x_reeds.models import ReEDSConsumingTechnology, ReEDSGenerator, ReEDSStorage
+
+    if context.source_system is None:
+        return None
 
     for gen in context.source_system.get_components(ReEDSGenerator):
         if gen.name == name:
@@ -110,7 +116,7 @@ def get_commitment_status(component: Any, context: PluginContext) -> Result[int,
 @getter
 def get_component_units(component: object, context: PluginContext) -> Result[str, ValueError]:
     """Return the units/availability for a given component."""
-    return Ok(1)
+    return Ok("1")
 
 
 @getter
@@ -222,6 +228,8 @@ def get_generator_pump_efficiency_percent(
         round_trip_efficiency = getattr(component, "round_trip_efficiency", None)
         if round_trip_efficiency is not None:
             return Ok(_float_or_zero(round_trip_efficiency) * 100.0)
+
+        return Ok(0.0)
     else:
         return Ok(0.0)
 
@@ -425,6 +433,9 @@ def interface_max_flow(component: ReEDSInterface, context: PluginContext) -> Res
     """Return the maximum flow for an interface (sum of all lines' max flows)."""
     from r2x_reeds.models import ReEDSTransmissionLine
 
+    if context.source_system is None:
+        return Ok(0.0)
+
     interface_name = getattr(component, "name", "")
     total_max_flow = 0.0
     for line in context.source_system.get_components(ReEDSTransmissionLine):
@@ -446,6 +457,9 @@ def interface_max_flow(component: ReEDSInterface, context: PluginContext) -> Res
 def interface_min_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
     """Return the minimum flow for an interface (negative sum of all lines' max flows)."""
     from r2x_reeds.models import ReEDSTransmissionLine
+
+    if context.source_system is None:
+        return Ok(0.0)
 
     interface_name = getattr(component, "name", "")
     total_min_flow = 0.0
@@ -907,6 +921,9 @@ def reeds_membership_node_parent_zone(node: PLEXOSNode, context: PluginContext) 
     from r2x_plexos.models import PLEXOSZone
     from r2x_reeds.models import ReEDSRegion
 
+    if context.source_system is None or context.target_system is None:
+        return Err(ValueError("Source and target systems must be set"))
+
     node_name = getattr(node, "name", "")
 
     source_region = next(
@@ -935,6 +952,9 @@ def reeds_membership_line_from_parent_node(
     """Return the from-node for a translated line."""
     from r2x_reeds.models.components import ReEDSTransmissionLine
 
+    if context.source_system is None:
+        return Err(ValueError("Source system is not set"))
+
     source_line = next(
         (ln for ln in context.source_system.get_components(ReEDSTransmissionLine) if ln.name == line.name),
         None,
@@ -951,6 +971,9 @@ def reeds_membership_line_to_parent_node(
 ) -> Result[PLEXOSNode, ValueError]:
     """Return the to-node for a translated line."""
     from r2x_reeds.models.components import ReEDSTransmissionLine
+
+    if context.source_system is None:
+        return Err(ValueError("Source system is not set"))
 
     source_line = next(
         (ln for ln in context.source_system.get_components(ReEDSTransmissionLine) if ln.name == line.name),
@@ -969,6 +992,9 @@ def reeds_membership_storage_child_head_storage(
     """Return the head storage (with _head suffix) for this generator."""
     from r2x_plexos.models import PLEXOSStorage
 
+    if context.target_system is None:
+        return Err(ValueError("Target system is not set"))
+
     base_name = getattr(generator, "name", "")
     storage_name = f"{base_name}_head"
     for storage in context.target_system.get_components(PLEXOSStorage):
@@ -983,6 +1009,9 @@ def reeds_membership_storage_child_tail_storage(
 ) -> Result[Any, ValueError]:
     """Return the tail storage (with _tail suffix) for this generator."""
     from r2x_plexos.models import PLEXOSStorage
+
+    if context.target_system is None:
+        return Err(ValueError("Target system is not set"))
 
     base_name = getattr(generator, "name", "")
     storage_name = f"{base_name}_tail"
@@ -1016,13 +1045,15 @@ def reeds_membership_battery_parent_regulation_reserve(
     return _find_battery_reserve_by_type(battery, context, "REGULATION")
 
 
-@getter
 def _find_battery_reserve_by_type(
     battery: Any, context: PluginContext, reserve_type: str
 ) -> Result[Any, ValueError]:
     """Helper to find a specific reserve type for a battery."""
     from r2x_plexos.models import PLEXOSReserve
     from r2x_reeds.models import ReEDSStorage
+
+    if context.source_system is None or context.target_system is None:
+        return Err(ValueError("Source and target systems must be set"))
 
     battery_name = getattr(battery, "name", "")
     source_storage = next(
@@ -1034,7 +1065,7 @@ def _find_battery_reserve_by_type(
         logger.debug(f"No source storage found for battery '{battery_name}'")
         return Err(ValueError("Skip Generator with no source."))
 
-    ext_data = getattr(source_storage, "ext", {})
+    ext_data = getattr(source_storage, "ext", {}) or {}
     reserve_names = ext_data.get("reserves", [])
 
     if not reserve_names:
@@ -1097,6 +1128,9 @@ def _find_generator_reserve_by_type(
         ReEDSVariableGenerator,
     )
 
+    if context.source_system is None or context.target_system is None:
+        return Err(ValueError("Source and target systems must be set"))
+
     generator_name = getattr(generator, "name", "")
     source_generator = None
     for generator_type in [
@@ -1115,7 +1149,7 @@ def _find_generator_reserve_by_type(
     if source_generator is None:
         return Err(ValueError("Skip Generator with no source."))
 
-    ext_data = getattr(source_generator, "ext", {})
+    ext_data = getattr(source_generator, "ext", {}) or {}
     reserve_names = ext_data.get("reserves", [])
 
     if not reserve_names:
@@ -1144,6 +1178,9 @@ def reeds_membership_region_child_reserve(region: Any, context: PluginContext) -
     """Find the reserve(s) for this region using ext['transmission_region']."""
     from r2x_plexos.models import PLEXOSReserve
 
+    if context.target_system is None:
+        return Err(ValueError("Target system is not set"))
+
     region_ext = getattr(region, "ext", {}) or {}
     transmission_region = region_ext.get("transmission_region", None)
     if not transmission_region:
@@ -1161,6 +1198,9 @@ def reeds_membership_region_child_reserve(region: Any, context: PluginContext) -
 def reeds_membership_line_parent_interface(line: Any, context: PluginContext) -> Result[Any, ValueError]:
     """Return the parent interface for a translated line, matching either direction by region names."""
     from r2x_plexos.models import PLEXOSInterface
+
+    if context.target_system is None:
+        return Err(ValueError("Target system is not set"))
 
     line_name = getattr(line, "name", "")
     parts = line_name.split("_")

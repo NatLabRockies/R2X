@@ -27,6 +27,7 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     context.rules = rules
 
+    assert context.source_system is not None, "source_system must be set"
     tmp_ts_dir = context.source_system.get_time_series_directory()
     connection = create_in_memory_db()
     ts_manager = TimeSeriesManager(

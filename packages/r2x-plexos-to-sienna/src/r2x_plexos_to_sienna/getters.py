@@ -8,8 +8,8 @@ from copy import deepcopy
 from importlib.resources import files
 from typing import Any
 
-from infrasys import SingleTimeSeries
-from infrasys.cost_curves import CostCurve, FuelCurve
+from infrasys import Component, SingleTimeSeries
+from infrasys.cost_curves import CostCurve, FuelCurve, UnitSystem
 from infrasys.value_curves import InputOutputCurve, LinearCurve
 from loguru import logger
 from plexosdb import CollectionEnum
@@ -59,8 +59,11 @@ from r2x_sienna.models.enums import (
 )
 from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput, MinMax
 
-from r2x_core import Ok, PluginContext, Result, UnitSystem
+from r2x_core import Ok, PluginContext, Result
 from r2x_core.getters import getter
+
+# Type-safe constant for power units
+NATURAL_UNITS: UnitSystem = UnitSystem.NATURAL_UNITS
 
 PLEXOS_NUMBER_BASE = 100100
 PLEXOS_NUMBER_COUNTER = PLEXOS_NUMBER_BASE
@@ -81,7 +84,7 @@ def _pending_key_for_source(component: Any) -> str:
     return f"{cls_name}:{name}"
 
 
-def _get_target_types_for_source(component: Any) -> list[type]:
+def _get_target_types_for_source(component: Any) -> list[type[Component]]:
     if isinstance(component, PLEXOSGenerator):
         return [
             ThermalStandard,
@@ -105,6 +108,8 @@ def _get_targets_by_name(context: PluginContext, source_component: Any) -> list[
     name = getattr(source_component, "name", None)
     if not name:
         return []
+    if context.target_system is None:
+        return []
     targets: list[Any] = []
     for target_type in _get_target_types_for_source(source_component):
         targets.extend(
@@ -116,6 +121,8 @@ def _get_targets_by_name(context: PluginContext, source_component: Any) -> list[
 
 
 def _attach_source_time_series_if_target_exists(source_component: Any, context: PluginContext) -> bool:
+    if context.source_system is None or context.target_system is None:
+        return True
     if not context.source_system.time_series.has_time_series(source_component):
         return True
 
@@ -213,6 +220,9 @@ def get_load_bus(component: PLEXOSRegion, context: PluginContext) -> Result[ACBu
     """
     _sync_time_series_for_source(component, context)
 
+    if context.source_system is None or context.target_system is None:
+        return Ok(None)
+
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     node_name = None
     for m in memberships:
@@ -285,6 +295,9 @@ def get_node_angle(component: PLEXOSNode, context: PluginContext) -> Result[floa
 @getter
 def get_node_area(component: PLEXOSNode, context: PluginContext) -> Result[Any, Any]:
     """Get the Area object of a node from its memberships (Region collection), matching by name in the target system."""
+    if context.source_system is None or context.target_system is None:
+        value = getattr(component, "area", None)
+        return Ok(value)
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     area_name = None
     for m in memberships:
@@ -308,6 +321,9 @@ def get_node_area(component: PLEXOSNode, context: PluginContext) -> Result[Any, 
 @getter
 def get_node_zone(component: PLEXOSNode, context: PluginContext) -> Result[Any, Any]:
     """Get the LoadZone object of a node from its memberships (Zone collection), matching by name in the target system."""
+    if context.source_system is None or context.target_system is None:
+        value = getattr(component, "zone", None)
+        return Ok(value)
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     zone_name = None
     for m in memberships:
@@ -372,6 +388,8 @@ def is_slack_bus(component: PLEXOSNode, context: PluginContext) -> Result[ACBusT
 @getter
 def get_line_arc(component: PLEXOSLine, context: PluginContext) -> Result[Arc, Any]:
     """Get the arc of a line by querying PlexosDB for node memberships and matching to ACBus objects."""
+    if context.source_system is None or context.target_system is None:
+        raise ValueError("Source and target systems must be set to get line arc")
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     from_node = None
     to_node = None
@@ -534,6 +552,8 @@ def get_device_services(
     """
     Get the services provided by a device (generator, battery, etc.), returning VariableReserve objects from the target system.
     """
+    if context.source_system is None or context.target_system is None:
+        return Ok([])
     services = []
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     valid_collections = {CollectionEnum.Generators, CollectionEnum.Batteries}
@@ -568,6 +588,9 @@ def get_gen_bus(
     """
     _sync_time_series_for_source(component, context)
 
+    if context.source_system is None or context.target_system is None:
+        return Ok(None)
+
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     bus_name = None
     for m in memberships:
@@ -598,7 +621,7 @@ def get_hydro_gen_operation_cost(
         HydroGenerationCost(
             fixed=0.0,
             variable=CostCurve(
-                value_curve=LinearCurve(10), power_units=UnitSystem.NATURAL_UNITS, vom_cost=LinearCurve(5.0)
+                value_curve=LinearCurve(10), power_units=NATURAL_UNITS, vom_cost=LinearCurve(5.0)
             ),
         )
     )
@@ -617,7 +640,7 @@ def get_renewable_operation_cost(
     component: PLEXOSGenerator, context: PluginContext
 ) -> Result[RenewableGenerationCost, ValueError]:
     """Return zeroed renewable operation cost."""
-    zero_curve = CostCurve(value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS)
+    zero_curve = CostCurve(value_curve=LinearCurve(0.0), power_units=NATURAL_UNITS)
     return Ok(
         RenewableGenerationCost(
             fixed=0.0,
@@ -726,9 +749,7 @@ def get_thermal_operation_cost(
             fixed=0.0,
             shut_down=0.0,
             start_up=0.0,
-            variable=FuelCurve(
-                value_curve=LinearCurve(0.0), power_units=UnitSystem.NATURAL_UNITS, fuel_cost=0.0
-            ),
+            variable=FuelCurve(value_curve=LinearCurve(0.0), power_units=NATURAL_UNITS, fuel_cost=0.0),
         )
     )
 

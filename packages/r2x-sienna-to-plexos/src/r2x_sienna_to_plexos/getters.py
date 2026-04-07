@@ -100,8 +100,9 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
             _z2n_defaults = json.load(f)
         reeds_cats = sorted(_z2n_defaults.get("reeds_defaults", {}).keys(), key=len, reverse=True)
         for cat in reeds_cats:
-            if suffix == cat or suffix.startswith(cat + "_"):
-                return cat
+            cat_str = str(cat)
+            if suffix == cat_str or suffix.startswith(cat_str + "_"):
+                return cat_str
 
     # Treat explicit "nuclear" naming as high-confidence and avoid falling back to
     # broad prime-mover mappings that can misclassify these units as thermal/coal.
@@ -196,6 +197,8 @@ def _build_target_storage_name_index(context: PluginContext) -> dict[str, Any]:
     cached = context._cache.get("target_storage_name_index")
     if cached is not None:
         return cached
+    if context.target_system is None:
+        return {}
     result = {s.name.lower(): s for s in context.target_system.get_components(PLEXOSStorage)}
     context._cache["target_storage_name_index"] = result
     return result
@@ -206,6 +209,8 @@ def _build_source_reserve_name_index(context: PluginContext) -> dict[str, Any]:
     cached = context._cache.get("source_reserve_name_index")
     if cached is not None:
         return cached
+    if context.source_system is None:
+        return {}
     result = {r.name: r for r in context.source_system.get_components(VariableReserve)}
     context._cache["source_reserve_name_index"] = result
     return result
@@ -216,6 +221,8 @@ def _build_source_interface_name_index(context: PluginContext) -> dict[str, Any]
     cached = context._cache.get("source_interface_name_index")
     if cached is not None:
         return cached
+    if context.source_system is None:
+        return {}
     result = {i.name: i for i in context.source_system.get_components(TransmissionInterface)}
     context._cache["source_interface_name_index"] = result
     return result
@@ -226,6 +233,8 @@ def _build_target_line_name_index(context: PluginContext) -> dict[str, Any]:
     cached = context._cache.get("target_line_name_index")
     if cached is not None:
         return cached
+    if context.target_system is None:
+        return {}
     result = {ln.name: ln for ln in context.target_system.get_components(PLEXOSLine)}
     context._cache["target_line_name_index"] = result
     return result

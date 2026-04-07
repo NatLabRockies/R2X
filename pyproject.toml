@@ -192,3 +192,7 @@ fail_under = 84
 
 [tool.coverage.html]
 directory = "htmlcov"
+
+[tool.ty.src]
+# Exclude test files from strict type checking since they use mocking patterns
+exclude = ["**/tests/**", "**/test_*.py"]

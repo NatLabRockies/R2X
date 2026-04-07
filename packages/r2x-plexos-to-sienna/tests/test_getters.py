@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import types
+from typing import Any, cast
 
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
@@ -48,11 +49,18 @@ from r2x_sienna.models.enums import (
 )
 from r2x_sienna.units import Voltage
 
-from r2x_core import DataStore, PluginConfig, PluginContext, System
+from r2x_core import DataStore, PluginConfig, PluginContext, Result, System
 
 
 class Dummy:
     pass
+
+
+def _make_context(**kwargs: Any) -> PluginContext:
+    """Create a PluginContext with proper typing for tests."""
+    config = PluginConfig()
+    ctx = PluginContext(config=config, **kwargs)
+    return ctx
 
 
 def test_extract_number_from_name_digits_and_dummy():
@@ -66,27 +74,33 @@ def test_extract_number_from_name_digits_and_dummy():
 
 
 def test_get_node_number_with_number():
-    node = types.SimpleNamespace(number=42)
-    assert get_node_number(node, None).value == 42
+    node = cast(PLEXOSNode, types.SimpleNamespace(number=42))
+    result = cast(Result[int, Any], get_node_number(node, None))
+    assert result.value == 42
 
 
 def test_get_node_number_with_name():
-    node = types.SimpleNamespace(number=None, name="p123")
-    assert get_node_number(node, None).value == 123
+    node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name="p123"))
+    result = cast(Result[int, Any], get_node_number(node, None))
+    assert result.value == 123
 
 
 def test_get_node_number_default():
-    node = types.SimpleNamespace(number=None, name=None)
-    assert get_node_number(node, None).value == 1
+    node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name=None))
+    result = cast(Result[int, Any], get_node_number(node, None))
+    assert result.value == 1
 
 
 def test_get_base_voltage_all_branches():
-    node = types.SimpleNamespace(voltage=5.0)
-    assert get_base_voltage(node, None).value == 5.0
-    node = types.SimpleNamespace(voltage=0.0, ac_voltage_magnitude=7.0)
-    assert get_base_voltage(node, None).value == 7.0
-    node = types.SimpleNamespace(voltage=0.0, ac_voltage_magnitude=0.0)
-    assert get_base_voltage(node, None).value == 1.0
+    node = cast(PLEXOSNode, types.SimpleNamespace(voltage=5.0))
+    result = cast(Result[float, Any], get_base_voltage(node, None))
+    assert result.value == 5.0
+    node = cast(PLEXOSNode, types.SimpleNamespace(voltage=0.0, ac_voltage_magnitude=7.0))
+    result = cast(Result[float, Any], get_base_voltage(node, None))
+    assert result.value == 7.0
+    node = cast(PLEXOSNode, types.SimpleNamespace(voltage=0.0, ac_voltage_magnitude=0.0))
+    result = cast(Result[float, Any], get_base_voltage(node, None))
+    assert result.value == 1.0
 
 
 def test_get_node_area_and_zone_membership():
@@ -96,14 +110,18 @@ def test_get_node_area_and_zone_membership():
     dummy_membership = types.SimpleNamespace(
         collection=getters.CollectionEnum.Region, child_object=types.SimpleNamespace(name="A")
     )
-    node = types.SimpleNamespace(area=None)
-    ctx = types.SimpleNamespace(
-        source_system=types.SimpleNamespace(
-            get_supplemental_attributes_with_component=lambda c: [dummy_membership]
+    node = cast(PLEXOSNode, types.SimpleNamespace(area=None))
+    ctx = cast(
+        PluginContext,
+        types.SimpleNamespace(
+            source_system=types.SimpleNamespace(
+                get_supplemental_attributes_with_component=lambda c: [dummy_membership]
+            ),
+            target_system=dummy_target,
         ),
-        target_system=dummy_target,
     )
-    assert get_node_area(node, ctx).value == dummy_area
+    result = cast(Result[Any, Any], get_node_area(node, ctx))
+    assert result.value == dummy_area
 
     # Zone
     dummy_zone = types.SimpleNamespace(name="Z")
@@ -111,46 +129,54 @@ def test_get_node_area_and_zone_membership():
     dummy_membership = types.SimpleNamespace(
         collection=getters.CollectionEnum.Zone, child_object=types.SimpleNamespace(name="Z")
     )
-    node = types.SimpleNamespace(zone=None)
-    ctx = types.SimpleNamespace(
-        source_system=types.SimpleNamespace(
-            get_supplemental_attributes_with_component=lambda c: [dummy_membership]
+    node = cast(PLEXOSNode, types.SimpleNamespace(zone=None))
+    ctx = cast(
+        PluginContext,
+        types.SimpleNamespace(
+            source_system=types.SimpleNamespace(
+                get_supplemental_attributes_with_component=lambda c: [dummy_membership]
+            ),
+            target_system=dummy_target,
         ),
-        target_system=dummy_target,
     )
-    assert get_node_zone(node, ctx).value == dummy_zone
+    result = cast(Result[Any, Any], get_node_zone(node, ctx))
+    assert result.value == dummy_zone
 
 
 def test_get_line_conductance_and_susceptance():
     # Conductance with resistance
-    line = types.SimpleNamespace(resistance=2.0)
-    assert get_line_conductance(line, None).value.from_to == 0.5
+    line = cast(PLEXOSLine, types.SimpleNamespace(resistance=2.0))
+    result = cast(Result[Any, Any], get_line_conductance(line, None))
+    assert result.value.from_to == 0.5
     # Conductance with no resistance
-    line = types.SimpleNamespace(resistance=0.0)
-    assert get_line_conductance(line, None).value.from_to == 0.0
+    line = cast(PLEXOSLine, types.SimpleNamespace(resistance=0.0))
+    result = cast(Result[Any, Any], get_line_conductance(line, None))
+    assert result.value.from_to == 0.0
     # Susceptance with value
-    line = types.SimpleNamespace(susceptance=3.0)
-    assert get_line_susceptance(line, None).value.from_to == 3.0
+    line = cast(PLEXOSLine, types.SimpleNamespace(susceptance=3.0))
+    result = cast(Result[Any, Any], get_line_susceptance(line, None))
+    assert result.value.from_to == 3.0
     # Susceptance with no value
-    line = types.SimpleNamespace(susceptance=0.0)
-    assert get_line_susceptance(line, None).value.from_to == 0.0
+    line = cast(PLEXOSLine, types.SimpleNamespace(susceptance=0.0))
+    result = cast(Result[Any, Any], get_line_susceptance(line, None))
+    assert result.value.from_to == 0.0
 
 
 def test_get_line_angle_limits_tuple_and_default():
-    line = types.SimpleNamespace(angle_limits=(10, 20))
-    result = get_line_angle_limits(line, None).value
+    line = cast(PLEXOSLine, types.SimpleNamespace(angle_limits=(10, 20)))
+    result = cast(Result[Any, Any], get_line_angle_limits(line, None)).value
     assert result.min == 10 and result.max == 20
-    line = types.SimpleNamespace(angle_limits=None)
-    result = get_line_angle_limits(line, None).value
+    line = cast(PLEXOSLine, types.SimpleNamespace(angle_limits=None))
+    result = cast(Result[Any, Any], get_line_angle_limits(line, None)).value
     assert result.min == -90.0 and result.max == 90.0
 
 
 def test_get_line_flow_limits_with_and_without_max():
-    line = types.SimpleNamespace(min_flow=-50.0, max_flow=150.0)
-    result = get_line_flow_limits(line, None).value
+    line = cast(PLEXOSLine, types.SimpleNamespace(min_flow=-50.0, max_flow=150.0))
+    result = cast(Result[Any, Any], get_line_flow_limits(line, None)).value
     assert result.from_to == 150.0 and result.to_from == -50.0
-    line = types.SimpleNamespace(min_flow=-50.0, max_flow=None)
-    result = get_line_flow_limits(line, None).value
+    line = cast(PLEXOSLine, types.SimpleNamespace(min_flow=-50.0, max_flow=None))
+    result = cast(Result[Any, Any], get_line_flow_limits(line, None)).value
     assert result.from_to == 100.0 and result.to_from == -50.0
 
 
@@ -158,64 +184,81 @@ def test_get_line_losses_with_values():
     class V:
         values = [5.0]  # noqa: RUF012
 
-    line = types.SimpleNamespace(losses=V())
-    assert get_line_losses(line, None).value == 5.0
-    line = types.SimpleNamespace(losses=0.0)
-    assert get_line_losses(line, None).value == 0.0
+    line = cast(PLEXOSLine, types.SimpleNamespace(losses=V()))
+    result = cast(Result[float, Any], get_line_losses(line, None))
+    assert result.value == 5.0
+    line = cast(PLEXOSLine, types.SimpleNamespace(losses=0.0))
+    result = cast(Result[float, Any], get_line_losses(line, None))
+    assert result.value == 0.0
 
 
 def test_get_gen_start_types():
-    node = types.SimpleNamespace(start_type="hot")
-    assert get_gen_start_types(node, None).value == 1
-    node = types.SimpleNamespace(start_type="warm")
-    assert get_gen_start_types(node, None).value == 2
-    node = types.SimpleNamespace(start_type="cold")
-    assert get_gen_start_types(node, None).value == 3
-    node = types.SimpleNamespace(start_type="unknown")
-    assert get_gen_start_types(node, None).value == 1
+    node = cast(PLEXOSGenerator, types.SimpleNamespace(start_type="hot"))
+    result = cast(Result[int, Any], get_gen_start_types(node, None))
+    assert result.value == 1
+    node = cast(PLEXOSGenerator, types.SimpleNamespace(start_type="warm"))
+    result = cast(Result[int, Any], get_gen_start_types(node, None))
+    assert result.value == 2
+    node = cast(PLEXOSGenerator, types.SimpleNamespace(start_type="cold"))
+    result = cast(Result[int, Any], get_gen_start_types(node, None))
+    assert result.value == 3
+    node = cast(PLEXOSGenerator, types.SimpleNamespace(start_type="unknown"))
+    result = cast(Result[int, Any], get_gen_start_types(node, None))
+    assert result.value == 1
 
 
 def test_get_prime_mover_type_default(monkeypatch):
     # Patch _get_prime_mover_type to avoid file access
     monkeypatch.setattr(getters, "_get_prime_mover_type", lambda category: "OT")
-    node = types.SimpleNamespace(category=None)
-    assert get_prime_mover_type(node, None).value == "OT"
+    node = cast(PLEXOSGenerator, types.SimpleNamespace(category=None))
+    result = cast(Result[str, Any], get_prime_mover_type(node, None))
+    assert result.value == "OT"
 
 
 def test_get_reserve_type_and_direction():
-    node = types.SimpleNamespace(reserve_type="SPINNING")
-    assert get_reserve_type(node, None).value.name == "SPINNING"
-    node = types.SimpleNamespace(reserve_type="INVALID")
-    assert get_reserve_type(node, None).value.name == "SPINNING"
-    node = types.SimpleNamespace(direction="UP")
-    assert get_reserve_direction(node, None).value.name == "UP"
-    node = types.SimpleNamespace(direction="INVALID")
-    assert get_reserve_direction(node, None).value.name == "UP"
+    node = cast(PLEXOSReserve, types.SimpleNamespace(reserve_type="SPINNING"))
+    result = cast(Result[Any, Any], get_reserve_type(node, None))
+    assert result.value.name == "SPINNING"
+    node = cast(PLEXOSReserve, types.SimpleNamespace(reserve_type="INVALID"))
+    result = cast(Result[Any, Any], get_reserve_type(node, None))
+    assert result.value.name == "SPINNING"
+    node = cast(PLEXOSReserve, types.SimpleNamespace(direction="UP"))
+    result = cast(Result[Any, Any], get_reserve_direction(node, None))
+    assert result.value.name == "UP"
+    node = cast(PLEXOSReserve, types.SimpleNamespace(direction="INVALID"))
+    result = cast(Result[Any, Any], get_reserve_direction(node, None))
+    assert result.value.name == "UP"
 
 
 def test_get_trf_primary_shunt():
-    node = types.SimpleNamespace(primary_shunt=None)
-    assert get_trf_primary_shunt(node, None).value is None
-    node = types.SimpleNamespace(primary_shunt=getters.Complex(real=1.0, imag=2.0))
-    assert get_trf_primary_shunt(node, None).value.real == 1.0
-    node = types.SimpleNamespace(primary_shunt=5.0)
-    result = get_trf_primary_shunt(node, None).value
-    assert result.real == 0.0 and result.imag == 0.0
+    node = cast(PLEXOSTransformer, types.SimpleNamespace(primary_shunt=None))
+    result = cast(Result[Any, Any], get_trf_primary_shunt(node, None))
+    assert result.value is None
+    node = cast(PLEXOSTransformer, types.SimpleNamespace(primary_shunt=getters.Complex(real=1.0, imag=2.0)))
+    result = cast(Result[Any, Any], get_trf_primary_shunt(node, None))
+    assert result.value.real == 1.0
+    node = cast(PLEXOSTransformer, types.SimpleNamespace(primary_shunt=5.0))
+    result_val = cast(Result[Any, Any], get_trf_primary_shunt(node, None)).value
+    assert result_val.real == 0.0 and result_val.imag == 0.0
 
 
 def test_get_node_ext():
-    node = types.SimpleNamespace(load_participation_factor=0.5)
-    result = get_node_ext(node, None).value
+    node = cast(PLEXOSNode, types.SimpleNamespace(load_participation_factor=0.5))
+    result = cast(Result[dict[str, Any], Any], get_node_ext(node, None)).value
     assert result["load_participation_factor"] == 0.5
 
 
 def test_get_device_services_empty():
-    node = types.SimpleNamespace()
-    ctx = types.SimpleNamespace(
-        source_system=types.SimpleNamespace(get_supplemental_attributes_with_component=lambda c: []),
-        target_system=types.SimpleNamespace(get_components=lambda t: []),
+    node = cast(PLEXOSGenerator, types.SimpleNamespace())
+    ctx = cast(
+        PluginContext,
+        types.SimpleNamespace(
+            source_system=types.SimpleNamespace(get_supplemental_attributes_with_component=lambda c: []),
+            target_system=types.SimpleNamespace(get_components=lambda t: []),
+        ),
     )
-    assert get_device_services(node, ctx).value == []
+    result = cast(Result[list[Any], Any], get_device_services(node, ctx))
+    assert result.value == []
 
 
 def test_node_number_getter_no_number():

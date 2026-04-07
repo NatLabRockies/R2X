@@ -27,6 +27,9 @@ def attach_region_load_time_series(context: PluginContext) -> None:
     from r2x_plexos.models import PLEXOSRegion
     from r2x_reeds.models.components import ReEDSDemand
 
+    if context.target_system is None or context.source_system is None:
+        return
+
     target_regions = {region.name: region for region in context.target_system.get_components(PLEXOSRegion)}
 
     for demand in context.source_system.get_components(ReEDSDemand):
@@ -61,6 +64,9 @@ def attach_reserve_time_series(context: PluginContext) -> None:
     from r2x_plexos.models import PLEXOSReserve
     from r2x_reeds.models.components import ReEDSReserve
 
+    if context.source_system is None or context.target_system is None:
+        return
+
     source_reserves = {r.name: r for r in context.source_system.get_components(ReEDSReserve)}
     for reserve in context.target_system.get_components(PLEXOSReserve):
         source_reserve = source_reserves.get(reserve.name)
@@ -76,6 +82,9 @@ def attach_reserve_time_series(context: PluginContext) -> None:
 def attach_time_series_to_generators(context: PluginContext) -> None:
     """Transfer time series from ReEDS generators to translated PLEXOS generators (with duplicate check)."""
     from r2x_reeds.models.components import ReEDSGenerator, ReEDSHydroGenerator, ReEDSVariableGenerator
+
+    if context.source_system is None or context.target_system is None:
+        return
 
     source_generators = {gen.name: gen for gen in context.source_system.get_components(ReEDSGenerator)}
     hydro_generators = {gen.name: gen for gen in context.source_system.get_components(ReEDSHydroGenerator)}
@@ -109,6 +118,9 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
 def ensure_region_node_memberships(context: PluginContext) -> None:
     """Ensure every translated region has a node child membership with matching name."""
     system = context.target_system
+    if system is None:
+        return
+
     nodes_by_name = {node.name: node for node in system.get_components(PLEXOSNode)}
 
     for region in system.get_components(PLEXOSRegion):
@@ -121,6 +133,9 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
 def ensure_generator_node_memberships(context: PluginContext) -> None:
     """Ensure every translated generator has a node membership based on its source region."""
     from r2x_reeds.models import ReEDSGenerator
+
+    if context.source_system is None or context.target_system is None:
+        return
 
     source_generators = {gen.name: gen for gen in context.source_system.get_components(ReEDSGenerator)}
     target_generators = {gen.name: gen for gen in context.target_system.get_components(PLEXOSGenerator)}
@@ -146,6 +161,9 @@ def link_line_memberships(context: PluginContext) -> None:
     """Connect translated lines to their originating region nodes."""
     from r2x_reeds.models.components import ReEDSTransmissionLine
 
+    if context.source_system is None or context.target_system is None:
+        return
+
     source_lines = {line.name: line for line in context.source_system.get_components(ReEDSTransmissionLine)}
     nodes_by_name = {node.name: node for node in context.target_system.get_components(PLEXOSNode)}
 
@@ -156,7 +174,7 @@ def link_line_memberships(context: PluginContext) -> None:
 
         from_node = nodes_by_name.get(source_line.interface.from_region.name)
         to_node = nodes_by_name.get(source_line.interface.to_region.name)
-        if not from_node or not to_node:
+        if from_node is None or to_node is None:
             continue
 
         _ensure_membership(context.target_system, from_node, plexos_line, CollectionEnum.NodeFrom)
@@ -166,6 +184,9 @@ def link_line_memberships(context: PluginContext) -> None:
 def attach_emissions_to_generators(context: PluginContext) -> None:
     """Copy ReEDS emission metadata onto translated generators."""
     from r2x_reeds.models.components import ReEDSEmission, ReEDSGenerator
+
+    if context.source_system is None or context.target_system is None:
+        return
 
     source_generators = {gen.name: gen for gen in context.source_system.get_components(ReEDSGenerator)}
     target_generators = {gen.name: gen for gen in context.target_system.get_components(PLEXOSGenerator)}
@@ -184,6 +205,9 @@ def attach_emissions_to_generators(context: PluginContext) -> None:
 def convert_pumped_storage_generators(context: PluginContext) -> None:
     """Ensure pumped-storage generators also exist as storage components."""
     from r2x_reeds.models.components import ReEDSGenerator
+
+    if context.source_system is None or context.target_system is None:
+        return
 
     source_generators = {gen.name: gen for gen in context.source_system.get_components(ReEDSGenerator)}
     pumped_names = {
