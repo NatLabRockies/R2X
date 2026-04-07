@@ -2033,6 +2033,19 @@ def test_get_max_capacity_uses_default_when_below_ten_mw(context):
     assert getters.get_max_capacity(DummyFromLimits(), context).unwrap() == expected
 
 
+def test_get_max_capacity_below_ten_uses_generic_fallback_when_category_has_no_capacity_defaults(context):
+    expected_generic = round(getters._get_defaults("gas-cc", "max_capacity_MW"), 2)
+
+    class DummyHydroLike:
+        # Maps to a category that does not define max_capacity_MW/capacity_MW defaults.
+        ext: ClassVar[dict[str, str]] = {"gen_type_string": "hydro"}
+        rating = 0.02
+        base_power = 1.0
+
+    result = getters.get_max_capacity(DummyHydroLike(), context).unwrap()
+    assert result == expected_generic
+
+
 def test_get_component_rating_no_base_power(context):
     """Covers get_component_rating when rating is not None but base_power missing."""
 
@@ -2274,6 +2287,19 @@ def test_get_min_stable_level_tiny_value_uses_half_max_capacity(context):
         base_power = 1.0
 
     assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 14.95
+
+
+def test_get_min_stable_level_tiny_value_uses_default_max_when_source_max_missing(context):
+    expected_max = getters._get_defaults("gas-cc", "max_capacity_MW")
+    if expected_max == 0.0:
+        expected_max = getters._get_defaults("gas-cc", "capacity_MW")
+
+    class Dummy:
+        active_power_limits = {"min": 0.02}  # noqa: RUF012
+        rating = None
+        base_power = 1.0
+
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == round(0.5 * expected_max, 2)
 
 
 def test_get_min_stable_level_fallback_is_capped_to_half_max_capacity(monkeypatch, context):

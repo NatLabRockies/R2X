@@ -1491,7 +1491,18 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
             # Backstop for categories that may not define max_capacity_MW.
             default_max = _get_defaults(category, "capacity_MW")
 
-        return round(default_max, 2) if default_max > 0.0 else round(capacity_mw, 2)
+        if default_max > 0.0:
+            return round(default_max, 2)
+
+        # Final safeguard: if the resolved category has no usable defaults
+        # (common for some hydro/renewable mappings), fall back to a stable
+        # generic thermal max-capacity baseline so tiny p.u.-like values don't
+        # leak into PLEXOS max_capacity/min_stable_level.
+        generic_default = _get_defaults("gas-cc", "max_capacity_MW") or _get_defaults("gas-cc", "capacity_MW")
+        if generic_default > 0.0:
+            return round(generic_default, 2)
+
+        return round(capacity_mw, 2)
 
     rating = getattr(source_component, "rating", None)
     rating_value = get_magnitude(rating)
