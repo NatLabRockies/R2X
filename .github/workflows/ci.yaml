@@ -34,6 +34,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup uv environment
         uses: ./.github/actions/setup-uv-env
@@ -49,6 +50,7 @@ jobs:
     needs: prek
     timeout-minutes: 30
     runs-on: ${{ matrix.os }}
+    environment: ci-tests
     strategy:
       fail-fast: false
       matrix:
@@ -59,6 +61,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Setup uv environment
         uses: ./.github/actions/setup-uv-env
@@ -93,6 +97,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Setup uv environment
         uses: ./.github/actions/setup-uv-env
@@ -104,9 +110,11 @@ jobs:
       # correctly outside the uv ecosystem.
       - name: Build and install wheel
         shell: bash
+        env:
+          PKG: ${{ matrix.package }}
         run: |
           set -euo pipefail
-          pkg="${{ matrix.package }}"
+          pkg="$PKG"
           rm -rf dist pkgtest
           uv build --package "$pkg" --out-dir dist --sdist --wheel
           python -m venv pkgtest
@@ -116,7 +124,7 @@ jobs:
           python - <<PY
           import importlib.metadata as md
 
-          pkg = "${pkg}"
+          pkg = "$PKG"
           print(f"{pkg} version: {md.version(pkg)}")
           transform_eps = [
               ep.name

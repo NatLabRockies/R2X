@@ -10,6 +10,10 @@ on:
     paths:
       - ".github/**"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -32,7 +36,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
 
       - name: Run zizmor
-        run: uvx zizmor .github
+        run: uvx zizmor --pedantic .github
 
   actionlint:
     name: actionlint

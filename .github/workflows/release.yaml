@@ -20,11 +20,12 @@ env:
 
 jobs:
   release-please:
+    name: Create release PR
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write  # Required: create releases and PRs
+      pull-requests: write  # Required: create PRs
     outputs:
       releases_created: ${{ steps.rp.outputs.releases_created }}
       paths_released: ${{ steps.rp.outputs.paths_released }}
@@ -39,11 +40,13 @@ jobs:
           target-branch: main
 
   build:
+    name: Build release packages
     needs: [release-please]
     if: needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      # Only need read permissions to checkout and build
       contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -90,13 +93,14 @@ jobs:
           path: dist/
 
   publish:
+    name: Publish to PyPI
     needs: [release-please, build]
     if: needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
-      id-token: write
+      contents: read  # Required: checkout and build
+      id-token: write  # Required: trusted publishing to PyPI
     environment:
       name: pypi
     steps:
