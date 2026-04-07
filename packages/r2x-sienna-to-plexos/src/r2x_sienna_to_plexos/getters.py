@@ -691,7 +691,9 @@ def _attach_generator_time_series(
     from infrasys import SingleTimeSeries
 
     for metadata in _source_system(context).time_series.list_time_series_metadata(source_gen):
-        ts_list = _source_system(context).list_time_series(source_gen, name=metadata.name, **metadata.features)
+        ts_list = _source_system(context).list_time_series(
+            source_gen, name=metadata.name, **metadata.features
+        )
         if not ts_list:
             logger.warning("Missing time series {} for generator {}", metadata.name, generator_name)
             continue
@@ -2624,9 +2626,7 @@ def membership_line_parent_interface(line: PLEXOSLine, context: PluginContext) -
 
     target_iface_index = context._cache.get("target_interface_name_index")
     if target_iface_index is None:
-        target_iface_index = {
-            iface.name: iface for iface in target_system.get_components(PLEXOSInterface)
-        }
+        target_iface_index = {iface.name: iface for iface in target_system.get_components(PLEXOSInterface)}
         context._cache["target_interface_name_index"] = target_iface_index
 
     target_iface = target_iface_index.get(interface_name)

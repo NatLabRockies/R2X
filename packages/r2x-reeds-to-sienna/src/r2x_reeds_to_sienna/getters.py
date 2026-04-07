@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from infrasys.cost_curves import CostCurve, FuelCurve, LinearCurve, UnitSystem as InfraUnitSystem
+from infrasys.cost_curves import CostCurve, FuelCurve, LinearCurve
+from infrasys.cost_curves import UnitSystem as InfraUnitSystem
 from r2x_sienna.models import ACBus, Arc
 from r2x_sienna.models.costs import HydroGenerationCost, RenewableGenerationCost, ThermalGenerationCost
 from r2x_sienna.models.enums import ACBusTypes, PrimeMoversType, StorageTechs, ThermalFuels
@@ -84,7 +85,9 @@ def unique_component_name(component: object, context: PluginContext) -> Result[s
     base_name = getattr(component, "name", "")
     name = base_name
     i = 1
-    existing_names = {getattr(c, "name", None) for c in _target_system(context).get_components(ThermalStandard)}
+    existing_names = {
+        getattr(c, "name", None) for c in _target_system(context).get_components(ThermalStandard)
+    }
     while name in existing_names:
         name = f"{base_name}_{i}"
         i += 1
