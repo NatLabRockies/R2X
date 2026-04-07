@@ -116,11 +116,14 @@ jobs:
           set -euo pipefail
           pkg="$PKG"
           rm -rf dist pkgtest
-          uv build --package "$pkg" --out-dir dist --sdist --wheel
+
+          # Build all workspace packages so local deps are resolvable
+          uv build --all --out-dir dist --sdist --wheel
+
           python -m venv pkgtest
           source pkgtest/bin/activate
           python -m pip install --upgrade pip
-          python -m pip install dist/*.whl
+          python -m pip install --find-links dist "$pkg"
           python - <<PY
           import importlib.metadata as md
 
