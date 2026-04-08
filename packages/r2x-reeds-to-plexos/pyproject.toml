@@ -1,6 +1,6 @@
 [project]
 name = "r2x-reeds-to-plexos"
-version = "0.0.0"
+version = "0.1.0"
 description = "Translation helpers for ReEDS-to-Plexos interoperability."
 requires-python = ">=3.11, <3.14"
 dependencies = ["r2x-reeds>=0.4.0,<1.0.0", "r2x-plexos>=0.1.4,<1.0.0"]

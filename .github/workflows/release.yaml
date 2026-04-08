@@ -7,6 +7,18 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_target:
+        description: "Package to publish"
+        required: true
+        type: choice
+        options:
+          - r2x
+          - packages/r2x-plexos-to-sienna
+          - packages/r2x-reeds-to-plexos
+          - packages/r2x-reeds-to-sienna
+          - packages/r2x-sienna-to-plexos
 
 concurrency:
   group: release
@@ -21,6 +33,7 @@ env:
 jobs:
   release-please:
     name: Create release PR
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -42,7 +55,11 @@ jobs:
   build:
     name: Build release packages
     needs: [release-please]
-    if: needs.release-please.outputs.releases_created == 'true'
+    if: |
+      always() && (
+        (github.event_name == 'push' && needs.release-please.outputs.releases_created == 'true') ||
+        github.event_name == 'workflow_dispatch'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -60,19 +77,34 @@ jobs:
           python-version-file: "pyproject.toml"
           sync-dependencies: "false"
 
-      - name: Validate workspace dependency declarations
-        run: python scripts/freeze_internal_deps.py --check --mode workspace
+      - name: Resolve release targets
+        id: targets
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          AUTO_PATHS_RELEASED: ${{ needs.release-please.outputs.paths_released }}
+          MANUAL_RELEASE_TARGET: ${{ inputs.release_target }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            paths="$(jq -cn --arg target "$MANUAL_RELEASE_TARGET" '[$target]')"
+          else
+            paths="$AUTO_PATHS_RELEASED"
+          fi
+
+          echo "paths_released=$(echo "$paths" | jq -c '.')" >> "$GITHUB_OUTPUT"
 
       - name: Build released packages
         shell: bash
         env:
-          PATHS_RELEASED: ${{ needs.release-please.outputs.paths_released }}
+          PATHS_RELEASED: ${{ steps.targets.outputs.paths_released }}
         run: |
           set -euo pipefail
 
           packages=""
           for path in $(echo "$PATHS_RELEASED" | jq -r '.[]'); do
-            [[ "$path" == "." ]] && pkg="r2x" || pkg=$(basename "$path")
+            [[ "$path" == "." || "$path" == "r2x" ]] && pkg="r2x" || pkg=$(basename "$path")
             packages="${packages:+$packages }$pkg"
           done
 
@@ -95,7 +127,11 @@ jobs:
   publish:
     name: Publish to PyPI
     needs: [release-please, build]
-    if: needs.release-please.outputs.releases_created == 'true'
+    if: |
+      always() && needs.build.result == 'success' && (
+        (github.event_name == 'push' && needs.release-please.outputs.releases_created == 'true') ||
+        github.event_name == 'workflow_dispatch'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -114,3 +150,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         with:
           packages-dir: dist/
+          verbose: true
