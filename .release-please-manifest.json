@@ -1,7 +1,7 @@
 {
   ".": "1.2.0",
   "packages/r2x-plexos-to-sienna": "0.0.0",
-  "packages/r2x-reeds-to-plexos": "0.0.0",
+  "packages/r2x-reeds-to-plexos": "0.1.0",
   "packages/r2x-reeds-to-sienna": "0.0.0",
   "packages/r2x-sienna-to-plexos": "0.0.0"
 }
