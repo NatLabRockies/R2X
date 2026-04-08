@@ -1,0 +1,16 @@
+[project]
+name = "r2x-reeds-to-plexos"
+version = "0.0.0"
+description = "Translation helpers for ReEDS-to-Plexos interoperability."
+requires-python = ">=3.11, <3.14"
+dependencies = ["r2x-reeds>=0.4.0,<1.0.0", "r2x-plexos>=0.1.4,<1.0.0"]
+
+[project.entry-points."r2x.transforms"]
+reeds-to-plexos = "r2x_reeds_to_plexos.translation:reeds_to_plexos"
+
+[tool.setuptools.package-data]
+r2x_reeds_to_plexos = ["config/*.json"]
+
+[build-system]
+requires = ["uv_build>=0.8.22,<0.9.0"]
+build-backend = "uv_build"

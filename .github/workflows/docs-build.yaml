@@ -1,42 +1,54 @@
-# This is a basic workflow to help you get started with Actions
-
 name: Documentation
 
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches:
-      - main
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "src/**"
+      - "packages/*/src/**"
+      - "pyproject.toml"
   pull_request:
-    branches:
-      - main
-
-  # Allows you to run this workflow manually from the Actions tab
+    paths:
+      - "docs/**"
+      - "src/**"
+      - "packages/*/src/**"
+      - "pyproject.toml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.9.4"
 
 jobs:
   build:
+    name: Build documentation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-
-      - name: "Set up Python"
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          python-version-file: "pyproject.toml"
+          persist-credentials: false
 
-      - name: Install the project
-        run: uv sync --group docs
+      - name: Setup uv environment
+        uses: ./.github/actions/setup-uv-env
+        with:
+          uv-version: ${{ env.UV_VERSION }}
+          python-version-file: "pyproject.toml"
+          sync-args: "--group docs"
 
       - name: Build Sphinx documentation
         run: uv run sphinx-build docs/source/ docs/build/
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           publish_branch: gh-pages
           github_token: ${{ secrets.GITHUB_TOKEN }}

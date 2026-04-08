@@ -43,6 +43,7 @@ htmlcov/
 .nox/
 .coverage
 .coverage.*
+coverage.json
 .cache
 nosetests.xml
 coverage.xml
@@ -58,6 +59,7 @@ coverage.xml
 # Django stuff:
 *.log
 local_settings.py
+_run_*_translations.py
 db.sqlite3
 db.sqlite3-journal
 
