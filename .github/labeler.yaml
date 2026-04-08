@@ -1,0 +1,51 @@
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "uv.lock"
+          - "pyproject.toml"
+          - "packages/*/pyproject.toml"
+
+github_actions:
+  - changed-files:
+      - any-glob-to-any-file: ".github/**"
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"
+
+release:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/release.yaml"
+          - "docs/source/CHANGELOG.md"
+          - "docs/source/release_notes.md"
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/**"
+          - "packages/**/tests/**"
+
+r2x:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/**"
+          - "pyproject.toml"
+
+r2x_plexos_to_sienna:
+  - changed-files:
+      - any-glob-to-any-file: "packages/r2x-plexos-to-sienna/**"
+
+r2x_reeds_to_plexos:
+  - changed-files:
+      - any-glob-to-any-file: "packages/r2x-reeds-to-plexos/**"
+
+r2x_reeds_to_sienna:
+  - changed-files:
+      - any-glob-to-any-file: "packages/r2x-reeds-to-sienna/**"
+
+r2x_sienna_to_plexos:
+  - changed-files:
+      - any-glob-to-any-file: "packages/r2x-sienna-to-plexos/**"

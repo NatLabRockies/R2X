@@ -1,0 +1,316 @@
+[
+  {
+    "name": "region_bus",
+    "defaults": {
+      "available": true,
+      "base_voltage": 115.0,
+      "magnitude": 1.0,
+      "angle": 0.0,
+      "category": "bus"
+    },
+    "field_map": {
+    },
+    "getters": {
+      "number": "get_bus_number",
+      "name": "bus_name_from_region",
+      "area": "get_area_for_region",
+      "magnitude": "get_default_magnitude",
+      "angle": "get_default_angle",
+      "bustype": "bustype_default",
+      "base_voltage": "base_voltage_default"
+    },
+    "source_type": "ReEDSRegion",
+    "target_type": "ACBus",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "peak_reactive_power": 0.0,
+      "load_response": 0.0,
+      "peak_active_power": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "peak_active_power": "max_active_power"
+    },
+    "getters": {
+      "category": "get_area_category"
+    },
+    "source_type": "ReEDSRegion",
+    "target_type": "Area",
+    "version": 2
+  },
+  {
+    "name": "variable_reserve",
+    "defaults": {
+      "available": true
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid"
+    },
+    "getters": {
+      "reserve_type": "get_reserve_type",
+      "direction": "get_reserve_direction",
+      "requirement": "get_reserve_requirement",
+      "time_frame": "get_reserve_time_frame",
+      "sustained_time": "get_reserve_sustained_time",
+      "max_output_fraction": "get_reserve_max_output_fraction",
+      "max_participation_factor": "get_reserve_max_participation_factor",
+      "deployed_fraction": "get_reserve_deployed_fraction"
+    },
+    "source_type": "ReEDSReserve",
+    "target_type": "VariableReserve",
+    "version": 1
+  },
+  {
+    "name": "thermal_gen",
+    "defaults": {
+      "category": "thermal",
+      "active_power": 0.0,
+      "reactive_power": 0.0,
+      "must_run": false,
+      "status": true,
+      "time_at_status": 0.0,
+      "operation_cost": {
+        "fixed": 0.0
+      }
+    },
+    "field_map": {
+      "uuid": "uuid",
+      "category": "technology"
+    },
+    "getters": {
+      "name": "unique_component_name",
+      "bus": "get_bus_for_region",
+      "active_power": "get_zero_active_power",
+      "reactive_power": "get_zero_reactive_power",
+      "rating": "get_capacity_as_rating",
+      "base_power": "get_capacity_as_base_power",
+      "active_power_limits": "get_active_power_limits",
+      "operation_cost": "get_thermal_operation_cost",
+      "prime_mover_type": "get_prime_mover",
+      "fuel": "get_fuel_enum",
+      "must_run": "get_default_must_run",
+      "status": "get_default_status",
+      "time_at_status": "get_default_time_at_status",
+      "ext": "get_component_ext"
+    },
+    "depends_on": ["region_bus"],
+    "source_type": "ReEDSThermalGenerator",
+    "target_type": "ThermalStandard",
+    "version": 1
+  },
+  {
+    "name": "renewable_dispatch_gen",
+    "defaults": {
+      "category": "renewable",
+      "active_power": 0.0,
+      "reactive_power": 0.0,
+      "operation_cost": {
+        "fixed": 0.0
+      }
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "technology"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "technology",
+      "op": "startswith",
+      "values": [
+        "upv",
+        "wind-ons"
+      ]
+    },
+    "getters": {
+      "bus": "get_bus_for_region",
+      "active_power": "get_zero_active_power",
+      "reactive_power": "get_zero_reactive_power",
+      "rating": "get_capacity_as_rating",
+      "base_power": "get_capacity_as_base_power",
+      "prime_mover_type": "get_renewable_prime_mover",
+      "operation_cost": "get_renewable_operation_cost",
+      "ext": "get_component_ext"
+    },
+    "depends_on": ["region_bus"],
+    "source_type": "ReEDSVariableGenerator",
+    "target_type": "RenewableDispatch",
+    "version": 1
+  },
+  {
+    "name": "renewable_non_dispatch_gen",
+    "defaults": {
+      "category": "renewable",
+      "active_power": 0.0,
+      "reactive_power": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "technology"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "technology",
+      "op": "startswith",
+      "values": ["distpv"]
+    },
+    "getters": {
+      "bus": "get_bus_for_region",
+      "active_power": "get_zero_active_power",
+      "reactive_power": "get_zero_reactive_power",
+      "rating": "get_capacity_as_rating",
+      "base_power": "get_capacity_as_base_power",
+      "prime_mover_type": "get_renewable_prime_mover",
+      "ext": "get_component_ext"
+    },
+    "depends_on": ["region_bus"],
+    "source_type": "ReEDSVariableGenerator",
+    "target_type": "RenewableNonDispatch",
+    "version": 1
+  },
+  {
+    "name": "hydro_gen",
+    "defaults": {
+      "category": "hydro",
+      "active_power": 0.0,
+      "reactive_power": 0.0,
+      "status": false,
+      "time_at_status": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "technology"
+    },
+    "getters": {
+      "bus": "get_bus_for_region",
+      "active_power": "get_zero_active_power",
+      "reactive_power": "get_zero_reactive_power",
+      "rating": "hydro_rating",
+      "base_power": "hydro_rating",
+      "active_power_limits": "hydro_active_power_limits",
+      "operation_cost": "hydro_operation_cost",
+      "prime_mover_type": "get_prime_mover",
+      "reactive_power_limits": "hydro_active_power_limits",
+      "ramp_limits": "hydro_ramp_limits",
+      "time_limits": "hydro_time_limits",
+      "time_at_status": "get_default_time_at_status",
+      "ext": "get_component_ext"
+    },
+    "depends_on": ["region_bus"],
+    "source_type": "ReEDSHydroGenerator",
+    "target_type": "HydroDispatch",
+    "version": 1
+  },
+  {
+    "name": "storage_battery",
+    "defaults": {
+      "category": "storage",
+      "active_power": 0.0,
+      "reactive_power": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "technology"
+    },
+    "getters": {
+      "bus": "get_bus_for_region",
+      "rating": "storage_rating",
+      "base_power": "storage_rating",
+      "storage_capacity": "storage_capacity_mwh",
+      "storage_level_limits": "storage_level_limits",
+      "initial_storage_capacity_level": "storage_initial_level",
+      "input_active_power_limits": "storage_power_limits",
+      "output_active_power_limits": "storage_power_limits",
+      "efficiency": "storage_efficiency",
+      "prime_mover_type": "storage_prime_mover",
+      "storage_technology_type": "storage_tech",
+      "storage_target": "storage_initial_level",
+      "conversion_factor": "storage_conversion_factor",
+      "active_power": "get_zero_active_power",
+      "reactive_power": "get_zero_reactive_power",
+      "ext": "get_component_ext"
+    },
+    "depends_on": ["region_bus"],
+    "source_type": "ReEDSStorage",
+    "target_type": "EnergyReservoirStorage",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "interchange",
+      "active_power_flow": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "from_area": "get_area_from",
+      "to_area": "get_area_to",
+      "flow_limits": "get_interface_flow_limits",
+      "active_power_flow": "get_zero_flow"
+    },
+    "source_type": "ReEDSInterface",
+    "target_type": "AreaInterchange",
+    "version": 1
+  },
+  {
+    "name": "region_load",
+    "defaults": {
+      "category": "load",
+      "active_power": 0.0,
+      "reactive_power": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid"
+    },
+    "getters": {
+      "bus": "get_bus_for_region",
+      "active_power": "get_zero_active_power",
+      "reactive_power": "get_zero_reactive_power",
+      "base_power": "get_load_base_power",
+      "max_active_power": "demand_max_active_power",
+      "max_reactive_power": "demand_max_reactive_power"
+    },
+    "source_type": "ReEDSDemand",
+    "target_type": "PowerLoad",
+    "depends_on": ["region_bus"],
+    "version": 1
+  },
+  {
+    "name": "region_line",
+    "defaults": {
+      "category": "line"
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "rating": "get_line_rating",
+      "rating_b": "get_line_rating",
+      "rating_c": "get_line_rating",
+      "active_power_flow": "get_line_active_power_flow",
+      "reactive_power_flow": "get_line_reactive_power_flow",
+      "angle_limits": "get_line_angle_limits",
+      "r": "get_line_resistance",
+      "x": "get_line_reactance",
+      "b": "get_line_susceptance",
+      "g": "get_line_conductance",
+      "arc": "get_arc_for_line"
+    },
+    "source_type": "ReEDSTransmissionLine",
+    "target_type": "Line",
+    "version": 1
+  }
+]

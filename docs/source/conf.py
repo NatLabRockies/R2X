@@ -1,49 +1,59 @@
 """Configuration file for the Sphinx documentation builder."""
 
 project = "R2X"
-copyright = "2024, Alliance for Sustainable Energy, LLC"
-author = "R2X developers"
+copyright = "2024, Alliance for Sustainable Energy LLC, All rights reserved."
+author = "R2X authors"
 
-# Add more extensions here
 extensions = [
     "myst_parser",
-    "sphinx_copybutton",
-    "sphinx.ext.autodoc",
-    "sphinx_tabs.tabs",
-    "sphinx.ext.autosummary",
-    "sphinx.ext.autosectionlabel",
-    "sphinx.ext.coverage",
-    "sphinx.ext.napoleon",
+    "sphinx.ext.githubpages",
     "sphinx.ext.intersphinx",
-    "sphinxcontrib.mermaid",
-    "sphinxcontrib.autodoc_pydantic",
+    "sphinx_copybutton",
 ]
-# Make sure the target is unique
-autosectionlabel_prefix_document = True
 
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
-# autosummary_generate = True  # Turn on sphinx.ext.autosummary
-
-
-# Adding other sphinx documentation as hyperlinks
-intersphinx_mapping = {
-    "python": ("https://docs.python.org/3", None),
-    "pandas": ("https://pandas.pydata.org/docs", None),
-    "infrasys": ("https://nrel.github.io/infrasys/", None),
+source_suffix = {
+    ".txt": "markdown",
+    ".md": "markdown",
 }
 
-html_theme = "sphinx_book_theme"
-html_static_path = ["_static"]
-source_suffix = [".md"]
+# -- Options for HTML output -------------------------------------------------
 
+html_theme = "furo"
+html_title = "R2X"
 html_theme_options = {
-    "repository_url": "https://github.com/NREL/R2X",
-    "path_to_docs": "docs/source/",
-    "show_toc_level": 3,
-    "use_source_button": True,
-    "use_edit_page_button": True,
+    "navigation_with_keys": True,
+    "source_repository": "https://github.com/NatlabRockies/R2X",
+    "source_branch": "main",
+    "source_directory": "docs/source/",
+    "top_of_page_buttons": ["view", "edit"],
+    "footer_icons": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/NatlabRockies/R2X",
+            "html": """
+                <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path>
+                </svg>
+            """,
+            "class": "",
+        },
+    ],
 }
+html_static_path = ["_static"]
+html_css_files = ["custom.css"]
+html_js_files = ["custom.js"]
+
+# -- Intersphinx mapping -----------------------------------------------------
+
+intersphinx_mapping = {
+    "r2x_core": ("https://nrel.github.io/r2x-core/", None),
+    "infrasys": ("https://nrel.github.io/infrasys/", None),
+    "plexosdb": ("https://nrel.github.io/plexosdb/", None),
+}
+
+# -- MyST settings -----------------------------------------------------------
 
 myst_enable_extensions = [
     "amsmath",
@@ -55,7 +65,6 @@ myst_enable_extensions = [
     "fieldlist",
     "html_admonition",
     "html_image",
-    "colon_fence",
     "replacements",
     "smartquotes",
     "strikethrough",
@@ -63,19 +72,13 @@ myst_enable_extensions = [
     "tasklist",
 ]
 
-# Pydantic stuff
-autodoc_pydantic_model_show_config_summary = False
-
-# -- Options for autodoc ----------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#configuration
-
-# Automatically extract typehints when specified and place them in
-# descriptions of the relevant function/method.
-autodoc_typehints = "description"
-
-# Don't show class signature with the class' name.
-# autodoc_class_signature = "separated"
 suppress_warnings = ["myst.header"]
 
-# Copy button
+# -- Copy button settings ----------------------------------------------------
+
+copybutton_only_copy_prompt_lines = True
 copybutton_exclude = ".linenos, .gp, .go"
+copybutton_line_continuation_character = "\\"
+copybutton_here_doc_delimiter = "EOT"
+copybutton_prompt_text = "$"
+copybutton_copy_empty_lines = False

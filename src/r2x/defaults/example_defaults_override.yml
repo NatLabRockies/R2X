@@ -1,7 +1,0 @@
-hydro_ramp_rate: 0.1
-initial_volume_divisor: 4
-test: "this does nothing"
-wecc_data:
-  nuclear:
-    min_stable_level_percentage: 0.75
-load_scalar: 1.15
