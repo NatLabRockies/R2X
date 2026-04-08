@@ -9,10 +9,16 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      paths_released:
-        description: "JSON array of package paths to publish (e.g. [\"packages/r2x-plexos-to-sienna\"])"
+      release_target:
+        description: "Package to publish"
         required: true
-        type: string
+        type: choice
+        options:
+          - r2x
+          - packages/r2x-plexos-to-sienna
+          - packages/r2x-reeds-to-plexos
+          - packages/r2x-reeds-to-sienna
+          - packages/r2x-sienna-to-plexos
 
 concurrency:
   group: release
@@ -77,13 +83,12 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           AUTO_PATHS_RELEASED: ${{ needs.release-please.outputs.paths_released }}
-          MANUAL_PATHS_RELEASED: ${{ inputs.paths_released }}
+          MANUAL_RELEASE_TARGET: ${{ inputs.release_target }}
         run: |
           set -euo pipefail
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            paths="$MANUAL_PATHS_RELEASED"
-            echo "$paths" | jq -e '. | type == "array" and all(.[]; type == "string" and (. == "." or startswith("packages/")))' >/dev/null
+            paths="$(jq -cn --arg target "$MANUAL_RELEASE_TARGET" '[$target]')"
           else
             paths="$AUTO_PATHS_RELEASED"
           fi
@@ -99,7 +104,7 @@ jobs:
 
           packages=""
           for path in $(echo "$PATHS_RELEASED" | jq -r '.[]'); do
-            [[ "$path" == "." ]] && pkg="r2x" || pkg=$(basename "$path")
+            [[ "$path" == "." || "$path" == "r2x" ]] && pkg="r2x" || pkg=$(basename "$path")
             packages="${packages:+$packages }$pkg"
           done
 
@@ -145,3 +150,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         with:
           packages-dir: dist/
+          verbose: true
