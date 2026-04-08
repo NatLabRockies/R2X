@@ -1,6 +1,6 @@
 [project]
 name = "r2x"
-version = "1.2.0"
+version = "2.0.0"
 authors = [
   { name = "pesap", email = "pesap@users.noreply.github.com" },
   { name = "kodiobika", email = "kodiobika@users.noreply.github.com" },
