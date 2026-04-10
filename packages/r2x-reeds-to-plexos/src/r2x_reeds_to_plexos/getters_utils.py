@@ -12,6 +12,7 @@ from r2x_plexos.models import (
     PLEXOSLine,
     PLEXOSMembership,
     PLEXOSNode,
+    PLEXOSPurchaser,
     PLEXOSRegion,
     PLEXOSStorage,
 )
@@ -112,6 +113,53 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
                     target_gen, name=ts.name, time_series_type=type(ts)
                 ):
                     context.target_system.add_time_series(deepcopy(ts), target_gen)
+
+
+def attach_time_series_to_purchasers(context: PluginContext) -> None:
+    """Transfer electrolyzer demand time series to translated PLEXOS purchasers."""
+    from r2x_reeds.models.components import ReEDSElectrolyzerDemand
+
+    if context.source_system is None or context.target_system is None:
+        return
+
+    source_demands = {
+        demand.name: demand for demand in context.source_system.get_components(ReEDSElectrolyzerDemand)
+    }
+    target_purchasers = {
+        purchaser.name: purchaser for purchaser in context.target_system.get_components(PLEXOSPurchaser)
+    }
+
+    for demand_name, source_demand in source_demands.items():
+        target_purchaser = target_purchasers.get(demand_name)
+        if target_purchaser is None:
+            continue
+
+        for metadata in context.source_system.time_series.list_time_series_metadata(source_demand):
+            ts_list = context.source_system.list_time_series(
+                source_demand, name=metadata.name, **metadata.features
+            )
+            if not ts_list:
+                logger.warning(
+                    "Missing electrolyzer demand time series {} for {}",
+                    metadata.name,
+                    source_demand.name,
+                )
+                continue
+
+            ts = deepcopy(ts_list[0])
+            ts_type = ts.__class__
+            if not context.target_system.has_time_series(
+                target_purchaser,
+                name=ts.name,
+                time_series_type=ts_type,
+                **metadata.features,
+            ):
+                context.target_system.add_time_series(ts, target_purchaser, **metadata.features)
+                logger.debug(
+                    "Attached electrolyzer time series {} to purchaser {}",
+                    ts.name,
+                    target_purchaser.name,
+                )
             continue
 
 

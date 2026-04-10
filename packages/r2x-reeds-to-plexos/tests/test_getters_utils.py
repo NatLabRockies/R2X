@@ -7,6 +7,7 @@ from r2x_plexos.models import (
     PLEXOSLine,
     PLEXOSMembership,
     PLEXOSNode,
+    PLEXOSPurchaser,
     PLEXOSRegion,
     PLEXOSStorage,
 )
@@ -35,6 +36,43 @@ def test_attach_reserve_time_series(context):
 
 def test_attach_time_series_to_generators(context):
     getters_utils.attach_time_series_to_generators(context)
+
+
+def test_attach_time_series_to_purchasers(context, monkeypatch):
+    from r2x_reeds.models import ReEDSRegion
+    from r2x_reeds.models.components import ReEDSElectrolyzerDemand
+
+    region = ReEDSRegion(name="R1", transmission_region="Z1")
+    demand = ReEDSElectrolyzerDemand(
+        name="R1_electrolyzer_demand",
+        region=region,
+        technology="electrolyzer",
+        capacity=30.0,
+        electricity_efficiency=1.0,
+    )
+    purchaser = PLEXOSPurchaser(name="R1_electrolyzer_demand")
+
+    context.source_system.add_component(region)
+    context.source_system.add_component(demand)
+    context.target_system.add_component(purchaser)
+
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _x: [types.SimpleNamespace(name="max_active_power", features={})],
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, **_kwargs: [types.SimpleNamespace(name="max_active_power", __class__=object)],
+    )
+
+    added = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    context.target_system.add_time_series = lambda *args, **kwargs: added.append((args, kwargs))
+
+    getters_utils.attach_time_series_to_purchasers(context)
+    assert len(added) == 1
 
 
 def test_ensure_region_node_memberships(context):

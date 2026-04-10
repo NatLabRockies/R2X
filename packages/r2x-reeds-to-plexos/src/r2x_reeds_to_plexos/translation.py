@@ -14,6 +14,7 @@ from .getters_utils import (
     attach_region_load_time_series,
     attach_reserve_time_series,
     attach_time_series_to_generators,
+    attach_time_series_to_purchasers,
 )
 
 
@@ -51,5 +52,6 @@ def reeds_to_plexos(system: System, config: ReedsToPlexosConfig) -> System:
     attach_reserve_time_series(context)
     attach_time_series_to_generators(context)
     attach_region_load_time_series(context)
+    attach_time_series_to_purchasers(context)
 
     return context.target_system

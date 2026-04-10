@@ -81,8 +81,14 @@ def _lookup_target_node(context: PluginContext, region_name: str) -> Result[Any,
 
 
 def _lookup_source_generator(context: PluginContext, name: str) -> Any | None:
-    """Find a ReEDS generator-like component by name."""
-    from r2x_reeds.models import ReEDSConsumingTechnology, ReEDSGenerator, ReEDSStorage
+    """Find a ReEDS component that maps to node memberships by name."""
+    from r2x_reeds.models import (
+        ReEDSConsumingTechnology,
+        ReEDSDataCenterDemand,
+        ReEDSElectrolyzerDemand,
+        ReEDSGenerator,
+        ReEDSStorage,
+    )
 
     if context.source_system is None:
         return None
@@ -94,6 +100,14 @@ def _lookup_source_generator(context: PluginContext, name: str) -> Any | None:
     for consuming_tech in context.source_system.get_components(ReEDSConsumingTechnology):
         if consuming_tech.name == name:
             return consuming_tech
+
+    for electrolyzer_demand in context.source_system.get_components(ReEDSElectrolyzerDemand):
+        if electrolyzer_demand.name == name:
+            return electrolyzer_demand
+
+    for data_center_demand in context.source_system.get_components(ReEDSDataCenterDemand):
+        if data_center_demand.name == name:
+            return data_center_demand
 
     for storage in context.source_system.get_components(ReEDSStorage):
         if storage.name == name:

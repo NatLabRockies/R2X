@@ -401,6 +401,19 @@
       "ramp_rate_down": 100.0,
       "ramp_rate_up": 100.0
     },
+    "electrolyzer": {
+      "capacity_MW": 50.0,
+      "forced_outage_rate": 0.0,
+      "maintenance_rate": 0.0,
+      "max_capacity_MW": 500.0,
+      "max_ramp_up_percentage": 1.0,
+      "mean_time_to_repair": 0.0,
+      "min_capacity_MW": 0.0,
+      "min_down_time": 0.0,
+      "min_stable_level_percentage": 0.0,
+      "min_up_time": 0.0,
+      "start_cost_per_MW": 0.0
+    },
     "egs_nearfield": {
       "capacity_MW": 50.0,
       "forced_outage_rate": 3.09,

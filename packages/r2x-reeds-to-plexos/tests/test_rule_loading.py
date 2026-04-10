@@ -87,6 +87,18 @@ def test_has_storage_rule() -> None:
     ), "Missing ReEDSStorage -> PLEXOSBattery or PLEXOSGenerator rule"
 
 
+def test_has_electrolyzer_purchaser_rule() -> None:
+    """Verify ReEDSElectrolyzerDemand maps to PLEXOSPurchaser."""
+    rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
+    rules_data = json.loads(rules_path.read_text())
+
+    assert any(
+        rule.get("source_type") == "ReEDSElectrolyzerDemand"
+        and rule.get("target_type") == "PLEXOSPurchaser"
+        for rule in rules_data
+    ), "Missing ReEDSElectrolyzerDemand -> PLEXOSPurchaser rule"
+
+
 def test_has_interface_rule() -> None:
     """Verify ReEDSInterface maps to PLEXOSInterface."""
     rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
