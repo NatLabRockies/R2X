@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import math
-import re
 
 # Add this near the top, after imports
 from collections import defaultdict
@@ -84,8 +83,49 @@ def _target_system(context: PluginContext) -> Any:
     return cast(Any, context.target_system)
 
 
+def _get_defaults_data(context: PluginContext) -> dict[str, Any]:
+    """Load defaults.json once per plugin context."""
+    cached = context._cache.get("defaults_json")
+    if cached is not None:
+        return cast(dict[str, Any], cached)
+
+    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
+    with defaults_path.open() as f:
+        data = cast(dict[str, Any], json.load(f))
+    context._cache["defaults_json"] = data
+    return data
+
+
+def _get_reeds_thermal_category_from_fuel(source_component: Any, context: PluginContext) -> str | None:
+    """Resolve thermal ReEDS category from Sienna fuel value using defaults mapping."""
+    if not isinstance(source_component, ThermalStandard | ThermalMultiStart):
+        return None
+
+    fuel = getattr(source_component, "fuel", None)
+    if fuel is None:
+        return None
+
+    fuel_str = fuel.name if hasattr(fuel, "name") else str(fuel)
+    fuel_key = str(fuel_str).strip().upper()
+    if not fuel_key:
+        return None
+
+    defaults_data = _get_defaults_data(context)
+    mapping = defaults_data.get("reeds_thermal_mapping", {})
+    if not isinstance(mapping, dict):
+        return None
+
+    for category, fuel_values in mapping.items():
+        if not isinstance(fuel_values, list):
+            continue
+        if fuel_key in {str(value).strip().upper() for value in fuel_values}:
+            return str(category)
+
+    return None
+
+
 def _resolve_generator_category(source_component: Any, context: PluginContext) -> str | None:
-    """Resolve category via ext gen_type_string, ReEDS name patterns, or prime_mover mapping."""
+    """Resolve category via ext gen_type_string, ReEDS name patterns, thermal fuel mapping, or prime mover."""
     # Get name from ext dict
     ext = getattr(source_component, "ext", None)
     if isinstance(ext, dict):
@@ -103,28 +143,18 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
 
     if name.startswith("zonal2nodal_"):
         suffix = name[len("zonal2nodal_") :]
-        defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-        with defaults_path.open() as f:
-            _z2n_defaults = json.load(f)
+        _z2n_defaults = _get_defaults_data(context)
         reeds_cats = sorted(_z2n_defaults.get("reeds_defaults", {}).keys(), key=len, reverse=True)
         for cat in reeds_cats:
             cat_str = str(cat)
             if suffix == cat_str or suffix.startswith(cat_str + "_"):
                 return cat_str
 
-    # Treat explicit "nuclear" naming as high-confidence and avoid falling back to
-    # broad prime-mover mappings that can misclassify these units as thermal/coal.
-    candidate_names = [_normalize_plant_name(raw_name)]
-    if isinstance(ext, dict):
-        plant_name = ext.get("plant_name")
-        if plant_name:
-            candidate_names.append(_normalize_plant_name(str(plant_name)))
-    candidate_names = [c for c in dict.fromkeys(candidate_names) if c]
+    thermal_category = _get_reeds_thermal_category_from_fuel(source_component, context)
+    if thermal_category is not None:
+        return thermal_category
 
-    if any(_contains_nuclear_token(candidate) for candidate in candidate_names):
-        return "nuclear"
-
-    # Get category from prime mover mapping when available (higher confidence than name heuristics).
+    # Non-thermal generators may still use prime-mover mappings.
     prime_mover = getattr(source_component, "prime_mover_type", None)
     fuel = getattr(source_component, "fuel", None)
 
@@ -148,56 +178,13 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
             if pm_only:
                 return pm_only[0]
 
-        defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-        with defaults_path.open() as f:
-            defaults_data = json.load(f)
+        defaults_data = _get_defaults_data(context)
         pm_types: dict[str, str] = defaults_data.get("prime_mover_types", {})
         tech = pm_types.get(pm_str)
         if tech:
             return tech
 
-    # Name-based association for oil/nuclear is exact-match and state-aware when possible.
-    source_state = _normalize_state((ext or {}).get("state")) if isinstance(ext, dict) else None
-
-    nuclear_names = _build_nuclear_plant_name_set(context)
-    nuclear_name_state = _build_nuclear_plant_name_state_set(context)
-    oil_names = _build_oil_plant_name_set(context)
-    oil_name_state = _build_oil_plant_name_state_set(context)
-
-    for candidate in candidate_names:
-        if source_state and (candidate, source_state) in nuclear_name_state:
-            return "nuclear"
-        if source_state and (candidate, source_state) in oil_name_state:
-            return "oil"
-
-        if candidate in nuclear_names:
-            return "nuclear"
-        if candidate in oil_names:
-            return "oil"
-
     return None
-
-
-def _normalize_plant_name(name: str) -> str:
-    """Normalize plant names for reliable exact matching."""
-    raw = str(name)
-    # Split CamelCase words before punctuation cleanup (e.g., NuclearFacility -> Nuclear Facility).
-    raw = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", raw)
-    cleaned = re.sub(r"[^a-z0-9]+", " ", raw.lower())
-    return " ".join(cleaned.split())
-
-
-def _contains_nuclear_token(name: str) -> bool:
-    """Return True when normalized name contains a standalone 'nuclear' token."""
-    return bool(re.search(r"\bnuclear\b", name))
-
-
-def _normalize_state(value: Any) -> str | None:
-    """Normalize state to two-letter uppercase when available."""
-    if value is None:
-        return None
-    state = str(value).strip().upper()
-    return state if state else None
 
 
 def _build_target_storage_name_index(context: PluginContext) -> dict[str, Any]:
@@ -286,105 +273,6 @@ def _build_battery_service_index(context: PluginContext) -> dict[str, list[Any]]
                 index[service_name].append(battery)
     result = dict(index)
     context._cache["battery_service_index"] = result
-    return result
-
-
-def _build_oil_plant_name_set(context: PluginContext) -> set[str]:
-    """Build normalized petroleum plant names set from us_power_plants.json, cached."""
-    cached = context._cache.get("oil_plant_name_set")
-    if cached is not None:
-        return cached
-    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
-    with plants_path.open() as f:
-        plants_data = json.load(f)
-    name_set = {
-        _normalize_plant_name(p["power Plant Name"])
-        for p in plants_data
-        if isinstance(p.get("Primary Energy Source"), str)
-        and p["Primary Energy Source"].lower() == "petroleum"
-        and isinstance(p.get("power Plant Name"), str)
-    }
-    context._cache["oil_plant_name_set"] = name_set
-    return name_set
-
-
-def _build_oil_plant_name_state_set(context: PluginContext) -> set[tuple[str, str]]:
-    """Build normalized petroleum (plant_name, state) set from us_power_plants.json, cached."""
-    cached = context._cache.get("oil_plant_name_state_set")
-    if cached is not None:
-        return cached
-    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
-    with plants_path.open() as f:
-        plants_data = json.load(f)
-
-    result: set[tuple[str, str]] = set()
-    for plant in plants_data:
-        if not isinstance(plant.get("Primary Energy Source"), str):
-            continue
-        if plant["Primary Energy Source"].lower() != "petroleum":
-            continue
-        if not isinstance(plant.get("power Plant Name"), str):
-            continue
-        state = _normalize_state(plant.get("State"))
-        if state is None:
-            continue
-        result.add((_normalize_plant_name(plant["power Plant Name"]), state))
-
-    context._cache["oil_plant_name_state_set"] = result
-    return result
-
-
-def _build_nuclear_plant_name_set(context: PluginContext) -> set[str]:
-    """Build normalized nuclear plant names set from defaults.json and us_power_plants.json, cached."""
-    cached = context._cache.get("nuclear_plant_name_set")
-    if cached is not None:
-        return cached
-
-    # From defaults.json nuclear_plants list
-    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults_data = json.load(f)
-    name_set = {_normalize_plant_name(p["name"]) for p in defaults_data.get("nuclear_plants", [])}
-
-    # From us_power_plants.json filtered by Primary Energy Source == "nuclear"
-    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
-    with plants_path.open() as f:
-        plants_data = json.load(f)
-    name_set |= {
-        _normalize_plant_name(p["power Plant Name"])
-        for p in plants_data
-        if isinstance(p.get("Primary Energy Source"), str)
-        and p["Primary Energy Source"].lower() == "nuclear"
-        and isinstance(p.get("power Plant Name"), str)
-    }
-
-    context._cache["nuclear_plant_name_set"] = name_set
-    return name_set
-
-
-def _build_nuclear_plant_name_state_set(context: PluginContext) -> set[tuple[str, str]]:
-    """Build normalized nuclear (plant_name, state) set from us_power_plants.json, cached."""
-    cached = context._cache.get("nuclear_plant_name_state_set")
-    if cached is not None:
-        return cached
-    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
-    with plants_path.open() as f:
-        plants_data = json.load(f)
-
-    result: set[tuple[str, str]] = set()
-    for plant in plants_data:
-        if not isinstance(plant.get("Primary Energy Source"), str):
-            continue
-        if plant["Primary Energy Source"].lower() != "nuclear":
-            continue
-        if not isinstance(plant.get("power Plant Name"), str):
-            continue
-        state = _normalize_state(plant.get("State"))
-        if state is None:
-            continue
-        result.add((_normalize_plant_name(plant["power Plant Name"]), state))
-
-    context._cache["nuclear_plant_name_state_set"] = result
     return result
 
 
@@ -1429,14 +1317,15 @@ def get_3w_transformer_tertiary_rating(
 
 @getter
 def get_generator_category(source_component: object, context: PluginContext) -> Result[str, ValueError]:
-    """Determine generator category using ReEDS tech names, gen_type_string, or prime_mover/fuel mapping.
+    """Determine generator category using ReEDS tech names, gen_type_string, and fuel/prime-mover mapping.
 
     Priority:
     1. ext["gen_type_string"] mapped through _GEN_TYPE_STRING_MAP
     2. ReEDS component name patterns (hydend, hyded, distpv, wind-ofs, etc.)
-    3. prime_mover + fuel via context.config.prime_mover_mapping
-    4. prime_mover abbreviation via defaults.json prime_mover_types
-    5. Err → rule default applies
+    3. ThermalStandard/ThermalMultiStart fuel via defaults.json reeds_thermal_mapping
+    4. prime_mover + fuel via context.config.prime_mover_mapping (non-thermal fallback)
+    5. prime_mover abbreviation via defaults.json prime_mover_types (non-thermal fallback)
+    6. Err -> rule default applies
     """
     category = _resolve_generator_category(source_component, context)
     if category is not None:

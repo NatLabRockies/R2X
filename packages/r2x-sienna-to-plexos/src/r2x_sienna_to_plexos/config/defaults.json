@@ -56,27 +56,75 @@
   "prime_mover_types": {
     "BA": "battery",
     "BT": "geothermal",
-    "CA": "gas-cc",
-    "CC": "gas-cc",
     "CE": "caes",
     "CP": "csp",
-    "CS": "gas-cc",
-    "CT": "gas-cc",
     "ES": "other",
     "FC": "smr",
     "FW": "other",
-    "GT": "gas-ct",
     "HA": "hydnd",
     "HB": "hydnd",
     "HK": "hydnd",
     "HY": "hyded",
-    "IC": "lfill-gas",
     "PS": "pumped-hydro",
     "OT": "other",
-    "ST": "coal",
     "PVe": "upv",
     "WT": "wind-ons",
     "WS": "wind-ofs"
+  },
+  "reeds_thermal_mapping": {
+    "coal": [
+      "ANTHRACITE_COAL",
+      "BITUMINOUS_COAL",
+      "SUBBITUMINOUS_COAL",
+      "LIGNITE_COAL",
+      "COAL",
+      "REFINED_COAL",
+      "WASTE_COAL",
+      "SYNTHESIS_GAS_COAL"
+    ],
+    "gas-cc": [
+      "NATURAL_GAS"
+    ],
+    "gas-ct": [
+      "OTHER_GAS",
+      "BLAST_FURNACE_GAS"
+    ],
+    "o-g-s": [
+      "DISTILLATE_FUEL_OIL",
+      "RESIDUAL_FUEL_OIL",
+      "PETROLEUM_COKE",
+      "JET_FUEL",
+      "KEROSENE",
+      "PROPANE",
+      "WASTE_OIL",
+      "SYNTHESIS_GAS_PETROLEUM_COKE"
+    ],
+    "biopower": [
+      "AG_BIOPRODUCT",
+      "AG_BYPRODUCT",
+      "MUNICIPAL_WASTE",
+      "OTHER_BIOMASS_SOLIDS",
+      "WOOD_WASTE_SOLIDS",
+      "OTHER_BIOMASS_LIQUIDS",
+      "SLUDGE_WASTE",
+      "BLACK_LIQUOR",
+      "WOOD_WASTE_LIQUIDS",
+      "TIREDERIVED_FUEL",
+      "WASTE_HEAT"
+    ],
+    "lfill-gas": [
+      "LANDFILL_GAS",
+      "OTHER_BIOMASS_GAS"
+    ],
+    "nuclear": [
+      "NUCLEAR"
+    ],
+    "egs": [
+      "GEOTHERMAL"
+    ],
+    "other": [
+      "OTHER"
+    ]
   },
   "reeds_defaults": {
     "syn-cond": {

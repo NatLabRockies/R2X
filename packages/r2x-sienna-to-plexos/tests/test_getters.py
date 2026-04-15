@@ -644,70 +644,56 @@ def test_get_thermal_generator_units_keeps_monticello_mn_active(monkeypatch, con
     assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
 
 
-def test_get_generator_category_avoids_substring_nuclear_false_positive(monkeypatch, context):
-    class DummyGenerator:
-        name = "wind_plant_component"
-        ext = {"plant_name": "Monticello Wind Farm"}  # noqa: RUF012
-        prime_mover_type = None
-        fuel = None
-
-    monkeypatch.setattr(getters, "_build_nuclear_plant_name_set", lambda _ctx: {"monticello"})
-    monkeypatch.setattr(getters, "_build_nuclear_plant_name_state_set", lambda _ctx: set())
-    monkeypatch.setattr(getters, "_build_oil_plant_name_set", lambda _ctx: set())
-    monkeypatch.setattr(getters, "_build_oil_plant_name_state_set", lambda _ctx: set())
-
-    assert getters.get_generator_category(DummyGenerator(), context).is_err()
-
-
-def test_get_generator_category_uses_state_for_nuclear_matching(monkeypatch, context):
-    class DummyGenerator:
-        name = "gen"
-        ext = {"plant_name": "Monticello", "state": "TX"}  # noqa: RUF012
-        prime_mover_type = None
-        fuel = None
-
-    monkeypatch.setattr(getters, "_build_nuclear_plant_name_set", lambda _ctx: set())
-    monkeypatch.setattr(
-        getters,
-        "_build_nuclear_plant_name_state_set",
-        lambda _ctx: {("monticello", "MN")},
+def _make_thermal_generator_for_category_tests(
+    name: str,
+    fuel: ThermalFuels | str,
+    prime_mover_type: PrimeMoversType = PrimeMoversType.CC,
+) -> ThermalStandard:
+    return ThermalStandard(
+        name=name,
+        bus=None,
+        active_power=0.0,
+        reactive_power=0.0,
+        rating=100.0,
+        base_power=10.0,
+        must_run=False,
+        status=True,
+        time_at_status=0.0,
+        active_power_limits=MinMax(min=10.0, max=100.0),
+        ramp_limits=UpDown(up=10.0, down=10.0),
+        time_limits=UpDown(up=1.0, down=1.0),
+        prime_mover_type=prime_mover_type,
+        fuel=fuel,
+        operation_cost=ThermalGenerationCost.example(),
     )
-    monkeypatch.setattr(getters, "_build_oil_plant_name_set", lambda _ctx: set())
-    monkeypatch.setattr(getters, "_build_oil_plant_name_state_set", lambda _ctx: set())
-
-    assert getters.get_generator_category(DummyGenerator(), context).is_err()
 
 
-def test_get_generator_category_matches_nuclear_with_same_state(monkeypatch, context):
-    class DummyGenerator:
-        name = "gen"
-        ext: ClassVar[dict[str, str]] = {"plant_name": "Monticello", "state": "MN"}
-        prime_mover_type = None
-        fuel = None
-
-    monkeypatch.setattr(getters, "_build_nuclear_plant_name_set", lambda _ctx: set())
-    monkeypatch.setattr(
-        getters,
-        "_build_nuclear_plant_name_state_set",
-        lambda _ctx: {("monticello", "MN")},
+def test_get_generator_category_maps_thermal_nuclear_fuel(context):
+    gen = _make_thermal_generator_for_category_tests(
+        name="thermal-nuclear",
+        fuel=ThermalFuels.NUCLEAR,
     )
-    monkeypatch.setattr(getters, "_build_oil_plant_name_set", lambda _ctx: set())
-    monkeypatch.setattr(getters, "_build_oil_plant_name_state_set", lambda _ctx: set())
 
-    assert getters.get_generator_category(DummyGenerator(), context).unwrap() == "nuclear"
+    assert getters.get_generator_category(gen, context).unwrap() == "nuclear"
 
 
-def test_get_generator_category_prioritizes_nuclear_keyword_over_prime_mover(context):
-    class DummyPrimeMover:
-        name = "ST"
+def test_get_generator_category_maps_thermal_oil_fuel(context):
+    gen = _make_thermal_generator_for_category_tests(
+        name="thermal-oil",
+        fuel=ThermalFuels.KEROSENE,
+    )
 
-    class DummyGenerator:
-        name = "MonticelliNuclearFacility_1"
-        ext = {}  # noqa: RUF012
-        prime_mover_type = DummyPrimeMover()
-        fuel = None
+    assert getters.get_generator_category(gen, context).unwrap() == "o-g-s"
 
-    assert getters.get_generator_category(DummyGenerator(), context).unwrap() == "nuclear"
+
+def test_get_generator_category_thermal_prefers_fuel_over_prime_mover(context):
+    gen = _make_thermal_generator_for_category_tests(
+        name="thermal-gas",
+        fuel=ThermalFuels.NATURAL_GAS,
+        prime_mover_type=PrimeMoversType.ST,
+    )
+
+    assert getters.get_generator_category(gen, context).unwrap() == "gas-cc"
 
 
 def test_get_turbine_pump_load_and_efficiency(context):

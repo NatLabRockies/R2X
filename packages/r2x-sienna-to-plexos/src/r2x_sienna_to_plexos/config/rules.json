@@ -598,32 +598,6 @@
   },
   {
     "defaults": {
-      "category": "syn-cond",
-      "units": 0
-    },
-    "field_map": {
-      "name": "name",
-      "uuid": "uuid",
-      "category": "category"
-    },
-    "getters": {
-      "name": "get_generator_name",
-      "commit": "get_generator_commit",
-      "category": "get_generator_category",
-      "rating": "get_generator_rating",
-      "max_capacity": "get_max_capacity",
-      "min_stable_level": "get_generator_min_stable_level",
-      "forced_outage_rate": "get_generator_forced_outage_rate",
-      "maintenance_rate": "get_generator_maintenance_rate",
-      "mean_time_to_repair": "get_generator_mean_time_to_repair",
-      "ext": "get_component_ext"
-    },
-    "source_type": "SynchronousCondenser",
-    "target_type": "PLEXOSGenerator",
-    "version": 1
-  },
-  {
-    "defaults": {
       "category": "head"
     },
     "field_map": {
