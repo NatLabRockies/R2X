@@ -198,11 +198,9 @@
   {
     "defaults": {
       "category": "tap-transformer",
-      "ac_tap_ratio": 1.0,
       "susceptance": 0.0
     },
     "field_map": {
-      "ac_tap_ratio": "tap",
       "name": "name",
       "reactance": "x",
       "resistance": "r",
@@ -221,7 +219,6 @@
   {
     "defaults": {
       "category": "phase-shifting-transformer",
-      "ac_tap_ratio": 1.0,
       "susceptance": 0.0
     },
     "field_map": {
@@ -229,9 +226,7 @@
       "uuid": "uuid",
       "category": "category",
       "reactance": "x",
-      "resistance": "r",
-      "ac_tap_ratio": "tap",
-      "ac_fixed_shift_angle": "α"
+      "resistance": "r"
     },
     "getters": {
       "units": "get_availability",
@@ -250,8 +245,7 @@
     },
     "field_map": {
       "reactance": "x_primary",
-      "resistance": "r_primary",
-      "ac_tap_ratio": "primary_turns_ratio"
+      "resistance": "r_primary"
     },
     "getters": {
         "name": "get_3w_transformer_primary_name",
@@ -272,8 +266,7 @@
     },
     "field_map": {
       "reactance": "x_secondary",
-      "resistance": "r_secondary",
-      "ac_tap_ratio": "secondary_turns_ratio"
+      "resistance": "r_secondary"
     },
     "getters": {
       "name": "get_3w_transformer_secondary_name",
@@ -293,8 +286,7 @@
     },
     "field_map": {
       "reactance": "x_tertiary",
-      "resistance": "r_tertiary",
-      "ac_tap_ratio": "tertiary_turns_ratio"
+      "resistance": "r_tertiary"
     },
     "getters": {
       "name": "get_3w_transformer_tertiary_name",
@@ -310,14 +302,11 @@
     "defaults": {
       "category": "pst-trf3w-primary-winding",
       "units": 1,
-      "ac_tap_ratio": 1.0,
       "susceptance": 0.0
     },
     "field_map": {
       "reactance": "x_primary",
-      "resistance": "r_primary",
-      "ac_tap_ratio": "primary_turns_ratio",
-      "ac_fixed_shift_angle": "α_primary"
+      "resistance": "r_primary"
     },
     "getters": {
       "name": "get_3w_transformer_primary_name",
@@ -333,14 +322,11 @@
     "defaults": {
       "category": "pst-trf3w-secondary-winding",
       "units": 1,
-      "ac_tap_ratio": 1.0,
       "susceptance": 0.0
     },
     "field_map": {
       "reactance": "x_secondary",
-      "resistance": "r_secondary",
-      "ac_tap_ratio": "secondary_turns_ratio",
-      "ac_fixed_shift_angle": "α_secondary"
+      "resistance": "r_secondary"
     },
     "getters": {
       "name": "get_3w_transformer_secondary_name",
@@ -356,14 +342,11 @@
     "defaults": {
       "category": "pst-trf3w-tertiary-winding",
       "units": 1,
-      "ac_tap_ratio": 1.0,
       "susceptance": 0.0
     },
     "field_map": {
       "reactance": "x_tertiary",
-      "resistance": "r_tertiary",
-      "ac_tap_ratio": "tertiary_turns_ratio",
-      "ac_fixed_shift_angle": "α_tertiary"
+      "resistance": "r_tertiary"
     },
     "getters": {
       "name": "get_3w_transformer_tertiary_name",
