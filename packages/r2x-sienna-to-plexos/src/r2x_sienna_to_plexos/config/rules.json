@@ -21,7 +21,7 @@
   },
   {
     "defaults": {
-      "category": "sienna-regions"
+      "category": "areas"
     },
     "field_map": {
       "uuid": "uuid",
