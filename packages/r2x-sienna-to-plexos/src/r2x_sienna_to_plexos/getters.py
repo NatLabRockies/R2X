@@ -1357,41 +1357,20 @@ def get_thermal_generator_units(
 def get_max_capacity(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract maximum capacity in MW from rating, active_power_limits, or max_active_power.
 
-    If extracted capacity is below 10 MW, replace it with the category-level
-    ``max_capacity_MW`` default.
+    When rating is available, max_capacity must match rating exactly.
     """
-
-    def _apply_small_capacity_default(capacity_mw: float) -> float:
-        """Replace tiny capacities with category default max capacity."""
-        if capacity_mw >= 10.0:
-            return round(capacity_mw, 2)
-
-        category = _resolve_generator_category(source_component, context) or "gas-cc"
-        default_max = _get_defaults(category, "max_capacity_MW")
-
-        if math.isclose(default_max, 0.0, rel_tol=0.0, abs_tol=1e-9):
-            # Backstop for categories that may not define max_capacity_MW.
-            default_max = _get_defaults(category, "capacity_MW")
-
-        if default_max > 0.0:
-            return round(default_max, 2)
-        generic_default = _get_defaults("gas-cc", "max_capacity_MW") or _get_defaults("gas-cc", "capacity_MW")
-        if generic_default > 0.0:
-            return round(generic_default, 2)
-
-        return round(capacity_mw, 2)
 
     rating = getattr(source_component, "rating", None)
     rating_value = get_magnitude(rating)
     if rating_value is not None:
         capacity = abs(float(rating_value) * resolve_base_power(source_component))
-        return Ok(_apply_small_capacity_default(capacity))
+        return Ok(round(capacity, 2))
 
     limits = getattr(source_component, "active_power_limits", None)
     if isinstance(limits, dict):
         max_value = limits.get("max")
         if isinstance(max_value, int | float):
-            return Ok(_apply_small_capacity_default(abs(float(max_value))))
+            return Ok(round(abs(float(max_value)), 2))
 
     try:
         value = sienna_get_max_active_power(source_component)
@@ -1399,7 +1378,7 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
         value = None
 
     if value is not None:
-        return Ok(_apply_small_capacity_default(abs(float(value))))
+        return Ok(round(abs(float(value)), 2))
 
     return Err(ValueError("active_power_limits or rating missing"))
 

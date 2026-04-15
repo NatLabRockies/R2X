@@ -312,6 +312,40 @@ def test_get_max_capacity_with_limits(context):
     assert getters.get_max_capacity(gen, context).unwrap() == 1000.0
 
 
+def test_get_max_capacity_matches_rating_for_small_values(context):
+    gen = ThermalStandard(
+        name="GEN_SMALL",
+        bus=ACBus(name="N1", base_voltage=115.0, number=1),
+        active_power=0.0,
+        reactive_power=0.0,
+        rating=7.1,
+        base_power=1.0,
+        must_run=False,
+        status=True,
+        time_at_status=0.0,
+        active_power_limits=MinMax(min=0.0, max=999.0),
+        ramp_limits=UpDown(up=10.0, down=10.0),
+        time_limits=UpDown(up=1.0, down=1.0),
+        prime_mover_type=PrimeMoversType.CC,
+        fuel=ThermalFuels.NATURAL_GAS,
+        operation_cost=ThermalGenerationCost(
+            variable=FuelCurve(
+                value_curve=InputOutputCurve(
+                    function_data=QuadraticFunctionData(
+                        quadratic_term=0.01,
+                        proportional_term=9.0,
+                        constant_term=100.0,
+                    )
+                ),
+                fuel_cost=2.0,
+                power_units=UnitSystem.NATURAL_UNITS,
+            ),
+        ),
+    )
+    assert getters.get_generator_rating(gen, context).unwrap() == 7.1
+    assert getters.get_max_capacity(gen, context).unwrap() == 7.1
+
+
 def test_get_storage_charge_discharge_efficiency_valid(context):
     battery = EnergyReservoirStorage(
         name="BAT1",
