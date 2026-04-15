@@ -54,7 +54,6 @@ from r2x_sienna.models.enums import ReserveType
 from r2x_sienna.models.getters import (
     get_max_active_power as sienna_get_max_active_power,
 )
-from r2x_sienna.models.named_tuples import FromTo_ToFrom
 from r2x_sienna.units import get_magnitude
 
 from r2x_core import Err, Ok, PluginContext, Result
@@ -871,13 +870,6 @@ def get_voltage_kv(source_component: ACBus, context: PluginContext) -> Result[fl
 
 
 @getter
-def get_ac_voltage_magnitude_pu(source_component: ACBus, context: PluginContext) -> Result[float, ValueError]:
-    """Extract AC voltage magnitude in per unit from the source component."""
-    value = getattr(source_component, "magnitude", None)
-    return Ok(round(float(value), 3) if value is not None else 1.0)
-
-
-@getter
 def get_node_category(source_component: ACBus, context: PluginContext) -> Result[str, ValueError]:
     """Return the Area name for the bus, since Area maps to PLEXOSRegion."""
     area = getattr(source_component, "area", None)
@@ -1115,34 +1107,6 @@ def lines_wheeling_charge_back(
     if wc_back is None:
         return Ok(_get_general_default("wheeling_charge_back"))
     return Ok(float(wc_back))
-
-
-@getter
-def get_line_charging_susceptance(
-    source_component: Line | MonitoredLine, context: PluginContext
-) -> Result[float, ValueError]:
-    """Extract line charging susceptance as float from source component."""
-    match getattr(source_component, "b", None):
-        case None:
-            return Ok(0.0)
-        case int() | float() as val:
-            return Ok(float(val))
-        case complex() as val:
-            return Ok(float(val.imag))
-        case FromTo_ToFrom() as val:
-            return Ok(float(val.from_to))
-        case dict() as val:
-            match val.get("from_to"):
-                case int() | float() as ft:
-                    return Ok(float(ft))
-                case _:
-                    return Ok(0.0)
-        case val:
-            match get_magnitude(val):
-                case int() | float() as mag:
-                    return Ok(float(mag))
-                case _:
-                    return Ok(0.0)
 
 
 @getter
