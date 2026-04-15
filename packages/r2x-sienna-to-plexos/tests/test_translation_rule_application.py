@@ -306,6 +306,7 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
     monkeypatch.setattr(translation_module, "ensure_generator_time_series", _mark("gen_ts"))
     monkeypatch.setattr(translation_module, "ensure_reserve_time_series", _mark("reserve_ts"))
     monkeypatch.setattr(translation_module, "ensure_region_node_memberships", _mark("region_node"))
+    monkeypatch.setattr(translation_module, "ensure_reference_node_memberships", _mark("reference_node"))
     monkeypatch.setattr(translation_module, "ensure_generator_node_memberships", _mark("gen_node"))
     monkeypatch.setattr(translation_module, "ensure_battery_node_memberships", _mark("battery_node"))
     monkeypatch.setattr(translation_module, "ensure_reserve_battery_memberships", _mark("reserve_battery"))
@@ -324,6 +325,7 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
         "gen_ts",
         "reserve_ts",
         "region_node",
+        "reference_node",
         "gen_node",
         "battery_node",
         "reserve_battery",

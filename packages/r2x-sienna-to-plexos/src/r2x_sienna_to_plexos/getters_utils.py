@@ -36,6 +36,7 @@ from r2x_sienna.models import (
     TransmissionInterface,
     VariableReserve,
 )
+from r2x_sienna.models.enums import ACBusTypes
 from r2x_sienna.units import get_magnitude
 
 if TYPE_CHECKING:
@@ -229,6 +230,39 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
             total_memberships += 1
 
     logger.info("Total {} Region-Node memberships created.", total_memberships)
+
+
+def ensure_reference_node_memberships(context: PluginContext) -> None:
+    """Create Region->Node memberships in ReferenceNode for REF/SLACK bus regions only."""
+    bus_index = _bus_name_to_area_and_zone(context)
+    regions_by_name = {r.name: r for r in _target_system(context).get_components(PLEXOSRegion)}
+
+    ref_region_names: set[str] = set()
+    for bus in _source_system(context).get_components(ACBus):
+        bustype = getattr(bus, "bustype", None)
+        bustype_name = getattr(bustype, "name", str(bustype)).upper() if bustype is not None else ""
+        if bustype not in {ACBusTypes.REF, ACBusTypes.SLACK} and bustype_name not in {"REF", "SLACK"}:
+            continue
+
+        area_name, _ = bus_index.get(bus.name, (None, None))
+        if area_name is not None:
+            ref_region_names.add(area_name)
+
+    if not ref_region_names:
+        logger.info("No REF/SLACK buses found. Skipping ReferenceNode memberships.")
+        return
+
+    total_memberships = 0
+    for node in _target_system(context).get_components(PLEXOSNode):
+        area_name, _ = bus_index.get(node.name, (None, None))
+        if area_name is None or area_name not in ref_region_names:
+            continue
+        region = regions_by_name.get(area_name)
+        if region is not None:
+            _ensure_membership(context, region, node, CollectionEnum.ReferenceNode)
+            total_memberships += 1
+
+    logger.info("Total {} ReferenceNode Region->Node memberships created.", total_memberships)
 
 
 def _extract_base_name(name: str) -> str:

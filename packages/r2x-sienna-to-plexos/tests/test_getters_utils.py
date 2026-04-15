@@ -31,7 +31,7 @@ from r2x_sienna.models import (
     VariableReserve,
 )
 from r2x_sienna.models.costs import ThermalGenerationCost
-from r2x_sienna.models.enums import PrimeMoversType, ReserveType, StorageTechs, ThermalFuels
+from r2x_sienna.models.enums import ACBusTypes, PrimeMoversType, ReserveType, StorageTechs, ThermalFuels
 from r2x_sienna.models.named_tuples import Complex, InputOutput, MinMax, UpDown
 from r2x_sienna_to_plexos import getters_utils
 
@@ -209,6 +209,60 @@ def test_ensure_transformer_node_memberships(context):
         target_transformer, PLEXOSMembership
     )
     assert any(m.collection in (CollectionEnum.NodeFrom, CollectionEnum.NodeTo) for m in memberships)
+
+
+def test_ensure_reference_node_memberships_only_for_ref_region(context):
+    area_ref = Area(name="A1")
+    area_other = Area(name="A2")
+    region_ref = PLEXOSRegion(name="A1")
+    region_other = PLEXOSRegion(name="A2")
+    node_ref = PLEXOSNode(name="N1")
+    node_other = PLEXOSNode(name="N2")
+    bus_ref = ACBus(name="N1", number=1, bustype=ACBusTypes.REF, area=area_ref)
+    bus_other = ACBus(name="N2", number=2, bustype=ACBusTypes.PQ, area=area_other)
+
+    context.source_system.add_component(area_ref)
+    context.source_system.add_component(area_other)
+    context.target_system.add_component(region_ref)
+    context.target_system.add_component(region_other)
+    context.target_system.add_component(node_ref)
+    context.target_system.add_component(node_other)
+    context.source_system.add_component(bus_ref)
+    context.source_system.add_component(bus_other)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    ref_memberships = context.target_system.get_supplemental_attributes_with_component(
+        node_ref, PLEXOSMembership
+    )
+    other_memberships = context.target_system.get_supplemental_attributes_with_component(
+        node_other, PLEXOSMembership
+    )
+
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region_ref
+        and m.child_object == node_ref
+        for m in ref_memberships
+    )
+    assert not any(m.collection == CollectionEnum.ReferenceNode for m in other_memberships)
+
+
+def test_ensure_reference_node_memberships_skips_when_no_ref_bus(context):
+    area = Area(name="A1")
+    region = PLEXOSRegion(name="A1")
+    node = PLEXOSNode(name="N1")
+    bus = ACBus(name="N1", number=1, bustype=ACBusTypes.PQ, area=area)
+
+    context.source_system.add_component(area)
+    context.target_system.add_component(region)
+    context.target_system.add_component(node)
+    context.source_system.add_component(bus)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
+    assert not any(m.collection == CollectionEnum.ReferenceNode for m in memberships)
 
 
 def test_ensure_head_tail_storage_generator_membership(context):
