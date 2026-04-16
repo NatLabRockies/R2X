@@ -1050,7 +1050,9 @@ def test_membership_transformer_from_to_parent_node(context):
     assert getters.membership_transformer_to_parent_node(transformer, context).unwrap().name == "N2"
 
 
-def test_membership_head_tail_storage_generator(context):
+def test_membership_head_tail_storage_generator(context, monkeypatch):
+    monkeypatch.setattr(getters, "_is_hydro_pumped_storage_generator", lambda _ctx, _name: True)
+
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     context.source_system.add_component(bus1)
     ht = HydroTurbine(

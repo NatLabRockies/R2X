@@ -27,6 +27,7 @@ from r2x_sienna.models import (
     ACBus,
     Area,
     EnergyReservoirStorage,
+    HydroPumpedStorage,
     HydroReservoir,
     HydroTurbine,
     LoadZone,
@@ -272,6 +273,24 @@ def _extract_base_name(name: str) -> str:
     return name
 
 
+def _build_pumped_storage_target_generator_name_index(context: PluginContext) -> set[str]:
+    """Return target generator names that originate from Sienna HydroPumpedStorage."""
+    cache_key = "pumped_storage_target_generator_name_index"
+    cached = context._cache.get(cache_key)
+    if cached is not None:
+        return cast(set[str], cached)
+
+    from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
+
+    display_name_index = _build_generator_display_name_index(context)
+    allowed_names = {
+        display_name_index.get(source_gen.name, source_gen.name)
+        for source_gen in _source_system(context).get_components(HydroPumpedStorage)
+    }
+    context._cache[cache_key] = allowed_names
+    return allowed_names
+
+
 def ensure_head_storage_generator_membership(context: PluginContext) -> None:
     """Create HeadStorage memberships between generators and head storages.
 
@@ -281,6 +300,7 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
     from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
 
     display_name_index = _build_generator_display_name_index(context)
+    pumped_storage_target_names = _build_pumped_storage_target_generator_name_index(context)
     generators_by_name = {g.name: g for g in _target_system(context).get_components(PLEXOSGenerator)}
     storages_by_name = {s.name: s for s in _target_system(context).get_components(PLEXOSStorage)}
 
@@ -332,6 +352,8 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
             if target_gen is None:
                 logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", tname)
                 continue
+            if target_gen.name not in pumped_storage_target_names:
+                continue
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.HeadStorage)
             total_memberships += 1
 
@@ -343,6 +365,8 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
         target_gen_name = display_name_index.get(tname, tname)
         target_gen = generators_by_name.get(target_gen_name)
         if target_gen is None:
+            continue
+        if target_gen.name not in pumped_storage_target_names:
             continue
 
         for reservoir in getattr(turbine, "reservoirs", None) or []:
@@ -362,6 +386,8 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
 
     # Fallback: For all generators and storages with matching _head names, ensure membership exists
     for gen_name, gen in generators_by_name.items():
+        if gen_name not in pumped_storage_target_names:
+            continue
         if gen_name.endswith("_head"):
             storage = storages_by_name.get(gen_name)
             if storage is not None:
@@ -386,6 +412,7 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
     from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
 
     display_name_index = _build_generator_display_name_index(context)
+    pumped_storage_target_names = _build_pumped_storage_target_generator_name_index(context)
     generators_by_name = {g.name: g for g in _target_system(context).get_components(PLEXOSGenerator)}
     storages_by_name = {s.name: s for s in _target_system(context).get_components(PLEXOSStorage)}
 
@@ -437,6 +464,8 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
             if target_gen is None:
                 logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", tname)
                 continue
+            if target_gen.name not in pumped_storage_target_names:
+                continue
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.TailStorage)
             total_memberships += 1
 
@@ -448,6 +477,8 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
         target_gen_name = display_name_index.get(tname, tname)
         target_gen = generators_by_name.get(target_gen_name)
         if target_gen is None:
+            continue
+        if target_gen.name not in pumped_storage_target_names:
             continue
 
         for reservoir in getattr(turbine, "reservoirs", None) or []:
@@ -467,6 +498,8 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
 
     # Fallback: For all generators and storages with matching _tail names, ensure membership exists
     for gen_name, gen in generators_by_name.items():
+        if gen_name not in pumped_storage_target_names:
+            continue
         if gen_name.endswith("_tail"):
             storage = storages_by_name.get(gen_name)
             if storage is not None:

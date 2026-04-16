@@ -28,6 +28,7 @@ from r2x_sienna.models import (
     DiscreteControlledACBranch,
     EnergyReservoirStorage,
     HydroDispatch,
+    HydroPumpedStorage,
     HydroPumpTurbine,
     HydroReservoir,
     HydroTurbine,
@@ -2357,11 +2358,23 @@ def _build_reservoir_by_turbine_index(context: PluginContext) -> dict[str, Any]:
     return index
 
 
+def _is_hydro_pumped_storage_generator(context: PluginContext, gen_name: str) -> bool:
+    """Return True when target generator name resolves to a source HydroPumpedStorage."""
+    source_generator = _lookup_source_generator(context, gen_name)
+    return isinstance(source_generator, HydroPumpedStorage)
+
+
 @getter
 def membership_head_storage_generator(
     generator: HydroTurbine, context: PluginContext
 ) -> Result[Any, ValueError]:
     gen_name = getattr(generator, "name", "")
+    if not _is_hydro_pumped_storage_generator(context, gen_name):
+        return Err(
+            ValueError(
+                f"Skipping HeadStorage membership for '{gen_name}': source generator is not HydroPumpedStorage"
+            )
+        )
     storage_index = _build_target_storage_name_index(context)
 
     # Primary: look up which reservoir owns this turbine
@@ -2398,6 +2411,12 @@ def membership_tail_storage_generator(
     generator: HydroTurbine, context: PluginContext
 ) -> Result[Any, ValueError]:
     gen_name = getattr(generator, "name", "")
+    if not _is_hydro_pumped_storage_generator(context, gen_name):
+        return Err(
+            ValueError(
+                f"Skipping TailStorage membership for '{gen_name}': source generator is not HydroPumpedStorage"
+            )
+        )
     storage_index = _build_target_storage_name_index(context)
 
     # Primary: look up which reservoir owns this turbine

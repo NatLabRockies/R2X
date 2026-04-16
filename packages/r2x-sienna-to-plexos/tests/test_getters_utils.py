@@ -265,7 +265,29 @@ def test_ensure_reference_node_memberships_skips_when_no_ref_bus(context):
     assert not any(m.collection == CollectionEnum.ReferenceNode for m in memberships)
 
 
-def test_ensure_head_tail_storage_generator_membership(context):
+def test_ensure_head_tail_storage_generator_membership(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    monkey_source = types.SimpleNamespace(name="foo_head")
+    monkey_source_tail = types.SimpleNamespace(name="foo_tail")
+
+    def monkeypatch_get_components(comp_type):
+        return (
+            [monkey_source, monkey_source_tail]
+            if getattr(comp_type, "__name__", "") == "HydroPumpedStorage"
+            else []
+        )
+
+    context.source_system.get_components = monkeypatch_get_components
+    monkeypatch.setattr(
+        getters_mod,
+        "_build_generator_display_name_index",
+        lambda _ctx: {
+            "foo_head": "foo_head",
+            "foo_tail": "foo_tail",
+        },
+    )
+
     gen = PLEXOSGenerator(name="foo_head")
     storage = PLEXOSStorage(name="foo_head")
     context.target_system.add_component(gen)
@@ -386,7 +408,20 @@ def test_ensure_battery_node_memberships(context):
     assert any(m.collection.name == "Nodes" for m in memberships)
 
 
-def test_ensure_head_storage_generator_membership(context):
+def test_ensure_head_storage_generator_membership(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    context.source_system.get_components = (
+        lambda comp_type: [types.SimpleNamespace(name="GEN_head")]
+        if getattr(comp_type, "__name__", "") == "HydroPumpedStorage"
+        else []
+    )
+    monkeypatch.setattr(
+        getters_mod,
+        "_build_generator_display_name_index",
+        lambda _ctx: {"GEN_head": "GEN_head"},
+    )
+
     gen = PLEXOSGenerator(name="GEN_head")
     storage = PLEXOSStorage(name="GEN_head")
     context.target_system.add_component(gen)
@@ -396,7 +431,20 @@ def test_ensure_head_storage_generator_membership(context):
     assert any(m.collection.name == "HeadStorage" for m in memberships)
 
 
-def test_ensure_tail_storage_generator_membership(context):
+def test_ensure_tail_storage_generator_membership(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    context.source_system.get_components = (
+        lambda comp_type: [types.SimpleNamespace(name="GEN_tail")]
+        if getattr(comp_type, "__name__", "") == "HydroPumpedStorage"
+        else []
+    )
+    monkeypatch.setattr(
+        getters_mod,
+        "_build_generator_display_name_index",
+        lambda _ctx: {"GEN_tail": "GEN_tail"},
+    )
+
     gen = PLEXOSGenerator(name="GEN_tail")
     storage = PLEXOSStorage(name="GEN_tail")
     context.target_system.add_component(gen)
@@ -825,8 +873,8 @@ def test_hydroturbine_driven_head_tail_memberships(context, monkeypatch):
     getters_utils.ensure_tail_storage_generator_membership(context)
 
     memberships = context.target_system.get_supplemental_attributes_with_component(gen, PLEXOSMembership)
-    assert any(m.collection == CollectionEnum.HeadStorage for m in memberships)
-    assert any(m.collection == CollectionEnum.TailStorage for m in memberships)
+    assert not any(m.collection == CollectionEnum.HeadStorage for m in memberships)
+    assert not any(m.collection == CollectionEnum.TailStorage for m in memberships)
 
 
 def test_generator_reserve_interface_and_battery_memberships(context, monkeypatch):
@@ -1035,7 +1083,16 @@ def test_attach_reservoir_time_series_scales_max_active_power_from_turbine_limit
 def test_head_tail_memberships_from_ext_plants_and_fallback_name_matching(context, monkeypatch):
     import r2x_sienna_to_plexos.getters as getters_mod
 
-    monkeypatch.setattr(getters_mod, "_build_generator_display_name_index", lambda _ctx: {"T1": "GEN_T1"})
+    monkeypatch.setattr(
+        getters_mod,
+        "_build_generator_display_name_index",
+        lambda _ctx: {
+            "T1": "GEN_T1",
+            "GEN_T1": "GEN_T1",
+            "Fallback_head": "Fallback_head",
+            "Fallback_tail": "Fallback_tail",
+        },
+    )
 
     reservoir = types.SimpleNamespace(name="ReservoirA", ext={"plant_name": "PlantA", "plants": ["T1"]})
     turbine = types.SimpleNamespace(name="T1", reservoirs=[])
@@ -1046,6 +1103,12 @@ def test_head_tail_memberships_from_ext_plants_and_fallback_name_matching(contex
             return [reservoir]
         if name == "HydroTurbine":
             return [turbine]
+        if name == "HydroPumpedStorage":
+            return [
+                types.SimpleNamespace(name="GEN_T1"),
+                types.SimpleNamespace(name="Fallback_head"),
+                types.SimpleNamespace(name="Fallback_tail"),
+            ]
         return []
 
     context.source_system.get_components = source_get_components
