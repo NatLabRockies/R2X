@@ -82,12 +82,8 @@
       "WASTE_COAL",
       "SYNTHESIS_GAS_COAL"
     ],
-    "gas-cc": [
+    "natural-gas": [
       "NATURAL_GAS"
-    ],
-    "gas-ct": [
-      "OTHER_GAS",
-      "BLAST_FURNACE_GAS"
     ],
     "o-g-s": [
       "DISTILLATE_FUEL_OIL",
@@ -97,7 +93,9 @@
       "KEROSENE",
       "PROPANE",
       "WASTE_OIL",
-      "SYNTHESIS_GAS_PETROLEUM_COKE"
+      "SYNTHESIS_GAS_PETROLEUM_COKE",
+      "OTHER_GAS",
+      "BLAST_FURNACE_GAS"
     ],
     "biopower": [
       "AG_BIOPRODUCT",
