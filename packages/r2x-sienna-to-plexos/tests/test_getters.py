@@ -495,7 +495,13 @@ def test_get_area_load_valid(context):
     assert getters.get_area_load(acbus, context).unwrap() == 0.0
 
 
-def test_get_head_tail_storage_names_valid(context):
+def test_get_head_tail_storage_names_valid(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
     hydro = HydroReservoir(
         name="hydro-reservoir-test",
         available=True,
@@ -896,7 +902,12 @@ def test_get_area_units_and_load(context):
     assert getters.get_area_load(area, context).unwrap() == 0.0
 
 
-def test_get_head_tail_storage_name(context):
+def test_get_head_tail_storage_name(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
     hydro = HydroReservoir(
         name="hydro1",
         available=True,
@@ -916,6 +927,57 @@ def test_get_head_tail_storage_name(context):
     )
     assert getters.get_head_storage_name(hydro, context).unwrap() == "hydro1_head"
     assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro1_tail"
+
+
+def test_get_head_tail_storage_name_err_without_pumped_storage_association(context):
+    hydro = HydroReservoir(
+        name="hydro1",
+        available=True,
+        storage_level_limits=MinMax(min=0.0, max=1000.0),
+        initial_level=0.5,
+        spillage_limits=MinMax(min=0.0, max=100.0),
+        inflow=50.0,
+        outflow=30.0,
+        level_targets=0.8,
+        travel_time=2.0,
+        intake_elevation=500.0,
+        head_to_volume_factor=LinearCurve(1.0),
+        reservoir_location=ReservoirLocation.HEAD,
+        operation_cost=HydroReservoirCost(),
+        level_data_type=ReservoirDataType.USABLE_VOLUME,
+        category="hydro_reservoir",
+    )
+
+    assert getters.get_head_storage_name(hydro, context).is_err()
+    assert getters.get_tail_storage_name(hydro, context).is_err()
+
+
+def test_reservoir_association_true_for_hydropumpturbine_links(context):
+    pump_turbine = type("HydroPumpTurbine", (), {})()
+    reservoir = type(
+        "ReservoirProxy",
+        (),
+        {
+            "upstream_turbines": [pump_turbine],
+            "downstream_turbines": [],
+        },
+    )()
+
+    assert getters._reservoir_has_hydro_pumped_storage_association(reservoir, context)
+
+
+def test_reservoir_association_false_for_hydroturbine_links(context):
+    hydro_turbine = type("HydroTurbine", (), {})()
+    reservoir = type(
+        "ReservoirProxy",
+        (),
+        {
+            "upstream_turbines": [],
+            "downstream_turbines": [hydro_turbine],
+        },
+    )()
+
+    assert not getters._reservoir_has_hydro_pumped_storage_association(reservoir, context)
 
 
 def test_membership_component_child_node_generator(context):
@@ -1558,7 +1620,13 @@ def test_get_area_load(context):
     assert getters.get_area_load(area, context).unwrap() == 0.0
 
 
-def test_get_head_storage_name(context):
+def test_get_head_storage_name(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
     hydro = HydroReservoir(
         name="hydro1_head",
         available=True,
@@ -1576,7 +1644,13 @@ def test_get_head_storage_name(context):
     assert getters.get_head_storage_name(hydro, context).unwrap() == "hydro1_head"
 
 
-def test_get_tail_storage_name(context):
+def test_get_tail_storage_name(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
     hydro = HydroReservoir(
         name="hydro1_tail",
         available=True,

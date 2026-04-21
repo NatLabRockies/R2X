@@ -165,6 +165,47 @@ def test_sienna_storage_translates_to_plexos_storage(tmp_path):
     assert storage
 
 
+def test_hydro_reservoir_without_pumped_storage_does_not_translate_to_plexos_storage(tmp_path):
+    from infrasys.value_curves import LinearCurve
+    from r2x_plexos.models import PLEXOSStorage
+    from r2x_sienna.models import HydroReservoir
+    from r2x_sienna.models.costs import HydroReservoirCost
+    from r2x_sienna.models.enums import ReservoirDataType, ReservoirLocation
+    from r2x_sienna.models.named_tuples import MinMax
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.source_system.add_component(
+        HydroReservoir(
+            name="EI_Reservoir",
+            available=True,
+            storage_level_limits=MinMax(min=0.0, max=1000.0),
+            initial_level=0.5,
+            spillage_limits=MinMax(min=0.0, max=100.0),
+            inflow=50.0,
+            outflow=30.0,
+            level_targets=0.8,
+            travel_time=2.0,
+            intake_elevation=500.0,
+            head_to_volume_factor=LinearCurve(1.0),
+            reservoir_location=ReservoirLocation.HEAD,
+            operation_cost=HydroReservoirCost(),
+            level_data_type=ReservoirDataType.USABLE_VOLUME,
+            category="hydro_reservoir",
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    result = apply_rules_to_context(context)
+    assert result.total_rules > 0
+
+    storages = list(context.target_system.get_components(PLEXOSStorage))
+    assert not any(
+        s.name in {"EI_head", "EI_tail", "EI_Reservoir_head", "EI_Reservoir_tail"} for s in storages
+    )
+
+
 def test_sienna_interface_translates_to_plexos_interface(tmp_path):
     from r2x_plexos.models import PLEXOSInterface
     from r2x_sienna.models import Area, TransmissionInterface

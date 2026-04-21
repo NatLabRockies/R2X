@@ -1708,11 +1708,40 @@ def get_turbine_pump_load(
     return Ok(0.0)
 
 
+def _reservoir_has_hydro_pumped_storage_association(
+    source_component: HydroReservoir, context: PluginContext
+) -> bool:
+    """Return True if reservoir is linked to HydroPumpTurbine and not HydroTurbine."""
+
+    def _is_hydro_pump_turbine(turbine: Any) -> bool:
+        return isinstance(turbine, HydroPumpTurbine) or type(turbine).__name__ == "HydroPumpTurbine"
+
+    def _is_hydro_turbine(turbine: Any) -> bool:
+        return isinstance(turbine, HydroTurbine) or type(turbine).__name__ == "HydroTurbine"
+
+    linked_turbines = [
+        *list(getattr(source_component, "upstream_turbines", None) or []),
+        *list(getattr(source_component, "downstream_turbines", None) or []),
+    ]
+
+    has_hydro_pump_turbine = any(_is_hydro_pump_turbine(turbine) for turbine in linked_turbines)
+    has_hydro_turbine = any(_is_hydro_turbine(turbine) for turbine in linked_turbines)
+
+    return has_hydro_pump_turbine and not has_hydro_turbine
+
+
 @getter
 def get_head_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the head reservoir (appends _head), using plant_name from ext if available."""
+    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
+        return Err(
+            ValueError(
+                f"Skipping head storage conversion for reservoir '{source_component.name}': no HydroPumpedStorage association"
+            )
+        )
+
     ext = getattr(source_component, "ext", None)
     base = None
     if isinstance(ext, dict):
@@ -1740,6 +1769,13 @@ def get_tail_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the tail reservoir (appends _tail), using plant_name from ext if available."""
+    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
+        return Err(
+            ValueError(
+                f"Skipping tail storage conversion for reservoir '{source_component.name}': no HydroPumpedStorage association"
+            )
+        )
+
     ext = getattr(source_component, "ext", None)
     base = None
     if isinstance(ext, dict):
