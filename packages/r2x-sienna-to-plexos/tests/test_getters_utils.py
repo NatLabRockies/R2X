@@ -211,13 +211,13 @@ def test_ensure_transformer_node_memberships(context):
     assert any(m.collection in (CollectionEnum.NodeFrom, CollectionEnum.NodeTo) for m in memberships)
 
 
-def test_ensure_reference_node_memberships_only_for_ref_region(context):
+def test_ensure_reference_node_memberships_creates_one_per_region(context):
     area_ref = Area(name="A1")
     area_other = Area(name="A2")
     region_ref = PLEXOSRegion(name="A1")
     region_other = PLEXOSRegion(name="A2")
-    node_ref = PLEXOSNode(name="N1")
-    node_other = PLEXOSNode(name="N2")
+    node_ref = PLEXOSNode(name="N1", voltage=138.0, load_participation_factor=0.3)
+    node_other = PLEXOSNode(name="N2", voltage=230.0, load_participation_factor=0.2)
     bus_ref = ACBus(name="N1", number=1, bustype=ACBusTypes.REF, area=area_ref)
     bus_other = ACBus(name="N2", number=2, bustype=ACBusTypes.PQ, area=area_other)
 
@@ -245,24 +245,80 @@ def test_ensure_reference_node_memberships_only_for_ref_region(context):
         and m.child_object == node_ref
         for m in ref_memberships
     )
-    assert not any(m.collection == CollectionEnum.ReferenceNode for m in other_memberships)
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region_other
+        and m.child_object == node_other
+        for m in other_memberships
+    )
 
 
-def test_ensure_reference_node_memberships_skips_when_no_ref_bus(context):
+def test_ensure_reference_node_memberships_prefers_slack_bus_when_present(context):
     area = Area(name="A1")
     region = PLEXOSRegion(name="A1")
-    node = PLEXOSNode(name="N1")
-    bus = ACBus(name="N1", number=1, bustype=ACBusTypes.PQ, area=area)
+    node_slack = PLEXOSNode(name="N1", voltage=115.0, load_participation_factor=0.1)
+    node_non_slack = PLEXOSNode(name="N2", voltage=500.0, load_participation_factor=0.9)
+    bus_slack = ACBus(name="N1", number=1, bustype=ACBusTypes.REF, area=area)
+    bus_non_slack = ACBus(name="N2", number=2, bustype=ACBusTypes.PQ, area=area)
 
     context.source_system.add_component(area)
     context.target_system.add_component(region)
-    context.target_system.add_component(node)
-    context.source_system.add_component(bus)
+    context.target_system.add_component(node_slack)
+    context.target_system.add_component(node_non_slack)
+    context.source_system.add_component(bus_slack)
+    context.source_system.add_component(bus_non_slack)
 
     getters_utils.ensure_reference_node_memberships(context)
 
-    memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
-    assert not any(m.collection == CollectionEnum.ReferenceNode for m in memberships)
+    slack_memberships = context.target_system.get_supplemental_attributes_with_component(
+        node_slack, PLEXOSMembership
+    )
+    non_slack_memberships = context.target_system.get_supplemental_attributes_with_component(
+        node_non_slack, PLEXOSMembership
+    )
+
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region
+        and m.child_object == node_slack
+        for m in slack_memberships
+    )
+    assert not any(
+        m.collection == CollectionEnum.ReferenceNode and m.parent_object == region
+        for m in non_slack_memberships
+    )
+
+
+def test_ensure_reference_node_memberships_fallback_uses_voltage_then_lpf(context):
+    area = Area(name="A1")
+    region = PLEXOSRegion(name="A1")
+    node_low = PLEXOSNode(name="N1", voltage=115.0, load_participation_factor=0.9)
+    node_mid = PLEXOSNode(name="N2", voltage=230.0, load_participation_factor=0.1)
+    node_best = PLEXOSNode(name="N3", voltage=230.0, load_participation_factor=0.6)
+    bus_low = ACBus(name="N1", number=1, bustype=ACBusTypes.PQ, area=area)
+    bus_mid = ACBus(name="N2", number=2, bustype=ACBusTypes.PQ, area=area)
+    bus_best = ACBus(name="N3", number=3, bustype=ACBusTypes.PQ, area=area)
+
+    context.source_system.add_component(area)
+    context.target_system.add_component(region)
+    context.target_system.add_component(node_low)
+    context.target_system.add_component(node_mid)
+    context.target_system.add_component(node_best)
+    context.source_system.add_component(bus_low)
+    context.source_system.add_component(bus_mid)
+    context.source_system.add_component(bus_best)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    best_memberships = context.target_system.get_supplemental_attributes_with_component(
+        node_best, PLEXOSMembership
+    )
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region
+        and m.child_object == node_best
+        for m in best_memberships
+    )
 
 
 def test_ensure_head_tail_storage_generator_membership(context, monkeypatch):

@@ -633,6 +633,34 @@ def _attach_generator_time_series(
             logger.success("Attached time series {} to generator {}", ts.name, generator_name)
 
 
+def _has_usable_generator_time_series(source_component: object, context: PluginContext) -> bool:
+    """Return True when the source generator has at least one retrievable time series."""
+    source_system = _source_system(context)
+
+    try:
+        if not source_system.time_series.has_time_series(source_component):
+            return False
+        metadata_items = source_system.time_series.list_time_series_metadata(source_component)
+    except Exception:
+        # If introspection fails, avoid accidentally deactivating the unit.
+        return True
+
+    for metadata in metadata_items:
+        features = getattr(metadata, "features", {}) or {}
+        try:
+            ts_list = source_system.list_time_series(
+                source_component,
+                name=metadata.name,
+                **features,
+            )
+        except Exception:
+            continue
+        if ts_list:
+            return True
+
+    return False
+
+
 def _attach_region_node_load_time_series(
     context: PluginContext,
     region_name: str,
@@ -1320,6 +1348,7 @@ def get_thermal_generator_units(
 
     If fuel price or heat rate resolves to zero, set units to 0 so the device is
     not treated as nearly free generation in PLEXOS.
+    Also deactivate units that have no associated source time series.
     """
     ext = getattr(source_component, "ext", None)
     if isinstance(ext, dict):
@@ -1351,7 +1380,23 @@ def get_thermal_generator_units(
     ):
         return Ok(0)
 
+    if not _has_usable_generator_time_series(source_component, context):
+        return Ok(0)
+
     return Ok(1)
+
+
+@getter
+def get_dispatch_generator_units(
+    source_component: HydroDispatch
+    | HydroTurbine
+    | HydroPumpTurbine
+    | RenewableDispatch
+    | RenewableNonDispatch,
+    context: PluginContext,
+) -> Result[int, ValueError]:
+    """Deactivate dispatch generators that do not have source time series."""
+    return Ok(1 if _has_usable_generator_time_series(source_component, context) else 0)
 
 
 @getter

@@ -638,6 +638,14 @@ def test_get_thermal_generator_units_zero_when_fuel_price_zero(monkeypatch, cont
     class DummyThermal:
         pass
 
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    )
+
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(0.0))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
 
@@ -647,6 +655,14 @@ def test_get_thermal_generator_units_zero_when_fuel_price_zero(monkeypatch, cont
 def test_get_thermal_generator_units_zero_when_heat_rate_zero(monkeypatch, context):
     class DummyThermal:
         pass
+
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    )
 
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(0.0))
@@ -658,6 +674,14 @@ def test_get_thermal_generator_units_one_when_inputs_present(monkeypatch, contex
     class DummyThermal:
         pass
 
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    )
+
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
 
@@ -667,6 +691,14 @@ def test_get_thermal_generator_units_one_when_inputs_present(monkeypatch, contex
 def test_get_thermal_generator_units_zero_for_monticello_tx(monkeypatch, context):
     class DummyThermal:
         ext = {"plant_name": "Monticello", "state": "TX"}  # noqa: RUF012
+
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    )
 
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
@@ -678,10 +710,54 @@ def test_get_thermal_generator_units_keeps_monticello_mn_active(monkeypatch, con
     class DummyThermal:
         ext = {"plant_name": "Monticello Nuclear Facility", "state": "MN"}  # noqa: RUF012
 
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    )
+
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
 
     assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
+
+
+def test_get_thermal_generator_units_zero_when_time_series_missing(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    context.source_system.time_series.has_time_series = lambda _component: False
+
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+
+
+def test_get_dispatch_generator_units_zero_when_time_series_missing(context):
+    class DummyDispatch:
+        pass
+
+    context.source_system.time_series.has_time_series = lambda _component: False
+
+    assert getters.get_dispatch_generator_units(DummyDispatch(), context).unwrap() == 0
+
+
+def test_get_dispatch_generator_units_one_when_time_series_present(context):
+    class DummyDispatch:
+        pass
+
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    )
+
+    assert getters.get_dispatch_generator_units(DummyDispatch(), context).unwrap() == 1
 
 
 def _make_thermal_generator_for_category_tests(

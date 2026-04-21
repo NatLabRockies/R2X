@@ -234,34 +234,70 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
 
 
 def ensure_reference_node_memberships(context: PluginContext) -> None:
-    """Create Region->Node memberships in ReferenceNode for REF/SLACK bus regions only."""
+    """Create exactly one Region->Node ReferenceNode membership per translated region.
+
+    Selection priority per region:
+    1) Any node whose source bus is REF/SLACK
+    2) Fallback to highest node voltage, then highest load participation factor
+    """
+
+    def _as_float(value: Any) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
     bus_index = _bus_name_to_area_and_zone(context)
     regions_by_name = {r.name: r for r in _target_system(context).get_components(PLEXOSRegion)}
 
-    ref_region_names: set[str] = set()
+    # Build fast lookup for source bus by node name.
+    source_buses_by_name = {bus.name: bus for bus in _source_system(context).get_components(ACBus)}
+
+    nodes_by_region: dict[str, list[PLEXOSNode]] = {}
+    for node in _target_system(context).get_components(PLEXOSNode):
+        area_name, _ = bus_index.get(node.name, (None, None))
+        if area_name is None:
+            continue
+        nodes_by_region.setdefault(area_name, []).append(node)
+
+    ref_node_names: set[str] = set()
     for bus in _source_system(context).get_components(ACBus):
         bustype = getattr(bus, "bustype", None)
         bustype_name = getattr(bustype, "name", str(bustype)).upper() if bustype is not None else ""
         if bustype not in {ACBusTypes.REF, ACBusTypes.SLACK} and bustype_name not in {"REF", "SLACK"}:
             continue
 
-        area_name, _ = bus_index.get(bus.name, (None, None))
-        if area_name is not None:
-            ref_region_names.add(area_name)
-
-    if not ref_region_names:
-        logger.info("No REF/SLACK buses found. Skipping ReferenceNode memberships.")
-        return
+        ref_node_names.add(bus.name)
 
     total_memberships = 0
-    for node in _target_system(context).get_components(PLEXOSNode):
-        area_name, _ = bus_index.get(node.name, (None, None))
-        if area_name is None or area_name not in ref_region_names:
+    for region_name, region in regions_by_name.items():
+        region_nodes = nodes_by_region.get(region_name, [])
+        if not region_nodes:
             continue
-        region = regions_by_name.get(area_name)
-        if region is not None:
-            _ensure_membership(context, region, node, CollectionEnum.ReferenceNode)
-            total_memberships += 1
+
+        slack_nodes = [node for node in region_nodes if node.name in ref_node_names]
+        candidate_nodes = slack_nodes if slack_nodes else region_nodes
+
+        chosen = max(
+            candidate_nodes,
+            key=lambda node: (
+                _as_float(getattr(node, "voltage", 0.0)),
+                _as_float(getattr(node, "load_participation_factor", 0.0)),
+                node.name,
+            ),
+        )
+
+        _ensure_membership(context, region, chosen, CollectionEnum.ReferenceNode)
+        total_memberships += 1
+
+        if not slack_nodes:
+            source_bus = source_buses_by_name.get(chosen.name)
+            bus_label = chosen.name if source_bus is None else source_bus.name
+            logger.debug(
+                "No REF/SLACK bus found for region '{}'; using fallback reference node '{}'.",
+                region_name,
+                bus_label,
+            )
 
     logger.info("Total {} ReferenceNode Region->Node memberships created.", total_memberships)
 

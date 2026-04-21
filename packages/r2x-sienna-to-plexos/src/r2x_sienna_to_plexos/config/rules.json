@@ -441,6 +441,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "units": "get_dispatch_generator_units",
       "commit": "get_generator_commit",
       "category": "get_generator_category",
       "max_ramp_down": "get_max_ramp_down",
@@ -470,6 +471,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "units": "get_dispatch_generator_units",
       "commit": "get_generator_commit",
       "category": "get_generator_category",
       "max_ramp_down": "get_max_ramp_down",
@@ -498,6 +500,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "units": "get_dispatch_generator_units",
       "commit": "get_generator_commit",
       "rating": "get_generator_rating",
       "max_ramp_up": "get_max_ramp_up",
@@ -524,6 +527,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "units": "get_dispatch_generator_units",
       "commit": "get_generator_commit",
       "category": "get_generator_category",
       "rating": "get_generator_rating",
@@ -553,6 +557,7 @@
     },
     "getters": {
       "name": "get_generator_name",
+      "units": "get_dispatch_generator_units",
       "commit": "get_generator_commit",
       "category": "get_generator_category",
       "rating": "get_generator_rating",
@@ -579,6 +584,7 @@
     "getters": {
       "commit": "get_generator_commit",
       "name": "get_generator_name",
+      "units": "get_dispatch_generator_units",
       "category": "get_generator_category",
       "rating": "get_generator_rating",
       "max_capacity": "get_max_capacity",
