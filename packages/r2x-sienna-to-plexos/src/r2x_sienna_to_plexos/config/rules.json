@@ -38,6 +38,22 @@
   },
   {
     "defaults": {
+      "category": "zones"
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "units": "get_zone_units"
+    },
+    "source_type": "LoadZone",
+    "target_type": "PLEXOSZone",
+    "version": 1
+  },
+  {
+    "defaults": {
       "category": "line",
       "min_flow": 0.0,
       "max_flow": 0.0,

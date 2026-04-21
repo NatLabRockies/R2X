@@ -33,6 +33,7 @@ from .getters_utils import (
     ensure_reserve_time_series,
     ensure_tail_storage_generator_membership,
     ensure_transformer_node_memberships,
+    ensure_zone_node_memberships,
 )
 from .plugin_config import SiennaToPlexosConfig
 from .translation import sienna_to_plexos
@@ -51,6 +52,7 @@ __all__ = [
     "sienna_to_plexos",
     "REEDS_COMPONENT_SUBSTRINGS",
     "ensure_region_node_memberships",
+    "ensure_zone_node_memberships",
     "ensure_reference_node_memberships",
     "ensure_interface_line_memberships",
     "ensure_generator_node_memberships",

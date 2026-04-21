@@ -24,6 +24,7 @@ from .getters_utils import (
     ensure_reserve_time_series,
     ensure_tail_storage_generator_membership,
     ensure_transformer_node_memberships,
+    ensure_zone_node_memberships,
 )
 
 
@@ -60,6 +61,7 @@ def sienna_to_plexos(system: System, config: SiennaToPlexosConfig) -> System:
     ensure_generator_time_series(context)
     ensure_reserve_time_series(context)
     ensure_region_node_memberships(context)
+    ensure_zone_node_memberships(context)
     ensure_reference_node_memberships(context)
     ensure_generator_node_memberships(context)
     ensure_battery_node_memberships(context)

@@ -22,6 +22,7 @@ from r2x_plexos.models import (
     PLEXOSReserve,
     PLEXOSStorage,
     PLEXOSTransformer,
+    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
@@ -231,6 +232,27 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
             total_memberships += 1
 
     logger.info("Total {} Region-Node memberships created.", total_memberships)
+
+
+def ensure_zone_node_memberships(context: PluginContext) -> None:
+    """Create Zone memberships for nodes based on source bus load_zone mapping."""
+    bus_index = _bus_name_to_area_and_zone(context)
+    zones_by_name = {z.name: z for z in _target_system(context).get_components(PLEXOSZone)}
+
+    total_memberships = 0
+    for node in _target_system(context).get_components(PLEXOSNode):
+        _, zone_name = bus_index.get(node.name, (None, None))
+        if zone_name is None:
+            continue
+
+        zone = zones_by_name.get(zone_name)
+        if zone is None:
+            continue
+
+        _ensure_membership(context, node, zone, CollectionEnum.Zone)
+        total_memberships += 1
+
+    logger.info("Total {} Zone-Node memberships created.", total_memberships)
 
 
 def ensure_reference_node_memberships(context: PluginContext) -> None:

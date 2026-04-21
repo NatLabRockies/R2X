@@ -20,12 +20,14 @@ from r2x_plexos.models import (
     PLEXOSReserve,
     PLEXOSStorage,
     PLEXOSTransformer,
+    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
     Arc,
     Area,
     EnergyReservoirStorage,
+    LoadZone,
     ThermalStandard,
     Transformer2W,
     VariableReserve,
@@ -177,6 +179,45 @@ def test_ensure_region_node_memberships(context):
     for node in [node1, node2]:
         memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
         assert any(m.collection == CollectionEnum.Region for m in memberships)
+
+
+def test_ensure_zone_node_memberships(context):
+    area = Area(name="A1")
+    zone = LoadZone(name="Z1")
+    node = PLEXOSNode(name="N1")
+    target_zone = PLEXOSZone(name="Z1")
+    bus = ACBus(name="N1", area=area, load_zone=zone, number=1)
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(zone)
+    context.source_system.add_component(bus)
+    context.target_system.add_component(node)
+    context.target_system.add_component(target_zone)
+
+    getters_utils.ensure_zone_node_memberships(context)
+
+    memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
+    assert any(
+        m.collection == CollectionEnum.Zone and m.parent_object == node and m.child_object == target_zone
+        for m in memberships
+    )
+
+
+def test_ensure_zone_node_memberships_skips_missing_target_zone(context):
+    area = Area(name="A1")
+    zone = LoadZone(name="Z1")
+    node = PLEXOSNode(name="N1")
+    bus = ACBus(name="N1", area=area, load_zone=zone, number=1)
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(zone)
+    context.source_system.add_component(bus)
+    context.target_system.add_component(node)
+
+    getters_utils.ensure_zone_node_memberships(context)
+
+    memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
+    assert not any(m.collection == CollectionEnum.Zone for m in memberships)
 
 
 def test_ensure_transformer_node_memberships(context):

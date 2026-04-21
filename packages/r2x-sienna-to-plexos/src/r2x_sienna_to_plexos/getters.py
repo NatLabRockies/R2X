@@ -33,6 +33,7 @@ from r2x_sienna.models import (
     HydroReservoir,
     HydroTurbine,
     Line,
+    LoadZone,
     MonitoredLine,
     PhaseShiftingTransformer,
     PhaseShiftingTransformer3W,
@@ -1016,6 +1017,12 @@ def get_area_name(source_component: Area, context: PluginContext) -> Result[str,
         if arname:
             return Ok(str(arname))
     return Ok(getattr(source_component, "name", ""))
+
+
+@getter
+def get_zone_units(source_component: LoadZone, context: PluginContext) -> Result[float, ValueError]:
+    """Return active status for translated zones."""
+    return Ok(1.0)
 
 
 @getter
