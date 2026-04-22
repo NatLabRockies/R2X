@@ -734,6 +734,18 @@
     "version": 1
   },
   {
+    "name": "zone_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "membership_parent_component",
+      "child_object": "membership_node_child_zone",
+      "collection": "membership_collection_zone"
+    },
+    "source_type": "PLEXOSNode",
+    "target_type": "PLEXOSMembership",
+    "version": 1
+  },
+  {
     "name": "reserve_generator_membership",
     "system": "target",
     "getters": {
@@ -780,40 +792,6 @@
     "source_type": "PLEXOSBattery",
     "target_type": "PLEXOSMembership",
     "version": 2
-  },
-  {
-    "name": "head_storage_membership",
-    "system": "target",
-    "getters": {
-      "parent_object": "membership_parent_component",
-      "child_object": "membership_head_storage_generator",
-      "collection": "membership_collection_head_storage"
-    },
-    "source_type": "PLEXOSGenerator",
-    "target_type": "PLEXOSMembership",
-    "version": 2,
-    "filter": {
-      "field": "category",
-      "op": "in",
-      "values": ["pumped-hydro", "hydtrb"]
-    }
-  },
-  {
-    "name": "tail_storage_membership",
-    "system": "target",
-    "getters": {
-      "parent_object": "membership_parent_component",
-      "child_object": "membership_tail_storage_generator",
-      "collection": "membership_collection_tail_storage"
-    },
-    "source_type": "PLEXOSGenerator",
-    "target_type": "PLEXOSMembership",
-    "version": 3,
-    "filter": {
-      "field": "category",
-      "op": "in",
-      "values": ["pumped-hydro", "hydtrb"]
-    }
   },
   {
     "name": "transformer_from_node_membership",

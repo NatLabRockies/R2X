@@ -19,6 +19,7 @@ from r2x_plexos.models import (
     PLEXOSRegion,
     PLEXOSStorage,
     PLEXOSTransformer,
+    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
@@ -1005,7 +1006,7 @@ def test_get_head_tail_storage_name(context, monkeypatch):
     assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro1_tail"
 
 
-def test_get_head_tail_storage_name_err_without_pumped_storage_association(context):
+def test_get_head_tail_storage_name_without_pumped_storage_association(context):
     hydro = HydroReservoir(
         name="hydro1",
         available=True,
@@ -1024,8 +1025,8 @@ def test_get_head_tail_storage_name_err_without_pumped_storage_association(conte
         category="hydro_reservoir",
     )
 
-    assert getters.get_head_storage_name(hydro, context).is_err()
-    assert getters.get_tail_storage_name(hydro, context).is_err()
+    assert getters.get_head_storage_name(hydro, context).unwrap() == "hydro1_head"
+    assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro1_tail"
 
 
 def test_reservoir_association_true_for_hydropumpturbine_links(context):
@@ -1113,6 +1114,41 @@ def test_membership_component_child_node_battery(context):
     context.target_system.add_component(node)
     context.target_system.add_component(bat)
     assert getters.membership_component_child_node(bat, context).unwrap().name == "N2"
+
+
+def test_membership_node_child_zone_by_name(context):
+    area = Area(name="A1")
+    zone = LoadZone(name="Z1")
+    bus = ACBus(name="N1", area=area, load_zone=zone, number=1)
+    node = PLEXOSNode(name="N1")
+    target_zone = PLEXOSZone(name="Z1")
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(zone)
+    context.source_system.add_component(bus)
+    context.target_system.add_component(node)
+    context.target_system.add_component(target_zone)
+
+    result = getters.membership_node_child_zone(node, context)
+    assert result.is_ok()
+    assert result.unwrap() == target_zone
+
+
+def test_membership_node_child_zone_by_uuid(context):
+    area = Area(name="A1")
+    zone_like = types.SimpleNamespace(uuid="zone-uuid-1")
+    bus = ACBus(name="N1", area=area, load_zone=zone_like, number=1)
+    node = PLEXOSNode(name="N1")
+    target_zone = PLEXOSZone(name="Z_from_uuid", uuid="zone-uuid-1")
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(bus)
+    context.target_system.add_component(node)
+    context.target_system.add_component(target_zone)
+
+    result = getters.membership_node_child_zone(node, context)
+    assert result.is_ok()
+    assert result.unwrap() == target_zone
 
 
 def test_membership_region_parent_node(context):
@@ -1742,6 +1778,111 @@ def test_get_tail_storage_name(context, monkeypatch):
         operation_cost=HydroReservoirCost.example(),
     )
     assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro1_tail"
+
+
+def test_head_tail_storage_name_infers_location_from_suffix_when_missing(context):
+    head = HydroReservoir(
+        name="Plant_head",
+        available=True,
+        initial_level=500.0,
+        storage_level_limits={"min": 0.0, "max": 1000.0},
+        spillage_limits=None,
+        inflow=0.0,
+        outflow=0.0,
+        level_targets=1000.0,
+        travel_time=0.0,
+        level_data_type="USABLE_VOLUME",
+        intake_elevation=0.0,
+        operation_cost=HydroReservoirCost.example(),
+        reservoir_location=None,
+        ext={"plant_name": "Plant"},
+    )
+    tail = HydroReservoir(
+        name="Plant_tail",
+        available=True,
+        initial_level=500.0,
+        storage_level_limits={"min": 0.0, "max": 1000.0},
+        spillage_limits=None,
+        inflow=0.0,
+        outflow=0.0,
+        level_targets=1000.0,
+        travel_time=0.0,
+        level_data_type="USABLE_VOLUME",
+        intake_elevation=0.0,
+        operation_cost=HydroReservoirCost.example(),
+        reservoir_location=None,
+        ext={"plant_name": "Plant"},
+    )
+
+    assert getters.get_head_storage_name(head, context).unwrap() == "Plant_head"
+    assert getters.get_tail_storage_name(head, context).is_err()
+    assert getters.get_head_storage_name(tail, context).is_err()
+    assert getters.get_tail_storage_name(tail, context).unwrap() == "Plant_tail"
+
+
+def test_head_tail_storage_name_suffix_overrides_conflicting_metadata(context):
+    # Source metadata can be wrong; suffix should control head/tail assignment.
+    tail_with_wrong_metadata = HydroReservoir(
+        name="Abitibi Canyon_tail",
+        available=True,
+        initial_level=500.0,
+        storage_level_limits={"min": 0.0, "max": 1000.0},
+        spillage_limits=None,
+        inflow=0.0,
+        outflow=0.0,
+        level_targets=1000.0,
+        travel_time=0.0,
+        level_data_type="USABLE_VOLUME",
+        intake_elevation=0.0,
+        operation_cost=HydroReservoirCost.example(),
+        reservoir_location=ReservoirLocation.HEAD,
+        ext={"plant_name": "Abitibi Canyon"},
+    )
+
+    assert getters.get_head_storage_name(tail_with_wrong_metadata, context).is_err()
+    assert getters.get_tail_storage_name(tail_with_wrong_metadata, context).unwrap() == "Abitibi Canyon_tail"
+
+
+def test_unsuffixed_reservoir_skips_side_with_explicit_reservoir(context):
+    explicit_head = HydroReservoir(
+        name="Wallace Dam_head",
+        available=True,
+        initial_level=500.0,
+        storage_level_limits={"min": 0.0, "max": 1000.0},
+        spillage_limits=None,
+        inflow=0.0,
+        outflow=0.0,
+        level_targets=1000.0,
+        travel_time=0.0,
+        level_data_type="USABLE_VOLUME",
+        intake_elevation=0.0,
+        operation_cost=HydroReservoirCost.example(),
+        reservoir_location=None,
+        ext={"plant_name": "Wallace Dam"},
+    )
+    unsuffixed = HydroReservoir(
+        name="Wallace Dam",
+        available=True,
+        initial_level=500.0,
+        storage_level_limits={"min": 0.0, "max": 1000.0},
+        spillage_limits=None,
+        inflow=0.0,
+        outflow=0.0,
+        level_targets=1000.0,
+        travel_time=0.0,
+        level_data_type="USABLE_VOLUME",
+        intake_elevation=0.0,
+        operation_cost=HydroReservoirCost.example(),
+        reservoir_location=None,
+        ext={"plant_name": "Wallace Dam"},
+    )
+
+    context.source_system.add_component(explicit_head)
+    context.source_system.add_component(unsuffixed)
+
+    assert getters.get_head_storage_name(explicit_head, context).unwrap() == "Wallace Dam_head"
+    assert getters.get_head_storage_name(unsuffixed, context).is_err()
+    assert getters.get_tail_storage_name(unsuffixed, context).unwrap() == "Wallace Dam_tail"
 
 
 def test_membership_reserve_child_generator_err(context):

@@ -21,6 +21,7 @@ from r2x_plexos.models import (
     PLEXOSNode,
     PLEXOSStorage,
     PLEXOSTransformer,
+    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
@@ -1782,26 +1783,107 @@ def _reservoir_has_hydro_pumped_storage_association(
     return has_hydro_pump_turbine and not has_hydro_turbine
 
 
+def _get_reservoir_location(source_component: HydroReservoir) -> str | None:
+    """Return normalized reservoir location label (HEAD/TAIL) when available.
+
+    Falls back to ext metadata and name suffixes when explicit reservoir_location
+    is missing in source data.
+    """
+    # Most reliable signal in EI data: explicit _head/_tail suffix in component name.
+    name = str(getattr(source_component, "name", "")).strip().upper()
+    if name.endswith(("_HEAD", " HEAD")):
+        return "HEAD"
+    if name.endswith(("_TAIL", " TAIL")):
+        return "TAIL"
+
+    location = getattr(source_component, "reservoir_location", None)
+    raw = getattr(location, "value", location)
+    if raw is not None:
+        label = str(raw).upper()
+        if "HEAD" in label:
+            return "HEAD"
+        if "TAIL" in label:
+            return "TAIL"
+
+    ext = getattr(source_component, "ext", None)
+    if isinstance(ext, dict):
+        ext_loc = ext.get("reservoir_location") or ext.get("RESERVOIR_LOCATION")
+        if ext_loc is not None:
+            label = str(getattr(ext_loc, "value", ext_loc)).upper()
+            if "HEAD" in label:
+                return "HEAD"
+            if "TAIL" in label:
+                return "TAIL"
+
+    return None
+
+
+def _get_reservoir_name_suffix_location(source_component: HydroReservoir) -> str | None:
+    """Return HEAD/TAIL when reservoir name explicitly ends with _head/_tail."""
+    name = str(getattr(source_component, "name", "")).strip().casefold()
+    if name.endswith(("_head", " head")):
+        return "HEAD"
+    if name.endswith(("_tail", " tail")):
+        return "TAIL"
+    return None
+
+
+def _get_reservoir_storage_base_name(source_component: HydroReservoir) -> str:
+    """Return canonical storage base name for a reservoir."""
+    ext = getattr(source_component, "ext", None)
+    if isinstance(ext, dict):
+        plant_name = ext.get("plant_name")
+        if plant_name:
+            return str(plant_name)
+    return _reservoir_base_name(source_component.name)
+
+
+def _has_explicit_side_reservoir_for_base(
+    source_component: HydroReservoir,
+    context: PluginContext,
+    side: str,
+) -> bool:
+    """Return True when another reservoir with same base explicitly maps the requested side."""
+    this_base = _get_reservoir_storage_base_name(source_component).casefold()
+    this_uuid = getattr(source_component, "uuid", None)
+
+    for other in _source_system(context).get_components(HydroReservoir):
+        other_uuid = getattr(other, "uuid", None)
+        if this_uuid is not None and other_uuid == this_uuid:
+            continue
+        if _get_reservoir_storage_base_name(other).casefold() != this_base:
+            continue
+        if _get_reservoir_name_suffix_location(other) == side:
+            return True
+
+    return False
+
+
 @getter
 def get_head_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the head reservoir (appends _head), using plant_name from ext if available."""
-    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
+    # Only explicit suffixes gate conversion. Unsuffixed reservoirs are expanded
+    # into both _head and _tail storages.
+    suffix_location = _get_reservoir_name_suffix_location(source_component)
+    if suffix_location == "TAIL":
         return Err(
             ValueError(
-                f"Skipping head storage conversion for reservoir '{source_component.name}': no HydroPumpedStorage association"
+                f"Skipping head storage conversion for reservoir '{source_component.name}': name indicates tail reservoir"
             )
         )
 
-    ext = getattr(source_component, "ext", None)
-    base = None
-    if isinstance(ext, dict):
-        plant_name = ext.get("plant_name")
-        if plant_name:
-            base = str(plant_name)
-    if base is None:
-        base = _reservoir_base_name(source_component.name)
+    if suffix_location is None and _has_explicit_side_reservoir_for_base(
+        source_component, context, side="HEAD"
+    ):
+        return Err(
+            ValueError(
+                f"Skipping head storage conversion for reservoir '{source_component.name}': explicit head reservoir already exists for this plant"
+            )
+        )
+
+    base = _get_reservoir_storage_base_name(source_component)
     return Ok(f"{base}_head")
 
 
@@ -1821,21 +1903,26 @@ def get_tail_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the tail reservoir (appends _tail), using plant_name from ext if available."""
-    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
+    # Only explicit suffixes gate conversion. Unsuffixed reservoirs are expanded
+    # into both _head and _tail storages.
+    suffix_location = _get_reservoir_name_suffix_location(source_component)
+    if suffix_location == "HEAD":
         return Err(
             ValueError(
-                f"Skipping tail storage conversion for reservoir '{source_component.name}': no HydroPumpedStorage association"
+                f"Skipping tail storage conversion for reservoir '{source_component.name}': name indicates head reservoir"
             )
         )
 
-    ext = getattr(source_component, "ext", None)
-    base = None
-    if isinstance(ext, dict):
-        plant_name = ext.get("plant_name")
-        if plant_name:
-            base = str(plant_name)
-    if base is None:
-        base = _reservoir_base_name(source_component.name)
+    if suffix_location is None and _has_explicit_side_reservoir_for_base(
+        source_component, context, side="TAIL"
+    ):
+        return Err(
+            ValueError(
+                f"Skipping tail storage conversion for reservoir '{source_component.name}': explicit tail reservoir already exists for this plant"
+            )
+        )
+
+    base = _get_reservoir_storage_base_name(source_component)
     return Ok(f"{base}_tail")
 
 
@@ -2162,6 +2249,14 @@ def membership_collection_region(
 
 
 @getter
+def membership_collection_zone(
+    component: object, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
+    """Return the Zone collection enum."""
+    return Ok(CollectionEnum.Zone)
+
+
+@getter
 def membership_collection_node_from(
     component: object, context: PluginContext
 ) -> Result[CollectionEnum, ValueError]:
@@ -2335,6 +2430,42 @@ def membership_region_child_node(region: object, context: PluginContext) -> Resu
 
 
 @getter
+def membership_node_child_zone(node: PLEXOSNode, context: PluginContext) -> Result[PLEXOSZone, ValueError]:
+    """Resolve a node's source bus load_zone to the translated PLEXOSZone."""
+    source_bus = _build_bus_name_index(context).get(getattr(node, "name", ""))
+    if source_bus is None:
+        return Err(ValueError(f"No source bus found for node '{getattr(node, 'name', '')}'"))
+
+    load_zone = getattr(source_bus, "load_zone", None)
+    if load_zone is None:
+        area = getattr(source_bus, "area", None)
+        load_zone = getattr(area, "load_zone", None) if area is not None else None
+    if load_zone is None:
+        return Err(ValueError(f"No load_zone found for source bus '{source_bus.name}'"))
+
+    zone_name = getattr(load_zone, "name", None)
+    zone_uuid = getattr(load_zone, "uuid", None)
+
+    target_zones = list(_target_system(context).get_components(PLEXOSZone))
+    if zone_name is not None:
+        for zone in target_zones:
+            if getattr(zone, "name", None) == str(zone_name):
+                return Ok(zone)
+
+    if zone_uuid is not None:
+        zone_uuid_str = str(zone_uuid)
+        for zone in target_zones:
+            if str(getattr(zone, "uuid", "")) == zone_uuid_str:
+                return Ok(zone)
+
+    return Err(
+        ValueError(
+            f"No translated PLEXOSZone found for bus '{source_bus.name}' load_zone '{zone_name or zone_uuid}'"
+        )
+    )
+
+
+@getter
 def membership_line_from_parent_node(
     line: PLEXOSLine, context: PluginContext
 ) -> Result[PLEXOSNode, ValueError]:
@@ -2457,12 +2588,6 @@ def membership_head_storage_generator(
     generator: HydroTurbine, context: PluginContext
 ) -> Result[Any, ValueError]:
     gen_name = getattr(generator, "name", "")
-    if not _is_hydro_pumped_storage_generator(context, gen_name):
-        return Err(
-            ValueError(
-                f"Skipping HeadStorage membership for '{gen_name}': source generator is not HydroPumpedStorage"
-            )
-        )
     storage_index = _build_target_storage_name_index(context)
 
     # Primary: look up which reservoir owns this turbine
@@ -2499,12 +2624,6 @@ def membership_tail_storage_generator(
     generator: HydroTurbine, context: PluginContext
 ) -> Result[Any, ValueError]:
     gen_name = getattr(generator, "name", "")
-    if not _is_hydro_pumped_storage_generator(context, gen_name):
-        return Err(
-            ValueError(
-                f"Skipping TailStorage membership for '{gen_name}': source generator is not HydroPumpedStorage"
-            )
-        )
     storage_index = _build_target_storage_name_index(context)
 
     # Primary: look up which reservoir owns this turbine

@@ -165,7 +165,7 @@ def test_sienna_storage_translates_to_plexos_storage(tmp_path):
     assert storage
 
 
-def test_hydro_reservoir_without_pumped_storage_does_not_translate_to_plexos_storage(tmp_path):
+def test_hydro_reservoir_without_suffix_translates_to_head_and_tail_storage(tmp_path):
     from infrasys.value_curves import LinearCurve
     from r2x_plexos.models import PLEXOSStorage
     from r2x_sienna.models import HydroReservoir
@@ -201,9 +201,8 @@ def test_hydro_reservoir_without_pumped_storage_does_not_translate_to_plexos_sto
     assert result.total_rules > 0
 
     storages = list(context.target_system.get_components(PLEXOSStorage))
-    assert not any(
-        s.name in {"EI_head", "EI_tail", "EI_Reservoir_head", "EI_Reservoir_tail"} for s in storages
-    )
+    assert any(s.name in {"EI_head", "EI_Reservoir_head"} for s in storages)
+    assert any(s.name in {"EI_tail", "EI_Reservoir_tail"} for s in storages)
 
 
 def test_sienna_interface_translates_to_plexos_interface(tmp_path):

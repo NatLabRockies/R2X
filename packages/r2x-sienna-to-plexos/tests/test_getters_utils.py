@@ -20,14 +20,12 @@ from r2x_plexos.models import (
     PLEXOSReserve,
     PLEXOSStorage,
     PLEXOSTransformer,
-    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
     Arc,
     Area,
     EnergyReservoirStorage,
-    LoadZone,
     ThermalStandard,
     Transformer2W,
     VariableReserve,
@@ -179,45 +177,6 @@ def test_ensure_region_node_memberships(context):
     for node in [node1, node2]:
         memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
         assert any(m.collection == CollectionEnum.Region for m in memberships)
-
-
-def test_ensure_zone_node_memberships(context):
-    area = Area(name="A1")
-    zone = LoadZone(name="Z1")
-    node = PLEXOSNode(name="N1")
-    target_zone = PLEXOSZone(name="Z1")
-    bus = ACBus(name="N1", area=area, load_zone=zone, number=1)
-
-    context.source_system.add_component(area)
-    context.source_system.add_component(zone)
-    context.source_system.add_component(bus)
-    context.target_system.add_component(node)
-    context.target_system.add_component(target_zone)
-
-    getters_utils.ensure_zone_node_memberships(context)
-
-    memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
-    assert any(
-        m.collection == CollectionEnum.Zone and m.parent_object == node and m.child_object == target_zone
-        for m in memberships
-    )
-
-
-def test_ensure_zone_node_memberships_skips_missing_target_zone(context):
-    area = Area(name="A1")
-    zone = LoadZone(name="Z1")
-    node = PLEXOSNode(name="N1")
-    bus = ACBus(name="N1", area=area, load_zone=zone, number=1)
-
-    context.source_system.add_component(area)
-    context.source_system.add_component(zone)
-    context.source_system.add_component(bus)
-    context.target_system.add_component(node)
-
-    getters_utils.ensure_zone_node_memberships(context)
-
-    memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
-    assert not any(m.collection == CollectionEnum.Zone for m in memberships)
 
 
 def test_ensure_transformer_node_memberships(context):
@@ -901,6 +860,15 @@ def test_bus_name_to_area_and_zone_cache_and_non_area_object(context):
     assert mapping["B1"] == ("A1", "Z1")
 
 
+def test_bus_name_to_area_and_zone_uses_zone_name_attribute(context):
+    zone_like = types.SimpleNamespace(name="Z2")
+    context.source_system.get_components = lambda _comp_type: [
+        types.SimpleNamespace(name="B2", area="A2", load_zone=zone_like)
+    ]
+    mapping = getters_utils._bus_name_to_area_and_zone(context)
+    assert mapping["B2"] == ("A2", "Z2")
+
+
 def test_attach_reservoir_time_series_to_storage_paths(context):
     target_storage = PLEXOSStorage(name="Plant_head")
 
@@ -970,8 +938,8 @@ def test_hydroturbine_driven_head_tail_memberships(context, monkeypatch):
     getters_utils.ensure_tail_storage_generator_membership(context)
 
     memberships = context.target_system.get_supplemental_attributes_with_component(gen, PLEXOSMembership)
-    assert not any(m.collection == CollectionEnum.HeadStorage for m in memberships)
-    assert not any(m.collection == CollectionEnum.TailStorage for m in memberships)
+    assert any(m.collection == CollectionEnum.HeadStorage for m in memberships)
+    assert any(m.collection == CollectionEnum.TailStorage for m in memberships)
 
 
 def test_generator_reserve_interface_and_battery_memberships(context, monkeypatch):
