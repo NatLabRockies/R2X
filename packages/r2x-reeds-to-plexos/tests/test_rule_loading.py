@@ -93,8 +93,7 @@ def test_has_electrolyzer_purchaser_rule() -> None:
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
-        rule.get("source_type") == "ReEDSElectrolyzerDemand"
-        and rule.get("target_type") == "PLEXOSPurchaser"
+        rule.get("source_type") == "ReEDSElectrolyzerDemand" and rule.get("target_type") == "PLEXOSPurchaser"
         for rule in rules_data
     ), "Missing ReEDSElectrolyzerDemand -> PLEXOSPurchaser rule"
 
