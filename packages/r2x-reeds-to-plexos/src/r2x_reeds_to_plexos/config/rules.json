@@ -154,13 +154,11 @@
   {
     "defaults": {
       "category": "electrolyzer",
-      "fixed_load": 0.0,
       "max_load": 0.0
     },
     "field_map": {
       "category": "technology",
       "name": "name",
-      "fixed_load": "capacity",
       "max_load": "capacity",
       "ext": "ext"
     },
@@ -176,6 +174,23 @@
     "source_type": "ReEDSElectrolyzerDemand",
     "target_type": "PLEXOSPurchaser",
     "version": 1
+  },
+  {
+    "defaults": {
+      "category": "data-center",
+      "max_load": 0.0
+    },
+    "field_map": {
+      "category": "technology",
+      "name": "name",
+      "ext": "ext"
+    },
+    "getters": {
+      "units": "get_component_units"
+    },
+    "source_type": "ReEDSDataCenterDemand",
+    "target_type": "PLEXOSPurchaser",
+    "version": 2
   },
   {
     "field_map": {

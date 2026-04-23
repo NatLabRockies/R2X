@@ -116,15 +116,16 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
 
 
 def attach_time_series_to_purchasers(context: PluginContext) -> None:
-    """Transfer electrolyzer demand time series to translated PLEXOS purchasers."""
-    from r2x_reeds.models.components import ReEDSElectrolyzerDemand
+    """Transfer electrolyzer and data center demand time series to translated PLEXOS purchasers."""
+    from r2x_reeds.models.components import ReEDSDataCenterDemand, ReEDSElectrolyzerDemand
 
     if context.source_system is None or context.target_system is None:
         return
 
-    source_demands = {
-        demand.name: demand for demand in context.source_system.get_components(ReEDSElectrolyzerDemand)
-    }
+    source_demands: dict[str, Any] = {}
+    for demand_type in (ReEDSElectrolyzerDemand, ReEDSDataCenterDemand):
+        for demand in context.source_system.get_components(demand_type):
+            source_demands[demand.name] = demand
     target_purchasers = {
         purchaser.name: purchaser for purchaser in context.target_system.get_components(PLEXOSPurchaser)
     }
@@ -140,7 +141,7 @@ def attach_time_series_to_purchasers(context: PluginContext) -> None:
             )
             if not ts_list:
                 logger.warning(
-                    "Missing electrolyzer demand time series {} for {}",
+                    "Missing purchaser demand time series {} for {}",
                     metadata.name,
                     source_demand.name,
                 )
@@ -156,7 +157,7 @@ def attach_time_series_to_purchasers(context: PluginContext) -> None:
             ):
                 context.target_system.add_time_series(ts, target_purchaser, **metadata.features)
                 logger.debug(
-                    "Attached electrolyzer time series {} to purchaser {}",
+                    "Attached purchaser time series {} to purchaser {}",
                     ts.name,
                     target_purchaser.name,
                 )

@@ -53,6 +53,10 @@ dependencies = [
   "r2x-plexos-to-sienna",
   "r2x-reeds-to-plexos",
   "r2x-reeds-to-sienna",
+  "r2x-reeds",
+  "r2x-plexos",
+  "plexosdb",
+  "r2x-core",
 ]
 
 [project.urls]
@@ -86,7 +90,10 @@ r2x-sienna-to-plexos = { workspace = true }
 r2x-plexos-to-sienna = { workspace = true }
 r2x-reeds-to-plexos = { workspace = true }
 r2x-reeds-to-sienna = { workspace = true }
-r2x-core = { git = "https://github.com/NREL/r2x-core.git", branch = "main" }
+r2x-reeds = { path = "../r2x-reeds", editable = true }
+r2x-plexos = { path = "../r2x-plexos", editable = true }
+plexosdb = { path = "../plexosdb", editable = true }
+r2x-core = { path = "../r2x-core", editable = true }
 
 [tool.uv.workspace]
 members = ["packages/*"]
