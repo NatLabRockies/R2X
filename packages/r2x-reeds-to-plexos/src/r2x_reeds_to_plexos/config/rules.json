@@ -147,9 +147,15 @@
       "mean_time_to_repair": "mean_time_to_repair_hours",
       "start_cost": "gen_startup_cost"
     },
+    "filter": {
+      "casefold": true,
+      "field": "technology",
+      "op": "not_in",
+      "values": ["electrolyzer", "data-center"]
+    },
     "source_type": "ReEDSConsumingTechnology",
     "target_type": "PLEXOSGenerator",
-    "version": 1
+    "version": 2
   },
   {
     "defaults": {

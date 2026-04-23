@@ -262,7 +262,7 @@ def test_multiple_regions_create_multiple_nodes_and_zones(tmp_path) -> None:
 
 def test_electrolyzer_demand_translates_to_purchaser_and_node_membership(tmp_path) -> None:
     from plexosdb import CollectionEnum
-    from r2x_plexos.models import PLEXOSMembership, PLEXOSNode, PLEXOSPurchaser
+    from r2x_plexos.models import PLEXOSGenerator, PLEXOSMembership, PLEXOSNode, PLEXOSPurchaser
     from r2x_reeds.models import ReEDSElectrolyzerDemand, ReEDSRegion
 
     context, rules = make_context_and_rules(tmp_path)
@@ -290,6 +290,9 @@ def test_electrolyzer_demand_translates_to_purchaser_and_node_membership(tmp_pat
     assert purchaser.name == "p1_electrolyzer_demand"
     assert purchaser.category == "electrolyzer"
 
+    generators = list(context.target_system.get_components(PLEXOSGenerator))
+    assert all(g.name != "p1_electrolyzer_demand" for g in generators)
+
     nodes = list(context.target_system.get_components(PLEXOSNode))
     assert len(nodes) == 1
     assert nodes[0].name == "p1"
@@ -298,3 +301,35 @@ def test_electrolyzer_demand_translates_to_purchaser_and_node_membership(tmp_pat
         purchaser, PLEXOSMembership
     )
     assert any(m.collection == CollectionEnum.Nodes for m in memberships)
+
+
+def test_data_center_demand_translates_to_purchaser_not_generator(tmp_path) -> None:
+    from r2x_plexos.models import PLEXOSGenerator, PLEXOSPurchaser
+    from r2x_reeds.models import ReEDSDataCenterDemand, ReEDSRegion
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", transmission_region="Z1")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSDataCenterDemand(
+            name="p1_data_center_demand",
+            region=region,
+            technology="data-center",
+            max_load=20.0,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    result = apply_rules_to_context(context)
+    assert result.total_rules > 0
+
+    purchasers = list(context.target_system.get_components(PLEXOSPurchaser))
+    assert len(purchasers) == 1
+    purchaser = purchasers[0]
+    assert purchaser.name == "p1_data_center_demand"
+    assert purchaser.category == "data-center"
+
+    generators = list(context.target_system.get_components(PLEXOSGenerator))
+    assert all(g.name != "p1_data_center_demand" for g in generators)
