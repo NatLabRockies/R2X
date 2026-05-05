@@ -32,6 +32,7 @@ PROPERTIES_TO_BREAK = [
     "run_up",
     "min_rated_capacity",
     "startup_cost",
+    "shutdown_cost",
     "pump_load",
     "storage_capacity",
 ]
