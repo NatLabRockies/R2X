@@ -17,6 +17,7 @@ from .getters_utils import (
     ensure_generator_time_series,
     ensure_head_storage_generator_membership,
     ensure_interface_line_memberships,
+    ensure_pumped_hydro_storages_created,
     ensure_reference_node_memberships,
     ensure_region_node_memberships,
     ensure_reserve_battery_memberships,
@@ -69,5 +70,6 @@ def sienna_to_plexos(system: System, config: SiennaToPlexosConfig) -> System:
     ensure_interface_line_memberships(context)
     ensure_head_storage_generator_membership(context)
     ensure_tail_storage_generator_membership(context)
+    ensure_pumped_hydro_storages_created(context)
 
     return context.target_system

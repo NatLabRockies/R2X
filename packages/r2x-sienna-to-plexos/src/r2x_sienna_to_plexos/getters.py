@@ -1335,6 +1335,35 @@ def get_generator_category(source_component: object, context: PluginContext) -> 
 
 
 @getter
+def get_pumped_hydro_category(
+    source_component: HydroTurbine | HydroPumpTurbine, context: PluginContext
+) -> Result[str, ValueError]:
+    """Resolve category for hydro turbines, demoting zero-pump-load units to ``hydro``.
+
+    Sienna ``HydroTurbine``/``HydroPumpTurbine`` components default to a pumped
+    category, but units whose pump-load (derived from ``rating``) resolves to
+    zero are not actually pumped storage and should land in the regular
+    ``hydro`` category. When the pump load is non-zero we defer to the standard
+    category resolution chain so explicit overrides (e.g. ``gen_type_string``)
+    still apply, and otherwise let the rule default apply via ``Err``.
+    """
+    rating = getattr(source_component, "rating", None)
+    pump_load_mw = 0.0
+    if rating is not None:
+        magnitude = get_magnitude(rating)
+        if magnitude is not None:
+            pump_load_mw = abs(float(magnitude) * resolve_base_power(source_component))
+
+    if math.isclose(pump_load_mw, 0.0, abs_tol=1e-9):
+        return Ok("hydro")
+
+    category = _resolve_generator_category(source_component, context)
+    if category is not None:
+        return Ok(category)
+    return Err(ValueError("Cannot resolve generator category; rule default will apply"))
+
+
+@getter
 def get_fuel_price(
     source_component: ThermalStandard | ThermalMultiStart, context: PluginContext
 ) -> Result[float, ValueError]:

@@ -842,6 +842,62 @@ def test_get_turbine_pump_load_and_efficiency(context):
     assert getters.get_turbine_pump_efficiency(ht, context).unwrap() == 92.0
 
 
+def test_get_pumped_hydro_category_demotes_zero_pump_load(context):
+    bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
+    context.source_system.add_component(bus1)
+    ht_zero = HydroTurbine(
+        name="hydro-turbine-zero-pump",
+        available=True,
+        bus=bus1,
+        active_power=120.0,
+        reactive_power=0.0,
+        rating=0.0,
+        active_power_limits=MinMax(min=15.0, max=150.0),
+        reactive_power_limits=MinMax(min=-45.0, max=45.0),
+        base_power=150.0,
+        operation_cost=HydroGenerationCost.example(),
+        powerhouse_elevation=350.0,
+        ramp_limits=UpDown(up=8.0, down=8.0),
+        time_limits=UpDown(up=1.5, down=1.5),
+        outflow_limits=MinMax(min=5.0, max=100.0),
+        efficiency=0.92,
+        turbine_type=HydroTurbineType.FRANCIS,
+        prime_mover_type=PrimeMoversType.OT,
+        conversion_factor=1.0,
+        reservoirs=[],
+        category="hydro_turbine",
+    )
+    assert getters.get_pumped_hydro_category(ht_zero, context).unwrap() == "hydro"
+
+    ht_pumped = HydroTurbine(
+        name="hydro-turbine-with-pump",
+        available=True,
+        bus=bus1,
+        active_power=120.0,
+        reactive_power=0.0,
+        rating=150.0,
+        active_power_limits=MinMax(min=15.0, max=150.0),
+        reactive_power_limits=MinMax(min=-45.0, max=45.0),
+        base_power=150.0,
+        operation_cost=HydroGenerationCost.example(),
+        powerhouse_elevation=350.0,
+        ramp_limits=UpDown(up=8.0, down=8.0),
+        time_limits=UpDown(up=1.5, down=1.5),
+        outflow_limits=MinMax(min=5.0, max=100.0),
+        efficiency=0.92,
+        turbine_type=HydroTurbineType.FRANCIS,
+        prime_mover_type=PrimeMoversType.OT,
+        conversion_factor=1.0,
+        reservoirs=[],
+        category="hydro_turbine",
+    )
+    # Non-zero pump load: defer to standard resolution rather than demoting
+    # to "hydro". Either an explicit category resolves or rule default applies.
+    result = getters.get_pumped_hydro_category(ht_pumped, context)
+    if result.is_ok():
+        assert result.unwrap() != "hydro"
+
+
 def test_get_thermal_forced_outage_rate_defaults(context):
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     context.source_system.add_component(bus1)

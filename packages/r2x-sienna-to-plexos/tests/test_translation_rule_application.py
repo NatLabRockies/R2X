@@ -355,6 +355,7 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
     monkeypatch.setattr(translation_module, "ensure_interface_line_memberships", _mark("iface_line"))
     monkeypatch.setattr(translation_module, "ensure_head_storage_generator_membership", _mark("head"))
     monkeypatch.setattr(translation_module, "ensure_tail_storage_generator_membership", _mark("tail"))
+    monkeypatch.setattr(translation_module, "ensure_pumped_hydro_storages_created", _mark("ph_storage"))
 
     source = FakeSystem(name="source")
     result = translation_module.sienna_to_plexos(source, config=types.SimpleNamespace())
@@ -374,6 +375,7 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
         "iface_line",
         "head",
         "tail",
+        "ph_storage",
     ]
 
 

@@ -763,6 +763,79 @@ def ensure_interface_line_memberships(context: PluginContext) -> None:
     logger.info("Total {} Interface-Line memberships created.", total_memberships)
 
 
+def ensure_pumped_hydro_storages_created(context: PluginContext) -> None:
+    """Synthesize head/tail PLEXOSStorage entries for pumped-hydro generators missing them.
+
+    Pumped-hydro generators in PLEXOS need both a head and a tail storage so
+    the pump/generator pair can move energy between reservoirs and perform
+    arbitrage. When the source Sienna system has no reservoirs attached to a
+    pumped-hydro turbine (common for ReEDS-style aggregated systems), create
+    minimal ``PLEXOSStorage`` entries with ``units=1`` and ``max_volume`` /
+    ``initial_volume`` derived from the generator's ``max_capacity``, and
+    attach the corresponding ``HeadStorage`` / ``TailStorage`` memberships.
+    """
+    target_system = _target_system(context)
+    storages_by_name = {s.name: s for s in target_system.get_components(PLEXOSStorage)}
+
+    created_storages = 0
+    created_memberships = 0
+    for gen in target_system.get_components(PLEXOSGenerator):
+        if getattr(gen, "category", None) != "pumped-hydro":
+            continue
+
+        memberships = target_system.get_supplemental_attributes_with_component(gen, PLEXOSMembership)
+        has_head = any(
+            m.collection == CollectionEnum.HeadStorage and m.parent_object == gen for m in memberships
+        )
+        has_tail = any(
+            m.collection == CollectionEnum.TailStorage and m.parent_object == gen for m in memberships
+        )
+
+        if has_head and has_tail:
+            continue
+
+        # ``max_capacity`` is in MW; PLEXOS storage volumes are in GWh. Size
+        # the synthesized reservoir for a typical pumped-hydro duration so the
+        # generator can run at full output for that many hours before the
+        # head storage empties (or the tail fills). Initial volume is half-full
+        # so the unit can both pump and generate immediately.
+        pumped_hydro_duration_hours = 10.0
+        max_capacity_mw = float(getattr(gen, "max_capacity", 0.0) or 0.0)
+        if max_capacity_mw > 0.0:
+            max_volume = round(max_capacity_mw * pumped_hydro_duration_hours / 1000.0, 4)
+        else:
+            max_volume = 1.0  # GWh fallback for degenerate sources
+        initial_volume = round(max_volume * 0.5, 4)
+
+        for suffix, collection, already_present in (
+            ("_head", CollectionEnum.HeadStorage, has_head),
+            ("_tail", CollectionEnum.TailStorage, has_tail),
+        ):
+            if already_present:
+                continue
+            storage_name = f"{gen.name}{suffix}"
+            storage = storages_by_name.get(storage_name)
+            if storage is None:
+                storage = PLEXOSStorage(
+                    name=storage_name,
+                    category="pumped-hydro",
+                    units=1,
+                    max_volume=max_volume,
+                    initial_volume=initial_volume,
+                )
+                target_system.add_component(storage)
+                storages_by_name[storage_name] = storage
+                created_storages += 1
+            _ensure_membership(context, gen, storage, collection)
+            created_memberships += 1
+
+    logger.info(
+        "Synthesized {} pumped-hydro storages and {} memberships for generators missing reservoirs.",
+        created_storages,
+        created_memberships,
+    )
+
+
 def ensure_pumped_hydro_storage_memberships(context: PluginContext) -> None:
     """Create Generator->Storage memberships for pumped hydro generators."""
     storages_by_name = {s.name: s for s in _target_system(context).get_components(PLEXOSStorage)}

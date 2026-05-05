@@ -380,6 +380,50 @@ def test_ensure_pumped_hydro_storage_memberships(context):
     assert any(m.collection == CollectionEnum.TailStorage for m in memberships_tail)
 
 
+def test_ensure_pumped_hydro_storages_created_synthesizes_missing(context):
+    # Pumped-hydro generator with no head/tail storage attached.
+    gen = PLEXOSGenerator(name="ph_gen", category="pumped-hydro", max_capacity=200.0)
+    context.target_system.add_component(gen)
+
+    # Hydro generator should be ignored entirely.
+    hydro_gen = PLEXOSGenerator(name="hydro_gen", category="hydro", max_capacity=50.0)
+    context.target_system.add_component(hydro_gen)
+
+    getters_utils.ensure_pumped_hydro_storages_created(context)
+
+    storages = {s.name: s for s in context.target_system.get_components(PLEXOSStorage)}
+    assert "ph_gen_head" in storages
+    assert "ph_gen_tail" in storages
+    assert storages["ph_gen_head"].units == 1
+    # 200 MW * 10 h / 1000 = 2.0 GWh; initial volume is half-full.
+    assert storages["ph_gen_head"].max_volume == 2.0
+    assert storages["ph_gen_head"].initial_volume == 1.0
+
+    memberships = context.target_system.get_supplemental_attributes_with_component(gen, PLEXOSMembership)
+    assert any(m.collection == CollectionEnum.HeadStorage for m in memberships)
+    assert any(m.collection == CollectionEnum.TailStorage for m in memberships)
+
+    # Hydro generator gets nothing synthesized.
+    assert "hydro_gen_head" not in storages
+    assert "hydro_gen_tail" not in storages
+
+
+def test_ensure_pumped_hydro_storages_created_skips_when_already_attached(context):
+    gen = PLEXOSGenerator(name="ph_gen", category="pumped-hydro", max_capacity=100.0)
+    head_storage = PLEXOSStorage(name="existing_head")
+    tail_storage = PLEXOSStorage(name="existing_tail")
+    context.target_system.add_component(gen)
+    context.target_system.add_component(head_storage)
+    context.target_system.add_component(tail_storage)
+    getters_utils._ensure_membership(context, gen, head_storage, CollectionEnum.HeadStorage)
+    getters_utils._ensure_membership(context, gen, tail_storage, CollectionEnum.TailStorage)
+
+    getters_utils.ensure_pumped_hydro_storages_created(context)
+
+    storages = {s.name for s in context.target_system.get_components(PLEXOSStorage)}
+    assert storages == {"existing_head", "existing_tail"}
+
+
 def test_ensure_generator_node_memberships(context):
     area = Area(name="A1")
     bus = ACBus(name="N1", area=area, number=1)
