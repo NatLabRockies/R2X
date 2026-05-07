@@ -108,7 +108,7 @@ def _get_reeds_thermal_category_from_fuel(source_component: Any, context: Plugin
         return None
 
     fuel_str = fuel.name if hasattr(fuel, "name") else str(fuel)
-    fuel_key = str(fuel_str).strip().upper()
+    fuel_key = str(fuel_str).strip().replace("-", "_").replace(" ", "_").upper()
     if not fuel_key:
         return None
 
@@ -120,8 +120,14 @@ def _get_reeds_thermal_category_from_fuel(source_component: Any, context: Plugin
     for category, fuel_values in mapping.items():
         if not isinstance(fuel_values, list):
             continue
-        if fuel_key in {str(value).strip().upper() for value in fuel_values}:
-            return str(category)
+        normalized_values = {
+            str(value).strip().replace("-", "_").replace(" ", "_").upper() for value in fuel_values
+        }
+        if fuel_key in normalized_values:
+            category_str = str(category).strip()
+            if category_str in {"natural-gas", "natural_gas", "gas"}:
+                return "gas-cc"
+            return category_str
 
     return None
 

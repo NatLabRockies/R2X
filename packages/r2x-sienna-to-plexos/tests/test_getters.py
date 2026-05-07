@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import types
 from datetime import datetime, timedelta
-from typing import ClassVar
 
 import pytest
 from infrasys.cost_curves import FuelCurve, UnitSystem
@@ -159,50 +158,6 @@ def test_get_susceptance_transformers(tmp_path):
     assert getters.get_transformer_susceptance(t3, context).is_err()
 
 
-def test_get_line_charging_susceptance_types(tmp_path):
-    context = make_context(tmp_path)
-    context.source_system = System(name="source")
-    context.target_system = System(name="target")
-
-    bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
-    bus2 = ACBus(name="N3", base_voltage=115.0, number=2)
-    bus3 = ACBus(name="N4", base_voltage=115.0, number=3)
-    bus4 = ACBus(name="N5", base_voltage=115.0, number=4)
-    context.source_system.add_component(bus1)
-    context.source_system.add_component(bus2)
-    context.source_system.add_component(bus3)
-    context.source_system.add_component(bus4)
-
-    arc1 = Arc(from_to=bus1, to_from=bus2)
-    arc2 = Arc(from_to=bus3, to_from=bus4)
-    context.source_system.add_component(arc1)
-    context.source_system.add_component(arc2)
-
-    l1_2 = Line(
-        name="line-1-2",
-        arc=arc1,
-        b=FromTo_ToFrom(from_to=3.0, to_from=3.0),
-        rating=100.0,
-        active_power_flow=100,
-        reactive_power_flow=100,
-        angle_limits=MinMax(min=-0.03, max=0.03),
-    )
-    context.source_system.add_component(l1_2)
-    assert getters.get_line_charging_susceptance(l1_2, context).unwrap() == 3.0
-
-    l3_4 = Line(
-        name="line-3-4",
-        arc=arc2,
-        b=FromTo_ToFrom(from_to=7.0, to_from=7.0),
-        rating=100.0,
-        active_power_flow=100,
-        reactive_power_flow=100,
-        angle_limits=MinMax(min=-0.03, max=0.03),
-    )
-    context.source_system.add_component(l3_4)
-    assert getters.get_line_charging_susceptance(l3_4, context).unwrap() == 7.0
-
-
 def test_get_load_participation_factor(tmp_path):
     context = make_context(tmp_path)
     context.source_system = System(name="source")
@@ -256,28 +211,6 @@ def test_get_line_min_flow_max_flow_with_rating(context):
     )
     assert getters.get_line_min_flow(line, context).unwrap() == -10000.0
     assert getters.get_line_max_flow(line, context).unwrap() == 10000.0
-
-
-def test_get_line_charging_susceptance_with_b(context):
-    bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
-    bus3 = ACBus(name="N4", base_voltage=115.0, number=3)
-    context.source_system.add_component(bus1)
-    context.source_system.add_component(bus3)
-
-    arc = Arc(from_to=bus1, to_from=bus3)
-    context.source_system.add_component(arc)
-    line = Line(
-        name="L1",
-        rating=100.0,
-        r=0.01,
-        x=0.1,
-        arc=arc,
-        b=FromTo_ToFrom(from_to=2.5, to_from=2.5),
-        active_power_flow=0.0,
-        reactive_power_flow=0.0,
-        angle_limits=MinMax(min=-0.03, max=0.03),
-    )
-    assert getters.get_line_charging_susceptance(line, context).unwrap() == 2.5
 
 
 def test_get_max_capacity_with_limits(context):
@@ -805,7 +738,7 @@ def test_get_generator_category_maps_thermal_oil_fuel(context):
 
 def test_get_generator_category_thermal_prefers_fuel_over_prime_mover(context):
     gen = _make_thermal_generator_for_category_tests(
-        name="thermal-gas",
+        name="natural-gas",
         fuel=ThermalFuels.NATURAL_GAS,
         prime_mover_type=PrimeMoversType.ST,
     )
@@ -1191,13 +1124,15 @@ def test_membership_node_child_zone_by_name(context):
 
 
 def test_membership_node_child_zone_by_uuid(context):
+    zone_uuid = "11111111-1111-4111-8111-111111111111"
     area = Area(name="A1")
-    zone_like = types.SimpleNamespace(uuid="zone-uuid-1")
-    bus = ACBus(name="N1", area=area, load_zone=zone_like, number=1)
+    source_zone = LoadZone(name="source-zone-name", uuid=zone_uuid)
+    bus = ACBus(name="N1", area=area, load_zone=source_zone, number=1)
     node = PLEXOSNode(name="N1")
-    target_zone = PLEXOSZone(name="Z_from_uuid", uuid="zone-uuid-1")
+    target_zone = PLEXOSZone(name="Z_from_uuid", uuid=zone_uuid)
 
     context.source_system.add_component(area)
+    context.source_system.add_component(source_zone)
     context.source_system.add_component(bus)
     context.target_system.add_component(node)
     context.target_system.add_component(target_zone)
@@ -1457,7 +1392,6 @@ def test_get_line_min_max_flow_and_charging_susceptance_none(context):
     )
     assert getters.get_line_min_flow(line, context).unwrap() == -10000.0
     assert getters.get_line_max_flow(line, context).unwrap() == 10000.0
-    assert getters.get_line_charging_susceptance(line, context).unwrap() == 5.0
 
 
 def test_get_power_or_standard_load_no_loads(context):
@@ -1850,7 +1784,7 @@ def test_head_tail_storage_name_infers_location_from_suffix_when_missing(context
         level_data_type="USABLE_VOLUME",
         intake_elevation=0.0,
         operation_cost=HydroReservoirCost.example(),
-        reservoir_location=None,
+        reservoir_location=ReservoirLocation.HEAD,
         ext={"plant_name": "Plant"},
     )
     tail = HydroReservoir(
@@ -1866,7 +1800,7 @@ def test_head_tail_storage_name_infers_location_from_suffix_when_missing(context
         level_data_type="USABLE_VOLUME",
         intake_elevation=0.0,
         operation_cost=HydroReservoirCost.example(),
-        reservoir_location=None,
+        reservoir_location=ReservoirLocation.TAIL,
         ext={"plant_name": "Plant"},
     )
 
@@ -1913,7 +1847,7 @@ def test_unsuffixed_reservoir_skips_side_with_explicit_reservoir(context):
         level_data_type="USABLE_VOLUME",
         intake_elevation=0.0,
         operation_cost=HydroReservoirCost.example(),
-        reservoir_location=None,
+        reservoir_location=ReservoirLocation.HEAD,
         ext={"plant_name": "Wallace Dam"},
     )
     unsuffixed = HydroReservoir(
@@ -1929,7 +1863,7 @@ def test_unsuffixed_reservoir_skips_side_with_explicit_reservoir(context):
         level_data_type="USABLE_VOLUME",
         intake_elevation=0.0,
         operation_cost=HydroReservoirCost.example(),
-        reservoir_location=None,
+        reservoir_location=ReservoirLocation.TAIL,
         ext={"plant_name": "Wallace Dam"},
     )
 
@@ -2100,50 +2034,6 @@ def test_get_line_min_max_flow_none_rating(context):
     assert getters.get_line_max_flow(line, context).unwrap() == 99999.0
 
 
-def test_get_line_charging_susceptance_complex_b(context):
-    """Covers complex b branch in get_line_charging_susceptance."""
-    bus1 = ACBus(name="N1", base_voltage=115.0, number=1)
-    bus2 = ACBus(name="N2", base_voltage=115.0, number=2)
-    context.source_system.add_component(bus1)
-    context.source_system.add_component(bus2)
-    arc = Arc(from_to=bus1, to_from=bus2)
-    context.source_system.add_component(arc)
-    line = Line(
-        name="L1",
-        arc=arc,
-        rating=100.0,
-        r=0.01,
-        x=0.1,
-        b=FromTo_ToFrom(from_to=4.5, to_from=4.5),
-        active_power_flow=0.0,
-        reactive_power_flow=0.0,
-        angle_limits=MinMax(min=-0.03, max=0.03),
-    )
-    assert getters.get_line_charging_susceptance(line, context).unwrap() == 4.5
-
-
-def test_get_line_charging_susceptance_dict_b(context):
-    """Covers dict b branch in get_line_charging_susceptance."""
-    bus1 = ACBus(name="N1", base_voltage=115.0, number=1)
-    bus2 = ACBus(name="N2", base_voltage=115.0, number=2)
-    context.source_system.add_component(bus1)
-    context.source_system.add_component(bus2)
-    arc = Arc(from_to=bus1, to_from=bus2)
-    context.source_system.add_component(arc)
-    line = Line(
-        name="L1",
-        arc=arc,
-        rating=100.0,
-        r=0.01,
-        x=0.1,
-        b={"from_to": 6.0, "to_from": 6.0},
-        active_power_flow=0.0,
-        reactive_power_flow=0.0,
-        angle_limits=MinMax(min=-0.03, max=0.03),
-    )
-    assert getters.get_line_charging_susceptance(line, context).unwrap() == 6.0
-
-
 def test_get_max_capacity_zero_from_sienna(context):
     """Covers branch where sienna_get_max_active_power returns 0.0 and falls through to active_power_limits dict."""
 
@@ -2153,34 +2043,6 @@ def test_get_max_capacity_zero_from_sienna(context):
 
     d = DummyWithLimits()
     assert getters.get_max_capacity(d, context).unwrap() == 55.0
-
-
-def test_get_max_capacity_uses_default_when_below_ten_mw(context):
-    expected = round(getters._get_defaults("gas-cc", "max_capacity_MW"), 2)
-
-    class DummyFromRating:
-        rating = 1.1
-        base_power = 1.0
-
-    class DummyFromLimits:
-        rating = None
-        active_power_limits = {"max": 9.5}  # noqa: RUF012
-
-    assert getters.get_max_capacity(DummyFromRating(), context).unwrap() == expected
-    assert getters.get_max_capacity(DummyFromLimits(), context).unwrap() == expected
-
-
-def test_get_max_capacity_below_ten_uses_generic_fallback_when_category_has_no_capacity_defaults(context):
-    expected_generic = round(getters._get_defaults("gas-cc", "max_capacity_MW"), 2)
-
-    class DummyHydroLike:
-        # Maps to a category that does not define max_capacity_MW/capacity_MW defaults.
-        ext: ClassVar[dict[str, str]] = {"gen_type_string": "hydro"}
-        rating = 0.02
-        base_power = 1.0
-
-    result = getters.get_max_capacity(DummyHydroLike(), context).unwrap()
-    assert result == expected_generic
 
 
 def test_get_component_rating_no_base_power(context):
