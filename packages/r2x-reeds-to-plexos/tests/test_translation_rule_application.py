@@ -316,7 +316,8 @@ def test_data_center_demand_translates_to_purchaser_not_generator(tmp_path) -> N
             name="p1_data_center_demand",
             region=region,
             technology="data-center",
-            max_load=20.0,
+            capacity=15.0,
+            electricity_efficiency=0.85,
         )
     )
     context.target_system = System(name="target", auto_add_composed_components=True)
@@ -330,6 +331,8 @@ def test_data_center_demand_translates_to_purchaser_not_generator(tmp_path) -> N
     purchaser = purchasers[0]
     assert purchaser.name == "p1_data_center_demand"
     assert purchaser.category == "data-center"
+    assert purchaser.capacity == 15.0
+    assert purchaser.electricity_efficiency == 0.85
 
     generators = list(context.target_system.get_components(PLEXOSGenerator))
     assert all(g.name != "p1_data_center_demand" for g in generators)
