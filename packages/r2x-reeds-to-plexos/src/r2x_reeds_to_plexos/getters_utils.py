@@ -12,7 +12,6 @@ from r2x_plexos.models import (
     PLEXOSLine,
     PLEXOSMembership,
     PLEXOSNode,
-    PLEXOSPurchaser,
     PLEXOSRegion,
     PLEXOSStorage,
 )
@@ -21,6 +20,29 @@ from r2x_core import System
 
 if TYPE_CHECKING:
     from r2x_core import PluginContext, System
+
+
+def _get_reeds_purchaser_source_types() -> tuple[type[Any], ...]:
+    """Return consuming-demand source model types available in the installed ReEDS package."""
+    from r2x_reeds import models as reeds_models
+
+    type_names = ("ReEDSElectrolyzerDemand", "ReEDSDataCenterDemand", "ReEDSConsumingTechnology")
+    resolved_types: list[type[Any]] = []
+    for type_name in type_names:
+        model_type = getattr(reeds_models, type_name, None)
+        if isinstance(model_type, type) and model_type not in resolved_types:
+            resolved_types.append(model_type)
+    return tuple(resolved_types)
+
+
+def _get_plexos_purchaser_type() -> type[Any]:
+    """Return purchaser model type, falling back to generator when purchaser is unavailable."""
+    from r2x_plexos import models as plexos_models
+
+    purchaser_type = getattr(plexos_models, "PLEXOSPurchaser", None)
+    if isinstance(purchaser_type, type):
+        return purchaser_type
+    return PLEXOSGenerator
 
 
 def attach_region_load_time_series(context: PluginContext) -> None:
@@ -117,17 +139,16 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
 
 def attach_time_series_to_purchasers(context: PluginContext) -> None:
     """Transfer electrolyzer and data center demand time series to translated PLEXOS purchasers."""
-    from r2x_reeds.models.components import ReEDSDataCenterDemand, ReEDSElectrolyzerDemand
-
     if context.source_system is None or context.target_system is None:
         return
 
     source_demands: dict[str, Any] = {}
-    for demand_type in (ReEDSElectrolyzerDemand, ReEDSDataCenterDemand):
+    for demand_type in _get_reeds_purchaser_source_types():
         for demand in context.source_system.get_components(demand_type):
             source_demands[demand.name] = demand
+    purchaser_type = _get_plexos_purchaser_type()
     target_purchasers = {
-        purchaser.name: purchaser for purchaser in context.target_system.get_components(PLEXOSPurchaser)
+        purchaser.name: purchaser for purchaser in context.target_system.get_components(purchaser_type)
     }
 
     for demand_name, source_demand in source_demands.items():

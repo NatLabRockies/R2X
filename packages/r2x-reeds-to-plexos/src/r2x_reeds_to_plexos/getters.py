@@ -82,34 +82,24 @@ def _lookup_target_node(context: PluginContext, region_name: str) -> Result[Any,
 
 def _lookup_source_generator(context: PluginContext, name: str) -> Any | None:
     """Find a ReEDS component that maps to node memberships by name."""
-    from r2x_reeds.models import (
-        ReEDSConsumingTechnology,
-        ReEDSDataCenterDemand,
-        ReEDSElectrolyzerDemand,
-        ReEDSGenerator,
-        ReEDSStorage,
-    )
+    from r2x_reeds import models as reeds_models
+
+    reeds_consuming_technology = reeds_models.ReEDSConsumingTechnology
+    reeds_generator = reeds_models.ReEDSGenerator
+    reeds_storage = reeds_models.ReEDSStorage
 
     if context.source_system is None:
         return None
 
-    for gen in context.source_system.get_components(ReEDSGenerator):
+    for gen in context.source_system.get_components(reeds_generator):
         if gen.name == name:
             return gen
 
-    for consuming_tech in context.source_system.get_components(ReEDSConsumingTechnology):
+    for consuming_tech in context.source_system.get_components(reeds_consuming_technology):
         if consuming_tech.name == name:
             return consuming_tech
 
-    for electrolyzer_demand in context.source_system.get_components(ReEDSElectrolyzerDemand):
-        if electrolyzer_demand.name == name:
-            return electrolyzer_demand
-
-    for data_center_demand in context.source_system.get_components(ReEDSDataCenterDemand):
-        if data_center_demand.name == name:
-            return data_center_demand
-
-    for storage in context.source_system.get_components(ReEDSStorage):
+    for storage in context.source_system.get_components(reeds_storage):
         if storage.name == name:
             return storage
 
