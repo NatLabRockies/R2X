@@ -174,6 +174,29 @@ def test_get_load_participation_factor(tmp_path):
     assert getters.get_load_participation_factor(acbus, context).unwrap() == 0.0
 
 
+def test_get_load_mw_handles_volt_ampere_quantity_without_base_scaling():
+    class FakeQuantity:
+        def __init__(self, magnitude: float, unit: str) -> None:
+            self.magnitude = magnitude
+            self.unit = unit
+
+        def to(self, unit_name: str) -> FakeQuantity:
+            if self.unit == unit_name:
+                return FakeQuantity(self.magnitude, unit_name)
+            if self.unit == "volt_ampere" and unit_name == "megawatt":
+                return FakeQuantity(self.magnitude / 1_000_000.0, unit_name)
+            if self.unit == "volt_ampere" and unit_name == "watt":
+                return FakeQuantity(self.magnitude, unit_name)
+            raise ValueError("unsupported conversion")
+
+    load = types.SimpleNamespace(
+        max_active_power=FakeQuantity(100_000_000.0, "volt_ampere"),
+        base_power=100.0,
+    )
+
+    assert getters._get_load_mw(load) == 100.0
+
+
 def test_get_voltage_valid(context):
     bus = ACBus(name="N1", base_voltage=115.0, number=1)
     assert getters.get_voltage_kv(bus, context).unwrap() == 115.0

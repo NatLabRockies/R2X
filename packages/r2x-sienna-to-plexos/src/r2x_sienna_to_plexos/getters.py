@@ -790,18 +790,88 @@ def _find_3w_source_transformer(context: PluginContext, arm_name: str) -> tuple[
     return None
 
 
-def _get_load_mw(load: Any) -> float:
-    """Extract MW value from a StandardLoad or PowerLoad for LPF computation."""
-    magnitude = get_magnitude(getattr(load, "max_active_power", None))
+def _coerce_scalar(value: Any) -> float | None:
+    """Convert numeric-like values to float without forcing unit-stripped conversion."""
+    if isinstance(value, int | float):
+        return float(value)
+    magnitude = getattr(value, "magnitude", None)
+    if isinstance(magnitude, int | float):
+        return float(magnitude)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _power_quantity_to_mw(value: Any) -> float | None:
+    """Convert unit-bearing power quantity to MW when possible."""
+    if value is None or not hasattr(value, "to"):
+        return None
+
+    conversion_targets: tuple[tuple[str, float], ...] = (
+        ("megawatt", 1.0),
+        ("MW", 1.0),
+        ("megavolt_ampere", 1.0),
+        ("MVA", 1.0),
+        ("watt", 1e-6),
+        ("volt_ampere", 1e-6),
+        ("VA", 1e-6),
+    )
+    for unit_name, scale in conversion_targets:
+        try:
+            converted = value.to(unit_name)
+        except Exception:
+            continue
+
+        converted_magnitude = _coerce_scalar(getattr(converted, "magnitude", converted))
+        if converted_magnitude is not None:
+            return float(converted_magnitude) * scale
+
+    return None
+
+
+def _get_load_base_power(load: Any) -> float:
+    """Resolve load base power as scalar MW/MVA-like value with robust defaults."""
     base_power = getattr(load, "base_power", None)
     if base_power is None:
-        base_power = 100.0
-    if magnitude is not None:
-        return float(magnitude) * float(base_power)
+        return 100.0
+
+    base_power_from_quantity = _power_quantity_to_mw(base_power)
+    if base_power_from_quantity is not None:
+        return base_power_from_quantity
+
+    coerced = _coerce_scalar(base_power)
+    return coerced if coerced is not None else 100.0
+
+
+def _get_load_mw(load: Any) -> float:
+    """Extract MW value from a StandardLoad or PowerLoad for LPF computation."""
+    raw_max_active_power = getattr(load, "max_active_power", None)
+    base_power = _get_load_base_power(load)
+
+    direct_power_mw = _power_quantity_to_mw(raw_max_active_power)
+    if direct_power_mw is not None:
+        return direct_power_mw
+
+    magnitude = get_magnitude(raw_max_active_power)
+
+    magnitude_power_mw = _power_quantity_to_mw(magnitude)
+    if magnitude_power_mw is not None:
+        return magnitude_power_mw
+
+    magnitude_value = _coerce_scalar(magnitude)
+    if magnitude_value is not None:
+        return float(magnitude_value) * float(base_power)
+
     for attr in ("max_constant_active_power", "constant_active_power"):
         val = getattr(load, attr, None)
-        if isinstance(val, int | float) and val > 0:
-            return float(val) * float(base_power)
+        direct_attr_power_mw = _power_quantity_to_mw(val)
+        if direct_attr_power_mw is not None:
+            return direct_attr_power_mw
+
+        val_scalar = _coerce_scalar(val)
+        if val_scalar is not None and val_scalar > 0:
+            return float(val_scalar) * float(base_power)
     return 0.0
 
 
