@@ -1336,6 +1336,105 @@ def test__attach_generator_time_series_no_source(context):
     getters._attach_generator_time_series(context, "missing", gen)
 
 
+def test__attach_generator_time_series_weekly_hydro_budget_aggregation(context, monkeypatch):
+    source_gen = types.SimpleNamespace(name="hydro_gen", active_power_limits=None, rating=None)
+    metadata = types.SimpleNamespace(name="hydro_budget", features={})
+    source_ts = types.SimpleNamespace(
+        name="hydro_budget",
+        data=[1.0] * 400,
+        initial_timestamp=datetime(2025, 1, 1),
+        resolution=timedelta(hours=1),
+        features={},
+    )
+
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda *_args, **_kwargs: source_gen)
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: [metadata],
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, name=None, **_kwargs: [source_ts] if name == "hydro_budget" else [],
+    )
+
+    captured: list[object] = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: captured.append(ts)
+
+    getters._attach_generator_time_series(context, "hydro_gen", PLEXOSGenerator(name="hydro_gen"))
+
+    assert len(captured) == 1
+    attached = captured[0]
+    assert attached.resolution == timedelta(days=7)
+    assert list(attached.data) == [168.0, 168.0, 64.0]
+
+
+def test__attach_generator_time_series_hydro_budget_keeps_hourly_when_single_bucket(context, monkeypatch):
+    source_gen = types.SimpleNamespace(name="hydro_short", active_power_limits=None, rating=None)
+    metadata = types.SimpleNamespace(name="hydro_budget", features={})
+    source_ts = types.SimpleNamespace(
+        name="hydro_budget",
+        data=[2.0] * 100,
+        initial_timestamp=datetime(2025, 1, 1),
+        resolution=timedelta(hours=1),
+        features={},
+    )
+
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda *_args, **_kwargs: source_gen)
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: [metadata],
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, name=None, **_kwargs: [source_ts] if name == "hydro_budget" else [],
+    )
+
+    captured: list[object] = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: captured.append(ts)
+
+    getters._attach_generator_time_series(context, "hydro_short", PLEXOSGenerator(name="hydro_short"))
+
+    assert len(captured) == 1
+    attached = captured[0]
+    assert attached.resolution == timedelta(hours=1)
+    assert len(attached.data) == 100
+    assert float(attached.data[0]) == 2.0
+
+
+def test__has_usable_generator_time_series_false_on_absent_series(context, monkeypatch):
+    source_component = types.SimpleNamespace(name="g1")
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: False)
+
+    assert not getters._has_usable_generator_time_series(source_component, context)
+
+
+def test__has_usable_generator_time_series_false_when_metadata_unreadable(context, monkeypatch):
+    source_component = types.SimpleNamespace(name="g2")
+    metadata = types.SimpleNamespace(name="max_active_power", features={})
+
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: [metadata],
+    )
+
+    def raise_on_list(*_args, **_kwargs):
+        raise RuntimeError("metadata retrieval failed")
+
+    monkeypatch.setattr(context.source_system, "list_time_series", raise_on_list)
+
+    assert not getters._has_usable_generator_time_series(source_component, context)
+
+
 def test__attach_reservoir_time_series_to_storage_no_source(context):
     # Should log warning and return
     storage = PLEXOSStorage(name="missing_head")

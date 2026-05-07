@@ -1138,6 +1138,78 @@ def test_ensure_reserve_time_series_skips_when_target_has_series(context, monkey
     assert added == []
 
 
+def test_attach_hydro_reservoir_inflow_to_generator_budget_adds_max_energy_day(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    monkeypatch.setattr(getters_utils, "HydroTurbine", object)
+    monkeypatch.setattr(getters_utils, "HydroPumpTurbine", type("HydroPumpTurbine", (), {}))
+
+    source_generator = types.SimpleNamespace(name="H1", rating=0.0, base_power=1.0)
+    target_generator = PLEXOSGenerator(name="H1")
+    reservoir = types.SimpleNamespace(name="R1")
+
+    monkeypatch.setattr(getters_mod, "_build_reservoir_by_turbine_index", lambda _ctx: {"H1": reservoir})
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+
+    metadata = [
+        types.SimpleNamespace(name="ignored", features={}),
+        types.SimpleNamespace(name="inflow", features={"scenario": "base"}),
+    ]
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: metadata,
+    )
+
+    source_ts = types.SimpleNamespace(
+        name="inflow",
+        data=[1.0, 2.0],
+        initial_timestamp=datetime(2025, 1, 1),
+        resolution=timedelta(hours=1),
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, name=None, **_kwargs: [source_ts] if name == "inflow" else [],
+    )
+
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    added: list[tuple[object, object, dict]] = []
+    context.target_system.add_time_series = lambda ts, comp, **features: added.append((ts, comp, features))
+
+    getters_utils._attach_hydro_reservoir_inflow_to_generator_budget(
+        context, source_generator, target_generator
+    )
+
+    assert len(added) == 1
+    ts, comp, features = added[0]
+    assert comp.name == "H1"
+    assert ts.name == "max_energy_day"
+    assert features == {"scenario": "base"}
+
+
+def test_attach_hydro_reservoir_inflow_to_generator_budget_skips_nonzero_rating(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    monkeypatch.setattr(getters_utils, "HydroTurbine", object)
+    monkeypatch.setattr(getters_utils, "HydroPumpTurbine", type("HydroPumpTurbine", (), {}))
+
+    source_generator = types.SimpleNamespace(name="H2", rating=2.0, base_power=100.0)
+    target_generator = PLEXOSGenerator(name="H2")
+
+    monkeypatch.setattr(getters_mod, "_build_reservoir_by_turbine_index", lambda _ctx: {"H2": object()})
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+
+    added = []
+    context.target_system.add_time_series = lambda *args, **kwargs: added.append((args, kwargs))
+
+    getters_utils._attach_hydro_reservoir_inflow_to_generator_budget(
+        context, source_generator, target_generator
+    )
+
+    assert added == []
+
+
 def test_ensure_membership_deduplicates_existing_membership(context):
     parent = PLEXOSGenerator(name="PARENT_GEN")
     child = PLEXOSNode(name="CHILD_NODE")
