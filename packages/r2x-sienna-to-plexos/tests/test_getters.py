@@ -2846,7 +2846,9 @@ def test_membership_interface_child_line_success_via_monkeypatched_index(monkeyp
     context.target_system.add_component(target_line)
 
     source_interface = types.SimpleNamespace(name="IFACE-1", lines=[types.SimpleNamespace(name="line-01")])
-    monkeypatch.setattr(getters, "_build_source_interface_name_index", lambda _ctx: {"IFACE-1": source_interface})
+    monkeypatch.setattr(
+        getters, "_build_source_interface_name_index", lambda _ctx: {"IFACE-1": source_interface}
+    )
 
     result = getters.membership_interface_child_line(types.SimpleNamespace(name="IFACE-1"), context)
     assert result.is_ok()

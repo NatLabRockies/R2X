@@ -621,8 +621,7 @@
       "category": "head"
     },
     "field_map": {
-      "name": "name",
-      "category": "category"
+      "name": "name"
     },
     "getters": {
       "name": "get_head_storage_name",
@@ -641,8 +640,7 @@
       "category": "tail"
     },
     "field_map": {
-      "name": "name",
-      "category": "category"
+      "name": "name"
     },
     "getters": {
       "name": "get_tail_storage_name",

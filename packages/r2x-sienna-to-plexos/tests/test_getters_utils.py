@@ -954,7 +954,7 @@ def test_attach_reservoir_time_series_to_storage_paths(context):
     assert list(max_ts.data) == [0.5, 1.0]
 
 
-def test_hydroturbine_driven_head_tail_memberships(context, monkeypatch):
+def test_hydropumpturbine_driven_head_tail_memberships(context, monkeypatch):
     import r2x_sienna_to_plexos.getters as getters_mod
 
     monkeypatch.setattr(getters_mod, "_build_generator_display_name_index", lambda _ctx: {"TURB": "GEN"})
@@ -975,7 +975,7 @@ def test_hydroturbine_driven_head_tail_memberships(context, monkeypatch):
     )
     turbine = types.SimpleNamespace(name="TURB", reservoirs=[head_res, tail_res])
     context.source_system.get_components = (
-        lambda comp_type: [turbine] if comp_type.__name__ == "HydroTurbine" else []
+        lambda comp_type: [turbine] if comp_type.__name__ == "HydroPumpTurbine" else []
     )
 
     getters_utils.ensure_head_storage_generator_membership(context)

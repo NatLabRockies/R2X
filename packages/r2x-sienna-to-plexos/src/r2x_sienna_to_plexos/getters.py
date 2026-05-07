@@ -1799,23 +1799,30 @@ def get_turbine_pump_load(
 def _reservoir_has_hydro_pumped_storage_association(
     source_component: HydroReservoir, context: PluginContext
 ) -> bool:
-    """Return True if reservoir is linked to HydroPumpTurbine and not HydroTurbine."""
+    """Return True if reservoir is linked to at least one HydroPumpTurbine."""
 
     def _is_hydro_pump_turbine(turbine: Any) -> bool:
         return isinstance(turbine, HydroPumpTurbine) or type(turbine).__name__ == "HydroPumpTurbine"
-
-    def _is_hydro_turbine(turbine: Any) -> bool:
-        return isinstance(turbine, HydroTurbine) or type(turbine).__name__ == "HydroTurbine"
 
     linked_turbines = [
         *list(getattr(source_component, "upstream_turbines", None) or []),
         *list(getattr(source_component, "downstream_turbines", None) or []),
     ]
 
-    has_hydro_pump_turbine = any(_is_hydro_pump_turbine(turbine) for turbine in linked_turbines)
-    has_hydro_turbine = any(_is_hydro_turbine(turbine) for turbine in linked_turbines)
+    if any(_is_hydro_pump_turbine(turbine) for turbine in linked_turbines):
+        return True
 
-    return has_hydro_pump_turbine and not has_hydro_turbine
+    ext = getattr(source_component, "ext", None)
+    plant_ids = ext.get("plants") if isinstance(ext, dict) else None
+    if not isinstance(plant_ids, list):
+        return False
+
+    source_system = _source_system(context)
+    pump_turbines_by_name = {
+        str(getattr(turbine, "name", "")): turbine
+        for turbine in source_system.get_components(HydroPumpTurbine)
+    }
+    return any(isinstance(plant_id, str) and plant_id in pump_turbines_by_name for plant_id in plant_ids)
 
 
 def _get_reservoir_location(source_component: HydroReservoir) -> str | None:
@@ -1899,6 +1906,13 @@ def get_head_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the head reservoir (appends _head), using plant_name from ext if available."""
+    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
+        return Err(
+            ValueError(
+                f"Skipping head storage conversion for reservoir '{source_component.name}': no HydroPumpTurbine association"
+            )
+        )
+
     # Only explicit suffixes gate conversion. Unsuffixed reservoirs are expanded
     # into both _head and _tail storages.
     suffix_location = _get_reservoir_name_suffix_location(source_component)
@@ -1938,6 +1952,13 @@ def get_tail_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the tail reservoir (appends _tail), using plant_name from ext if available."""
+    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
+        return Err(
+            ValueError(
+                f"Skipping tail storage conversion for reservoir '{source_component.name}': no HydroPumpTurbine association"
+            )
+        )
+
     # Only explicit suffixes gate conversion. Unsuffixed reservoirs are expanded
     # into both _head and _tail storages.
     suffix_location = _get_reservoir_name_suffix_location(source_component)

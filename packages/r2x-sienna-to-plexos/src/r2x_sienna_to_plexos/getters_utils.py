@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, cast
 
@@ -27,6 +28,7 @@ from r2x_sienna.models import (
     ACBus,
     Area,
     EnergyReservoirStorage,
+    HydroPumpTurbine,
     HydroReservoir,
     HydroTurbine,
     LoadZone,
@@ -171,23 +173,28 @@ def _attach_reservoir_time_series_to_storage(
         max_mw = abs(float(naris_pmax))
     else:
         turbine_base = base_name[: -len("_Reservoir")] if base_name.endswith("_Reservoir") else base_name
-        for t in _source_system(context).get_components(HydroTurbine):
-            t_base = t.name[: -len("_Turbine")] if t.name.endswith("_Turbine") else t.name
-            if t_base == turbine_base:
-                limits = getattr(t, "active_power_limits", None)
-                if limits is not None:
-                    max_val = limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
-                    if max_val is not None:
-                        mag = get_magnitude(max_val)
-                        raw = (
-                            float(mag)
-                            if mag is not None
-                            else float(max_val)
-                            if isinstance(max_val, int | float)
-                            else None
+        for turbine_type in (HydroPumpTurbine, HydroTurbine):
+            for t in _source_system(context).get_components(turbine_type):
+                t_base = t.name[: -len("_Turbine")] if t.name.endswith("_Turbine") else t.name
+                if t_base == turbine_base:
+                    limits = getattr(t, "active_power_limits", None)
+                    if limits is not None:
+                        max_val = (
+                            limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
                         )
-                        if raw is not None:
-                            max_mw = abs(raw) * resolve_base_power(t)
+                        if max_val is not None:
+                            mag = get_magnitude(max_val)
+                            raw = (
+                                float(mag)
+                                if mag is not None
+                                else float(max_val)
+                                if isinstance(max_val, int | float)
+                                else None
+                            )
+                            if raw is not None:
+                                max_mw = abs(raw) * resolve_base_power(t)
+                    break
+            if max_mw > 0.0:
                 break
 
     for typed_ts in _source_system(context).list_time_series(source_reservoir):
@@ -359,7 +366,7 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
 
         turbines = list(getattr(reservoir, "downstream_turbines", None) or [])
         if not turbines and isinstance(ext, dict):
-            all_turbines = {t.name: t for t in _source_system(context).get_components(HydroTurbine)}
+            all_turbines = {t.name: t for t in _source_system(context).get_components(HydroPumpTurbine)}
             turbines = [
                 all_turbines[pid]
                 for pid in (ext.get("plants") or [])
@@ -373,13 +380,13 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
             target_gen_name = display_name_index.get(tname, tname)
             target_gen = generators_by_name.get(target_gen_name)
             if target_gen is None:
-                logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", tname)
+                logger.debug("No PLEXOSGenerator found for HydroPumpTurbine '{}', skipping.", tname)
                 continue
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.HeadStorage)
             total_memberships += 1
 
-    # Also support source models that expose reservoir links on HydroTurbine.reservoirs.
-    for turbine in _source_system(context).get_components(HydroTurbine):
+    # Also support source models that expose reservoir links on HydroPumpTurbine.reservoirs.
+    for turbine in _source_system(context).get_components(HydroPumpTurbine):
         tname = getattr(turbine, "name", None)
         if not tname:
             continue
@@ -464,7 +471,7 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
 
         turbines = list(getattr(reservoir, "downstream_turbines", None) or [])
         if not turbines and isinstance(ext, dict):
-            all_turbines = {t.name: t for t in _source_system(context).get_components(HydroTurbine)}
+            all_turbines = {t.name: t for t in _source_system(context).get_components(HydroPumpTurbine)}
             turbines = [
                 all_turbines[pid]
                 for pid in (ext.get("plants") or [])
@@ -478,13 +485,13 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
             target_gen_name = display_name_index.get(tname, tname)
             target_gen = generators_by_name.get(target_gen_name)
             if target_gen is None:
-                logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", tname)
+                logger.debug("No PLEXOSGenerator found for HydroPumpTurbine '{}', skipping.", tname)
                 continue
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.TailStorage)
             total_memberships += 1
 
-    # Also support source models that expose reservoir links on HydroTurbine.reservoirs.
-    for turbine in _source_system(context).get_components(HydroTurbine):
+    # Also support source models that expose reservoir links on HydroPumpTurbine.reservoirs.
+    for turbine in _source_system(context).get_components(HydroPumpTurbine):
         tname = getattr(turbine, "name", None)
         if not tname:
             continue
@@ -581,8 +588,65 @@ def ensure_generator_time_series(context: PluginContext) -> None:
             if target_gen is None:
                 continue
             _attach_generator_time_series(context, source_gen.name, target_gen)
+            _attach_hydro_reservoir_inflow_to_generator_budget(context, source_gen, target_gen)
             total += 1
     logger.info("Ensured time series for {} generators.", total)
+
+
+def _attach_hydro_reservoir_inflow_to_generator_budget(
+    context: PluginContext,
+    source_generator: Any,
+    target_generator: Any,
+) -> None:
+    """Attach HydroReservoir inflow to generator as max_energy_day for non-pumped HydroTurbine units."""
+    if isinstance(source_generator, HydroPumpTurbine) or not isinstance(source_generator, HydroTurbine):
+        return
+
+    pump_load = getattr(source_generator, "rating", None)
+    if pump_load is not None:
+        magnitude = get_magnitude(pump_load)
+        raw = (
+            float(magnitude)
+            if magnitude is not None
+            else float(pump_load)
+            if isinstance(pump_load, int | float)
+            else 0.0
+        )
+        if not math.isclose(raw * resolve_base_power(source_generator), 0.0, abs_tol=1e-9):
+            return
+
+    from infrasys import SingleTimeSeries
+
+    from r2x_sienna_to_plexos.getters import _build_reservoir_by_turbine_index
+
+    source_reservoir = _build_reservoir_by_turbine_index(context).get(source_generator.name)
+    if source_reservoir is None or not _source_system(context).time_series.has_time_series(source_reservoir):
+        return
+
+    for metadata in _source_system(context).time_series.list_time_series_metadata(source_reservoir):
+        if metadata.name not in {"inflow", "natural_inflow"}:
+            continue
+        features = getattr(metadata, "features", {}) or {}
+        if _target_system(context).has_time_series(
+            target_generator,
+            name="max_energy_day",
+            time_series_type=SingleTimeSeries,
+            **features,
+        ):
+            continue
+
+        ts_list = _source_system(context).list_time_series(
+            source_reservoir,
+            name=metadata.name,
+            **features,
+        )
+        if not ts_list:
+            continue
+
+        typed_source_ts = ts_list[0]
+        ts_copy = deepcopy(typed_source_ts)
+        ts_copy.name = "max_energy_day"
+        _target_system(context).add_time_series(ts_copy, target_generator, **features)
 
 
 def ensure_reserve_time_series(context: PluginContext) -> None:
@@ -818,7 +882,7 @@ def ensure_pumped_hydro_storages_created(context: PluginContext) -> None:
             if storage is None:
                 storage = PLEXOSStorage(
                     name=storage_name,
-                    category="pumped-hydro",
+                    category="head" if suffix == "_head" else "tail",
                     units=1,
                     max_volume=max_volume,
                     initial_volume=initial_volume,
