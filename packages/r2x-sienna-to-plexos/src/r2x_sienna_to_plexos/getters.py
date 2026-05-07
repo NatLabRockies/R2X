@@ -8,6 +8,7 @@ import math
 # Add this near the top, after imports
 from collections import defaultdict
 from copy import deepcopy
+from datetime import timedelta
 from importlib.resources import files
 from typing import Any, cast
 
@@ -599,6 +600,34 @@ def _attach_generator_time_series(
             target_generator, name=ts.name, time_series_type=SingleTimeSeries, **metadata.features
         ):
             data = np.asarray(ts.data)
+            output_resolution = ts.resolution
+
+            if (
+                ts.name == "hydro_budget"
+                and isinstance(ts.resolution, timedelta)
+                and ts.resolution < timedelta(days=7)
+            ):
+                seconds_per_step = ts.resolution.total_seconds()
+                if seconds_per_step > 0:
+                    points_per_week = max(int(round((7 * 86400) / seconds_per_step)), 1)
+                    full_weeks = data.size // points_per_week
+                    weekly_values: list[float] = []
+                    if full_weeks:
+                        weekly_values.extend(
+                            data[: full_weeks * points_per_week]
+                            .reshape(full_weeks, points_per_week)
+                            .sum(axis=1)
+                            .tolist()
+                        )
+                    remainder = data[full_weeks * points_per_week :]
+                    if remainder.size:
+                        weekly_values.append(float(remainder.sum()))
+
+                    # SingleTimeSeries requires at least two points.
+                    if len(weekly_values) >= 2:
+                        data = np.asarray(weekly_values, dtype=float)
+                        output_resolution = timedelta(days=7)
+
             if ts.name == "max_active_power":
                 max_mw = 0.0
                 limits = getattr(source_gen, "active_power_limits", None)
@@ -635,7 +664,7 @@ def _attach_generator_time_series(
                 data=data,
                 name=ts.name,
                 initial_timestamp=ts.initial_timestamp,
-                resolution=ts.resolution,
+                resolution=output_resolution,
             )
             _target_system(context).add_time_series(fresh_ts, target_generator, **metadata.features)
             logger.success("Attached time series {} to generator {}", ts.name, generator_name)

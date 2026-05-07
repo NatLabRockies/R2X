@@ -1839,7 +1839,6 @@ def test_head_tail_storage_name_infers_location_from_suffix_when_missing(context
     assert getters.get_tail_storage_name(tail, context).unwrap() == "Plant_tail"
 
 
-
 def test_head_tail_storage_name_suffix_overrides_conflicting_metadata(context, monkeypatch):
     monkeypatch.setattr(
         getters,
@@ -1867,7 +1866,6 @@ def test_head_tail_storage_name_suffix_overrides_conflicting_metadata(context, m
 
     assert getters.get_head_storage_name(tail_with_wrong_metadata, context).is_err()
     assert getters.get_tail_storage_name(tail_with_wrong_metadata, context).unwrap() == "Abitibi Canyon_tail"
-
 
 
 def test_unsuffixed_reservoir_skips_side_with_explicit_reservoir(context, monkeypatch):
@@ -1916,7 +1914,6 @@ def test_unsuffixed_reservoir_skips_side_with_explicit_reservoir(context, monkey
     assert getters.get_head_storage_name(explicit_head, context).unwrap() == "Wallace Dam_head"
     assert getters.get_head_storage_name(unsuffixed, context).is_err()
     assert getters.get_tail_storage_name(unsuffixed, context).unwrap() == "Wallace Dam_tail"
-
 
 
 def test_membership_reserve_child_generator_err(context):
