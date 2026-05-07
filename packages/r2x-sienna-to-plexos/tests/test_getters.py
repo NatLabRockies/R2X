@@ -1037,8 +1037,8 @@ def test_get_head_tail_storage_name_without_pumped_storage_association(context):
         category="hydro_reservoir",
     )
 
-    assert getters.get_head_storage_name(hydro, context).unwrap() == "hydro1_head"
-    assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro1_tail"
+    assert getters.get_head_storage_name(hydro, context).is_err()
+    assert getters.get_tail_storage_name(hydro, context).is_err()
 
 
 def test_reservoir_association_true_for_hydropumpturbine_links(context):
@@ -1793,7 +1793,13 @@ def test_get_tail_storage_name(context, monkeypatch):
     assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro1_tail"
 
 
-def test_head_tail_storage_name_infers_location_from_suffix_when_missing(context):
+def test_head_tail_storage_name_infers_location_from_suffix_when_missing(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
     head = HydroReservoir(
         name="Plant_head",
         available=True,
@@ -1833,7 +1839,14 @@ def test_head_tail_storage_name_infers_location_from_suffix_when_missing(context
     assert getters.get_tail_storage_name(tail, context).unwrap() == "Plant_tail"
 
 
-def test_head_tail_storage_name_suffix_overrides_conflicting_metadata(context):
+
+def test_head_tail_storage_name_suffix_overrides_conflicting_metadata(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
     # Source metadata can be wrong; suffix should control head/tail assignment.
     tail_with_wrong_metadata = HydroReservoir(
         name="Abitibi Canyon_tail",
@@ -1856,7 +1869,14 @@ def test_head_tail_storage_name_suffix_overrides_conflicting_metadata(context):
     assert getters.get_tail_storage_name(tail_with_wrong_metadata, context).unwrap() == "Abitibi Canyon_tail"
 
 
-def test_unsuffixed_reservoir_skips_side_with_explicit_reservoir(context):
+
+def test_unsuffixed_reservoir_skips_side_with_explicit_reservoir(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
     explicit_head = HydroReservoir(
         name="Wallace Dam_head",
         available=True,
@@ -1896,6 +1916,7 @@ def test_unsuffixed_reservoir_skips_side_with_explicit_reservoir(context):
     assert getters.get_head_storage_name(explicit_head, context).unwrap() == "Wallace Dam_head"
     assert getters.get_head_storage_name(unsuffixed, context).is_err()
     assert getters.get_tail_storage_name(unsuffixed, context).unwrap() == "Wallace Dam_tail"
+
 
 
 def test_membership_reserve_child_generator_err(context):

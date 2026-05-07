@@ -1210,7 +1210,7 @@ def test_head_tail_memberships_from_ext_plants_and_fallback_name_matching(contex
         name = getattr(comp_type, "__name__", "")
         if name == "HydroReservoir":
             return [reservoir]
-        if name == "HydroTurbine":
+        if name == "HydroPumpTurbine":
             return [turbine]
         if name == "HydroPumpedStorage":
             return [

@@ -165,13 +165,14 @@ def test_sienna_storage_translates_to_plexos_storage(tmp_path):
     assert storage
 
 
-def test_hydro_reservoir_without_suffix_translates_to_head_and_tail_storage(tmp_path):
+def test_hydro_reservoir_without_suffix_translates_to_head_and_tail_storage(tmp_path, monkeypatch):
     from infrasys.value_curves import LinearCurve
     from r2x_plexos.models import PLEXOSStorage
     from r2x_sienna.models import HydroReservoir
     from r2x_sienna.models.costs import HydroReservoirCost
     from r2x_sienna.models.enums import ReservoirDataType, ReservoirLocation
     from r2x_sienna.models.named_tuples import MinMax
+    from r2x_sienna_to_plexos import getters as getters_module
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
@@ -196,6 +197,12 @@ def test_hydro_reservoir_without_suffix_translates_to_head_and_tail_storage(tmp_
     )
     context.target_system = System(name="target", auto_add_composed_components=True)
     context.rules = rules
+
+    monkeypatch.setattr(
+        getters_module,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
 
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
