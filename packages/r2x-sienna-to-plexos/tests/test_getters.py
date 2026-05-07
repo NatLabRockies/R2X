@@ -2778,3 +2778,100 @@ def test_attach_generator_time_series_uses_rating_when_limits_missing(tmp_path, 
     getters._attach_generator_time_series(context, "GEN_RATING", PLEXOSGenerator(name="GEN_RATING"))
 
     assert list(attached[0].data) == [1.0, 2.0]
+
+
+def test_resolve_generator_category_zonal2nodal_uses_reeds_defaults(monkeypatch, context):
+    comp = types.SimpleNamespace(name="zonal2nodal_gas-cc_cluster", ext={})
+    monkeypatch.setattr(
+        getters,
+        "_get_defaults_data",
+        lambda _ctx: {"reeds_defaults": {"gas": {}, "gas-cc": {}, "wind-ons": {}}},
+    )
+
+    assert getters._resolve_generator_category(comp, context) == "gas-cc"
+
+
+def test_get_reeds_thermal_category_returns_none_for_non_list_mapping_values(monkeypatch, context):
+    gen = _make_thermal_generator_for_category_tests(
+        name="thermal-natgas",
+        fuel=ThermalFuels.NATURAL_GAS,
+    )
+    monkeypatch.setattr(
+        getters,
+        "_get_defaults_data",
+        lambda _ctx: {"reeds_thermal_mapping": {"natural-gas": "NATURAL_GAS", "coal": ["COAL"]}},
+    )
+
+    assert getters._get_reeds_thermal_category_from_fuel(gen, context) is None
+
+
+def test_get_reservoir_location_helper_priority_order():
+    by_name = types.SimpleNamespace(name="Plant_HEAD")
+    by_attr = types.SimpleNamespace(name="Plant", reservoir_location="tail")
+    by_ext = types.SimpleNamespace(name="Plant", ext={"RESERVOIR_LOCATION": "head"})
+    unknown = types.SimpleNamespace(name="Plant")
+
+    assert getters._get_reservoir_location(by_name) == "HEAD"
+    assert getters._get_reservoir_location(by_attr) == "TAIL"
+    assert getters._get_reservoir_location(by_ext) == "HEAD"
+    assert getters._get_reservoir_location(unknown) is None
+
+
+def test_has_explicit_side_reservoir_for_base_detects_matching_side(monkeypatch, context):
+    current = types.SimpleNamespace(name="Plant", ext={"plant_name": "Plant"}, uuid="1")
+    explicit_head = types.SimpleNamespace(name="Plant_head", ext={"plant_name": "Plant"}, uuid="2")
+    other_plant = types.SimpleNamespace(name="Other_head", ext={"plant_name": "Other"}, uuid="3")
+
+    fake_source = types.SimpleNamespace(get_components=lambda _cls: [current, explicit_head, other_plant])
+    monkeypatch.setattr(getters, "_source_system", lambda _ctx: fake_source)
+
+    assert getters._has_explicit_side_reservoir_for_base(current, context, side="HEAD") is True
+    assert getters._has_explicit_side_reservoir_for_base(current, context, side="TAIL") is False
+
+
+def test_membership_component_child_node_err_when_source_generator_has_no_bus(context):
+    source_gen = _make_thermal_generator_for_category_tests(
+        name="gen-without-bus",
+        fuel=ThermalFuels.NATURAL_GAS,
+    )
+    context.source_system.add_component(source_gen)
+
+    result = getters.membership_component_child_node(PLEXOSGenerator(name="gen-without-bus"), context)
+    assert result.is_err()
+    assert "missing bus data" in str(result.err())
+
+
+def test_membership_interface_child_line_success_via_monkeypatched_index(monkeypatch, context):
+    target_line = PLEXOSLine(name="line-01")
+    context.target_system.add_component(target_line)
+
+    source_interface = types.SimpleNamespace(name="IFACE-1", lines=[types.SimpleNamespace(name="line-01")])
+    monkeypatch.setattr(getters, "_build_source_interface_name_index", lambda _ctx: {"IFACE-1": source_interface})
+
+    result = getters.membership_interface_child_line(types.SimpleNamespace(name="IFACE-1"), context)
+    assert result.is_ok()
+    assert result.unwrap() == target_line
+
+
+def test_membership_line_parent_interface_success_and_missing_target(context):
+    from r2x_plexos.models import PLEXOSInterface
+
+    source_interface = TransmissionInterface(
+        name="Interface-1",
+        active_power_flow_limits=MinMax(min=-100.0, max=100.0),
+        direction_mapping={"line-01": 1},
+    )
+    context.source_system.add_component(source_interface)
+
+    line = PLEXOSLine(name="line-01")
+
+    missing_target = getters.membership_line_parent_interface(line, context)
+    assert missing_target.is_err()
+
+    target_interface = PLEXOSInterface(name="Interface-1")
+    context.target_system.add_component(target_interface)
+    context._cache.pop("target_interface_name_index", None)
+
+    result = getters.membership_line_parent_interface(line, context)
+    assert result.is_ok()
+    assert result.unwrap().name == "Interface-1"
