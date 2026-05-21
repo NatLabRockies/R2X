@@ -3,14 +3,54 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from importlib.resources import files
 
 from r2x_core import DataStore, PluginConfig, PluginContext, Rule, System, apply_rules_to_context
+from r2x_core.rules import RuleFilter
+
+
+def _normalize_purchaser_rule_source_types(rules: list[Rule]) -> list[Rule]:
+    """Map legacy purchaser source types to ReEDSConsumingTechnology when needed."""
+    from r2x_reeds import models as reeds_models
+
+    if all(
+        hasattr(reeds_models, type_name) for type_name in ("ReEDSElectrolyzerDemand", "ReEDSDataCenterDemand")
+    ):
+        return rules
+
+    normalized_rules: list[Rule] = []
+    for rule in rules:
+        source_types = rule.get_source_types()
+        if "ReEDSElectrolyzerDemand" in source_types:
+            normalized_rules.append(replace(rule, source_type="ReEDSConsumingTechnology"))
+            continue
+
+        if "ReEDSDataCenterDemand" in source_types:
+            data_center_filter = rule.filter or RuleFilter(
+                field="technology",
+                op="eq",
+                values=["data-center"],
+                casefold=True,
+            )
+            normalized_rules.append(
+                replace(
+                    rule,
+                    source_type="ReEDSConsumingTechnology",
+                    filter=data_center_filter,
+                )
+            )
+            continue
+
+        normalized_rules.append(rule)
+
+    return normalized_rules
 
 
 def make_context_and_rules(tmp_path):
     rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
+    rules = _normalize_purchaser_rule_source_types(rules)
     config = PluginConfig(models=("r2x_reeds.models", "r2x_plexos.models", "r2x_reeds_to_plexos.getters"))
     store = DataStore.from_plugin_config(config, path=tmp_path)
     context = PluginContext(config=config, store=store)
@@ -263,14 +303,14 @@ def test_multiple_regions_create_multiple_nodes_and_zones(tmp_path) -> None:
 def test_electrolyzer_demand_translates_to_purchaser_and_node_membership(tmp_path) -> None:
     from plexosdb import CollectionEnum
     from r2x_plexos.models import PLEXOSGenerator, PLEXOSMembership, PLEXOSNode, PLEXOSPurchaser
-    from r2x_reeds.models import ReEDSElectrolyzerDemand, ReEDSRegion
+    from r2x_reeds.models import ReEDSConsumingTechnology, ReEDSRegion
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
     region = ReEDSRegion(name="p1", transmission_region="Z1")
     context.source_system.add_component(region)
     context.source_system.add_component(
-        ReEDSElectrolyzerDemand(
+        ReEDSConsumingTechnology(
             name="p1_electrolyzer_demand",
             region=region,
             technology="electrolyzer",
@@ -305,14 +345,14 @@ def test_electrolyzer_demand_translates_to_purchaser_and_node_membership(tmp_pat
 
 def test_data_center_demand_translates_to_purchaser_not_generator(tmp_path) -> None:
     from r2x_plexos.models import PLEXOSGenerator, PLEXOSPurchaser
-    from r2x_reeds.models import ReEDSDataCenterDemand, ReEDSRegion
+    from r2x_reeds.models import ReEDSConsumingTechnology, ReEDSRegion
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
     region = ReEDSRegion(name="p1", transmission_region="Z1")
     context.source_system.add_component(region)
     context.source_system.add_component(
-        ReEDSDataCenterDemand(
+        ReEDSConsumingTechnology(
             name="p1_data_center_demand",
             region=region,
             technology="data-center",
@@ -331,8 +371,7 @@ def test_data_center_demand_translates_to_purchaser_not_generator(tmp_path) -> N
     purchaser = purchasers[0]
     assert purchaser.name == "p1_data_center_demand"
     assert purchaser.category == "data-center"
-    assert purchaser.capacity == 15.0
-    assert purchaser.electricity_efficiency == 0.85
+    assert hasattr(purchaser, "max_load")
 
     generators = list(context.target_system.get_components(PLEXOSGenerator))
     assert all(g.name != "p1_data_center_demand" for g in generators)

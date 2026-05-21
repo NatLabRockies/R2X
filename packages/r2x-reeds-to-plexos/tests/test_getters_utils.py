@@ -40,10 +40,10 @@ def test_attach_time_series_to_generators(context):
 
 def test_attach_time_series_to_purchasers(context, monkeypatch):
     from r2x_reeds.models import ReEDSRegion
-    from r2x_reeds.models.components import ReEDSElectrolyzerDemand
+    from r2x_reeds.models.components import ReEDSConsumingTechnology
 
     region = ReEDSRegion(name="R1", transmission_region="Z1")
-    demand = ReEDSElectrolyzerDemand(
+    demand = ReEDSConsumingTechnology(
         name="R1_electrolyzer_demand",
         region=region,
         technology="electrolyzer",
