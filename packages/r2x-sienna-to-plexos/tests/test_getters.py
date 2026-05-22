@@ -127,6 +127,52 @@ def test_getters_with_missing_data(tmp_path):
     assert result.is_err()
 
 
+def test_resolve_generator_category_reeds_and_prime_mover_mapping(context):
+    reeds_component = types.SimpleNamespace(name="reeds_hyded_foo", ext=None)
+    assert getters._resolve_generator_category(reeds_component, context) == "hyded"
+
+    context.config = types.SimpleNamespace(prime_mover_mapping={"CC_NATURAL_GAS": ["mapped-tech"]})
+    mapped_component = types.SimpleNamespace(
+        name="custom_gen",
+        ext={"prime_mover": "CC"},
+        prime_mover_type=None,
+        fuel="NATURAL_GAS",
+    )
+    assert getters._resolve_generator_category(mapped_component, context) == "mapped-tech"
+
+
+def test_reeds_thermal_category_returns_none_for_invalid_mapping(context, monkeypatch):
+    bus = ACBus(name="B1", base_voltage=115.0, number=1)
+    thermal = ThermalStandard(
+        name="THERM_NONE",
+        bus=bus,
+        active_power=0.0,
+        reactive_power=0.0,
+        rating=10.0,
+        base_power=10.0,
+        must_run=False,
+        status=True,
+        time_at_status=0.0,
+        active_power_limits=MinMax(min=0.0, max=10.0),
+        ramp_limits=UpDown(up=1.0, down=1.0),
+        time_limits=UpDown(up=1.0, down=1.0),
+        prime_mover_type=PrimeMoversType.CC,
+        fuel=ThermalFuels.NATURAL_GAS,
+        operation_cost=ThermalGenerationCost.example(),
+    )
+    monkeypatch.setattr(getters, "_get_defaults_data", lambda _ctx: {"reeds_thermal_mapping": "bad"})
+    assert getters._get_reeds_thermal_category_from_fuel(thermal, context) is None
+
+
+def test_index_builders_return_empty_when_system_missing(tmp_path):
+    context = make_context(tmp_path)
+    context.target_system = None
+    context.source_system = None
+
+    assert getters._build_target_storage_name_index(context) == {}
+    assert getters._build_source_reserve_name_index(context) == {}
+
+
 def test_get_susceptance_transformers(tmp_path):
     context = make_context(tmp_path)
     context.source_system = System(name="source")

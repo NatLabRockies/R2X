@@ -321,6 +321,95 @@ def test_ensure_reference_node_memberships_fallback_uses_voltage_then_lpf(contex
     )
 
 
+def test_ensure_reference_node_memberships_uses_existing_region_memberships_when_names_differ(context):
+    area = Area(name="A1")
+    region = PLEXOSRegion(name="A1")
+    bus = ACBus(name="Source-Bus-1", number=1, bustype=ACBusTypes.PQ, area=area)
+    translated_node = PLEXOSNode(name="Translated-Node-1", voltage=230.0, load_participation_factor=0.2)
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(bus)
+    context.target_system.add_component(region)
+    context.target_system.add_component(translated_node)
+
+    # Pre-existing Region membership can be node->region for CollectionEnum.Region.
+    region_membership = PLEXOSMembership(
+        parent_object=translated_node,
+        child_object=region,
+        collection=CollectionEnum.Region,
+    )
+    context.target_system.add_supplemental_attribute(translated_node, region_membership)
+    context.target_system.add_supplemental_attribute(region, region_membership)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    node_memberships = context.target_system.get_supplemental_attributes_with_component(
+        translated_node, PLEXOSMembership
+    )
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region
+        and m.child_object == translated_node
+        for m in node_memberships
+    )
+
+
+def test_ensure_reference_node_memberships_prefers_translated_slack_flag_when_names_differ(context):
+    area = Area(name="A1")
+    region = PLEXOSRegion(name="A1")
+    slack_bus = ACBus(name="Source-Slack", number=1, bustype=ACBusTypes.SLACK, area=area)
+    normal_bus = ACBus(name="Source-Normal", number=2, bustype=ACBusTypes.PQ, area=area)
+
+    slack_node = PLEXOSNode(name="RenamedSlack", voltage=115.0, load_participation_factor=0.2, is_slack_bus=1)
+    normal_node = PLEXOSNode(
+        name="RenamedNormal", voltage=500.0, load_participation_factor=0.9, is_slack_bus=0
+    )
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(slack_bus)
+    context.source_system.add_component(normal_bus)
+    context.target_system.add_component(region)
+    context.target_system.add_component(slack_node)
+    context.target_system.add_component(normal_node)
+
+    slack_region_membership = PLEXOSMembership(
+        parent_object=slack_node,
+        child_object=region,
+        collection=CollectionEnum.Region,
+    )
+    normal_region_membership = PLEXOSMembership(
+        parent_object=normal_node,
+        child_object=region,
+        collection=CollectionEnum.Region,
+    )
+    context.target_system.add_supplemental_attribute(slack_node, slack_region_membership)
+    context.target_system.add_supplemental_attribute(region, slack_region_membership)
+    context.target_system.add_supplemental_attribute(normal_node, normal_region_membership)
+    context.target_system.add_supplemental_attribute(region, normal_region_membership)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    slack_memberships = context.target_system.get_supplemental_attributes_with_component(
+        slack_node, PLEXOSMembership
+    )
+    normal_memberships = context.target_system.get_supplemental_attributes_with_component(
+        normal_node, PLEXOSMembership
+    )
+
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region
+        and m.child_object == slack_node
+        for m in slack_memberships
+    )
+    assert not any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region
+        and m.child_object == normal_node
+        for m in normal_memberships
+    )
+
+
 def test_ensure_head_tail_storage_generator_membership(context, monkeypatch):
     import r2x_sienna_to_plexos.getters as getters_mod
 
