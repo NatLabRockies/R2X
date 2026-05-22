@@ -9,6 +9,7 @@ import math
 from collections import defaultdict
 from copy import deepcopy
 from datetime import timedelta
+from functools import lru_cache
 from importlib.resources import files
 from typing import Any, cast
 
@@ -92,11 +93,17 @@ def _get_defaults_data(context: PluginContext) -> dict[str, Any]:
     if cached is not None:
         return cast(dict[str, Any], cached)
 
-    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-    with defaults_path.open() as f:
-        data = cast(dict[str, Any], json.load(f))
+    data = cast(dict[str, Any], _load_defaults_json())
     context._cache["defaults_json"] = data
     return data
+
+
+@lru_cache(maxsize=1)
+def _load_defaults_json() -> dict[str, Any]:
+    """Load defaults.json once per process for hot getter paths."""
+    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
+    with defaults_path.open() as f:
+        return cast(dict[str, Any], json.load(f))
 
 
 def _get_reeds_thermal_category_from_fuel(source_component: Any, context: PluginContext) -> str | None:
@@ -557,9 +564,7 @@ def _get_ramp_default(source_component: object, context: PluginContext) -> float
 
 def _get_defaults(category: str, key: str) -> float:
     """Extract a default value from defaults.json for the given category and key."""
-    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults = json.load(f)
+    defaults = _load_defaults_json()
     value = defaults.get("reeds_defaults", {}).get(category, {}).get(key, 0.0)
     try:
         return float(value)
@@ -667,7 +672,7 @@ def _attach_generator_time_series(
                 resolution=output_resolution,
             )
             _target_system(context).add_time_series(fresh_ts, target_generator, **metadata.features)
-            logger.success("Attached time series {} to generator {}", ts.name, generator_name)
+            logger.debug("Attached time series {} to generator {}", ts.name, generator_name)
 
 
 def _has_usable_generator_time_series(source_component: object, context: PluginContext) -> bool:
@@ -944,9 +949,7 @@ def _get_system_base_power(context: PluginContext) -> float:
 
 def _get_general_default(key: str) -> float:
     """Extract a general default value from defaults.json for the given key."""
-    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults = json.load(f)
+    defaults = _load_defaults_json()
     value = defaults.get("general_defaults", {}).get(key, 0.0)
     try:
         return float(value)

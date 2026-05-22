@@ -244,7 +244,7 @@ def _attach_reservoir_time_series_to_storage(
                 resolution=typed_ts.resolution,
             )
             _target_system(context).add_time_series(fresh_ts, target_storage, **ts_features)
-            logger.success("Attached time series {} to storage {}", ts_name, storage_name)
+            logger.debug("Attached time series {} to storage {}", ts_name, storage_name)
 
 
 def ensure_region_node_memberships(context: PluginContext) -> None:
