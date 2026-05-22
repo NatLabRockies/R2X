@@ -145,6 +145,18 @@ def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | 
     return result
 
 
+def _bus_to_area_name(bus: Any) -> str | None:
+    """Resolve canonical area name for a source bus."""
+    area = getattr(bus, "area", None)
+    if isinstance(area, Area):
+        ext = getattr(area, "ext", None)
+        arname = (ext or {}).get("ARNAME") if isinstance(ext, dict) else None
+        return str(arname) if arname else area.name
+    if area:
+        return str(area)
+    return None
+
+
 def _attach_reservoir_time_series_to_storage(
     context: PluginContext,
     storage_name: str,
@@ -240,18 +252,31 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
 
     Area maps to PLEXOSRegion, so regions are looked up by area_name.
     """
-    bus_index = _bus_name_to_area_and_zone(context)
     regions_by_name = {r.name: r for r in _target_system(context).get_components(PLEXOSRegion)}
+    source_buses = list(_source_system(context).get_components(ACBus))
+    source_buses_by_uuid = {str(getattr(bus, "uuid", "")): bus for bus in source_buses}
+    source_buses_by_name = {bus.name: bus for bus in source_buses}
+
+    region_nodes_by_name: dict[str, list[PLEXOSNode]] = {name: [] for name in regions_by_name}
 
     total_memberships = 0
     for node in _target_system(context).get_components(PLEXOSNode):
-        area_name, _ = bus_index.get(node.name, (None, None))
+        source_bus = source_buses_by_uuid.get(str(getattr(node, "uuid", "")))
+        if source_bus is None:
+            source_bus = source_buses_by_name.get(node.name)
+
+        area_name = _bus_to_area_name(source_bus) if source_bus is not None else None
         if area_name is None:
             continue
         region = regions_by_name.get(area_name)
         if region is not None:
             _ensure_membership(context, node, region, CollectionEnum.Region)
+            region_nodes = region_nodes_by_name.setdefault(area_name, [])
+            if node not in region_nodes:
+                region_nodes.append(node)
             total_memberships += 1
+
+    context._cache["region_nodes_by_name"] = region_nodes_by_name
 
     logger.info("Total {} Region-Node memberships created.", total_memberships)
 
@@ -270,59 +295,38 @@ def ensure_reference_node_memberships(context: PluginContext) -> None:
         except (TypeError, ValueError):
             return 0.0
 
-    bus_index = _bus_name_to_area_and_zone(context)
     regions_by_name = {r.name: r for r in _target_system(context).get_components(PLEXOSRegion)}
+    nodes_by_region = cast(dict[str, list[PLEXOSNode]], context._cache.get("region_nodes_by_name", {}))
+    if not nodes_by_region:
+        ensure_region_node_memberships(context)
+        nodes_by_region = cast(dict[str, list[PLEXOSNode]], context._cache.get("region_nodes_by_name", {}))
 
-    nodes_by_region: dict[str, list[PLEXOSNode]] = {}
-
-    # Prefer existing Region memberships to discover region-node associations.
-    # This is a single-pass index over membership components and avoids per-region
-    # supplemental scans that can be expensive on large models.
-    for membership in _target_system(context).get_components(PLEXOSMembership):
-        if membership.collection != CollectionEnum.Region:
+    # If some regions still have no node associations, recover from existing
+    # supplemental Region memberships attached to the region endpoint.
+    for region_name, region in regions_by_name.items():
+        if nodes_by_region.get(region_name):
             continue
 
-        parent = membership.parent_object
-        child = membership.child_object
-        if isinstance(parent, PLEXOSNode) and isinstance(child, PLEXOSRegion):
-            region_nodes = nodes_by_region.setdefault(child.name, [])
-            if parent not in region_nodes:
-                region_nodes.append(parent)
-        elif isinstance(parent, PLEXOSRegion) and isinstance(child, PLEXOSNode):
-            region_nodes = nodes_by_region.setdefault(parent.name, [])
-            if child not in region_nodes:
-                region_nodes.append(child)
-
-    # Also ingest Region memberships stored as supplemental attributes on nodes.
-    for node in _target_system(context).get_components(PLEXOSNode):
+        recovered_nodes: list[PLEXOSNode] = []
         for membership in _target_system(context).get_supplemental_attributes_with_component(
-            node,
+            region,
             PLEXOSMembership,
         ):
             if membership.collection != CollectionEnum.Region:
                 continue
 
-            parent = membership.parent_object
-            child = membership.child_object
-            if parent == node and isinstance(child, PLEXOSRegion):
-                region_nodes = nodes_by_region.setdefault(child.name, [])
-                if node not in region_nodes:
-                    region_nodes.append(node)
-            elif child == node and isinstance(parent, PLEXOSRegion):
-                region_nodes = nodes_by_region.setdefault(parent.name, [])
-                if node not in region_nodes:
-                    region_nodes.append(node)
+            if membership.parent_object == region and isinstance(membership.child_object, PLEXOSNode):
+                recovered_nodes.append(membership.child_object)
+            elif membership.child_object == region and isinstance(membership.parent_object, PLEXOSNode):
+                recovered_nodes.append(membership.parent_object)
 
-    # Fallback: recover region-node associations from source bus area mapping.
-    for node in _target_system(context).get_components(PLEXOSNode):
-        area_name, _ = bus_index.get(node.name, (None, None))
-        if area_name is None:
-            continue
-        region_nodes = nodes_by_region.setdefault(area_name, [])
-        if node not in region_nodes:
-            region_nodes.append(node)
+        if recovered_nodes:
+            nodes_by_region[region_name] = recovered_nodes
+
+    all_nodes = list(_target_system(context).get_components(PLEXOSNode))
 
     ref_node_names: set[str] = set()
+    ref_node_uuids: set[str] = set()
     for bus in _source_system(context).get_components(ACBus):
         bustype = getattr(bus, "bustype", None)
         bustype_name = getattr(bustype, "name", str(bustype)).upper() if bustype is not None else ""
@@ -330,19 +334,28 @@ def ensure_reference_node_memberships(context: PluginContext) -> None:
             continue
 
         ref_node_names.add(bus.name)
+        ref_node_uuids.add(str(getattr(bus, "uuid", "")))
 
     total_memberships = 0
     for region_name, region in regions_by_name.items():
         region_nodes = nodes_by_region.get(region_name, [])
-        if not region_nodes:
+        if not region_nodes and not all_nodes:
             continue
 
         slack_nodes = [
             node
             for node in region_nodes
-            if node.name in ref_node_names or bool(getattr(node, "is_slack_bus", 0))
+            if (
+                node.name in ref_node_names
+                or str(getattr(node, "uuid", "")) in ref_node_uuids
+                or bool(getattr(node, "is_slack_bus", 0))
+            )
         ]
         candidate_nodes = slack_nodes if slack_nodes else region_nodes
+        used_global_fallback = False
+        if not candidate_nodes:
+            candidate_nodes = all_nodes
+            used_global_fallback = True
 
         chosen = max(
             candidate_nodes,
@@ -356,7 +369,13 @@ def ensure_reference_node_memberships(context: PluginContext) -> None:
         _ensure_membership(context, region, chosen, CollectionEnum.ReferenceNode)
         total_memberships += 1
 
-        if not slack_nodes:
+        if used_global_fallback:
+            logger.warning(
+                "No nodes were associated with region '{}'; using global fallback reference node '{}'.",
+                region_name,
+                chosen.name,
+            )
+        elif not slack_nodes:
             logger.debug(
                 "No REF/SLACK bus found for region '{}'; using fallback reference node '{}'.",
                 region_name,

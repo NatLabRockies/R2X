@@ -179,6 +179,30 @@ def test_ensure_region_node_memberships(context):
         assert any(m.collection == CollectionEnum.Region for m in memberships)
 
 
+def test_ensure_region_node_memberships_matches_source_bus_by_uuid_when_names_differ(context):
+    area = Area(name="A1")
+    region = PLEXOSRegion(name="A1")
+    source_bus = ACBus(name="SourceNode", area=area, number=1)
+    translated_node = PLEXOSNode(name="RenamedNode", uuid=source_bus.uuid)
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(source_bus)
+    context.target_system.add_component(region)
+    context.target_system.add_component(translated_node)
+
+    getters_utils.ensure_region_node_memberships(context)
+
+    memberships = context.target_system.get_supplemental_attributes_with_component(
+        translated_node, PLEXOSMembership
+    )
+    assert any(
+        m.collection == CollectionEnum.Region
+        and m.parent_object == translated_node
+        and m.child_object == region
+        for m in memberships
+    )
+
+
 def test_ensure_transformer_node_memberships(context):
     node1 = PLEXOSNode(name="N1")
     node2 = PLEXOSNode(name="N2")
@@ -408,6 +432,24 @@ def test_ensure_reference_node_memberships_prefers_translated_slack_flag_when_na
         and m.child_object == normal_node
         for m in normal_memberships
     )
+
+
+def test_ensure_reference_node_memberships_creates_one_per_region_with_global_fallback(context):
+    region1 = PLEXOSRegion(name="A1")
+    region2 = PLEXOSRegion(name="A2")
+    node = PLEXOSNode(name="OnlyNode", voltage=138.0, load_participation_factor=0.4)
+
+    context.target_system.add_component(region1)
+    context.target_system.add_component(region2)
+    context.target_system.add_component(node)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
+    ref_memberships = [m for m in memberships if m.collection == CollectionEnum.ReferenceNode]
+
+    assert any(m.parent_object == region1 and m.child_object == node for m in ref_memberships)
+    assert any(m.parent_object == region2 and m.child_object == node for m in ref_memberships)
 
 
 def test_ensure_head_tail_storage_generator_membership(context, monkeypatch):
