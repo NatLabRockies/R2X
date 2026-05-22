@@ -652,7 +652,7 @@ def test_get_thermal_generator_units_zero_when_fuel_price_zero(monkeypatch, cont
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(0.0))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
 
-    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
 
 
 def test_get_thermal_generator_units_zero_when_heat_rate_zero(monkeypatch, context):
@@ -670,7 +670,7 @@ def test_get_thermal_generator_units_zero_when_heat_rate_zero(monkeypatch, conte
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(0.0))
 
-    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
 
 
 def test_get_thermal_generator_units_one_when_inputs_present(monkeypatch, context):
@@ -736,7 +736,29 @@ def test_get_thermal_generator_units_zero_when_time_series_missing(monkeypatch, 
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
 
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
+
+
+def test_get_thermal_generator_units_honors_explicit_units_zero(context):
+    class DummyThermal:
+        units = 0
+
     assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+
+
+def test_get_thermal_generator_units_uses_heat_rate_base_and_incr(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(0.0))
+    monkeypatch.setattr(getters, "get_generator_start_cost", lambda *_: Ok(0.0))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(0.0))
+    monkeypatch.setattr(getters, "get_heat_rate_base", lambda *_: Ok(12.3))
+    monkeypatch.setattr(getters, "get_heat_rate_incr", lambda *_: Ok(9.7))
+    monkeypatch.setattr(getters, "get_heat_rate_incr2", lambda *_: Ok(0.0))
+    monkeypatch.setattr(getters, "get_heat_rate_incr3", lambda *_: Ok(0.0))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
 
 
 def test_get_dispatch_generator_units_zero_when_time_series_missing(context):

@@ -1489,11 +1489,15 @@ def get_fuel_price(
 def get_thermal_generator_units(
     source_component: ThermalStandard | ThermalMultiStart, context: PluginContext
 ) -> Result[int, ValueError]:
-    """Deactivate thermal generators with missing marginal-cost inputs.
+    """Return thermal generator online status.
 
-    If fuel price or heat rate resolves to zero, set units to 0 so the device is
-    not treated as nearly free generation in PLEXOS.
-    Also deactivate units that have no associated source time series.
+    Thermal units in Sienna inputs can express cost with different combinations
+    of fuel price and heat-rate terms. Evaluate the full signal (heat rate,
+    heat rate base/increment terms, fuel price, and start cost) before deciding
+    whether a unit has usable economic metadata.
+
+    Generators default to online unless an explicit source ``units`` flag
+    disables them, or a known data-fix exception applies.
     """
     ext = getattr(source_component, "ext", None)
     if isinstance(ext, dict):
@@ -1503,30 +1507,56 @@ def get_thermal_generator_units(
         if plant_name == "monticello" and state == "TX":
             return Ok(0)
 
-    fuel_price = 0.0
-    heat_rate = 0.0
-    fuel_price_getter = cast(Any, get_fuel_price)
-    heat_rate_getter = cast(Any, get_heat_rate)
+    source_units = getattr(source_component, "units", None)
+    if source_units is not None:
+        try:
+            return Ok(1 if int(source_units) > 0 else 0)
+        except (TypeError, ValueError):
+            pass
 
+    # Consider all heat-rate components, not just heat_rate.
+    fuel_price_getter = cast(Any, get_fuel_price)
+    start_cost_getter = cast(Any, get_generator_start_cost)
+    heat_getters: tuple[Any, ...] = (
+        cast(Any, get_heat_rate),
+        cast(Any, get_heat_rate_base),
+        cast(Any, get_heat_rate_incr),
+        cast(Any, get_heat_rate_incr2),
+        cast(Any, get_heat_rate_incr3),
+    )
+
+    def _non_zero(value: Any) -> bool:
+        try:
+            return not math.isclose(float(value), 0.0, rel_tol=0.0, abs_tol=1e-9)
+        except (TypeError, ValueError):
+            return False
+
+    fuel_price = 0.0
+    start_cost = 0.0
     match fuel_price_getter(source_component, context):
         case Ok(value):
             fuel_price = float(value)
         case Err(_):
             fuel_price = 0.0
-
-    match heat_rate_getter(source_component, context):
+    match start_cost_getter(source_component, context):
         case Ok(value):
-            heat_rate = float(value)
+            start_cost = float(value)
         case Err(_):
-            heat_rate = 0.0
+            start_cost = 0.0
 
-    if math.isclose(fuel_price, 0.0, rel_tol=0.0, abs_tol=1e-9) or math.isclose(
-        heat_rate, 0.0, rel_tol=0.0, abs_tol=1e-9
-    ):
-        return Ok(0)
+    has_heat_signal = False
+    for getter_fn in heat_getters:
+        match getter_fn(source_component, context):
+            case Ok(value):
+                if _non_zero(value):
+                    has_heat_signal = True
+                    break
+            case Err(_):
+                continue
 
-    if not _has_usable_generator_time_series(source_component, context):
-        return Ok(0)
+    # If any economic signal exists, keep thermal online.
+    if _non_zero(fuel_price) or _non_zero(start_cost) or has_heat_signal:
+        return Ok(1)
 
     return Ok(1)
 
