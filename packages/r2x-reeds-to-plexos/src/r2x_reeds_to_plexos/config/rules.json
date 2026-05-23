@@ -189,6 +189,7 @@
     "field_map": {
       "category": "technology",
       "name": "name",
+      "max_load": "capacity",
       "ext": "ext"
     },
     "getters": {

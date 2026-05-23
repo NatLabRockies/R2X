@@ -53,14 +53,16 @@ dependencies = [
   "r2x-plexos-to-sienna",
   "r2x-reeds-to-plexos",
   "r2x-reeds-to-sienna",
+  "r2x-plexos",
+  "plexosdb",
 ]
 
 [project.urls]
-Homepage = "https://github.com/NREL/r2x"
-Documentation = "https://nrel.github.io/r2x/"
-Repository = "https://github.com/NREL/r2x"
-Issues = "https://github.com/NREL/r2x/issues"
-Changelog = "https://nrel.github.io/r2x/CHANGELOG.html"
+Homepage = "https://github.com/NatlabRockies/r2x"
+Documentation = "https://NatlabRockies.github.io/r2x/"
+Repository = "https://github.com/NatlabRockies/r2x"
+Issues = "https://github.com/NatlabRockies/r2x/issues"
+Changelog = "https://NatlabRockies.github.io/r2x/CHANGELOG.html"
 
 [dependency-groups]
 dev = [
@@ -86,7 +88,9 @@ r2x-sienna-to-plexos = { workspace = true }
 r2x-plexos-to-sienna = { workspace = true }
 r2x-reeds-to-plexos = { workspace = true }
 r2x-reeds-to-sienna = { workspace = true }
-r2x-core = { git = "https://github.com/NREL/r2x-core.git", branch = "main" }
+r2x-core = { git = "https://github.com/NatLabRockies/r2x-core.git", branch = "main" }
+r2x-plexos = { path = "../r2x-plexos", editable = true }
+plexosdb = { path = "../plexosdb", editable = true }
 
 [tool.uv.workspace]
 members = ["packages/*"]

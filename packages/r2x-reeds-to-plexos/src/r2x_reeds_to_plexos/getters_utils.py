@@ -182,7 +182,6 @@ def attach_time_series_to_purchasers(context: PluginContext) -> None:
                     ts.name,
                     target_purchaser.name,
                 )
-            continue
 
 
 def ensure_region_node_memberships(context: PluginContext) -> None:

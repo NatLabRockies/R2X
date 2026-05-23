@@ -48,9 +48,9 @@ html_js_files = ["custom.js"]
 # -- Intersphinx mapping -----------------------------------------------------
 
 intersphinx_mapping = {
-    "r2x_core": ("https://nrel.github.io/r2x-core/", None),
-    "infrasys": ("https://nrel.github.io/infrasys/", None),
-    "plexosdb": ("https://nrel.github.io/plexosdb/", None),
+    "r2x_core": ("https://NatLabRockies.github.io/r2x-core/", None),
+    "infrasys": ("https://NatLabRockies.github.io/infrasys/", None),
+    "plexosdb": ("https://NatLabRockies.github.io/plexosdb/", None),
 }
 
 # -- MyST settings -----------------------------------------------------------

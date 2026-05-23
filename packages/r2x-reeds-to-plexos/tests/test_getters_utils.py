@@ -64,7 +64,7 @@ def test_attach_time_series_to_purchasers(context, monkeypatch):
     monkeypatch.setattr(
         context.source_system,
         "list_time_series",
-        lambda _component, **_kwargs: [types.SimpleNamespace(name="max_active_power", __class__=object)],
+        lambda _component, **_kwargs: [types.SimpleNamespace(name="max_active_power")],
     )
 
     added = []

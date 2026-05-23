@@ -270,7 +270,7 @@ models; and this repo provides translation plugins.
 | [r2x-core](https://github.com/NatlabRockies/r2x-core) | Shared plugin framework: `PluginContext`, `Rule`, `System`, `@getter` registry, `Result[T, E]` via [rust-ok](https://github.com/NatlabRockies/rust-ok) |
 | [r2x-reeds](https://github.com/NatlabRockies/r2x-reeds) | ReEDS parser, transform plugins (`add-ccs-credit`, `break-gens`, etc.), and component models |
 | [r2x-plexos](https://github.com/NatlabRockies/r2x-plexos) | PLEXOS parser/exporter and component models, built on [plexosdb](https://github.com/NatlabRockies/plexosdb) |
-| [r2x-sienna](https://github.com/NREL-Sienna/r2x-sienna) | Sienna parser/exporter and [PowerSystems.jl](https://github.com/NREL-Sienna/PowerSystems.jl)-compatible models |
+| [r2x-sienna](https://github.com/NatlabRockies/r2x-sienna) | Sienna parser/exporter and [PowerSystems.jl](https://github.com/Sienna-Platform/PowerSystems.jl)-compatible models |
 | [infrasys](https://github.com/NatlabRockies/infrasys) | Foundational `System` container, time series management, and component storage used by all model packages |
 | [plexosdb](https://github.com/NatlabRockies/plexosdb) | Standalone PLEXOS XML database reader/writer |
 
@@ -317,4 +317,4 @@ R2X is released under the
 [BSD 3-Clause License](./LICENSE.txt).
 
 Developed under software record SWR-24-91 at the
-[National Renewable Energy Laboratory](https://www.nrel.gov/) (NREL).
+[National Laboratory of the Rockies](https://www.nlr.gov/) (NLR).
