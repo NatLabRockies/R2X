@@ -707,6 +707,7 @@ def _attach_hydro_reservoir_inflow_to_generator_budget(
 
 def ensure_reserve_time_series(context: PluginContext) -> None:
     """Attach reserve time series from source VariableReserve to translated PLEXOSReserve."""
+
     def _normalize_series_name(name: Any) -> str:
         return str(name or "").strip().lower().replace("-", "_").replace(" ", "_")
 
@@ -745,7 +746,9 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
                 _normalize_series_name(getattr(metadata, "name", None)),
                 _normalize_series_name(getattr(typed_source_ts, "name", None)),
             }
-            ts_name = "min_provision" if {"requirement", "min_provision"} & source_names else typed_source_ts.name
+            ts_name = (
+                "min_provision" if {"requirement", "min_provision"} & source_names else typed_source_ts.name
+            )
 
             ts_copy_any = deepcopy(typed_source_ts)
             ts_copy_any.name = ts_name

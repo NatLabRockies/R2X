@@ -1304,7 +1304,9 @@ def test_ensure_reserve_time_series_collapses_requirement_variants_to_min_provis
 
     added = []
     context.target_system.has_time_series = lambda *_args, **_kwargs: False
-    context.target_system.add_time_series = lambda ts, reserve, **features: added.append((ts, reserve, features))
+    context.target_system.add_time_series = lambda ts, reserve, **features: added.append(
+        (ts, reserve, features)
+    )
 
     getters_utils.ensure_reserve_time_series(context)
 
