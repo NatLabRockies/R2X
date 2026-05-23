@@ -1269,6 +1269,53 @@ def test_ensure_reserve_time_series_skips_when_target_has_series(context, monkey
     assert added == []
 
 
+def test_ensure_reserve_time_series_collapses_requirement_variants_to_min_provision(context, monkeypatch):
+    source_reserve = VariableReserve(
+        name="RES_VARIANTS",
+        reserve_type=ReserveType.SPINNING,
+        vors=10.0,
+        max_participation_factor=0.5,
+        direction="UP",
+        requirement=100.0,
+    )
+    target_reserve = PLEXOSReserve(name="RES_VARIANTS")
+    context.source_system.add_component(source_reserve)
+    context.target_system.add_component(target_reserve)
+
+    metadata_entries = [
+        types.SimpleNamespace(name="Requirement", features={"scenario": "base"}),
+        types.SimpleNamespace(name="min-provision", features={"scenario": "base"}),
+    ]
+
+    def _list_time_series(_component, name=None, **_kwargs):
+        if name == "Requirement":
+            return [types.SimpleNamespace(name="Requirement", data=[1.0], features={"scenario": "base"})]
+        if name == "min-provision":
+            return [types.SimpleNamespace(name="min-provision", data=[1.0], features={"scenario": "base"})]
+        return []
+
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: metadata_entries,
+    )
+    monkeypatch.setattr(context.source_system, "list_time_series", _list_time_series)
+
+    added = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    context.target_system.add_time_series = lambda ts, reserve, **features: added.append((ts, reserve, features))
+
+    getters_utils.ensure_reserve_time_series(context)
+
+    assert len(added) == 1
+    ts, reserve, features = added[0]
+    assert reserve.name == "RES_VARIANTS"
+    assert ts.name == "min_provision"
+    assert ts.data == [100.0]
+    assert features == {"scenario": "base"}
+
+
 def test_attach_hydro_reservoir_inflow_to_generator_budget_adds_max_energy_day(context, monkeypatch):
     import r2x_sienna_to_plexos.getters as getters_mod
 

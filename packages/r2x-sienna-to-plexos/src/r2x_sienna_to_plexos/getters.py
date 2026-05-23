@@ -1517,13 +1517,6 @@ def get_thermal_generator_units(
     # Consider all heat-rate components, not just heat_rate.
     fuel_price_getter = cast(Any, get_fuel_price)
     start_cost_getter = cast(Any, get_generator_start_cost)
-    heat_getters: tuple[Any, ...] = (
-        cast(Any, get_heat_rate),
-        cast(Any, get_heat_rate_base),
-        cast(Any, get_heat_rate_incr),
-        cast(Any, get_heat_rate_incr2),
-        cast(Any, get_heat_rate_incr3),
-    )
 
     def _non_zero(value: Any) -> bool:
         try:
@@ -1544,15 +1537,11 @@ def get_thermal_generator_units(
         case Err(_):
             start_cost = 0.0
 
-    has_heat_signal = False
-    for getter_fn in heat_getters:
-        match getter_fn(source_component, context):
-            case Ok(value):
-                if _non_zero(value):
-                    has_heat_signal = True
-                    break
-            case Err(_):
-                continue
+    heat_data = compute_heat_rate_data(source_component)
+    has_heat_signal = any(
+        _non_zero(heat_data.get(key))
+        for key in ("heat_rate", "heat_rate_base", "heat_rate_incr", "heat_rate_incr2", "heat_rate_incr3")
+    )
 
     # If any economic signal exists, keep thermal online.
     if _non_zero(fuel_price) or _non_zero(start_cost) or has_heat_signal:
@@ -1608,10 +1597,8 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
 def get_generator_commit(component: object, context: PluginContext) -> Result[int, ValueError]:
     """Return 1 if technology is in commit_technologies list or start cost is 0, -1 otherwise."""
     technology = getattr(component, "technology", "")
-    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults = json.load(f)
-    commit_technologies = defaults.get("commit_technologies", [])
+    defaults_data = _get_defaults_data(context)
+    commit_technologies = defaults_data.get("commit_technologies", [])
     if technology in commit_technologies:
         return Ok(1)
     cost = getattr(component, "operation_cost", None)

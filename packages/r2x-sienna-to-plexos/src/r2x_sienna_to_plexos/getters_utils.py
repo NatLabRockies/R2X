@@ -84,20 +84,6 @@ def _ensure_membership(
     if membership_key in membership_cache:
         return
 
-    # Avoid creating duplicate memberships for the same parent/child/collection.
-    existing = _target_system(context).get_supplemental_attributes_with_component(
-        child_object,
-        PLEXOSMembership,
-    )
-    for membership in existing:
-        if (
-            membership.parent_object == parent_object
-            and membership.child_object == child_object
-            and membership.collection == collection
-        ):
-            membership_cache.add(membership_key)
-            return
-
     membership = PLEXOSMembership(
         parent_object=parent_object,
         child_object=child_object,
@@ -721,6 +707,12 @@ def _attach_hydro_reservoir_inflow_to_generator_budget(
 
 def ensure_reserve_time_series(context: PluginContext) -> None:
     """Attach reserve time series from source VariableReserve to translated PLEXOSReserve."""
+    def _normalize_series_name(name: Any) -> str:
+        return str(name or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+    def _freeze_features(features: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+        return tuple(sorted((str(key), repr(value)) for key, value in features.items()))
+
     source_reserves = {r.name: r for r in _source_system(context).get_components(VariableReserve)}
     base = getattr(getattr(context, "source_system", None), "base_power", None)
     try:
@@ -729,6 +721,7 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
         system_base = 100.0
 
     total = 0
+    seen: set[tuple[str, str, type[Any], tuple[tuple[str, str], ...]]] = set()
     for reserve in _target_system(context).get_components(PLEXOSReserve):
         source_reserve = source_reserves.get(reserve.name)
         if source_reserve is None:
@@ -748,17 +741,25 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
                 continue
 
             typed_source_ts = ts_list[0]
-            ts_name = "min_provision" if typed_source_ts.name == "requirement" else typed_source_ts.name
+            source_names = {
+                _normalize_series_name(getattr(metadata, "name", None)),
+                _normalize_series_name(getattr(typed_source_ts, "name", None)),
+            }
+            ts_name = "min_provision" if {"requirement", "min_provision"} & source_names else typed_source_ts.name
 
             ts_copy_any = deepcopy(typed_source_ts)
             ts_copy_any.name = ts_name
 
             # Reserve requirement is represented in p.u. in Sienna; PLEXOS min_provision expects MW.
-            if ts_name in {"min_provision", "requirement"}:
+            if ts_name == "min_provision":
                 try:
                     ts_copy_any.data = ts_copy_any.data * system_base
                 except TypeError:
                     ts_copy_any.data = [float(value) * system_base for value in ts_copy_any.data]
+
+            seen_key = (reserve.name, ts_name, type(typed_source_ts), _freeze_features(features))
+            if seen_key in seen:
+                continue
 
             if _target_system(context).has_time_series(
                 reserve,
@@ -769,6 +770,7 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
                 continue
 
             _target_system(context).add_time_series(ts_copy_any, reserve, **features)
+            seen.add(seen_key)
             total += 1
 
     logger.info("Ensured reserve time series for {} associations.", total)
