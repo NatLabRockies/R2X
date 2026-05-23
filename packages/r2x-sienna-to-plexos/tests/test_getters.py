@@ -739,11 +739,11 @@ def test_get_thermal_generator_units_zero_when_time_series_missing(monkeypatch, 
     assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
 
 
-def test_get_thermal_generator_units_ignores_explicit_units_zero(context):
+def test_get_thermal_generator_units_honors_explicit_units_zero(context):
     class DummyThermal:
         units = 0
 
-    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
 
 
 def test_get_thermal_generator_units_uses_heat_rate_base_and_incr(monkeypatch, context):
@@ -783,35 +783,6 @@ def test_get_dispatch_generator_units_one_when_time_series_present(context):
     )
 
     assert getters.get_dispatch_generator_units(DummyDispatch(), context).unwrap() == 1
-
-
-def test_get_hydro_generator_units_defaults_to_online_without_time_series(context):
-    class DummyHydro:
-        pass
-
-    context.source_system.time_series.has_time_series = lambda _component: False
-
-    assert getters.get_hydro_generator_units(DummyHydro(), context).unwrap() == 1
-
-
-def test_get_hydro_generator_units_ignores_explicit_units_zero(context):
-    class DummyHydro:
-        units = 0
-
-    assert getters.get_hydro_generator_units(DummyHydro(), context).unwrap() == 1
-
-
-def test_hydro_like_generator_suppresses_thermal_economic_fields(context):
-    hydro_like = types.SimpleNamespace(
-        category="hydro-dispatch",
-        operation_cost=types.SimpleNamespace(start_up=5.0),
-        time_limits={"up": 4.0, "down": 6.0},
-    )
-
-    assert getters.get_fuel_price(hydro_like, context).unwrap() == 0.0
-    assert getters.get_generator_start_cost(hydro_like, context).unwrap() == 0.0
-    assert getters.get_min_up_time(hydro_like, context).unwrap() == 0.0
-    assert getters.get_min_down_time(hydro_like, context).unwrap() == 0.0
 
 
 def _make_thermal_generator_for_category_tests(

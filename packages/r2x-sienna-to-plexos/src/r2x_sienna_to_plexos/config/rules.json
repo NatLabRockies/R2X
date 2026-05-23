@@ -457,7 +457,7 @@
     },
     "getters": {
       "name": "get_generator_name",
-      "units": "get_hydro_generator_units",
+      "units": "get_dispatch_generator_units",
       "commit": "get_generator_commit",
       "category": "get_generator_category",
       "max_ramp_down": "get_max_ramp_down",
@@ -487,7 +487,7 @@
     },
     "getters": {
       "name": "get_generator_name",
-      "units": "get_hydro_generator_units",
+      "units": "get_dispatch_generator_units",
       "commit": "get_generator_commit",
       "category": "get_generator_category",
       "max_ramp_down": "get_max_ramp_down",
@@ -516,7 +516,7 @@
     },
     "getters": {
       "name": "get_generator_name",
-      "units": "get_hydro_generator_units",
+      "units": "get_dispatch_generator_units",
       "commit": "get_generator_commit",
       "category": "get_pumped_hydro_category",
       "rating": "get_generator_rating",
@@ -544,7 +544,7 @@
     },
     "getters": {
       "name": "get_generator_name",
-      "units": "get_hydro_generator_units",
+      "units": "get_dispatch_generator_units",
       "commit": "get_generator_commit",
       "category": "get_pumped_hydro_category",
       "rating": "get_generator_rating",

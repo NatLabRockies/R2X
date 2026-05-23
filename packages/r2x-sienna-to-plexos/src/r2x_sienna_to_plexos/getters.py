@@ -93,7 +93,7 @@ def _get_defaults_data(context: PluginContext) -> dict[str, Any]:
     if cached is not None:
         return cast(dict[str, Any], cached)
 
-    data = _load_defaults_json()
+    data = cast(dict[str, Any], _load_defaults_json())
     context._cache["defaults_json"] = data
     return data
 
@@ -1476,9 +1476,6 @@ def get_fuel_price(
     source_component: ThermalStandard | ThermalMultiStart, context: PluginContext
 ) -> Result[float, ValueError]:
     """Extract fuel price in $/GJ from fuel_cost attribute of FuelCurve, if available."""
-    if _is_hydro_like_generator(source_component):
-        return Ok(0.0)
-
     cost = getattr(source_component, "operation_cost", None)
     variable = getattr(cost, "variable", None) if cost else None
     if isinstance(variable, FuelCurve):
@@ -1509,6 +1506,13 @@ def get_thermal_generator_units(
         # Explicitly deactivate the known mismapped TX "Monticello" units.
         if plant_name == "monticello" and state == "TX":
             return Ok(0)
+
+    source_units = getattr(source_component, "units", None)
+    if source_units is not None:
+        try:
+            return Ok(1 if int(source_units) > 0 else 0)
+        except (TypeError, ValueError):
+            pass
 
     # Consider all heat-rate components, not just heat_rate.
     fuel_price_getter = cast(Any, get_fuel_price)
@@ -1557,34 +1561,6 @@ def get_dispatch_generator_units(
 ) -> Result[int, ValueError]:
     """Deactivate dispatch generators that do not have source time series."""
     return Ok(1 if _has_usable_generator_time_series(source_component, context) else 0)
-
-
-def _is_hydro_like_generator(source_component: object) -> bool:
-    """Return True when the source component is hydro-like or tagged as hydro category."""
-    if isinstance(source_component, HydroDispatch | HydroTurbine | HydroPumpTurbine | HydroPumpedStorage):
-        return True
-
-    category = str(getattr(source_component, "category", "") or "").strip().lower().replace("_", "-")
-    if "hydro" in category:
-        return True
-
-    prime_mover = getattr(source_component, "prime_mover_type", None)
-    pm_name = str(getattr(prime_mover, "name", prime_mover) or "").upper()
-    return pm_name == "HY"
-
-
-@getter
-def get_hydro_generator_units(
-    source_component: HydroDispatch | HydroTurbine | HydroPumpTurbine,
-    context: PluginContext,
-) -> Result[int, ValueError]:
-    """Keep hydro generators online by default.
-
-    Source ``units`` flags in some datasets encode build status rather than
-    operational enablement for dispatch, so hydro should not be deactivated
-    from that field.
-    """
-    return Ok(1)
 
 
 @getter
@@ -1671,9 +1647,6 @@ def get_heat_rate_incr3(source_component: object, context: PluginContext) -> Res
 @getter
 def get_min_up_time(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract minimum up time from time_limits or ext dict."""
-    if _is_hydro_like_generator(source_component):
-        return Ok(0.0)
-
     value = _get_time_limit(source_component, "up", "NARIS_Min_Up_Time")
     return Ok(value if value is not None else 0.0)
 
@@ -1681,9 +1654,6 @@ def get_min_up_time(source_component: object, context: PluginContext) -> Result[
 @getter
 def get_min_down_time(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract minimum down time from time_limits or ext dict."""
-    if _is_hydro_like_generator(source_component):
-        return Ok(0.0)
-
     value = _get_time_limit(source_component, "down", "NARIS_Min_Down_Time")
     return Ok(value if value is not None else 0.0)
 
@@ -1822,9 +1792,6 @@ def get_generator_mean_time_to_repair(
 
 @getter
 def get_generator_start_cost(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    if _is_hydro_like_generator(source_component):
-        return Ok(0.0)
-
     cost = getattr(source_component, "operation_cost", None)
     value = get_magnitude(getattr(cost, "start_up", None)) if cost else None
     return Ok(float(value) if value is not None else 0.0)
