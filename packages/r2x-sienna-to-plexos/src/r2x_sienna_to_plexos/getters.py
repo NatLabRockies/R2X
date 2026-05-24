@@ -1552,15 +1552,24 @@ def get_thermal_generator_units(
 
 @getter
 def get_dispatch_generator_units(
-    source_component: HydroDispatch
-    | HydroTurbine
-    | HydroPumpTurbine
-    | RenewableDispatch
-    | RenewableNonDispatch,
+    source_component: RenewableDispatch | RenewableNonDispatch,
     context: PluginContext,
 ) -> Result[int, ValueError]:
-    """Deactivate dispatch generators that do not have source time series."""
+    """Deactivate renewable dispatch generators that do not have source time series."""
     return Ok(1 if _has_usable_generator_time_series(source_component, context) else 0)
+
+
+@getter
+def get_hydro_generator_units(
+    source_component: HydroDispatch | HydroTurbine | HydroPumpTurbine,
+    context: PluginContext,
+) -> Result[int, ValueError]:
+    """Keep hydro generators online by default.
+
+    Source ``units`` flags in Sienna data encode build counts, not operational
+    enablement, so hydro should not be deactivated from that field.
+    """
+    return Ok(1)
 
 
 @getter
