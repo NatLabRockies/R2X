@@ -1561,15 +1561,54 @@ def get_dispatch_generator_units(
 
 @getter
 def get_hydro_generator_units(
-    source_component: HydroDispatch | HydroTurbine | HydroPumpTurbine,
+    source_component: HydroDispatch,
     context: PluginContext,
 ) -> Result[int, ValueError]:
-    """Keep hydro generators online by default.
+    """Keep dispatch hydro generators online by default.
 
+    Applies to ``HydroDispatch`` and ``HydroEnergyReservoir`` source types.
     Source ``units`` flags in Sienna data encode build counts, not operational
-    enablement, so hydro should not be deactivated from that field.
+    enablement, so these should not be deactivated from that field.
     """
     return Ok(1)
+
+
+@getter
+def get_pumped_hydro_generator_units(
+    source_component: HydroTurbine | HydroPumpTurbine,
+    context: PluginContext,
+) -> Result[int, ValueError]:
+    """Online status for pump turbine generators.
+
+    Units with zero pump load are treated as regular hydro (always online).
+    Units with non-zero pump load are only online when a HydroReservoir with a
+    pumped-storage association references this turbine — meaning a PLEXOSStorage
+    will actually be created and connected to it.
+    """
+    rating = getattr(source_component, "rating", None)
+    pump_load_mw = 0.0
+    if rating is not None:
+        magnitude = get_magnitude(rating)
+        if magnitude is not None:
+            pump_load_mw = abs(float(magnitude) * resolve_base_power(source_component))
+
+    if math.isclose(pump_load_mw, 0.0, abs_tol=1e-9):
+        return Ok(1)
+
+    # Non-zero pump load: only deactivate components that actually resolve to a pumped
+    # category.  A HydroTurbine can have rating > 0 yet still resolve to "hydro" via
+    # gen_type_string or ReEDS name patterns — those must stay online.
+    category = _resolve_generator_category(source_component, context)
+    if category is not None and "pump" not in category.lower():
+        return Ok(1)
+
+    # Category is pumped-hydro (or could not be resolved → rule default pumped-hydro):
+    # only online when a storage-creating HydroReservoir backs this turbine.
+    turbine_names = _build_reservoir_pump_turbine_name_set(context)
+    comp_name = getattr(source_component, "name", None)
+    if comp_name is not None and str(comp_name) in turbine_names:
+        return Ok(1)
+    return Ok(0)
 
 
 @getter
@@ -1951,6 +1990,39 @@ def _reservoir_has_hydro_pumped_storage_association(
         for turbine in source_system.get_components(HydroPumpTurbine)
     }
     return any(isinstance(plant_id, str) and plant_id in pump_turbines_by_name for plant_id in plant_ids)
+
+
+def _build_reservoir_pump_turbine_name_set(context: PluginContext) -> set[str]:
+    """Build the set of turbine names referenced by any storage-creating HydroReservoir, cached.
+
+    Only reservoirs that pass ``_reservoir_has_hydro_pumped_storage_association``
+    are considered, so the returned names correspond to turbines that will
+    actually receive a PLEXOSStorage membership.
+    """
+    cached = context._cache.get("reservoir_pump_turbine_name_set")
+    if cached is not None:
+        return cast(set[str], cached)
+
+    names: set[str] = set()
+    for reservoir in _source_system(context).get_components(HydroReservoir):
+        if not _reservoir_has_hydro_pumped_storage_association(reservoir, context):
+            continue
+        for turbine in [
+            *list(getattr(reservoir, "upstream_turbines", None) or []),
+            *list(getattr(reservoir, "downstream_turbines", None) or []),
+        ]:
+            tname = getattr(turbine, "name", None)
+            if tname:
+                names.add(str(tname))
+        ext = getattr(reservoir, "ext", None)
+        plant_ids = ext.get("plants") if isinstance(ext, dict) else None
+        if isinstance(plant_ids, list):
+            for plant_id in plant_ids:
+                if isinstance(plant_id, str):
+                    names.add(plant_id)
+
+    context._cache["reservoir_pump_turbine_name_set"] = names
+    return names
 
 
 def _get_reservoir_location(source_component: HydroReservoir) -> str | None:
