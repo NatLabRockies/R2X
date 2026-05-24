@@ -219,6 +219,20 @@
       "min_up_time": 7.0,
       "start_cost_per_MW": 5.3
     },
+    "coal": {
+      "capacity_MW": 302.0,
+      "forced_outage_rate": 0.0429,
+      "maintenance_rate": 0.12,
+      "max_capacity_MW": 856.0,
+      "max_ramp_up_percentage": 0.02,
+      "mean_time_to_repair": 55.0,
+      "min_capacity_MW": 50.0,
+      "min_down_time": 12.0,
+      "min_stable_level_percentage": 0.4,
+      "min_up_time": 24.0,
+      "start_cost_per_MW": 129.0,
+      "vom_cost": 4.5
+    },
     "coal-ccs": {
       "capacity_MW": 302.0,
       "forced_outage_rate": 0.0429,

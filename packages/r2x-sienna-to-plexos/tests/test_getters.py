@@ -3085,3 +3085,242 @@ def test_membership_line_parent_interface_success_and_missing_target(context):
     result = getters.membership_line_parent_interface(line, context)
     assert result.is_ok()
     assert result.unwrap().name == "Interface-1"
+
+
+# ---------------------------------------------------------------------------
+# get_hydro_generator_units
+# ---------------------------------------------------------------------------
+
+
+def test_get_hydro_generator_units_always_online(context):
+    from r2x_sienna.models import HydroDispatch
+    from r2x_sienna.models.costs import HydroGenerationCost
+
+    bus = ACBus(name="BUS1", base_voltage=115.0, number=1)
+    context.source_system.add_component(bus)
+    hydro = HydroDispatch(
+        name="HD1",
+        bus=bus,
+        rating=100.0,
+        active_power=50.0,
+        reactive_power=10.0,
+        base_power=100.0,
+        prime_mover_type=PrimeMoversType.HY,
+        ramp_limits=UpDown(up=5.0, down=5.0),
+        active_power_limits=MinMax(min=0.0, max=100.0),
+        operation_cost=HydroGenerationCost.example(),
+    )
+    assert getters.get_hydro_generator_units(hydro, context).unwrap() == 1
+
+
+# ---------------------------------------------------------------------------
+# get_pumped_hydro_generator_units
+# ---------------------------------------------------------------------------
+
+
+def _make_hydro_turbine_for_units_tests(bus: ACBus, name: str, rating: float) -> HydroTurbine:
+    from r2x_sienna.models.costs import HydroGenerationCost
+
+    return HydroTurbine(
+        name=name,
+        available=True,
+        bus=bus,
+        active_power=0.0,
+        reactive_power=0.0,
+        rating=rating,
+        active_power_limits=MinMax(min=0.0, max=100.0),
+        reactive_power_limits=MinMax(min=-10.0, max=10.0),
+        base_power=100.0,
+        operation_cost=HydroGenerationCost.example(),
+        powerhouse_elevation=0.0,
+        ramp_limits=UpDown(up=5.0, down=5.0),
+        time_limits=UpDown(up=1.0, down=1.0),
+        outflow_limits=MinMax(min=0.0, max=50.0),
+        efficiency=0.92,
+        turbine_type=HydroTurbineType.FRANCIS,
+        prime_mover_type=PrimeMoversType.OT,
+        conversion_factor=1.0,
+        reservoirs=[],
+        category="hydro_turbine",
+    )
+
+
+def test_get_pumped_hydro_generator_units_zero_rating_is_online(context):
+    """Turbine with zero rating has zero pump load → always online."""
+    bus = ACBus(name="BUS_PH1", base_voltage=115.0, number=10)
+    context.source_system.add_component(bus)
+    ht = _make_hydro_turbine_for_units_tests(bus, "ht-zero-pump", rating=0.0)
+    assert getters.get_pumped_hydro_generator_units(ht, context).unwrap() == 1
+
+
+def test_get_pumped_hydro_generator_units_hydro_category_is_online(context):
+    """Non-zero rating that resolves to 'hydro' category stays online."""
+    bus = ACBus(name="BUS_PH2", base_voltage=115.0, number=11)
+    context.source_system.add_component(bus)
+    ht = _make_hydro_turbine_for_units_tests(bus, "ht-hydro-cat", rating=1.0)
+    # Force category to "hydro" via gen_type_string
+    ht.ext = {"gen_type_string": "hydro"}
+    assert getters.get_pumped_hydro_generator_units(ht, context).unwrap() == 1
+
+
+def test_get_pumped_hydro_generator_units_pumped_no_reservoir_is_offline(context, monkeypatch):
+    """Pumped turbine not referenced by any reservoir → offline."""
+    bus = ACBus(name="BUS_PH3", base_voltage=115.0, number=12)
+    context.source_system.add_component(bus)
+    ht = _make_hydro_turbine_for_units_tests(bus, "ht-no-reservoir", rating=1.0)
+    # No gen_type_string → category is None → treated as pumped-hydro default
+    # No HydroReservoir in source system → turbine_names is empty → Ok(0)
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _comp, _ctx: None)
+    result = getters.get_pumped_hydro_generator_units(ht, context)
+    assert result.unwrap() == 0
+
+
+def test_get_pumped_hydro_generator_units_pumped_with_reservoir_is_online(context, monkeypatch):
+    """Pumped turbine referenced by a storage-creating reservoir → online."""
+    bus = ACBus(name="BUS_PH4", base_voltage=115.0, number=13)
+    context.source_system.add_component(bus)
+    ht = _make_hydro_turbine_for_units_tests(bus, "ht-with-reservoir", rating=1.0)
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _comp, _ctx: None)
+    # Inject a non-empty turbine name set so the turbine is found
+    context._cache["reservoir_pump_turbine_name_set"] = {"ht-with-reservoir"}
+    result = getters.get_pumped_hydro_generator_units(ht, context)
+    assert result.unwrap() == 1
+
+
+def test_build_reservoir_pump_turbine_name_set_collects_ext_plants(context, monkeypatch):
+    """_build_reservoir_pump_turbine_name_set returns turbine names from reservoir ext plants."""
+    # Create a proxy reservoir whose ext["plants"] lists a turbine name, and whose
+    # _reservoir_has_hydro_pumped_storage_association returns True.
+    reservoir = types.SimpleNamespace(
+        uuid="res-1",
+        name="reservoir-1",
+        upstream_turbines=[],
+        downstream_turbines=[],
+        ext={"plants": ["pump-turbine-A", "pump-turbine-B"]},
+    )
+    monkeypatch.setattr(
+        getters,
+        "_source_system",
+        lambda _ctx: types.SimpleNamespace(get_components=lambda _cls: [reservoir]),
+    )
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _res, _ctx: True,
+    )
+    # Clear cache so it is rebuilt
+    context._cache.pop("reservoir_pump_turbine_name_set", None)
+    names = getters._build_reservoir_pump_turbine_name_set(context)
+    assert "pump-turbine-A" in names
+    assert "pump-turbine-B" in names
+
+
+def test_build_reservoir_pump_turbine_name_set_skips_non_storage_reservoirs(context, monkeypatch):
+    """Reservoirs that fail the pump-storage association check are skipped."""
+    reservoir = types.SimpleNamespace(
+        uuid="res-2",
+        name="reservoir-2",
+        upstream_turbines=[],
+        downstream_turbines=[],
+        ext={"plants": ["should-not-appear"]},
+    )
+    monkeypatch.setattr(
+        getters,
+        "_source_system",
+        lambda _ctx: types.SimpleNamespace(get_components=lambda _cls: [reservoir]),
+    )
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _res, _ctx: False,
+    )
+    context._cache.pop("reservoir_pump_turbine_name_set", None)
+    names = getters._build_reservoir_pump_turbine_name_set(context)
+    assert "should-not-appear" not in names
+
+
+# ---------------------------------------------------------------------------
+# hydro_budget scaling in _attach_generator_time_series
+# ---------------------------------------------------------------------------
+
+
+def test_attach_generator_time_series_scales_hydro_budget(tmp_path, monkeypatch):
+    """hydro_budget raw per-unit values must be multiplied by max_active_power."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    # active_power_limits.max = 0.5 (pu), base_power = 2.0 → max_mw = 1.0 MW
+    source_gen = types.SimpleNamespace(
+        name="HYDRO_TS",
+        active_power_limits={"max": 0.5},
+        base_power=2.0,
+    )
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+
+    raw_values = [10.0, 20.0]  # raw per-unit; after *1.0 MW still 10, 20 MWh
+    context.source_system.time_series.has_time_series = lambda _c: True
+    context.source_system.time_series.list_time_series_metadata = lambda _c: [
+        types.SimpleNamespace(name="hydro_budget", features={})
+    ]
+    context.source_system.list_time_series = lambda _c, **_kw: [
+        types.SimpleNamespace(
+            name="hydro_budget",
+            data=raw_values,
+            initial_timestamp=datetime(2020, 1, 1),
+            # Use weekly resolution so the aggregation block is skipped (>=7 days)
+            resolution=timedelta(weeks=1),
+        )
+    ]
+    context.target_system.has_time_series = lambda *_a, **_kw: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_a, **_kw: attached.append(ts)
+
+    getters._attach_generator_time_series(context, "HYDRO_TS", PLEXOSGenerator(name="HYDRO_TS"))
+
+    assert len(attached) == 1
+    assert attached[0].name == "hydro_budget"
+    # raw 10.0 * 1.0 MW = 10.0, raw 20.0 * 1.0 MW = 20.0
+    assert list(attached[0].data) == [10.0, 20.0]
+
+
+def test_attach_generator_time_series_scales_hydro_budget_hourly(tmp_path, monkeypatch):
+    """hydro_budget with hourly resolution is scaled then aggregated into weekly sums."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    # max_active_power = 0.1 pu * 10.0 MVA = 1.0 MW
+    source_gen = types.SimpleNamespace(
+        name="HYDRO_HOURLY",
+        active_power_limits={"max": 0.1},
+        base_power=10.0,
+    )
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+
+    # Two weeks of hourly data: all ones → raw weekly sum = 168; scaled = 168 * 1.0
+    two_weeks_ones = [1.0] * 336
+    context.source_system.time_series.has_time_series = lambda _c: True
+    context.source_system.time_series.list_time_series_metadata = lambda _c: [
+        types.SimpleNamespace(name="hydro_budget", features={})
+    ]
+    context.source_system.list_time_series = lambda _c, **_kw: [
+        types.SimpleNamespace(
+            name="hydro_budget",
+            data=two_weeks_ones,
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(hours=1),
+        )
+    ]
+    context.target_system.has_time_series = lambda *_a, **_kw: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_a, **_kw: attached.append(ts)
+
+    getters._attach_generator_time_series(context, "HYDRO_HOURLY", PLEXOSGenerator(name="HYDRO_HOURLY"))
+
+    assert len(attached) == 1
+    ts = attached[0]
+    assert ts.name == "hydro_budget"
+    assert ts.resolution == timedelta(days=7)
+    # Each weekly value = 168 * 1.0 (scaled) * 1.0 MW = 168.0 MWh
+    assert all(abs(v - 168.0) < 1e-6 for v in ts.data)

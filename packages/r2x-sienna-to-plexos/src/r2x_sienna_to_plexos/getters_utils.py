@@ -49,6 +49,81 @@ InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionD
 _SIENNA_TRANSFORMER_TYPES = (Transformer2W, TapTransformer, PhaseShiftingTransformer)
 
 
+# ---------------------------------------------------------------------------
+# SQLite IN-clause chunking fix
+# ---------------------------------------------------------------------------
+# SQLite limits bound variables to 999 per statement.  For large EI systems
+# (226k+ component associations) the vanilla r2x_core implementation issues a
+# single query with all target UUIDs as parameters, which blows the limit.
+# We replace that function at import time with an equivalent that batches the
+# IN clause into chunks of 900.
+
+
+def _chunked_setup_target_and_child_tables(
+    tgt_metadata: Any,
+    src_associations: Any,
+    uuid_map: dict,
+) -> tuple[list[tuple], dict[str, str]]:
+    """Chunked drop-in for r2x_core's _setup_target_and_child_tables."""
+    from uuid import UUID as _UUID
+
+    uuid_to_type = {str(uuid): type(comp).__name__ for uuid, comp in uuid_map.items()}
+
+    tgt_metadata.execute("DROP TABLE IF EXISTS target_components")
+    tgt_metadata.execute("CREATE TEMP TABLE target_components (uuid TEXT PRIMARY KEY, type TEXT)")
+    tgt_metadata.executemany("INSERT INTO target_components VALUES (?, ?)", list(uuid_to_type.items()))
+
+    target_uuids = list(uuid_to_type.keys())
+
+    if not target_uuids:
+        tgt_metadata.execute("DROP TABLE IF EXISTS child_mapping")
+        tgt_metadata.execute(
+            "CREATE TEMP TABLE child_mapping (child_uuid TEXT, parent_uuid TEXT, parent_type TEXT)"
+        )
+        return [], uuid_to_type
+
+    _chunk_size = 900
+    child_parent_rows: list[tuple] = []
+    for i in range(0, len(target_uuids), _chunk_size):
+        chunk = target_uuids[i : i + _chunk_size]
+        placeholders = ",".join("?" for _ in chunk)
+        child_parent_rows.extend(
+            src_associations.execute(
+                f"""
+                SELECT component_uuid, attached_component_uuid
+                FROM component_associations
+                WHERE attached_component_uuid IN ({placeholders})
+                """,
+                chunk,
+            ).fetchall()
+        )
+
+    child_remapping = [
+        (child_uuid, parent_uuid, type(uuid_map[_UUID(parent_uuid)]).__name__)
+        for child_uuid, parent_uuid in child_parent_rows
+        if parent_uuid in uuid_to_type
+    ]
+
+    tgt_metadata.execute("DROP TABLE IF EXISTS child_mapping")
+    tgt_metadata.execute(
+        "CREATE TEMP TABLE child_mapping (child_uuid TEXT, parent_uuid TEXT, parent_type TEXT)"
+    )
+    if child_remapping:
+        tgt_metadata.executemany("INSERT INTO child_mapping VALUES (?, ?, ?)", child_remapping)
+
+    return child_remapping, uuid_to_type
+
+
+try:
+    import r2x_core.time_series as _r2x_core_ts
+
+    cast(Any, _r2x_core_ts)._setup_target_and_child_tables = _chunked_setup_target_and_child_tables
+    logger.debug("Applied chunked _setup_target_and_child_tables patch to r2x_core.time_series")
+except (ImportError, AttributeError) as _patch_err:
+    logger.warning("Could not patch r2x_core.time_series._setup_target_and_child_tables: {}", _patch_err)
+# ---------------------------------------------------------------------------
+
+
 def _source_system(context: PluginContext) -> Any:
     return cast(Any, context.source_system)
 

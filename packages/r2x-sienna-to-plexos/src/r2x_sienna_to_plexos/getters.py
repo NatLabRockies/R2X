@@ -607,6 +607,31 @@ def _attach_generator_time_series(
             data = np.asarray(ts.data)
             output_resolution = ts.resolution
 
+            if ts.name == "hydro_budget":
+                # ts.data holds raw per-unit values; scale to actual MW (same logic as
+                # max_active_power TS) so that weekly sums are in MWh, not dimensionless
+                # units.  Without this, the weekly budget is ~max_active_power-factor too
+                # large (e.g. 955 MWh instead of 76 MWh for an 0.08 MW generator).
+                _max_mw = 0.0
+                _limits = getattr(source_gen, "active_power_limits", None)
+                if _limits is not None:
+                    _max_val = (
+                        _limits.get("max") if isinstance(_limits, dict) else getattr(_limits, "max", None)
+                    )
+                    if _max_val is not None:
+                        _mag = get_magnitude(_max_val)
+                        _raw = (
+                            float(_mag)
+                            if _mag is not None
+                            else float(_max_val)
+                            if isinstance(_max_val, int | float)
+                            else None
+                        )
+                        if _raw is not None:
+                            _max_mw = abs(_raw) * resolve_base_power(source_gen)
+                if _max_mw > 0.0:
+                    data = data * _max_mw
+
             if (
                 ts.name == "hydro_budget"
                 and isinstance(ts.resolution, timedelta)
