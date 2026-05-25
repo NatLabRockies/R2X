@@ -2295,6 +2295,82 @@ def test_get_max_ramp_up_down_object(context):
     assert getters.get_max_ramp_down(d, context).unwrap() == 30.0
 
 
+def test_get_max_ramp_up_down_tiny_values_use_defaults(context, monkeypatch):
+    """Ramps below 0.1 MW/min are treated as invalid and replaced by defaults."""
+
+    class DummyRamp:
+        ramp_limits = {"up": 0.0008, "down": 0.0008}  # noqa: RUF012
+        base_power = 100.0
+
+    monkeypatch.setattr(getters, "_get_ramp_default", lambda _src, _ctx, direction="up": 2.5)
+    monkeypatch.setattr(getters, "sienna_get_max_active_power", lambda _src: 50.0)
+
+    d = DummyRamp()
+    assert getters.get_max_ramp_up(d, context).unwrap() == 2.5
+    assert getters.get_max_ramp_down(d, context).unwrap() == 2.5
+
+
+def test_get_max_ramp_up_down_zero_values_keep_fallback_value(context, monkeypatch):
+    """When defaults and source ramps are zero, keep fallback result (no hard floor)."""
+
+    class DummyRamp:
+        ramp_limits = None
+        base_power = 100.0
+
+    monkeypatch.setattr(getters, "_get_ramp_default", lambda _src, _ctx, direction="up": 0.0)
+    monkeypatch.setattr(getters, "sienna_get_max_active_power", lambda _src: 0.0)
+
+    d = DummyRamp()
+    assert getters.get_max_ramp_up(d, context).unwrap() == 0.0
+    assert getters.get_max_ramp_down(d, context).unwrap() == 0.0
+
+
+def test_get_max_ramp_hydro_ignores_huge_max_active_power_placeholder(context, monkeypatch):
+    """Hydro ramps should use ramp_rate defaults when max active power is a sentinel like 1e30."""
+
+    class DummyHydro:
+        ramp_limits = None
+        base_power = 100.0
+        prime_mover_type = "HY"
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _src, _ctx: "hydro")
+    monkeypatch.setattr(getters, "sienna_get_max_active_power", lambda _src: 1e30)
+
+    d = DummyHydro()
+    assert getters.get_max_ramp_up(d, context).unwrap() == 120.0
+    assert getters.get_max_ramp_down(d, context).unwrap() == 120.0
+
+
+def test_get_max_ramp_uses_defaults_when_raw_natural_unit_ramp_is_too_low(context, monkeypatch):
+    """Raw natural-unit ramps below threshold should fall back to defaults."""
+
+    class DummyHydro:
+        ramp_limits = UpDown(up=0.06818181818181819, down=0.06818181818181819)
+        base_power = 11.0
+        prime_mover_type = "HY"
+        active_power_limits = MinMax(min=0.0, max=15.0)
+        rating = 16.682026255823963
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _src, _ctx: "hydro")
+
+    d = DummyHydro()
+    assert getters.get_max_ramp_up(d, context).unwrap() == 12.0
+    assert getters.get_max_ramp_down(d, context).unwrap() == 12.0
+
+
+def test_effective_max_mw_falls_back_to_active_power_limits_when_sentinel(monkeypatch):
+    """Sentinel max active power values should be ignored in favor of source limits."""
+
+    class Dummy:
+        base_power = 10.0
+        active_power_limits = MinMax(min=0.0, max=7.5)
+        rating = None
+
+    monkeypatch.setattr(getters, "sienna_get_max_active_power", lambda _src: 1e30)
+
+    assert getters._get_effective_max_mw(Dummy()) == 7.5
+
+
 def test_get_initial_hours_up_status_true(context):
     """Covers get_initial_hours_up when status is True."""
     bus = ACBus(name="N1", base_voltage=115.0, number=1)

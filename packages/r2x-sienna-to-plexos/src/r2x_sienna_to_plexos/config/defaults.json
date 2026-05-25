@@ -803,10 +803,12 @@
       "ramp_rate_up": 30.0
     },
     "hydro": {
+      "capacity_MW": 150.0,
       "average_capacity_MW": 50.0,
       "forced_outage_rate": 0.02,
       "maintenance_rate": 0.01,
       "mean_time_to_repair": 48,
+      "max_ramp_up_percentage": 0.8,
       "min_energy": 0.0,
       "min_power": 0.0,
       "ramp_rate_down": 100.0,
@@ -921,10 +923,12 @@
       "start_cost_per_MW": 69.0
     },
     "pumped-hydro": {
+      "capacity_MW": 150.0,
       "average_capacity_MW": 100.0,
       "forced_outage_rate": 0.020,
       "maintenance_rate": 0.01,
       "mean_time_to_repair": 48,
+      "max_ramp_up_percentage": 0.8,
       "min_energy": 0.0,
       "min_power": 0.0,
       "ramp_rate_down": 100.0,
@@ -936,9 +940,7 @@
       "maintenance_rate": 0.020,
       "mean_time_to_repair": 24,
       "min_energy": 0.0,
-      "min_power": 0.0,
-      "ramp_rate_down": 100.0,
-      "ramp_rate_up": 100.0
+      "min_power": 0.0
     },
     "wind-ofs": {
       "average_capacity_MW": 5.0,
@@ -946,9 +948,7 @@
       "maintenance_rate": 0.02,
       "mean_time_to_repair": 48,
       "min_energy": 0.0,
-      "min_power": 0.0,
-      "ramp_rate_down": 100.0,
-      "ramp_rate_up": 100.0
+      "min_power": 0.0
     },
     "wind-ons": {
       "average_capacity_MW": 2.5,
@@ -956,9 +956,7 @@
       "maintenance_rate": 0.01,
       "mean_time_to_repair": 24,
       "min_energy": 0.0,
-      "min_power": 0.0,
-      "ramp_rate_down": 100.0,
-      "ramp_rate_up": 100.0
+      "min_power": 0.0
     },
     "other": {
       "capacity_MW": 100.0,
