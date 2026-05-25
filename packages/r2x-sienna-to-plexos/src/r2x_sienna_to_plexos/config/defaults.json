@@ -961,6 +961,7 @@
       "ramp_rate_up": 100.0
     },
     "other": {
+      "capacity_MW": 100.0,
       "forced_outage_rate": 0.0328,
       "maintenance_rate": 0.06,
       "max_ramp_up_percentage": 0.05,

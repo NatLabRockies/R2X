@@ -141,15 +141,19 @@ def _get_reeds_thermal_category_from_fuel(source_component: Any, context: Plugin
 
 
 def _resolve_generator_category(source_component: Any, context: PluginContext) -> str | None:
-    """Resolve category via ext gen_type_string, ReEDS name patterns, thermal fuel mapping, or prime mover."""
-    # Get name from ext dict
+    """Resolve category via prime mover, ReEDS name patterns, thermal fuel mapping, or ext gen_type_string."""
     ext = getattr(source_component, "ext", None)
-    if isinstance(ext, dict):
-        gen_type = ext.get("gen_type_string", "").lower().strip()
-        if gen_type and gen_type not in ("unknown", "other", "", "unidentified"):
-            return GEN_TYPE_STRING_MAP.get(gen_type, gen_type)
+    prime_mover = getattr(source_component, "prime_mover_type", None)
 
-    # ReEDS name pattern
+    # Prime mover type lookup (prime_mover_type is always a plain string, e.g. 'CC', 'PVe')
+    if prime_mover is not None:
+        defaults_data = _get_defaults_data(context)
+        pm_types: dict[str, str] = defaults_data.get("prime_mover_types", {})
+        tech = pm_types.get(prime_mover)
+        if tech:
+            return tech
+
+    # ReEDS name patterns
     raw_name = getattr(source_component, "name", "") or ""
     name = raw_name.lower()
     if name.startswith("reeds"):
@@ -166,39 +170,16 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
             if suffix == cat_str or suffix.startswith(cat_str + "_"):
                 return cat_str
 
+    # Thermal fuel mapping category
     thermal_category = _get_reeds_thermal_category_from_fuel(source_component, context)
     if thermal_category is not None:
         return thermal_category
 
-    # Non-thermal generators may still use prime-mover mappings.
-    prime_mover = getattr(source_component, "prime_mover_type", None)
-    fuel = getattr(source_component, "fuel", None)
-
-    if prime_mover is None and isinstance(ext, dict):
-        prime_mover = ext.get("prime_mover")
-
-    pm_fuel_map: dict[str, list[str]] = (
-        getattr(getattr(context, "config", None), "prime_mover_mapping", None) or {}
-    )
-
-    if prime_mover is not None:
-        pm_str = prime_mover.name if hasattr(prime_mover, "name") else str(prime_mover).upper()
-
-        if pm_fuel_map:
-            if fuel is not None:
-                fuel_str = fuel.name if hasattr(fuel, "name") else str(fuel).upper()
-                techs = pm_fuel_map.get(f"{pm_str}_{fuel_str}")
-                if techs:
-                    return techs[0]
-            pm_only = pm_fuel_map.get(f"{pm_str}_")
-            if pm_only:
-                return pm_only[0]
-
-        defaults_data = _get_defaults_data(context)
-        pm_types: dict[str, str] = defaults_data.get("prime_mover_types", {})
-        tech = pm_types.get(pm_str)
-        if tech:
-            return tech
+    # Gen type string from ext dictionary
+    if isinstance(ext, dict):
+        gen_type = ext.get("gen_type_string", "").lower().strip()
+        if gen_type and gen_type not in ("unknown", "other", "", "unidentified"):
+            return GEN_TYPE_STRING_MAP.get(gen_type, gen_type)
 
     return None
 

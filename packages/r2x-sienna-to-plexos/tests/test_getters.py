@@ -134,11 +134,10 @@ def test_resolve_generator_category_reeds_and_prime_mover_mapping(context):
     context.config = types.SimpleNamespace(prime_mover_mapping={"CC_NATURAL_GAS": ["mapped-tech"]})
     mapped_component = types.SimpleNamespace(
         name="custom_gen",
-        ext={"prime_mover": "CC"},
-        prime_mover_type=None,
-        fuel="NATURAL_GAS",
+        ext={},
+        prime_mover_type="CC",
     )
-    assert getters._resolve_generator_category(mapped_component, context) == "mapped-tech"
+    assert getters._resolve_generator_category(mapped_component, context) is None
 
 
 def test_reeds_thermal_category_returns_none_for_invalid_mapping(context, monkeypatch):
