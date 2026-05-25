@@ -1,8 +1,6 @@
 """Root conftest for R2X workspace.
 
-Handles two concerns:
-1. Loading fixture modules as pytest plugins for proper discovery.
-2. Getter registry cleanup to avoid collisions between packages.
+Handles getter registry cleanup to avoid collisions between packages.
 
 r2x_core uses a global GETTER_REGISTRY dict. Multiple workspace packages
 register getters with identical names (e.g., 'is_slack_bus', 'get_availability').
@@ -16,22 +14,6 @@ would be to namespace getters by plugin/package in r2x_core itself.
 import importlib
 
 from r2x_core.getters import GETTER_REGISTRY
-
-# ---------------------------------------------------------------------------
-# Fixture plugins
-# ---------------------------------------------------------------------------
-# Fixture modules declared here are loaded as local pytest plugins, giving
-# clean discovery without sys.path hacks or star imports in conftest files.
-# The modules must be importable via pythonpath entries in pyproject.toml.
-pytest_plugins = [
-    "fixtures.configs",
-    "fixtures.context",
-    "fixtures.five_bus_systems",
-    "fixtures.getters_utils",
-    "fixtures.rules",
-    "fixtures.systems",
-    "fixtures.time_series",
-]
 
 # ---------------------------------------------------------------------------
 # Getter registry management
