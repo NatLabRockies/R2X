@@ -529,17 +529,21 @@ def _get_minmax_value(obj: Any, key: str) -> float | None:
 
 
 def _get_ramp_default(source_component: object, context: PluginContext) -> float:
-    """Return the ramp default from defaults.json max_ramp_up_percentage * max active power (MW/min)."""
+    """Return the ramp default from defaults.json max_ramp_up_percentage * capacity (MW/min).
+
+    Uses the larger of the unit's actual max active power and the category representative
+    capacity_MW so that very small units still ramp at a physically sensible rate.
+    """
     category = _resolve_generator_category(source_component, context) or "gas-cc"
     pct = _get_defaults(category, "max_ramp_up_percentage")
     if math.isclose(pct, 0.0, rel_tol=0.0, abs_tol=1e-6):
         return 0.0
     try:
-        max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
+        unit_max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
     except (TypeError, NotImplementedError, AttributeError, KeyError):
-        max_mw = 0.0
-    if math.isclose(max_mw, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        max_mw = _get_defaults(category, "capacity_MW") or 100.0
+        unit_max_mw = 0.0
+    category_capacity_mw = _get_defaults(category, "capacity_MW") or 100.0
+    max_mw = max(unit_max_mw, category_capacity_mw)
     return pct * max_mw
 
 
@@ -1738,7 +1742,11 @@ def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[
     if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
         value = max_mw
 
-    return Ok(max(value, 10))
+    # Cap at max capacity so ramp never exceeds installed capacity
+    if not math.isclose(max_mw, 0.0, rel_tol=0.0, abs_tol=1e-6):
+        value = min(value, max_mw)
+
+    return Ok(round(value, 2))
 
 
 @getter
@@ -1767,7 +1775,11 @@ def get_max_ramp_down(source_component: object, context: PluginContext) -> Resul
     if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
         value = max_mw
 
-    return Ok(max(value, 10))
+    # Cap at max capacity so ramp never exceeds installed capacity
+    if not math.isclose(max_mw, 0.0, rel_tol=0.0, abs_tol=1e-6):
+        value = min(value, max_mw)
+
+    return Ok(round(value, 2))
 
 
 @getter
