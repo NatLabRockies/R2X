@@ -1125,11 +1125,9 @@ version = "2.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "r2x-core" },
-    { name = "r2x-plexos" },
     { name = "r2x-plexos-to-sienna" },
     { name = "r2x-reeds-to-plexos" },
     { name = "r2x-reeds-to-sienna" },
-    { name = "r2x-sienna" },
     { name = "r2x-sienna-to-plexos" },
 ]
 
@@ -1157,11 +1155,9 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "r2x-core" },
-    { name = "r2x-plexos", editable = "../r2x-plexos" },
     { name = "r2x-plexos-to-sienna", editable = "packages/r2x-plexos-to-sienna" },
     { name = "r2x-reeds-to-plexos", editable = "packages/r2x-reeds-to-plexos" },
     { name = "r2x-reeds-to-sienna", editable = "packages/r2x-reeds-to-sienna" },
-    { name = "r2x-sienna", editable = "../r2x-sienna" },
     { name = "r2x-sienna-to-plexos", editable = "packages/r2x-sienna-to-plexos" },
 ]
 
@@ -1207,39 +1203,14 @@ wheels = [
 [[package]]
 name = "r2x-plexos"
 version = "0.1.5"
-source = { editable = "../r2x-plexos" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "plexosdb" },
     { name = "r2x-core" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "plexosdb", specifier = ">=1.3.0" },
-    { name = "r2x-core", specifier = ">=0.4.0,<1.0.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "ipython", specifier = ">=9.2.0" },
-    { name = "mypy", specifier = ">=1.15.0" },
-    { name = "pre-commit", specifier = ">=4.2.0" },
-    { name = "prek", specifier = ">=0.2.0,<0.3.0" },
-    { name = "pytest", specifier = ">=8.3.5" },
-    { name = "pytest-coverage", specifier = ">=0.0" },
-    { name = "pytest-mock", specifier = ">=3.15.1" },
-    { name = "ruff", specifier = ">=0.11.5" },
-]
-docs = [
-    { name = "autodoc-pydantic" },
-    { name = "docstr-coverage", specifier = ">=2.3.2" },
-    { name = "furo", specifier = ">=2025.9.25" },
-    { name = "ghp-import" },
-    { name = "myst-parser" },
-    { name = "sphinx", specifier = ">=8.0.0" },
-    { name = "sphinx-copybutton" },
-    { name = "sphinx-reports" },
-    { name = "sphinx-tabs" },
+sdist = { url = "https://files.pythonhosted.org/packages/7d/85/ee6e1ddd2c93f4e442cbeee1e0bd974eed5711d542eea6b7ca27125aeec3/r2x_plexos-0.1.5.tar.gz", hash = "sha256:86acac56bd97fecfa72c06b6fa3d175aa59f452aacbbbb3a3bfa837de48c78dd", size = 815141, upload-time = "2026-04-07T04:22:09.834Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5c/c9/93786e8c786601dbdc7ff9a69e7ab0f2db19bdb9205443da68616478407d/r2x_plexos-0.1.5-py3-none-any.whl", hash = "sha256:890eb8ee13e1b79fb276c7696ad78a495acfd7d0965aa10bc60c5ddd196476e0", size = 831933, upload-time = "2026-04-07T04:22:08.381Z" },
 ]
 
 [[package]]
@@ -1253,8 +1224,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", editable = "../r2x-plexos" },
-    { name = "r2x-sienna", editable = "../r2x-sienna" },
+    { name = "r2x-plexos", specifier = ">=0.1.4,<1.0.0" },
+    { name = "r2x-sienna", specifier = ">=0.2.0,<1.0.0" },
 ]
 
 [[package]]
@@ -1280,7 +1251,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", editable = "../r2x-plexos" },
+    { name = "r2x-plexos", specifier = ">=0.1.4,<1.0.0" },
     { name = "r2x-reeds", specifier = ">=0.4.0,<1.0.0" },
 ]
 
@@ -1296,28 +1267,19 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "r2x-reeds", specifier = ">=0.4.0,<1.0.0" },
-    { name = "r2x-sienna", editable = "../r2x-sienna" },
+    { name = "r2x-sienna", specifier = ">=0.2.0,<1.0.0" },
 ]
 
 [[package]]
 name = "r2x-sienna"
 version = "0.2.1"
-source = { editable = "../r2x-sienna" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "r2x-core" },
 ]
-
-[package.metadata]
-requires-dist = [{ name = "r2x-core", specifier = ">=0.4.0,<1.0.0" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "ipython", specifier = ">=8.32.0" },
-    { name = "prek", specifier = ">=0.2.28" },
-    { name = "pytest", specifier = ">=8.3.4" },
-    { name = "pytest-coverage", specifier = ">=0.0" },
-    { name = "ruff", specifier = ">=0.9.3" },
-    { name = "ty", specifier = ">=0.0.2" },
+sdist = { url = "https://files.pythonhosted.org/packages/51/51/641a6a8f40c126c5fd989cb94f47bc0a53c0c5f72c69a6f96f757914efca/r2x_sienna-0.2.1.tar.gz", hash = "sha256:7555881adc4f8964f87aac2f4799aaa8db56df6f294d3a9fa0e43d90dffe0bc6", size = 53073, upload-time = "2026-04-06T21:10:17.34Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/de/f1/0b734a4fb36480c8d56a144c859c6f003ac0c2712ff29f5f1abeeae7a828/r2x_sienna-0.2.1-py3-none-any.whl", hash = "sha256:231ccd52908eac2b3a084659215c6cb61689a168ba7257e45e94e6038d60c26d", size = 62203, upload-time = "2026-04-06T21:10:15.833Z" },
 ]
 
 [[package]]
@@ -1331,8 +1293,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", editable = "../r2x-plexos" },
-    { name = "r2x-sienna", editable = "../r2x-sienna" },
+    { name = "r2x-plexos", specifier = ">=0.1.4,<1.0.0" },
+    { name = "r2x-sienna", specifier = ">=0.2.0,<1.0.0" },
 ]
 
 [[package]]

@@ -16,6 +16,20 @@ import importlib
 from r2x_core.getters import GETTER_REGISTRY
 
 # ---------------------------------------------------------------------------
+# Fixture plugins
+# ---------------------------------------------------------------------------
+# Pytest 8.4+ requires pytest_plugins to be declared only in the root conftest.
+pytest_plugins = [
+    "fixtures.configs",
+    "fixtures.context",
+    "fixtures.five_bus_systems",
+    "fixtures.getters_utils",
+    "fixtures.rules",
+    "fixtures.systems",
+    "fixtures.time_series",
+]
+
+# ---------------------------------------------------------------------------
 # Getter registry management
 # ---------------------------------------------------------------------------
 # Map from test directory to the getter module(s) that should be active.

@@ -5,16 +5,6 @@ from __future__ import annotations
 import pytest
 from loguru import logger
 
-pytest_plugins = [
-    "fixtures.configs",
-    "fixtures.context",
-    "fixtures.five_bus_systems",
-    "fixtures.getters_utils",
-    "fixtures.rules",
-    "fixtures.systems",
-    "fixtures.time_series",
-]
-
 
 @pytest.fixture
 def caplog(caplog):
