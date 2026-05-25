@@ -3086,11 +3086,6 @@ def test_membership_line_parent_interface_success_and_missing_target(context):
     assert result.unwrap().name == "Interface-1"
 
 
-# ---------------------------------------------------------------------------
-# get_hydro_generator_units
-# ---------------------------------------------------------------------------
-
-
 def test_get_hydro_generator_units_always_online(context):
     from r2x_sienna.models import HydroDispatch
     from r2x_sienna.models.costs import HydroGenerationCost
@@ -3110,11 +3105,6 @@ def test_get_hydro_generator_units_always_online(context):
         operation_cost=HydroGenerationCost.example(),
     )
     assert getters.get_hydro_generator_units(hydro, context).unwrap() == 1
-
-
-# ---------------------------------------------------------------------------
-# get_pumped_hydro_generator_units
-# ---------------------------------------------------------------------------
 
 
 def _make_hydro_turbine_for_units_tests(bus: ACBus, name: str, rating: float) -> HydroTurbine:
@@ -3238,18 +3228,12 @@ def test_build_reservoir_pump_turbine_name_set_skips_non_storage_reservoirs(cont
     assert "should-not-appear" not in names
 
 
-# ---------------------------------------------------------------------------
-# hydro_budget scaling in _attach_generator_time_series
-# ---------------------------------------------------------------------------
-
-
 def test_attach_generator_time_series_scales_hydro_budget(tmp_path, monkeypatch):
     """hydro_budget raw per-unit values must be multiplied by max_active_power."""
     context = make_context(tmp_path)
     context.source_system = System(name="source")
     context.target_system = System(name="target")
 
-    # active_power_limits.max = 0.5 (pu), base_power = 2.0 → max_mw = 1.0 MW
     source_gen = types.SimpleNamespace(
         name="HYDRO_TS",
         active_power_limits={"max": 0.5},
