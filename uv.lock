@@ -1224,14 +1224,14 @@ requires-dist = [
 
 [[package]]
 name = "r2x-reeds"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "r2x-core" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ff/bd/1c0bbc0ef14380d56efac5d5a81628cbed050dc6d9a05262bbeb536ef7d8/r2x_reeds-0.4.0.tar.gz", hash = "sha256:98078cc7b35f8941ea9066305bf24a0cc6c8e4b2969bf5d9d09cb159bfa006b3", size = 59692, upload-time = "2026-03-18T15:16:29.607Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/81/ee/49761fe8a7718f5926ae88c032b6a3ed811326a6c570661f364eaec0e64d/r2x_reeds-0.5.0.tar.gz", hash = "sha256:ae3a73cfff9969222397d864f65b73c9ed85f0a8c1581b65186753170d63c9ab", size = 61971, upload-time = "2026-04-07T05:42:08.591Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/18/07/b932e6ba9fca1d2d9ebc3dc95df88957ac7eaafe6af2330313c871900d28/r2x_reeds-0.4.0-py3-none-any.whl", hash = "sha256:2d0b0de53f3ec783e6d1321a7ad6228feebae05d8263d645430ee0fcf719898d", size = 73340, upload-time = "2026-03-18T15:16:28.173Z" },
+    { url = "https://files.pythonhosted.org/packages/60/a1/dbdaf1658786a7b1f24c91133261eed542443e36e9ea0589a7370cdcc238/r2x_reeds-0.5.0-py3-none-any.whl", hash = "sha256:bd762a898f0e7879c620d9bba0d778857fd7bba5a5df4fff66cc44e907c1dc73", size = 76451, upload-time = "2026-04-07T05:42:07.177Z" },
 ]
 
 [[package]]
