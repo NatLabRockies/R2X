@@ -402,6 +402,7 @@
       "shutdown_cost": "get_generator_shutdown_cost",
       "start_cost": "get_generator_start_cost",
       "vom_charge": "get_generator_vom_cost",
+      "load_point": "get_generator_load_point",
       "ext": "get_component_ext"
     },
     "source_type": "ThermalStandard",
@@ -441,6 +442,7 @@
       "shutdown_cost": "get_generator_shutdown_cost",
       "start_cost": "get_generator_start_cost",
       "vom_charge": "get_generator_vom_cost",
+      "load_point": "get_generator_load_point",
       "ext": "get_component_ext"
     },
     "source_type": "ThermalMultiStart",

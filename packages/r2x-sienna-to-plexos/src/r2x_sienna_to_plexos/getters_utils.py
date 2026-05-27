@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, cast
 
@@ -1086,6 +1087,85 @@ def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:
     InputOutputCurve | None
         Normalized curve, or None if normalization fails
     """
+    if isinstance(curve, Mapping):
+        function_data = curve.get("function_data")
+        if not isinstance(function_data, Mapping):
+            return None
+
+        def _as_float(value: Any, default: float = 0.0) -> float:
+            magnitude = get_magnitude(value)
+            if magnitude is not None:
+                return float(magnitude)
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return default
+
+        fd: LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData
+        if "points" in function_data:
+            points_raw = function_data.get("points") or []
+            points: list[XYCoords] = []
+            for point in points_raw:
+                if isinstance(point, Mapping):
+                    x = _as_float(point.get("x"))
+                    y = _as_float(point.get("y"))
+                elif isinstance(point, tuple | list) and len(point) >= 2:
+                    x = _as_float(point[0])
+                    y = _as_float(point[1])
+                else:
+                    continue
+                points.append(XYCoords(x=x, y=y))
+            if not points:
+                return None
+            fd = PiecewiseLinearData(points=points)
+        elif "x_coords" in function_data and "y_coords" in function_data:
+            x_raw = function_data.get("x_coords") or []
+            y_raw = function_data.get("y_coords") or []
+            if not isinstance(x_raw, list) or not isinstance(y_raw, list) or len(x_raw) < 2:
+                return None
+
+            x_values = [_as_float(value) for value in x_raw]
+            y_values = [_as_float(value) for value in y_raw]
+            points: list[XYCoords] = []
+
+            # Case 1: y-coordinates are explicit point values.
+            if len(y_values) == len(x_values):
+                points = [XYCoords(x=x, y=y) for x, y in zip(x_values, y_values, strict=False)]
+
+            # Case 2: y-coordinates are segment slopes with one value per interval.
+            elif len(y_values) == len(x_values) - 1:
+                cumulative_y = 0.0
+                points.append(XYCoords(x=x_values[0], y=0.0))
+                for idx, slope in enumerate(y_values, start=1):
+                    dx = x_values[idx] - x_values[idx - 1]
+                    if dx <= 0:
+                        continue
+                    cumulative_y += slope * dx
+                    points.append(XYCoords(x=x_values[idx], y=cumulative_y))
+
+            if len(points) < 2:
+                return None
+            fd = PiecewiseLinearData(points=points)
+        elif "quadratic_term" in function_data or "cubic_term" in function_data:
+            kwargs: dict[str, Any] = {
+                "proportional_term": _as_float(function_data.get("proportional_term")),
+                "constant_term": _as_float(function_data.get("constant_term")),
+                "quadratic_term": _as_float(function_data.get("quadratic_term")),
+            }
+            if "cubic_term" in function_data:
+                kwargs["cubic_term"] = _as_float(function_data.get("cubic_term"))
+            fd = QuadraticFunctionData(**kwargs)
+        else:
+            fd = LinearFunctionData(
+                proportional_term=_as_float(function_data.get("proportional_term")),
+                constant_term=_as_float(function_data.get("constant_term")),
+            )
+
+        return InputOutputCurve(
+            function_data=fd,
+            input_at_zero=curve.get("input_at_zero"),
+        )
+
     if isinstance(curve, InputOutputCurve):
         return curve
     if isinstance(curve, IncrementalCurve | AverageRateCurve):
@@ -1178,10 +1258,22 @@ def compute_heat_rate_data(component: Any) -> dict[str, Any]:
         - load_point: Load points for multiband curves
     """
     cost = getattr(component, "operation_cost", None)
-    variable = getattr(cost, "variable", None) if cost else None
-    if not isinstance(variable, FuelCurve):
+    variable = None
+    if cost is not None:
+        if isinstance(cost, Mapping):
+            variable = cost.get("variable")
+        if variable is None:
+            variable = getattr(cost, "variable", None)
+
+    curve_source = None
+    if isinstance(variable, Mapping):
+        curve_source = variable.get("value_curve")
+    elif isinstance(variable, FuelCurve):
+        curve_source = variable.value_curve
+    else:
         return {}
-    curve = normalize_value_curve(variable.value_curve)
+
+    curve = normalize_value_curve(curve_source)
     if curve is None or curve.function_data is None:
         return {}
     data: dict[str, Any] = {}
@@ -1199,7 +1291,11 @@ def compute_heat_rate_data(component: Any) -> dict[str, Any]:
         if cubic is not None:
             data["heat_rate_incr3"] = float(cubic)
     elif isinstance(fd, PiecewiseLinearData):
-        initial_input = getattr(variable.value_curve, "initial_input", None)
+        initial_input = (
+            curve_source.get("initial_input")
+            if isinstance(curve_source, Mapping)
+            else getattr(curve_source, "initial_input", None)
+        )
         if initial_input is not None:
             data["heat_rate_base"] = round(float(initial_input) / 1000, 3)
             data["heat_rate"] = data["heat_rate_base"]

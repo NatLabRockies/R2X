@@ -16,6 +16,7 @@ from r2x_plexos.models import (
     PLEXOSGenerator,
     PLEXOSLine,
     PLEXOSNode,
+    PLEXOSPropertyValue,
     PLEXOSRegion,
     PLEXOSStorage,
     PLEXOSTransformer,
@@ -761,6 +762,30 @@ def test_get_thermal_generator_units_uses_heat_rate_base_and_incr(monkeypatch, c
     monkeypatch.setattr(getters, "get_heat_rate_incr3", lambda *_: Ok(0.0))
 
     assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
+
+
+def test_get_generator_load_point_returns_multiband_property(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    load_point = PLEXOSPropertyValue()
+    load_point.add_entry(value=50.0, band=1)
+    load_point.add_entry(value=100.0, band=2)
+
+    monkeypatch.setattr(getters, "compute_heat_rate_data", lambda *_: {"load_point": load_point})
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(3.0))
+
+    assert getters.get_generator_load_point(DummyThermal(), context).unwrap() is load_point
+
+
+def test_get_generator_load_point_falls_back_to_heat_rate_times_fuel(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "compute_heat_rate_data", lambda *_: {"heat_rate": 9.5})
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.0))
+
+    assert getters.get_generator_load_point(DummyThermal(), context).unwrap() == 19.0
 
 
 def test_get_dispatch_generator_units_zero_when_time_series_missing(context):
@@ -2458,6 +2483,19 @@ def test_get_fuel_price_fuel_curve(context):
     assert getters.get_fuel_price(gen, context).unwrap() == 3.5
 
 
+def test_get_fuel_price_mapping_operation_cost(context):
+    """Covers get_fuel_price when operation_cost and variable are mapping-like."""
+
+    class DummyThermal:
+        operation_cost: ClassVar[dict[str, object]] = {
+            "variable": {
+                "fuel_cost": 2.644,
+            }
+        }
+
+    assert getters.get_fuel_price(DummyThermal(), context).unwrap() == 2.64
+
+
 def test_get_interface_min_max_flow_none_limits(context):
     """Covers None active_power_flow_limits in get_interface_min/max_flow."""
 
@@ -2790,7 +2828,7 @@ def test_get_heat_rate_quadratic_curve_returns_coefficients(context_with_thermal
     from r2x_sienna_to_plexos.getters import get_heat_rate, get_heat_rate_base, get_heat_rate_incr
 
     source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-quadratic")
-    assert get_heat_rate(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
+    assert get_heat_rate(source, context_with_thermal_generators).is_err()
     assert get_heat_rate_base(source, context_with_thermal_generators).unwrap() == pytest.approx(120.0)
     assert get_heat_rate_incr(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
 
@@ -2820,7 +2858,6 @@ def test_heat_rate_getters_return_absolute_values(monkeypatch, context_with_ther
         getters,
         "compute_heat_rate_data",
         lambda _component: {
-            "heat_rate": -9.2,
             "heat_rate_base": -120.0,
             "heat_rate_incr": -9.8,
             "heat_rate_incr2": -0.03,
@@ -2828,11 +2865,22 @@ def test_heat_rate_getters_return_absolute_values(monkeypatch, context_with_ther
         },
     )
 
-    assert get_heat_rate(source, context_with_thermal_generators).unwrap() == pytest.approx(9.2)
+    assert get_heat_rate(source, context_with_thermal_generators).is_err()
     assert get_heat_rate_base(source, context_with_thermal_generators).unwrap() == pytest.approx(120.0)
     assert get_heat_rate_incr(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
     assert get_heat_rate_incr2(source, context_with_thermal_generators).unwrap() == pytest.approx(0.03)
     assert get_heat_rate_incr3(source, context_with_thermal_generators).unwrap() == pytest.approx(0.0005)
+
+
+def test_get_heat_rate_scalar_when_base_and_incr_missing(monkeypatch, context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_heat_rate
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
+
+    monkeypatch.setattr(getters, "compute_heat_rate_data", lambda _component: {"heat_rate": -9.2})
+
+    assert get_heat_rate(source, context_with_thermal_generators).unwrap() == pytest.approx(9.2)
 
 
 def _disable_time_series(sys):

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 import math
-
-# Add this near the top, after imports
 from collections import defaultdict
+from collections.abc import Mapping
 from copy import deepcopy
 from datetime import timedelta
 from functools import lru_cache
@@ -1519,9 +1518,19 @@ def get_fuel_price(
 ) -> Result[float, ValueError]:
     """Extract fuel price in $/GJ from fuel_cost attribute of FuelCurve, if available."""
     cost = getattr(source_component, "operation_cost", None)
-    variable = getattr(cost, "variable", None) if cost else None
-    if isinstance(variable, FuelCurve):
-        price = get_magnitude(getattr(variable, "fuel_cost", None))
+    variable = None
+    if cost is not None:
+        if isinstance(cost, Mapping):
+            variable = cost.get("variable")
+        if variable is None:
+            variable = getattr(cost, "variable", None)
+
+    if isinstance(variable, Mapping):
+        price = variable.get("fuel_cost")
+        if price is not None:
+            return Ok(round(float(price), 2))
+    elif isinstance(variable, FuelCurve):
+        price = getattr(variable, "fuel_cost", None)
         if price is not None:
             return Ok(round(float(price), 2))
     return Ok(0.0)
@@ -1699,9 +1708,58 @@ def get_generator_commit(component: object, context: PluginContext) -> Result[in
 
 
 @getter
+def get_generator_load_point(source_component: object, context: PluginContext) -> Result[Any, ValueError]:
+    """Extract generator load point from ext dict or computed heat-rate data.
+
+    For piecewise heat-rate curves, ``compute_heat_rate_data`` provides a
+    multiband ``load_point`` property which should be passed through directly.
+    For scalar heat-rate data, fall back to ``heat_rate * fuel_price``.
+    """
+    ext = getattr(source_component, "ext", None)
+    if isinstance(ext, dict):
+        load_point = ext.get("NARIS_Load_Point")
+        if isinstance(load_point, int | float):
+            return Ok(float(load_point))
+
+    heat_rate_data = compute_heat_rate_data(source_component)
+    computed_load_point = heat_rate_data.get("load_point")
+    if computed_load_point is not None:
+        return Ok(coerce_value(computed_load_point))
+
+    heat_rate = heat_rate_data.get("heat_rate")
+    fuel_price_getter = cast(Any, get_fuel_price)
+    fuel_price_result = fuel_price_getter(source_component, context)
+    match fuel_price_result:
+        case Ok(fuel_price):
+            if heat_rate is not None and fuel_price > 0.0:
+                return Ok(float(heat_rate) * float(fuel_price))
+        case Err(_):
+            pass
+
+    return Ok(0.0)
+
+
+@getter
 def get_heat_rate(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract heat_rate from computed heat rate data, round to 2 decimals, and return as float (units='GJ/MWh')"""
-    value = compute_heat_rate_data(source_component).get("heat_rate")
+    """Extract heat_rate from computed heat rate data.
+
+    When both heat_rate_base and heat_rate_incr are defined, suppress the
+    scalar heat_rate property so only the decomposed terms are exported.
+    """
+    heat_rate_data = compute_heat_rate_data(source_component)
+    base_value = heat_rate_data.get("heat_rate_base")
+    has_base = False
+    if base_value is not None:
+        if isinstance(base_value, int | float):
+            has_base = not math.isclose(float(base_value), 0.0, rel_tol=0.0, abs_tol=1e-9)
+        else:
+            has_base = True
+
+    has_incr = heat_rate_data.get("heat_rate_incr") is not None
+    if has_base and has_incr:
+        return Err(ValueError("Heat Rate suppressed when Heat Rate Base and Heat Rate Incr are defined"))
+
+    value = heat_rate_data.get("heat_rate")
     return Ok(abs(float(value)) if value is not None else 0.0)
 
 
@@ -1855,7 +1913,12 @@ def get_generator_mean_time_to_repair(
 @getter
 def get_generator_start_cost(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     cost = getattr(source_component, "operation_cost", None)
-    value = get_magnitude(getattr(cost, "start_up", None)) if cost else None
+    value = None
+    if cost is not None:
+        if isinstance(cost, Mapping):
+            value = cost.get("start_up")
+        if value is None:
+            value = getattr(cost, "start_up", None)
     return Ok(float(value) if value is not None else 0.0)
 
 
@@ -1865,7 +1928,12 @@ def get_generator_shutdown_cost(
 ) -> Result[float, ValueError]:
     """Extract shutdown cost in $ from operation_cost.start_up attribute of the source component."""
     cost = getattr(source_component, "operation_cost", None)
-    value = get_magnitude(getattr(cost, "shut_down", None)) if cost else None
+    value = None
+    if cost is not None:
+        if isinstance(cost, Mapping):
+            value = get_magnitude(cost.get("shut_down"))
+        if value is None:
+            value = get_magnitude(getattr(cost, "shut_down", None))
     return Ok(float(value) if value is not None else 0.0)
 
 

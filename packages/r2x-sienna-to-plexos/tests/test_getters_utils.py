@@ -127,6 +127,72 @@ def test_compute_heat_rate_data_none_curve():
     }
 
 
+def test_compute_heat_rate_data_mapping_variable():
+    class Dummy:
+        def __init__(self):
+            self.operation_cost = {
+                "variable": {
+                    "value_curve": LinearCurve(10.0, 12),
+                    "fuel_cost": 0.05,
+                }
+            }
+
+    d = Dummy()
+    assert getters_utils.compute_heat_rate_data(d) == {
+        "heat_rate": 10.0,
+        "heat_rate_incr": 10.0,
+        "heat_rate_base": 12.0,
+    }
+
+
+def test_compute_heat_rate_data_mapping_serialized_curve():
+    class Dummy:
+        def __init__(self):
+            self.operation_cost = {
+                "variable": {
+                    "fuel_cost": 2.644,
+                    "value_curve": {
+                        "initial_input": 134.0,
+                        "function_data": {
+                            "constant_term": 0.134,
+                            "proportional_term": 12.62,
+                        },
+                    },
+                }
+            }
+
+    d = Dummy()
+    assert getters_utils.compute_heat_rate_data(d) == {
+        "heat_rate": 12.62,
+        "heat_rate_incr": 12.62,
+        "heat_rate_base": 0.134,
+    }
+
+
+def test_compute_heat_rate_data_mapping_x_coords_y_coords_curve():
+    class Dummy:
+        def __init__(self):
+            self.operation_cost = {
+                "variable": {
+                    "fuel_cost": 2.644,
+                    "value_curve": {
+                        "input_at_zero": None,
+                        "initial_input": 0.0,
+                        "function_data": {
+                            "x_coords": [0.0, 76.2],
+                            "y_coords": [8.389],
+                        },
+                    },
+                }
+            }
+
+    d = Dummy()
+    result = getters_utils.compute_heat_rate_data(d)
+    assert "heat_rate_incr" in result
+    assert isinstance(result["heat_rate_incr"], PLEXOSPropertyValue)
+    assert result["heat_rate_incr"].get_bands() == [1]
+
+
 def test_compute_markup_data_piecewise():
     class Dummy:
         operation_cost = type(
