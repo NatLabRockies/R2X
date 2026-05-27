@@ -224,7 +224,7 @@
       "forced_outage_rate": 0.0429,
       "maintenance_rate": 0.12,
       "max_capacity_MW": 856.0,
-      "max_ramp_up_percentage": 0.02,
+      "max_ramp_up_percentage": 0.2,
       "mean_time_to_repair": 55.0,
       "min_capacity_MW": 50.0,
       "min_down_time": 12.0,
@@ -543,6 +543,20 @@
       "min_stable_level_percentage": 0.5,
       "min_up_time": 16.0,
       "start_cost_per_MW": 0.0
+    },
+    "natural-gas": {
+      "capacity_MW": 320.0,
+      "forced_outage_rate": 0.0328,
+      "maintenance_rate": 0.06,
+      "max_capacity_MW": 944.0,
+      "max_ramp_up_percentage": 0.05,
+      "mean_time_to_repair": 48.0,
+      "min_capacity_MW": 10.0,
+      "min_down_time": 8.0,
+      "min_stable_level_percentage": 0.5,
+      "min_up_time": 6.0,
+      "start_cost_per_MW": 79.0,
+      "vom_cost": 4.2
     },
     "gas-cc": {
       "capacity_MW": 320.0,

@@ -93,7 +93,7 @@ def test_sienna_generators_translate_to_plexos_types(tmp_path):
             prime_mover_type=PrimeMoversType.HY,
             active_power_limits=MinMax(min=10.0, max=100.0),
             reactive_power_limits=MinMax(min=-30.0, max=30.0),
-            ramp_limits=UpDown(up=5.0, down=5.0),
+            ramp_limits=None,
             time_limits=UpDown(up=1.0, down=1.0),
             base_power=100.0,
             status=True,

@@ -78,6 +78,8 @@ from .getters_mappings import (
     SOURCE_LINE_TYPES,
 )
 
+RAMPING_THRESHOLD = 0.1  # MW/min
+
 
 def _source_system(context: PluginContext) -> Any:
     return cast(Any, context.source_system)
@@ -498,13 +500,62 @@ def _get_time_limit(component: Any, attr: str, ext_key: str) -> float | None:
 
 
 def _ramp_value_to_float(source_component: object, raw_value: Any) -> float:
-    """Convert ramp value to float, applying base power like sienna_get_ramp_limits does."""
+    """Convert ramp value to MW/min.
+
+    In practice, source ramp limits can appear either as:
+    - per-unit/min values (typically <= 1.0), or
+    - already absolute MW/min values.
+
+    Use a simple heuristic: scale moderate magnitudes (<= 10.0) by base power,
+    otherwise treat the value as already in MW/min.
+    """
     magnitude = get_magnitude(raw_value)
     if magnitude is None and isinstance(raw_value, int | float):
         magnitude = raw_value
     if magnitude is None:
         return 0.0
-    return float(magnitude) * resolve_base_power(source_component)
+
+    value = float(magnitude)
+    if abs(value) <= 10.0:
+        return value * resolve_base_power(source_component)
+    return value
+
+
+def _get_ramp_limit_value(source_component: object, *, default: Any, direction: str) -> float:
+    """Extract raw ramp limit value for a given direction.
+
+    Keeps the current getter behavior by relying on dict-style access when
+    ramp_limits is present.
+    """
+    ramp_limits = getattr(source_component, "ramp_limits", default)
+    raw_value = ramp_limits[direction] if ramp_limits else 0.0
+    return float(raw_value)
+
+
+def _resolve_ramp_rates(
+    source_component: object,
+    context: PluginContext,
+    *,
+    initial_ramp_mw: float,
+    defaults_key: str,
+) -> float:
+    """Apply defaults/fallback/capping logic and return final non-negative ramp."""
+    ramp_mw = initial_ramp_mw
+    category = _resolve_generator_category(source_component, context)
+    gen_ramp_pct = _get_defaults(category, defaults_key)
+    max_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "max") or 0.0
+    max_mw = abs(max_pu) * resolve_base_power(source_component)
+    if max_mw == 0.0:
+        max_mw = _get_defaults(category, "capacity_MW")
+    if ramp_mw < RAMPING_THRESHOLD:
+        ramp_mw = gen_ramp_pct * max_mw
+        if ramp_mw < RAMPING_THRESHOLD:
+            max_mw = _get_defaults(category, "capacity_MW")
+            ramp_mw = gen_ramp_pct * max_mw
+        if ramp_mw > max_mw:
+            ramp_mw = max_mw * 0.5
+
+    return max(0.0, round(ramp_mw, 4))
 
 
 def _convert_time_value(value: Any) -> float | None:
@@ -528,59 +579,10 @@ def _get_minmax_value(obj: Any, key: str) -> float | None:
     return float(val) if isinstance(val, int | float) else None
 
 
-def _get_effective_max_mw(source_component: object) -> float:
-    """Return a sane max MW value for ramp calculations.
-
-    Prefers sienna_get_max_active_power but ignores sentinel placeholders
-    (e.g. 1e30). Falls back to active_power_limits.max and then rating.
-    """
-    max_reasonable_mw = 1e6
-
-    try:
-        max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
-    except (TypeError, NotImplementedError, AttributeError, KeyError):
-        max_mw = 0.0
-
-    if max_mw >= max_reasonable_mw:
-        max_mw = 0.0
-
-    if max_mw <= 0.0:
-        max_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "max")
-        if max_pu is not None:
-            max_mw = abs(float(max_pu))
-
-    if max_mw <= 0.0:
-        rating = getattr(source_component, "rating", None)
-        rating_mag = get_magnitude(rating)
-        if rating_mag is not None:
-            max_mw = abs(float(rating_mag) * resolve_base_power(source_component))
-
-    return max_mw
-
-
-def _get_ramp_default(source_component: object, context: PluginContext, direction: str = "up") -> float:
-    """Return default ramp in MW/min for the requested direction.
-
-    Priority:
-    1. max_ramp_up_percentage * unit_max_mw (or category_capacity_mw when unit max is unavailable)
-    2. ramp_rate_up/down (absolute MW/min category default)
-    """
-    category = _resolve_generator_category(source_component, context) or "gas-cc"
-    pct = _get_defaults(category, "max_ramp_up_percentage")
-    if not math.isclose(pct, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        unit_max_mw = _get_effective_max_mw(source_component)
-        category_capacity_mw = _get_defaults(category, "capacity_MW") or 100.0
-        max_mw = unit_max_mw if unit_max_mw > 0.0 else category_capacity_mw
-        return pct * max_mw
-
-    rate_key = "ramp_rate_down" if direction == "down" else "ramp_rate_up"
-    return _get_defaults(category, rate_key)
-
-
-def _get_defaults(category: str, key: str) -> float:
+def _get_defaults(category: str | None, key: str) -> float:
     """Extract a default value from defaults.json for the given category and key."""
     defaults = _load_defaults_json()
-    value = defaults.get("reeds_defaults", {}).get(category, {}).get(key, 0.0)
+    value = defaults.get("reeds_defaults", {}).get(category, {}).get(key, 0.0) if category else 0.0
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -1749,77 +1751,31 @@ def get_min_down_time(source_component: object, context: PluginContext) -> Resul
 @getter
 def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract maximum ramp up from ramp_limits, convert to MW/min; falls back to category default."""
-    min_valid_ramp = 0.1
-    max_mw = _get_effective_max_mw(source_component)
-
-    ramp = getattr(source_component, "ramp_limits", None)
-    raw_ramp_value = None
-    if isinstance(ramp, dict):
-        raw_ramp_value = get_magnitude(ramp.get("up"))
-        value = abs(_ramp_value_to_float(source_component, ramp.get("up")))
-    elif ramp is not None:
-        raw_ramp_value = get_magnitude(getattr(ramp, "up", None))
-        value = abs(_ramp_value_to_float(source_component, getattr(ramp, "up", None)))
-    else:
-        value = 0.0
-
-    # If value exceeds max capacity it is unreasonable (ramp in <1 min); fall back to default
-    if not math.isclose(max_mw, 0.0, rel_tol=0.0, abs_tol=1e-6) and value > max_mw:
-        value = 0.0
-
-    # Very small/zero ramps in source natural units are treated as missing.
-    if raw_ramp_value is not None and abs(float(raw_ramp_value)) < min_valid_ramp or value < min_valid_ramp:
-        value = 0.0
-
-    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        value = abs(_get_ramp_default(source_component, context, direction="up"))
-
-    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        value = max_mw
-
-    # Cap at max capacity so ramp never exceeds installed capacity
-    if max_mw >= min_valid_ramp:
-        value = min(value, max_mw)
-
-    return Ok(round(value, 2))
+    ramp_up = _get_ramp_limit_value(source_component, default=0.0, direction="up")
+    ramp_up_mw = abs(ramp_up * resolve_base_power(source_component))
+    return Ok(
+        _resolve_ramp_rates(
+            source_component,
+            context,
+            initial_ramp_mw=ramp_up_mw,
+            defaults_key="max_ramp_up_percentage",
+        )
+    )
 
 
 @getter
 def get_max_ramp_down(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract maximum ramp down from ramp_limits, convert to MW/min; falls back to category default."""
-    min_valid_ramp = 0.1
-    max_mw = _get_effective_max_mw(source_component)
-
-    ramp = getattr(source_component, "ramp_limits", None)
-    raw_ramp_value = None
-    if isinstance(ramp, dict):
-        raw_ramp_value = get_magnitude(ramp.get("down"))
-        value = abs(_ramp_value_to_float(source_component, ramp.get("down")))
-    elif ramp is not None:
-        raw_ramp_value = get_magnitude(getattr(ramp, "down", None))
-        value = abs(_ramp_value_to_float(source_component, getattr(ramp, "down", None)))
-    else:
-        value = 0.0
-
-    # If value exceeds max capacity it is unreasonable (ramp in <1 min); fall back to default
-    if not math.isclose(max_mw, 0.0, rel_tol=0.0, abs_tol=1e-6) and value > max_mw:
-        value = 0.0
-
-    # Very small/zero ramps in source natural units are treated as missing.
-    if raw_ramp_value is not None and abs(float(raw_ramp_value)) < min_valid_ramp or value < min_valid_ramp:
-        value = 0.0
-
-    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        value = abs(_get_ramp_default(source_component, context, direction="down"))
-
-    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        value = max_mw
-
-    # Cap at max capacity so ramp never exceeds installed capacity
-    if max_mw >= min_valid_ramp:
-        value = min(value, max_mw)
-
-    return Ok(round(value, 2))
+    ramp_down = _get_ramp_limit_value(source_component, default=None, direction="down")
+    ramp_down_mw = abs(ramp_down * resolve_base_power(source_component))
+    return Ok(
+        _resolve_ramp_rates(
+            source_component,
+            context,
+            initial_ramp_mw=ramp_down_mw,
+            defaults_key="max_ramp_up_percentage",
+        )
+    )
 
 
 @getter
@@ -1852,7 +1808,7 @@ def get_generator_min_stable_level(
             max_capacity_mw = None
 
     if math.isclose(min_mw, 0.0, abs_tol=1e-6):
-        category = _resolve_generator_category(source_component, context) or "gas-cc"
+        category = _resolve_generator_category(source_component, context)
         min_mw = _get_defaults(category, "min_stable_level_percentage") * 100.0
 
         if max_capacity_mw is not None and max_capacity_mw > 0.0 and min_mw > max_capacity_mw:
