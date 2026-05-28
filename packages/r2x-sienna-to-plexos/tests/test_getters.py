@@ -2828,7 +2828,7 @@ def test_get_heat_rate_quadratic_curve_returns_coefficients(context_with_thermal
     from r2x_sienna_to_plexos.getters import get_heat_rate, get_heat_rate_base, get_heat_rate_incr
 
     source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-quadratic")
-    assert get_heat_rate(source, context_with_thermal_generators).is_err()
+    assert get_heat_rate(source, context_with_thermal_generators).unwrap() is None
     assert get_heat_rate_base(source, context_with_thermal_generators).unwrap() == pytest.approx(120.0)
     assert get_heat_rate_incr(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
 
@@ -2865,7 +2865,7 @@ def test_heat_rate_getters_return_absolute_values(monkeypatch, context_with_ther
         },
     )
 
-    assert get_heat_rate(source, context_with_thermal_generators).is_err()
+    assert get_heat_rate(source, context_with_thermal_generators).unwrap() is None
     assert get_heat_rate_base(source, context_with_thermal_generators).unwrap() == pytest.approx(120.0)
     assert get_heat_rate_incr(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
     assert get_heat_rate_incr2(source, context_with_thermal_generators).unwrap() == pytest.approx(0.03)

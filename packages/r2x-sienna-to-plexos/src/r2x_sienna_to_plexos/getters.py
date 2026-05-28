@@ -1740,11 +1740,12 @@ def get_generator_load_point(source_component: object, context: PluginContext) -
 
 
 @getter
-def get_heat_rate(source_component: object, context: PluginContext) -> Result[float, ValueError]:
+def get_heat_rate(source_component: object, context: PluginContext) -> Result[float | None, ValueError]:
     """Extract heat_rate from computed heat rate data.
 
     When both heat_rate_base and heat_rate_incr are defined, suppress the
     scalar heat_rate property so only the decomposed terms are exported.
+    Returning ``None`` allows rule application to skip just this field.
     """
     heat_rate_data = compute_heat_rate_data(source_component)
     base_value = heat_rate_data.get("heat_rate_base")
@@ -1757,7 +1758,7 @@ def get_heat_rate(source_component: object, context: PluginContext) -> Result[fl
 
     has_incr = heat_rate_data.get("heat_rate_incr") is not None
     if has_base and has_incr:
-        return Err(ValueError("Heat Rate suppressed when Heat Rate Base and Heat Rate Incr are defined"))
+        return Ok(None)
 
     value = heat_rate_data.get("heat_rate")
     return Ok(abs(float(value)) if value is not None else 0.0)
