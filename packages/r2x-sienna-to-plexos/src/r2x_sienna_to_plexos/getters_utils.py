@@ -28,6 +28,7 @@ from r2x_plexos.models import (
 from r2x_sienna.models import (
     ACBus,
     Area,
+    DCBus,
     EnergyReservoirStorage,
     HydroPumpTurbine,
     HydroReservoir,
@@ -931,7 +932,7 @@ def ensure_transformer_node_memberships(context: PluginContext) -> None:
     source_transformers_by_name: dict[str, Any] = {}
     for tf_type in _SIENNA_TRANSFORMER_TYPES:
         for tf in _source_system(context).get_components(tf_type):
-            source_transformers_by_name[tf.name] = tf
+            source_transformers_by_name[tf.name.strip()] = tf
 
     nodes_by_name = {n.name: n for n in _target_system(context).get_components(PLEXOSNode)}
 
@@ -955,6 +956,70 @@ def ensure_transformer_node_memberships(context: PluginContext) -> None:
             total_memberships += 1
 
     logger.info("Total {} Transformer-Node memberships created.", total_memberships)
+
+
+def ensure_line_node_memberships(context: PluginContext) -> None:
+    """Create Line->Node memberships (both NodeFrom and NodeTo) for all translated lines.
+
+    Mirrors ``ensure_transformer_node_memberships`` for PLEXOSLine objects.
+    The rules.json membership rules attempt the same thing via the getter
+    mechanism but fail silently when the source line or target node cannot be
+    resolved; this function provides a reliable post-processing fallback.
+
+    For HVDC lines whose arc endpoints are ``DCBus`` objects (which have no
+    corresponding ``PLEXOSNode`` from the normal ACBus translation), this
+    function creates minimal ``PLEXOSNode`` objects and assigns them to the
+    appropriate region so that PLEXOS validation passes.
+    """
+    from r2x_sienna_to_plexos.getters_mappings import SOURCE_LINE_TYPES
+
+    source_lines_by_name: dict[str, Any] = {}
+    for line_type in SOURCE_LINE_TYPES:
+        for ln in _source_system(context).get_components(line_type):
+            source_lines_by_name[ln.name.strip()] = ln
+
+    target_sys = _target_system(context)
+    nodes_by_name = {n.name: n for n in target_sys.get_components(PLEXOSNode)}
+    regions_by_name = {r.name: r for r in target_sys.get_components(PLEXOSRegion)}
+
+    def _get_or_create_node(bus: Any) -> PLEXOSNode | None:
+        """Return existing PLEXOSNode or create one for a DCBus endpoint."""
+        bus_name = bus.name if hasattr(bus, "name") else str(bus)
+        node = nodes_by_name.get(bus_name)
+        if node is not None:
+            return node
+        if isinstance(bus, DCBus):
+            node = PLEXOSNode(name=bus_name, category="dc-node")
+            target_sys.add_component(node)
+            nodes_by_name[bus_name] = node
+            # Assign to region using the same area-name resolution as ACBus nodes
+            area_name = _bus_to_area_name(bus)
+            if area_name:
+                region = regions_by_name.get(area_name)
+                if region is not None:
+                    _ensure_membership(context, node, region, CollectionEnum.Region)
+            logger.debug("Created PLEXOSNode '{}' for DCBus endpoint.", bus_name)
+            return node
+        return None
+
+    total_memberships = 0
+    for target_line in target_sys.get_components(PLEXOSLine):
+        source_line = source_lines_by_name.get(target_line.name)
+        if source_line is None or not hasattr(source_line, "arc"):
+            continue
+
+        arc = source_line.arc
+        from_node = _get_or_create_node(arc.from_to)
+        if from_node is not None:
+            _ensure_membership(context, target_line, from_node, CollectionEnum.NodeFrom)
+            total_memberships += 1
+
+        to_node = _get_or_create_node(arc.to_from)
+        if to_node is not None:
+            _ensure_membership(context, target_line, to_node, CollectionEnum.NodeTo)
+            total_memberships += 1
+
+    logger.info("Total {} Line-Node memberships created.", total_memberships)
 
 
 def ensure_interface_line_memberships(context: PluginContext) -> None:

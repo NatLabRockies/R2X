@@ -359,6 +359,7 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
     monkeypatch.setattr(translation_module, "ensure_reserve_battery_memberships", _mark("reserve_battery"))
     monkeypatch.setattr(translation_module, "ensure_reserve_generator_memberships", _mark("reserve_gen"))
     monkeypatch.setattr(translation_module, "ensure_transformer_node_memberships", _mark("trf_node"))
+    monkeypatch.setattr(translation_module, "ensure_line_node_memberships", _mark("line_node"))
     monkeypatch.setattr(translation_module, "ensure_interface_line_memberships", _mark("iface_line"))
     monkeypatch.setattr(translation_module, "ensure_head_storage_generator_membership", _mark("head"))
     monkeypatch.setattr(translation_module, "ensure_tail_storage_generator_membership", _mark("tail"))
@@ -379,6 +380,7 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
         "reserve_battery",
         "reserve_gen",
         "trf_node",
+        "line_node",
         "iface_line",
         "head",
         "tail",
