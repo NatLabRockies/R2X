@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from importlib.resources import files
 from typing import Any, cast
 
@@ -8,8 +9,11 @@ from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
 
-from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
+from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin  # type: ignore
+from r2x_reeds_to_sienna.getter_utils import add_generator_emissions
 from r2x_reeds_to_sienna.plugin_config import ReEDSToSiennaConfig
+
+logger = logging.getLogger(__name__)
 
 
 @expose_plugin
@@ -42,5 +46,7 @@ def reeds_to_sienna(system: System, config: ReEDSToSiennaConfig) -> System:
     context.target_system = sienna_system
 
     apply_rules_to_context(context)
+
+    add_generator_emissions(context)
 
     return context.target_system

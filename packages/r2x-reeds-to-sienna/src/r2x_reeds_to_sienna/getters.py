@@ -258,14 +258,20 @@ def get_thermal_operation_cost(
     component: ReEDSThermalGenerator,
     context: PluginContext,
 ) -> Result[ThermalGenerationCost, ValueError]:
-    """Return zeroed thermal operation cost."""
+    """Build thermal operation cost from heat_rate, fuel_price, and vom_cost."""
+    heat_rate = float(getattr(component, "heat_rate", 0.0) or 0.0)
+    fuel_price = float(getattr(component, "fuel_price", 0.0) or 0.0)
+    vom_cost = float(getattr(component, "vom_cost", 0.0) or 0.0)
     return Ok(
         ThermalGenerationCost(
             fixed=0.0,
             shut_down=0.0,
             start_up=0.0,
             variable=FuelCurve(
-                value_curve=LinearCurve(0.0), power_units=InfraUnitSystem.NATURAL_UNITS, fuel_cost=0.0
+                value_curve=LinearCurve(heat_rate),
+                power_units=InfraUnitSystem.NATURAL_UNITS,
+                fuel_cost=fuel_price,
+                vom_cost=LinearCurve(vom_cost),
             ),
         )
     )
@@ -337,6 +343,40 @@ def get_renewable_prime_mover(
 def get_load_base_power(component: ReEDSDemand, context: PluginContext) -> Result[float | int, ValueError]:
     """Return a default load base power of 100.0 MVA."""
     return _ok_num(100.0)
+
+
+@getter
+def get_thermal_services(
+    component: ReEDSThermalGenerator,
+    context: PluginContext,
+) -> Result[list, ValueError]:
+    """Return the list of VariableReserve objects the generator participates in.
+
+    Reads reserve names from ``ext['reserves']`` and looks up each already-
+    translated ``VariableReserve`` in the target system.  Reserves that have
+    not been translated yet are silently skipped.
+    """
+    from r2x_sienna.models import VariableReserve
+
+    ext = getattr(component, "ext", {}) or {}
+    reserve_names: list[str] = ext.get("reserves", []) or []
+    if not reserve_names:
+        return Ok([])
+
+    reserves_by_name = {r.name: r for r in _target_system(context).get_components(VariableReserve)}
+    return Ok([reserves_by_name[n] for n in reserve_names if n in reserves_by_name])
+
+
+@getter
+def get_thermal_active_power(
+    component: ReEDSThermalGenerator,
+    context: PluginContext,
+) -> Result[float | int, ValueError]:
+    """Return the generator capacity as initial active power dispatch."""
+    capacity = getattr(component, "capacity", None)
+    if capacity is None:
+        return _ok_num(0.0)
+    return _ok_num(float(capacity))
 
 
 @getter
