@@ -32,20 +32,36 @@ def add_generator_emissions(context: PluginContext) -> None:
     from infrasys.cost_curves import LinearCurve
     from r2x_reeds.models import ReEDSEmission, ReEDSThermalGenerator
     from r2x_sienna.models import ThermalStandard
-    from r2x_sienna.models.attributes import EmissionsData
-    from r2x_sienna.models.enums import EmissionBasis, EnergyUnit, MassUnit, PollutantType
+
+    try:
+        from r2x_sienna.models.attributes import EmissionsData
+        from r2x_sienna.models.enums import EmissionBasis, EnergyUnit, MassUnit, PollutantType
+    except ImportError:
+        logger.warning(
+            "EmissionsData not available in the installed r2x_sienna version; skipping emission translation."
+        )
+        return
 
     source_sys = cast(Any, context.source_system)
     target_sys = cast(Any, context.target_system)
 
-    # Build name → source generator lookup
-    source_gens_by_name: dict[str, Any] = {
-        g.name: g for g in source_sys.get_components(ReEDSThermalGenerator)
-    }
+    # Build uuid/name → source generator lookups (uuid preferred since target names may be made unique)
+    source_gens_by_uuid: dict[str, Any] = {}
+    source_gens_by_name: dict[str, Any] = {}
+    for g in source_sys.get_components(ReEDSThermalGenerator):
+        source_gens_by_name[g.name] = g
+        g_uuid = getattr(g, "uuid", None)
+        if g_uuid is not None:
+            source_gens_by_uuid[str(g_uuid)] = g
 
     total = 0
     for target_gen in target_sys.get_components(ThermalStandard):
-        source_gen = source_gens_by_name.get(target_gen.name)
+        target_uuid = getattr(target_gen, "uuid", None)
+        source_gen = None
+        if target_uuid is not None:
+            source_gen = source_gens_by_uuid.get(str(target_uuid))
+        if source_gen is None:
+            source_gen = source_gens_by_name.get(target_gen.name)
         if source_gen is None:
             continue
         try:
