@@ -1189,7 +1189,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-core" },
+    { name = "r2x-core", git = "https://github.com/NatLabRockies/r2x-core.git?branch=main" },
     { name = "r2x-plexos-to-sienna", editable = "packages/r2x-plexos-to-sienna" },
     { name = "r2x-reeds-to-plexos", editable = "packages/r2x-reeds-to-plexos" },
     { name = "r2x-reeds-to-sienna", editable = "packages/r2x-reeds-to-sienna" },
@@ -1229,10 +1229,6 @@ dependencies = [
     { name = "polars" },
     { name = "pydantic" },
     { name = "rust-ok" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9b/fc/1607777bc5db4d6141a476635c3430066aaa825344b61b98683fcbf9a253/r2x_core-0.5.0.tar.gz", hash = "sha256:f1ec94866e7f67ba0e66d1b81e26d18e5d2c8da2a44a7fd07ea37d8380d7a582", size = 64779, upload-time = "2026-05-21T01:33:48.005Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/22/10be82e57b0a0ee3d3633f73b38d87333cff69f005db877d6b4cc2373471/r2x_core-0.5.0-py3-none-any.whl", hash = "sha256:ccda0430ef21f62bec807988dcd11eabe16bc797c8b437c919f07f40ac685427", size = 80251, upload-time = "2026-05-21T01:33:46.726Z" },
 ]
 
 [[package]]
