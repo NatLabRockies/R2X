@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, cast
 
@@ -26,7 +28,9 @@ from r2x_plexos.models import (
 from r2x_sienna.models import (
     ACBus,
     Area,
+    DCBus,
     EnergyReservoirStorage,
+    HydroPumpTurbine,
     HydroReservoir,
     HydroTurbine,
     LoadZone,
@@ -36,6 +40,7 @@ from r2x_sienna.models import (
     TransmissionInterface,
     VariableReserve,
 )
+from r2x_sienna.models.enums import ACBusTypes
 from r2x_sienna.units import get_magnitude
 
 if TYPE_CHECKING:
@@ -44,6 +49,81 @@ if TYPE_CHECKING:
 InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData]
 
 _SIENNA_TRANSFORMER_TYPES = (Transformer2W, TapTransformer, PhaseShiftingTransformer)
+
+
+# ---------------------------------------------------------------------------
+# SQLite IN-clause chunking fix
+# ---------------------------------------------------------------------------
+# SQLite limits bound variables to 999 per statement.  For large EI systems
+# (226k+ component associations) the vanilla r2x_core implementation issues a
+# single query with all target UUIDs as parameters, which blows the limit.
+# We replace that function at import time with an equivalent that batches the
+# IN clause into chunks of 900.
+
+
+def _chunked_setup_target_and_child_tables(
+    tgt_metadata: Any,
+    src_associations: Any,
+    uuid_map: dict,
+) -> tuple[list[tuple], dict[str, str]]:
+    """Chunked drop-in for r2x_core's _setup_target_and_child_tables."""
+    from uuid import UUID as _UUID
+
+    uuid_to_type = {str(uuid): type(comp).__name__ for uuid, comp in uuid_map.items()}
+
+    tgt_metadata.execute("DROP TABLE IF EXISTS target_components")
+    tgt_metadata.execute("CREATE TEMP TABLE target_components (uuid TEXT PRIMARY KEY, type TEXT)")
+    tgt_metadata.executemany("INSERT INTO target_components VALUES (?, ?)", list(uuid_to_type.items()))
+
+    target_uuids = list(uuid_to_type.keys())
+
+    if not target_uuids:
+        tgt_metadata.execute("DROP TABLE IF EXISTS child_mapping")
+        tgt_metadata.execute(
+            "CREATE TEMP TABLE child_mapping (child_uuid TEXT, parent_uuid TEXT, parent_type TEXT)"
+        )
+        return [], uuid_to_type
+
+    _chunk_size = 900
+    child_parent_rows: list[tuple] = []
+    for i in range(0, len(target_uuids), _chunk_size):
+        chunk = target_uuids[i : i + _chunk_size]
+        placeholders = ",".join("?" for _ in chunk)
+        child_parent_rows.extend(
+            src_associations.execute(
+                f"""
+                SELECT component_uuid, attached_component_uuid
+                FROM component_associations
+                WHERE attached_component_uuid IN ({placeholders})
+                """,
+                chunk,
+            ).fetchall()
+        )
+
+    child_remapping = [
+        (child_uuid, parent_uuid, type(uuid_map[_UUID(parent_uuid)]).__name__)
+        for child_uuid, parent_uuid in child_parent_rows
+        if parent_uuid in uuid_to_type
+    ]
+
+    tgt_metadata.execute("DROP TABLE IF EXISTS child_mapping")
+    tgt_metadata.execute(
+        "CREATE TEMP TABLE child_mapping (child_uuid TEXT, parent_uuid TEXT, parent_type TEXT)"
+    )
+    if child_remapping:
+        tgt_metadata.executemany("INSERT INTO child_mapping VALUES (?, ?, ?)", child_remapping)
+
+    return child_remapping, uuid_to_type
+
+
+try:
+    import r2x_core.time_series as _r2x_core_ts
+
+    cast(Any, _r2x_core_ts)._setup_target_and_child_tables = _chunked_setup_target_and_child_tables
+    logger.debug("Applied chunked _setup_target_and_child_tables patch to r2x_core.time_series")
+except (ImportError, AttributeError) as _patch_err:
+    logger.warning("Could not patch r2x_core.time_series._setup_target_and_child_tables: {}", _patch_err)
+# ---------------------------------------------------------------------------
 
 
 def _source_system(context: PluginContext) -> Any:
@@ -73,18 +153,13 @@ def _ensure_membership(
     collection : CollectionEnum
         The collection type for the membership
     """
-    # Avoid creating duplicate memberships for the same parent/child/collection.
-    existing = _target_system(context).get_supplemental_attributes_with_component(
-        child_object,
-        PLEXOSMembership,
-    )
-    for membership in existing:
-        if (
-            membership.parent_object == parent_object
-            and membership.child_object == child_object
-            and membership.collection == collection
-        ):
-            return
+    parent_key = getattr(parent_object, "uuid", None) or id(parent_object)
+    child_key = getattr(child_object, "uuid", None) or id(child_object)
+    membership_key = (collection, parent_key, child_key)
+
+    membership_cache = context._cache.setdefault("membership_key_cache", set())
+    if membership_key in membership_cache:
+        return
 
     membership = PLEXOSMembership(
         parent_object=parent_object,
@@ -95,6 +170,7 @@ def _ensure_membership(
     # regardless of traversal direction.
     _target_system(context).add_supplemental_attribute(parent_object, membership)
     _target_system(context).add_supplemental_attribute(child_object, membership)
+    membership_cache.add(membership_key)
 
 
 def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | None, str | None]]:
@@ -116,13 +192,32 @@ def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | 
             area_name = str(area)
 
         load_zone = getattr(bus, "load_zone", None)
-        zone_name: str | None = (
-            load_zone.name if isinstance(load_zone, LoadZone) else (str(load_zone) if load_zone else None)
-        )
+        zone_name: str | None = None
+        if load_zone:
+            if isinstance(load_zone, LoadZone):
+                zone_name = load_zone.name
+            elif hasattr(load_zone, "name") and load_zone.name:
+                zone_name = str(load_zone.name)
+            elif isinstance(load_zone, str):
+                zone_name = load_zone
+            else:
+                zone_name = str(load_zone)
         result[bus.name] = (area_name, zone_name)
 
     context._cache["bus_name_to_area_and_zone"] = result
     return result
+
+
+def _bus_to_area_name(bus: Any) -> str | None:
+    """Resolve canonical area name for a source bus."""
+    area = getattr(bus, "area", None)
+    if isinstance(area, Area):
+        ext = getattr(area, "ext", None)
+        arname = (ext or {}).get("ARNAME") if isinstance(ext, dict) else None
+        return str(arname) if arname else area.name
+    if area:
+        return str(area)
+    return None
 
 
 def _attach_reservoir_time_series_to_storage(
@@ -163,23 +258,28 @@ def _attach_reservoir_time_series_to_storage(
         max_mw = abs(float(naris_pmax))
     else:
         turbine_base = base_name[: -len("_Reservoir")] if base_name.endswith("_Reservoir") else base_name
-        for t in _source_system(context).get_components(HydroTurbine):
-            t_base = t.name[: -len("_Turbine")] if t.name.endswith("_Turbine") else t.name
-            if t_base == turbine_base:
-                limits = getattr(t, "active_power_limits", None)
-                if limits is not None:
-                    max_val = limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
-                    if max_val is not None:
-                        mag = get_magnitude(max_val)
-                        raw = (
-                            float(mag)
-                            if mag is not None
-                            else float(max_val)
-                            if isinstance(max_val, int | float)
-                            else None
+        for turbine_type in (HydroPumpTurbine, HydroTurbine):
+            for t in _source_system(context).get_components(turbine_type):
+                t_base = t.name[: -len("_Turbine")] if t.name.endswith("_Turbine") else t.name
+                if t_base == turbine_base:
+                    limits = getattr(t, "active_power_limits", None)
+                    if limits is not None:
+                        max_val = (
+                            limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
                         )
-                        if raw is not None:
-                            max_mw = abs(raw) * resolve_base_power(t)
+                        if max_val is not None:
+                            mag = get_magnitude(max_val)
+                            raw = (
+                                float(mag)
+                                if mag is not None
+                                else float(max_val)
+                                if isinstance(max_val, int | float)
+                                else None
+                            )
+                            if raw is not None:
+                                max_mw = abs(raw) * resolve_base_power(t)
+                    break
+            if max_mw > 0.0:
                 break
 
     for typed_ts in _source_system(context).list_time_series(source_reservoir):
@@ -207,7 +307,7 @@ def _attach_reservoir_time_series_to_storage(
                 resolution=typed_ts.resolution,
             )
             _target_system(context).add_time_series(fresh_ts, target_storage, **ts_features)
-            logger.success("Attached time series {} to storage {}", ts_name, storage_name)
+            logger.debug("Attached time series {} to storage {}", ts_name, storage_name)
 
 
 def ensure_region_node_memberships(context: PluginContext) -> None:
@@ -215,20 +315,137 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
 
     Area maps to PLEXOSRegion, so regions are looked up by area_name.
     """
-    bus_index = _bus_name_to_area_and_zone(context)
     regions_by_name = {r.name: r for r in _target_system(context).get_components(PLEXOSRegion)}
+    source_buses = list(_source_system(context).get_components(ACBus))
+    source_buses_by_uuid = {str(getattr(bus, "uuid", "")): bus for bus in source_buses}
+    source_buses_by_name = {bus.name: bus for bus in source_buses}
+
+    region_nodes_by_name: dict[str, list[PLEXOSNode]] = {name: [] for name in regions_by_name}
 
     total_memberships = 0
     for node in _target_system(context).get_components(PLEXOSNode):
-        area_name, _ = bus_index.get(node.name, (None, None))
+        source_bus = source_buses_by_uuid.get(str(getattr(node, "uuid", "")))
+        if source_bus is None:
+            source_bus = source_buses_by_name.get(node.name)
+
+        area_name = _bus_to_area_name(source_bus) if source_bus is not None else None
         if area_name is None:
             continue
         region = regions_by_name.get(area_name)
         if region is not None:
             _ensure_membership(context, node, region, CollectionEnum.Region)
+            region_nodes = region_nodes_by_name.setdefault(area_name, [])
+            if node not in region_nodes:
+                region_nodes.append(node)
             total_memberships += 1
 
+    context._cache["region_nodes_by_name"] = region_nodes_by_name
+
     logger.info("Total {} Region-Node memberships created.", total_memberships)
+
+
+def ensure_reference_node_memberships(context: PluginContext) -> None:
+    """Create exactly one Region->Node ReferenceNode membership per translated region.
+
+    Selection priority per region:
+    1) Any node whose source bus is REF/SLACK
+    2) Fallback to highest node voltage, then highest load participation factor
+    """
+
+    def _as_float(value: Any) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    regions_by_name = {r.name: r for r in _target_system(context).get_components(PLEXOSRegion)}
+    nodes_by_region = cast(dict[str, list[PLEXOSNode]], context._cache.get("region_nodes_by_name", {}))
+    if not nodes_by_region:
+        ensure_region_node_memberships(context)
+        nodes_by_region = cast(dict[str, list[PLEXOSNode]], context._cache.get("region_nodes_by_name", {}))
+
+    # If some regions still have no node associations, recover from existing
+    # supplemental Region memberships attached to the region endpoint.
+    for region_name, region in regions_by_name.items():
+        if nodes_by_region.get(region_name):
+            continue
+
+        recovered_nodes: list[PLEXOSNode] = []
+        for membership in _target_system(context).get_supplemental_attributes_with_component(
+            region,
+            PLEXOSMembership,
+        ):
+            if membership.collection != CollectionEnum.Region:
+                continue
+
+            if membership.parent_object == region and isinstance(membership.child_object, PLEXOSNode):
+                recovered_nodes.append(membership.child_object)
+            elif membership.child_object == region and isinstance(membership.parent_object, PLEXOSNode):
+                recovered_nodes.append(membership.parent_object)
+
+        if recovered_nodes:
+            nodes_by_region[region_name] = recovered_nodes
+
+    all_nodes = list(_target_system(context).get_components(PLEXOSNode))
+
+    ref_node_names: set[str] = set()
+    ref_node_uuids: set[str] = set()
+    for bus in _source_system(context).get_components(ACBus):
+        bustype = getattr(bus, "bustype", None)
+        bustype_name = getattr(bustype, "name", str(bustype)).upper() if bustype is not None else ""
+        if bustype not in {ACBusTypes.REF, ACBusTypes.SLACK} and bustype_name not in {"REF", "SLACK"}:
+            continue
+
+        ref_node_names.add(bus.name)
+        ref_node_uuids.add(str(getattr(bus, "uuid", "")))
+
+    total_memberships = 0
+    for region_name, region in regions_by_name.items():
+        region_nodes = nodes_by_region.get(region_name, [])
+        if not region_nodes and not all_nodes:
+            continue
+
+        slack_nodes = [
+            node
+            for node in region_nodes
+            if (
+                node.name in ref_node_names
+                or str(getattr(node, "uuid", "")) in ref_node_uuids
+                or bool(getattr(node, "is_slack_bus", 0))
+            )
+        ]
+        candidate_nodes = slack_nodes if slack_nodes else region_nodes
+        used_global_fallback = False
+        if not candidate_nodes:
+            candidate_nodes = all_nodes
+            used_global_fallback = True
+
+        chosen = max(
+            candidate_nodes,
+            key=lambda node: (
+                _as_float(getattr(node, "voltage", 0.0)),
+                _as_float(getattr(node, "load_participation_factor", 0.0)),
+                node.name,
+            ),
+        )
+
+        _ensure_membership(context, region, chosen, CollectionEnum.ReferenceNode)
+        total_memberships += 1
+
+        if used_global_fallback:
+            logger.warning(
+                "No nodes were associated with region '{}'; using global fallback reference node '{}'.",
+                region_name,
+                chosen.name,
+            )
+        elif not slack_nodes:
+            logger.debug(
+                "No REF/SLACK bus found for region '{}'; using fallback reference node '{}'.",
+                region_name,
+                chosen.name,
+            )
+
+    logger.info("Total {} ReferenceNode Region->Node memberships created.", total_memberships)
 
 
 def _extract_base_name(name: str) -> str:
@@ -282,7 +499,7 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
 
         turbines = list(getattr(reservoir, "downstream_turbines", None) or [])
         if not turbines and isinstance(ext, dict):
-            all_turbines = {t.name: t for t in _source_system(context).get_components(HydroTurbine)}
+            all_turbines = {t.name: t for t in _source_system(context).get_components(HydroPumpTurbine)}
             turbines = [
                 all_turbines[pid]
                 for pid in (ext.get("plants") or [])
@@ -296,13 +513,13 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
             target_gen_name = display_name_index.get(tname, tname)
             target_gen = generators_by_name.get(target_gen_name)
             if target_gen is None:
-                logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", tname)
+                logger.debug("No PLEXOSGenerator found for HydroPumpTurbine '{}', skipping.", tname)
                 continue
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.HeadStorage)
             total_memberships += 1
 
-    # Also support source models that expose reservoir links on HydroTurbine.reservoirs.
-    for turbine in _source_system(context).get_components(HydroTurbine):
+    # Also support source models that expose reservoir links on HydroPumpTurbine.reservoirs.
+    for turbine in _source_system(context).get_components(HydroPumpTurbine):
         tname = getattr(turbine, "name", None)
         if not tname:
             continue
@@ -387,7 +604,7 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
 
         turbines = list(getattr(reservoir, "downstream_turbines", None) or [])
         if not turbines and isinstance(ext, dict):
-            all_turbines = {t.name: t for t in _source_system(context).get_components(HydroTurbine)}
+            all_turbines = {t.name: t for t in _source_system(context).get_components(HydroPumpTurbine)}
             turbines = [
                 all_turbines[pid]
                 for pid in (ext.get("plants") or [])
@@ -401,13 +618,13 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
             target_gen_name = display_name_index.get(tname, tname)
             target_gen = generators_by_name.get(target_gen_name)
             if target_gen is None:
-                logger.debug("No PLEXOSGenerator found for HydroTurbine '{}', skipping.", tname)
+                logger.debug("No PLEXOSGenerator found for HydroPumpTurbine '{}', skipping.", tname)
                 continue
             _ensure_membership(context, target_gen, target_storage, CollectionEnum.TailStorage)
             total_memberships += 1
 
-    # Also support source models that expose reservoir links on HydroTurbine.reservoirs.
-    for turbine in _source_system(context).get_components(HydroTurbine):
+    # Also support source models that expose reservoir links on HydroPumpTurbine.reservoirs.
+    for turbine in _source_system(context).get_components(HydroPumpTurbine):
         tname = getattr(turbine, "name", None)
         if not tname:
             continue
@@ -504,12 +721,76 @@ def ensure_generator_time_series(context: PluginContext) -> None:
             if target_gen is None:
                 continue
             _attach_generator_time_series(context, source_gen.name, target_gen)
+            _attach_hydro_reservoir_inflow_to_generator_budget(context, source_gen, target_gen)
             total += 1
     logger.info("Ensured time series for {} generators.", total)
 
 
+def _attach_hydro_reservoir_inflow_to_generator_budget(
+    context: PluginContext,
+    source_generator: Any,
+    target_generator: Any,
+) -> None:
+    """Attach HydroReservoir inflow to generator as max_energy_day for non-pumped HydroTurbine units."""
+    if isinstance(source_generator, HydroPumpTurbine) or not isinstance(source_generator, HydroTurbine):
+        return
+
+    pump_load = getattr(source_generator, "rating", None)
+    if pump_load is not None:
+        magnitude = get_magnitude(pump_load)
+        raw = (
+            float(magnitude)
+            if magnitude is not None
+            else float(pump_load)
+            if isinstance(pump_load, int | float)
+            else 0.0
+        )
+        if not math.isclose(raw * resolve_base_power(source_generator), 0.0, abs_tol=1e-9):
+            return
+
+    from infrasys import SingleTimeSeries
+
+    from r2x_sienna_to_plexos.getters import _build_reservoir_by_turbine_index
+
+    source_reservoir = _build_reservoir_by_turbine_index(context).get(source_generator.name)
+    if source_reservoir is None or not _source_system(context).time_series.has_time_series(source_reservoir):
+        return
+
+    for metadata in _source_system(context).time_series.list_time_series_metadata(source_reservoir):
+        if metadata.name not in {"inflow", "natural_inflow"}:
+            continue
+        features = getattr(metadata, "features", {}) or {}
+        if _target_system(context).has_time_series(
+            target_generator,
+            name="max_energy_day",
+            time_series_type=SingleTimeSeries,
+            **features,
+        ):
+            continue
+
+        ts_list = _source_system(context).list_time_series(
+            source_reservoir,
+            name=metadata.name,
+            **features,
+        )
+        if not ts_list:
+            continue
+
+        typed_source_ts = ts_list[0]
+        ts_copy = deepcopy(typed_source_ts)
+        ts_copy.name = "max_energy_day"
+        _target_system(context).add_time_series(ts_copy, target_generator, **features)
+
+
 def ensure_reserve_time_series(context: PluginContext) -> None:
     """Attach reserve time series from source VariableReserve to translated PLEXOSReserve."""
+
+    def _normalize_series_name(name: Any) -> str:
+        return str(name or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+    def _freeze_features(features: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+        return tuple(sorted((str(key), repr(value)) for key, value in features.items()))
+
     source_reserves = {r.name: r for r in _source_system(context).get_components(VariableReserve)}
     base = getattr(getattr(context, "source_system", None), "base_power", None)
     try:
@@ -518,6 +799,7 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
         system_base = 100.0
 
     total = 0
+    seen: set[tuple[str, str, type[Any], tuple[tuple[str, str], ...]]] = set()
     for reserve in _target_system(context).get_components(PLEXOSReserve):
         source_reserve = source_reserves.get(reserve.name)
         if source_reserve is None:
@@ -537,17 +819,27 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
                 continue
 
             typed_source_ts = ts_list[0]
-            ts_name = "min_provision" if typed_source_ts.name == "requirement" else typed_source_ts.name
+            source_names = {
+                _normalize_series_name(getattr(metadata, "name", None)),
+                _normalize_series_name(getattr(typed_source_ts, "name", None)),
+            }
+            ts_name = (
+                "min_provision" if {"requirement", "min_provision"} & source_names else typed_source_ts.name
+            )
 
             ts_copy_any = deepcopy(typed_source_ts)
             ts_copy_any.name = ts_name
 
             # Reserve requirement is represented in p.u. in Sienna; PLEXOS min_provision expects MW.
-            if ts_name in {"min_provision", "requirement"}:
+            if ts_name == "min_provision":
                 try:
                     ts_copy_any.data = ts_copy_any.data * system_base
                 except TypeError:
                     ts_copy_any.data = [float(value) * system_base for value in ts_copy_any.data]
+
+            seen_key = (reserve.name, ts_name, type(typed_source_ts), _freeze_features(features))
+            if seen_key in seen:
+                continue
 
             if _target_system(context).has_time_series(
                 reserve,
@@ -558,6 +850,7 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
                 continue
 
             _target_system(context).add_time_series(ts_copy_any, reserve, **features)
+            seen.add(seen_key)
             total += 1
 
     logger.info("Ensured reserve time series for {} associations.", total)
@@ -639,7 +932,7 @@ def ensure_transformer_node_memberships(context: PluginContext) -> None:
     source_transformers_by_name: dict[str, Any] = {}
     for tf_type in _SIENNA_TRANSFORMER_TYPES:
         for tf in _source_system(context).get_components(tf_type):
-            source_transformers_by_name[tf.name] = tf
+            source_transformers_by_name[tf.name.strip()] = tf
 
     nodes_by_name = {n.name: n for n in _target_system(context).get_components(PLEXOSNode)}
 
@@ -665,6 +958,70 @@ def ensure_transformer_node_memberships(context: PluginContext) -> None:
     logger.info("Total {} Transformer-Node memberships created.", total_memberships)
 
 
+def ensure_line_node_memberships(context: PluginContext) -> None:
+    """Create Line->Node memberships (both NodeFrom and NodeTo) for all translated lines.
+
+    Mirrors ``ensure_transformer_node_memberships`` for PLEXOSLine objects.
+    The rules.json membership rules attempt the same thing via the getter
+    mechanism but fail silently when the source line or target node cannot be
+    resolved; this function provides a reliable post-processing fallback.
+
+    For HVDC lines whose arc endpoints are ``DCBus`` objects (which have no
+    corresponding ``PLEXOSNode`` from the normal ACBus translation), this
+    function creates minimal ``PLEXOSNode`` objects and assigns them to the
+    appropriate region so that PLEXOS validation passes.
+    """
+    from r2x_sienna_to_plexos.getters_mappings import SOURCE_LINE_TYPES
+
+    source_lines_by_name: dict[str, Any] = {}
+    for line_type in SOURCE_LINE_TYPES:
+        for ln in _source_system(context).get_components(line_type):
+            source_lines_by_name[ln.name.strip()] = ln
+
+    target_sys = _target_system(context)
+    nodes_by_name = {n.name: n for n in target_sys.get_components(PLEXOSNode)}
+    regions_by_name = {r.name: r for r in target_sys.get_components(PLEXOSRegion)}
+
+    def _get_or_create_node(bus: Any) -> PLEXOSNode | None:
+        """Return existing PLEXOSNode or create one for a DCBus endpoint."""
+        bus_name = bus.name if hasattr(bus, "name") else str(bus)
+        node = nodes_by_name.get(bus_name)
+        if node is not None:
+            return node
+        if isinstance(bus, DCBus):
+            node = PLEXOSNode(name=bus_name, category="dc-node")
+            target_sys.add_component(node)
+            nodes_by_name[bus_name] = node
+            # Assign to region using the same area-name resolution as ACBus nodes
+            area_name = _bus_to_area_name(bus)
+            if area_name:
+                region = regions_by_name.get(area_name)
+                if region is not None:
+                    _ensure_membership(context, node, region, CollectionEnum.Region)
+            logger.debug("Created PLEXOSNode '{}' for DCBus endpoint.", bus_name)
+            return node
+        return None
+
+    total_memberships = 0
+    for target_line in target_sys.get_components(PLEXOSLine):
+        source_line = source_lines_by_name.get(target_line.name)
+        if source_line is None or not hasattr(source_line, "arc"):
+            continue
+
+        arc = source_line.arc
+        from_node = _get_or_create_node(arc.from_to)
+        if from_node is not None:
+            _ensure_membership(context, target_line, from_node, CollectionEnum.NodeFrom)
+            total_memberships += 1
+
+        to_node = _get_or_create_node(arc.to_from)
+        if to_node is not None:
+            _ensure_membership(context, target_line, to_node, CollectionEnum.NodeTo)
+            total_memberships += 1
+
+    logger.info("Total {} Line-Node memberships created.", total_memberships)
+
+
 def ensure_interface_line_memberships(context: PluginContext) -> None:
     """Create Interface->Line memberships for all interfaces and their lines."""
     source_interfaces_by_name = {
@@ -684,6 +1041,79 @@ def ensure_interface_line_memberships(context: PluginContext) -> None:
                 total_memberships += 1
 
     logger.info("Total {} Interface-Line memberships created.", total_memberships)
+
+
+def ensure_pumped_hydro_storages_created(context: PluginContext) -> None:
+    """Synthesize head/tail PLEXOSStorage entries for pumped-hydro generators missing them.
+
+    Pumped-hydro generators in PLEXOS need both a head and a tail storage so
+    the pump/generator pair can move energy between reservoirs and perform
+    arbitrage. When the source Sienna system has no reservoirs attached to a
+    pumped-hydro turbine (common for ReEDS-style aggregated systems), create
+    minimal ``PLEXOSStorage`` entries with ``units=1`` and ``max_volume`` /
+    ``initial_volume`` derived from the generator's ``max_capacity``, and
+    attach the corresponding ``HeadStorage`` / ``TailStorage`` memberships.
+    """
+    target_system = _target_system(context)
+    storages_by_name = {s.name: s for s in target_system.get_components(PLEXOSStorage)}
+
+    created_storages = 0
+    created_memberships = 0
+    for gen in target_system.get_components(PLEXOSGenerator):
+        if getattr(gen, "category", None) != "pumped-hydro":
+            continue
+
+        memberships = target_system.get_supplemental_attributes_with_component(gen, PLEXOSMembership)
+        has_head = any(
+            m.collection == CollectionEnum.HeadStorage and m.parent_object == gen for m in memberships
+        )
+        has_tail = any(
+            m.collection == CollectionEnum.TailStorage and m.parent_object == gen for m in memberships
+        )
+
+        if has_head and has_tail:
+            continue
+
+        # ``max_capacity`` is in MW; PLEXOS storage volumes are in GWh. Size
+        # the synthesized reservoir for a typical pumped-hydro duration so the
+        # generator can run at full output for that many hours before the
+        # head storage empties (or the tail fills). Initial volume is half-full
+        # so the unit can both pump and generate immediately.
+        pumped_hydro_duration_hours = 10.0
+        max_capacity_mw = float(getattr(gen, "max_capacity", 0.0) or 0.0)
+        if max_capacity_mw > 0.0:
+            max_volume = round(max_capacity_mw * pumped_hydro_duration_hours / 1000.0, 4)
+        else:
+            max_volume = 1.0  # GWh fallback for degenerate sources
+        initial_volume = round(max_volume * 0.5, 4)
+
+        for suffix, collection, already_present in (
+            ("_head", CollectionEnum.HeadStorage, has_head),
+            ("_tail", CollectionEnum.TailStorage, has_tail),
+        ):
+            if already_present:
+                continue
+            storage_name = f"{gen.name}{suffix}"
+            storage = storages_by_name.get(storage_name)
+            if storage is None:
+                storage = PLEXOSStorage(
+                    name=storage_name,
+                    category="head" if suffix == "_head" else "tail",
+                    units=1,
+                    max_volume=max_volume,
+                    initial_volume=initial_volume,
+                )
+                target_system.add_component(storage)
+                storages_by_name[storage_name] = storage
+                created_storages += 1
+            _ensure_membership(context, gen, storage, collection)
+            created_memberships += 1
+
+    logger.info(
+        "Synthesized {} pumped-hydro storages and {} memberships for generators missing reservoirs.",
+        created_storages,
+        created_memberships,
+    )
 
 
 def ensure_pumped_hydro_storage_memberships(context: PluginContext) -> None:
@@ -722,6 +1152,85 @@ def normalize_value_curve(curve: Any) -> InputOutputCurveValue | None:
     InputOutputCurve | None
         Normalized curve, or None if normalization fails
     """
+    if isinstance(curve, Mapping):
+        function_data = curve.get("function_data")
+        if not isinstance(function_data, Mapping):
+            return None
+
+        def _as_float(value: Any, default: float = 0.0) -> float:
+            magnitude = get_magnitude(value)
+            if magnitude is not None:
+                return float(magnitude)
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return default
+
+        fd: LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData
+        if "points" in function_data:
+            points_raw = function_data.get("points") or []
+            points: list[XYCoords] = []
+            for point in points_raw:
+                if isinstance(point, Mapping):
+                    x = _as_float(point.get("x"))
+                    y = _as_float(point.get("y"))
+                elif isinstance(point, tuple | list) and len(point) >= 2:
+                    x = _as_float(point[0])
+                    y = _as_float(point[1])
+                else:
+                    continue
+                points.append(XYCoords(x=x, y=y))
+            if not points:
+                return None
+            fd = PiecewiseLinearData(points=points)
+        elif "x_coords" in function_data and "y_coords" in function_data:
+            x_raw = function_data.get("x_coords") or []
+            y_raw = function_data.get("y_coords") or []
+            if not isinstance(x_raw, list) or not isinstance(y_raw, list) or len(x_raw) < 2:
+                return None
+
+            x_values = [_as_float(value) for value in x_raw]
+            y_values = [_as_float(value) for value in y_raw]
+            points: list[XYCoords] = []
+
+            # Case 1: y-coordinates are explicit point values.
+            if len(y_values) == len(x_values):
+                points = [XYCoords(x=x, y=y) for x, y in zip(x_values, y_values, strict=False)]
+
+            # Case 2: y-coordinates are segment slopes with one value per interval.
+            elif len(y_values) == len(x_values) - 1:
+                cumulative_y = 0.0
+                points.append(XYCoords(x=x_values[0], y=0.0))
+                for idx, slope in enumerate(y_values, start=1):
+                    dx = x_values[idx] - x_values[idx - 1]
+                    if dx <= 0:
+                        continue
+                    cumulative_y += slope * dx
+                    points.append(XYCoords(x=x_values[idx], y=cumulative_y))
+
+            if len(points) < 2:
+                return None
+            fd = PiecewiseLinearData(points=points)
+        elif "quadratic_term" in function_data or "cubic_term" in function_data:
+            kwargs: dict[str, Any] = {
+                "proportional_term": _as_float(function_data.get("proportional_term")),
+                "constant_term": _as_float(function_data.get("constant_term")),
+                "quadratic_term": _as_float(function_data.get("quadratic_term")),
+            }
+            if "cubic_term" in function_data:
+                kwargs["cubic_term"] = _as_float(function_data.get("cubic_term"))
+            fd = QuadraticFunctionData(**kwargs)
+        else:
+            fd = LinearFunctionData(
+                proportional_term=_as_float(function_data.get("proportional_term")),
+                constant_term=_as_float(function_data.get("constant_term")),
+            )
+
+        return InputOutputCurve(
+            function_data=fd,
+            input_at_zero=curve.get("input_at_zero"),
+        )
+
     if isinstance(curve, InputOutputCurve):
         return curve
     if isinstance(curve, IncrementalCurve | AverageRateCurve):
@@ -814,10 +1323,22 @@ def compute_heat_rate_data(component: Any) -> dict[str, Any]:
         - load_point: Load points for multiband curves
     """
     cost = getattr(component, "operation_cost", None)
-    variable = getattr(cost, "variable", None) if cost else None
-    if not isinstance(variable, FuelCurve):
+    variable = None
+    if cost is not None:
+        if isinstance(cost, Mapping):
+            variable = cost.get("variable")
+        if variable is None:
+            variable = getattr(cost, "variable", None)
+
+    curve_source = None
+    if isinstance(variable, Mapping):
+        curve_source = variable.get("value_curve")
+    elif isinstance(variable, FuelCurve):
+        curve_source = variable.value_curve
+    else:
         return {}
-    curve = normalize_value_curve(variable.value_curve)
+
+    curve = normalize_value_curve(curve_source)
     if curve is None or curve.function_data is None:
         return {}
     data: dict[str, Any] = {}
@@ -835,7 +1356,11 @@ def compute_heat_rate_data(component: Any) -> dict[str, Any]:
         if cubic is not None:
             data["heat_rate_incr3"] = float(cubic)
     elif isinstance(fd, PiecewiseLinearData):
-        initial_input = getattr(variable.value_curve, "initial_input", None)
+        initial_input = (
+            curve_source.get("initial_input")
+            if isinstance(curve_source, Mapping)
+            else getattr(curve_source, "initial_input", None)
+        )
         if initial_input is not None:
             data["heat_rate_base"] = round(float(initial_input) / 1000, 3)
             data["heat_rate"] = data["heat_rate_base"]

@@ -1,29 +1,23 @@
 """Mock system fixtures for transformation rule testing."""
 
+# r2x_sienna imports are deferred to fixture function bodies to avoid a
+# circular-import error in r2x_core on Python 3.13 when the module is
+# loaded at pytest collection time.
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 import pytest
 from infrasys.cost_curves import CostCurve, FuelCurve, UnitSystem
 from infrasys.function_data import PiecewiseLinearData, QuadraticFunctionData, XYCoords
 from infrasys.value_curves import InputOutputCurve, LinearCurve
-from r2x_sienna.models import (
-    ACBus,
-    Area,
-    LoadZone,
-    MinMax,
-    PowerLoad,
-    ThermalStandard,
-    UpDown,
-)
-from r2x_sienna.models.costs import ThermalGenerationCost
-from r2x_sienna.models.enums import PrimeMoversType, ThermalFuels
 
 if TYPE_CHECKING:
     from r2x_core import System
 
 
 @pytest.fixture
-def sienna_system_empty() -> "System":
+def sienna_system_empty() -> System:
     """Mock Sienna system (read-only source).
 
     Represents the input system that contains Sienna components to be
@@ -41,7 +35,7 @@ def sienna_system_empty() -> "System":
 
 
 @pytest.fixture
-def plexos_system_empty() -> "System":
+def plexos_system_empty() -> System:
     """Mock PLEXOS system (writable target).
 
     Represents the output system where converted PLEXOS components will
@@ -59,7 +53,7 @@ def plexos_system_empty() -> "System":
 
 
 @pytest.fixture
-def sienna_system_with_area_and_zone() -> "System":
+def sienna_system_with_area_and_zone() -> System:
     """Sienna system with LoadZone and Area.
 
     Returns
@@ -67,6 +61,8 @@ def sienna_system_with_area_and_zone() -> "System":
     System
         System with a LoadZone named "test-zone" and an Area named "test-area"
     """
+    from r2x_sienna.models import Area, LoadZone
+
     from r2x_core import System
 
     sys = System(name="sienna_system", auto_add_composed_components=True)
@@ -80,7 +76,7 @@ def sienna_system_with_area_and_zone() -> "System":
 
 
 @pytest.fixture
-def sienna_system_with_buses(sienna_system_with_area_and_zone) -> "System":
+def sienna_system_with_buses(sienna_system_with_area_and_zone) -> System:
     """Sienna system with multiple ACBus components.
 
     Returns
@@ -88,6 +84,8 @@ def sienna_system_with_buses(sienna_system_with_area_and_zone) -> "System":
     System
         System with 3 buses (bus-1, bus-2, bus-3) in the test-area
     """
+    from r2x_sienna.models import ACBus, Area, LoadZone
+
     zone = sienna_system_with_area_and_zone.get_component(LoadZone, "test-zone")
     area = sienna_system_with_area_and_zone.get_component(Area, "test-area")
 
@@ -99,7 +97,7 @@ def sienna_system_with_buses(sienna_system_with_area_and_zone) -> "System":
 
 
 @pytest.fixture
-def sienna_system_with_buses_and_power_load(sienna_system_with_buses) -> "System":
+def sienna_system_with_buses_and_power_load(sienna_system_with_buses) -> System:
     """Sienna system with buses and a PowerLoad component.
 
     Returns
@@ -107,6 +105,8 @@ def sienna_system_with_buses_and_power_load(sienna_system_with_buses) -> "System
     System
         System with buses and a PowerLoad on bus-1
     """
+    from r2x_sienna.models import ACBus, PowerLoad
+
     bus = sienna_system_with_buses.get_component(ACBus, "bus-1")
 
     load = PowerLoad.example().model_copy(update={"name": "load-1", "bus": bus, "max_active_power": 100.0})
@@ -118,8 +118,11 @@ def sienna_system_with_buses_and_power_load(sienna_system_with_buses) -> "System
 @pytest.fixture
 def sienna_system_with_thermal_generators(
     sienna_system_with_buses_and_power_load,
-) -> "System":
+) -> System:
     """System with multiple ThermalStandard generators for conversion tests."""
+    from r2x_sienna.models import ACBus, MinMax, ThermalStandard, UpDown
+    from r2x_sienna.models.costs import ThermalGenerationCost
+    from r2x_sienna.models.enums import PrimeMoversType, ThermalFuels
 
     system = sienna_system_with_buses_and_power_load
     bus = system.get_component(ACBus, "bus-1")

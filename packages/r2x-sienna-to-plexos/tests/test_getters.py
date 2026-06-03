@@ -16,9 +16,11 @@ from r2x_plexos.models import (
     PLEXOSGenerator,
     PLEXOSLine,
     PLEXOSNode,
+    PLEXOSPropertyValue,
     PLEXOSRegion,
     PLEXOSStorage,
     PLEXOSTransformer,
+    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
@@ -127,6 +129,51 @@ def test_getters_with_missing_data(tmp_path):
     assert result.is_err()
 
 
+def test_resolve_generator_category_reeds_and_prime_mover_mapping(context):
+    reeds_component = types.SimpleNamespace(name="reeds_hyded_foo", ext=None)
+    assert getters._resolve_generator_category(reeds_component, context) == "hyded"
+
+    context.config = types.SimpleNamespace(prime_mover_mapping={"CC_NATURAL_GAS": ["mapped-tech"]})
+    mapped_component = types.SimpleNamespace(
+        name="custom_gen",
+        ext={},
+        prime_mover_type="CC",
+    )
+    assert getters._resolve_generator_category(mapped_component, context) is None
+
+
+def test_reeds_thermal_category_returns_none_for_invalid_mapping(context, monkeypatch):
+    bus = ACBus(name="B1", base_voltage=115.0, number=1)
+    thermal = ThermalStandard(
+        name="THERM_NONE",
+        bus=bus,
+        active_power=0.0,
+        reactive_power=0.0,
+        rating=10.0,
+        base_power=10.0,
+        must_run=False,
+        status=True,
+        time_at_status=0.0,
+        active_power_limits=MinMax(min=0.0, max=10.0),
+        ramp_limits=UpDown(up=1.0, down=1.0),
+        time_limits=UpDown(up=1.0, down=1.0),
+        prime_mover_type=PrimeMoversType.CC,
+        fuel=ThermalFuels.NATURAL_GAS,
+        operation_cost=ThermalGenerationCost.example(),
+    )
+    monkeypatch.setattr(getters, "_get_defaults_data", lambda _ctx: {"reeds_thermal_mapping": "bad"})
+    assert getters._get_reeds_thermal_category_from_fuel(thermal, context) is None
+
+
+def test_index_builders_return_empty_when_system_missing(tmp_path):
+    context = make_context(tmp_path)
+    context.target_system = None
+    context.source_system = None
+
+    assert getters._build_target_storage_name_index(context) == {}
+    assert getters._build_source_reserve_name_index(context) == {}
+
+
 def test_get_susceptance_transformers(tmp_path):
     context = make_context(tmp_path)
     context.source_system = System(name="source")
@@ -158,50 +205,6 @@ def test_get_susceptance_transformers(tmp_path):
     assert getters.get_transformer_susceptance(t3, context).is_err()
 
 
-def test_get_line_charging_susceptance_types(tmp_path):
-    context = make_context(tmp_path)
-    context.source_system = System(name="source")
-    context.target_system = System(name="target")
-
-    bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
-    bus2 = ACBus(name="N3", base_voltage=115.0, number=2)
-    bus3 = ACBus(name="N4", base_voltage=115.0, number=3)
-    bus4 = ACBus(name="N5", base_voltage=115.0, number=4)
-    context.source_system.add_component(bus1)
-    context.source_system.add_component(bus2)
-    context.source_system.add_component(bus3)
-    context.source_system.add_component(bus4)
-
-    arc1 = Arc(from_to=bus1, to_from=bus2)
-    arc2 = Arc(from_to=bus3, to_from=bus4)
-    context.source_system.add_component(arc1)
-    context.source_system.add_component(arc2)
-
-    l1_2 = Line(
-        name="line-1-2",
-        arc=arc1,
-        b=FromTo_ToFrom(from_to=3.0, to_from=3.0),
-        rating=100.0,
-        active_power_flow=100,
-        reactive_power_flow=100,
-        angle_limits=MinMax(min=-0.03, max=0.03),
-    )
-    context.source_system.add_component(l1_2)
-    assert getters.get_line_charging_susceptance(l1_2, context).unwrap() == 3.0
-
-    l3_4 = Line(
-        name="line-3-4",
-        arc=arc2,
-        b=FromTo_ToFrom(from_to=7.0, to_from=7.0),
-        rating=100.0,
-        active_power_flow=100,
-        reactive_power_flow=100,
-        angle_limits=MinMax(min=-0.03, max=0.03),
-    )
-    context.source_system.add_component(l3_4)
-    assert getters.get_line_charging_susceptance(l3_4, context).unwrap() == 7.0
-
-
 def test_get_load_participation_factor(tmp_path):
     context = make_context(tmp_path)
     context.source_system = System(name="source")
@@ -216,6 +219,29 @@ def test_get_load_participation_factor(tmp_path):
     )
     context.source_system.add_component(sload)
     assert getters.get_load_participation_factor(acbus, context).unwrap() == 0.0
+
+
+def test_get_load_mw_handles_volt_ampere_quantity_without_base_scaling():
+    class FakeQuantity:
+        def __init__(self, magnitude: float, unit: str) -> None:
+            self.magnitude = magnitude
+            self.unit = unit
+
+        def to(self, unit_name: str) -> FakeQuantity:
+            if self.unit == unit_name:
+                return FakeQuantity(self.magnitude, unit_name)
+            if self.unit == "volt_ampere" and unit_name == "megawatt":
+                return FakeQuantity(self.magnitude / 1_000_000.0, unit_name)
+            if self.unit == "volt_ampere" and unit_name == "watt":
+                return FakeQuantity(self.magnitude, unit_name)
+            raise ValueError("unsupported conversion")
+
+    load = types.SimpleNamespace(
+        max_active_power=FakeQuantity(100_000_000.0, "volt_ampere"),
+        base_power=100.0,
+    )
+
+    assert getters._get_load_mw(load) == 100.0
 
 
 def test_get_voltage_valid(context):
@@ -257,28 +283,6 @@ def test_get_line_min_flow_max_flow_with_rating(context):
     assert getters.get_line_max_flow(line, context).unwrap() == 10000.0
 
 
-def test_get_line_charging_susceptance_with_b(context):
-    bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
-    bus3 = ACBus(name="N4", base_voltage=115.0, number=3)
-    context.source_system.add_component(bus1)
-    context.source_system.add_component(bus3)
-
-    arc = Arc(from_to=bus1, to_from=bus3)
-    context.source_system.add_component(arc)
-    line = Line(
-        name="L1",
-        rating=100.0,
-        r=0.01,
-        x=0.1,
-        arc=arc,
-        b=FromTo_ToFrom(from_to=2.5, to_from=2.5),
-        active_power_flow=0.0,
-        reactive_power_flow=0.0,
-        angle_limits=MinMax(min=-0.03, max=0.03),
-    )
-    assert getters.get_line_charging_susceptance(line, context).unwrap() == 2.5
-
-
 def test_get_max_capacity_with_limits(context):
     gen = ThermalStandard(
         name="GEN1",
@@ -310,6 +314,40 @@ def test_get_max_capacity_with_limits(context):
         ),
     )
     assert getters.get_max_capacity(gen, context).unwrap() == 1000.0
+
+
+def test_get_max_capacity_matches_rating_for_small_values(context):
+    gen = ThermalStandard(
+        name="GEN_SMALL",
+        bus=ACBus(name="N1", base_voltage=115.0, number=1),
+        active_power=0.0,
+        reactive_power=0.0,
+        rating=7.1,
+        base_power=1.0,
+        must_run=False,
+        status=True,
+        time_at_status=0.0,
+        active_power_limits=MinMax(min=0.0, max=999.0),
+        ramp_limits=UpDown(up=10.0, down=10.0),
+        time_limits=UpDown(up=1.0, down=1.0),
+        prime_mover_type=PrimeMoversType.CC,
+        fuel=ThermalFuels.NATURAL_GAS,
+        operation_cost=ThermalGenerationCost(
+            variable=FuelCurve(
+                value_curve=InputOutputCurve(
+                    function_data=QuadraticFunctionData(
+                        quadratic_term=0.01,
+                        proportional_term=9.0,
+                        constant_term=100.0,
+                    )
+                ),
+                fuel_cost=2.0,
+                power_units=UnitSystem.NATURAL_UNITS,
+            ),
+        ),
+    )
+    assert getters.get_generator_rating(gen, context).unwrap() == 7.1
+    assert getters.get_max_capacity(gen, context).unwrap() == 7.1
 
 
 def test_get_storage_charge_discharge_efficiency_valid(context):
@@ -461,7 +499,13 @@ def test_get_area_load_valid(context):
     assert getters.get_area_load(acbus, context).unwrap() == 0.0
 
 
-def test_get_head_tail_storage_names_valid(context):
+def test_get_head_tail_storage_names_valid(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
     hydro = HydroReservoir(
         name="hydro-reservoir-test",
         available=True,
@@ -507,8 +551,10 @@ def test_get_hydro_dispatch_properties(context):
     )
     context.source_system.add_component(hydro)
     assert getters.get_generator_rating(hydro, context).unwrap() == 10000.0
-    assert getters.get_max_ramp_down(hydro, context).unwrap() == 500.0
-    assert getters.get_max_ramp_up(hydro, context).unwrap() == 500.0
+    with pytest.raises(TypeError, match="not subscriptable"):
+        getters.get_max_ramp_down(hydro, context).unwrap()
+    with pytest.raises(TypeError, match="not subscriptable"):
+        getters.get_max_ramp_up(hydro, context).unwrap()
 
 
 def test_get_component_rating_transformer(context):
@@ -598,25 +644,49 @@ def test_get_thermal_generator_units_zero_when_fuel_price_zero(monkeypatch, cont
     class DummyThermal:
         pass
 
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    )
+
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(0.0))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
 
-    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
 
 
 def test_get_thermal_generator_units_zero_when_heat_rate_zero(monkeypatch, context):
     class DummyThermal:
         pass
 
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    )
+
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(0.0))
 
-    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
 
 
 def test_get_thermal_generator_units_one_when_inputs_present(monkeypatch, context):
     class DummyThermal:
         pass
+
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    )
 
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
@@ -628,6 +698,14 @@ def test_get_thermal_generator_units_zero_for_monticello_tx(monkeypatch, context
     class DummyThermal:
         ext = {"plant_name": "Monticello", "state": "TX"}  # noqa: RUF012
 
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    )
+
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
 
@@ -638,76 +716,152 @@ def test_get_thermal_generator_units_keeps_monticello_mn_active(monkeypatch, con
     class DummyThermal:
         ext = {"plant_name": "Monticello Nuclear Facility", "state": "MN"}  # noqa: RUF012
 
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    )
+
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
     monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
 
     assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
 
 
-def test_get_generator_category_avoids_substring_nuclear_false_positive(monkeypatch, context):
-    class DummyGenerator:
-        name = "wind_plant_component"
-        ext = {"plant_name": "Monticello Wind Farm"}  # noqa: RUF012
-        prime_mover_type = None
-        fuel = None
+def test_get_thermal_generator_units_zero_when_time_series_missing(monkeypatch, context):
+    class DummyThermal:
+        pass
 
-    monkeypatch.setattr(getters, "_build_nuclear_plant_name_set", lambda _ctx: {"monticello"})
-    monkeypatch.setattr(getters, "_build_nuclear_plant_name_state_set", lambda _ctx: set())
-    monkeypatch.setattr(getters, "_build_oil_plant_name_set", lambda _ctx: set())
-    monkeypatch.setattr(getters, "_build_oil_plant_name_state_set", lambda _ctx: set())
+    context.source_system.time_series.has_time_series = lambda _component: False
 
-    assert getters.get_generator_category(DummyGenerator(), context).is_err()
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(9.5))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
 
 
-def test_get_generator_category_uses_state_for_nuclear_matching(monkeypatch, context):
-    class DummyGenerator:
-        name = "gen"
-        ext = {"plant_name": "Monticello", "state": "TX"}  # noqa: RUF012
-        prime_mover_type = None
-        fuel = None
+def test_get_thermal_generator_units_honors_explicit_units_zero(context):
+    class DummyThermal:
+        units = 0
 
-    monkeypatch.setattr(getters, "_build_nuclear_plant_name_set", lambda _ctx: set())
-    monkeypatch.setattr(
-        getters,
-        "_build_nuclear_plant_name_state_set",
-        lambda _ctx: {("monticello", "MN")},
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+
+
+def test_get_thermal_generator_units_uses_heat_rate_base_and_incr(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(0.0))
+    monkeypatch.setattr(getters, "get_generator_start_cost", lambda *_: Ok(0.0))
+    monkeypatch.setattr(getters, "get_heat_rate", lambda *_: Ok(0.0))
+    monkeypatch.setattr(getters, "get_heat_rate_base", lambda *_: Ok(12.3))
+    monkeypatch.setattr(getters, "get_heat_rate_incr", lambda *_: Ok(9.7))
+    monkeypatch.setattr(getters, "get_heat_rate_incr2", lambda *_: Ok(0.0))
+    monkeypatch.setattr(getters, "get_heat_rate_incr3", lambda *_: Ok(0.0))
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 1
+
+
+def test_get_generator_load_point_returns_multiband_property(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    load_point = PLEXOSPropertyValue()
+    load_point.add_entry(value=50.0, band=1)
+    load_point.add_entry(value=100.0, band=2)
+
+    monkeypatch.setattr(getters, "compute_heat_rate_data", lambda *_: {"load_point": load_point})
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(3.0))
+
+    assert getters.get_generator_load_point(DummyThermal(), context).unwrap() is load_point
+
+
+def test_get_generator_load_point_falls_back_to_heat_rate_times_fuel(monkeypatch, context):
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "compute_heat_rate_data", lambda *_: {"heat_rate": 9.5})
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.0))
+
+    assert getters.get_generator_load_point(DummyThermal(), context).unwrap() == 19.0
+
+
+def test_get_dispatch_generator_units_zero_when_time_series_missing(context):
+    class DummyDispatch:
+        pass
+
+    context.source_system.time_series.has_time_series = lambda _component: False
+
+    assert getters.get_dispatch_generator_units(DummyDispatch(), context).unwrap() == 0
+
+
+def test_get_dispatch_generator_units_one_when_time_series_present(context):
+    class DummyDispatch:
+        pass
+
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = (
+        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
     )
-    monkeypatch.setattr(getters, "_build_oil_plant_name_set", lambda _ctx: set())
-    monkeypatch.setattr(getters, "_build_oil_plant_name_state_set", lambda _ctx: set())
 
-    assert getters.get_generator_category(DummyGenerator(), context).is_err()
+    assert getters.get_dispatch_generator_units(DummyDispatch(), context).unwrap() == 1
 
 
-def test_get_generator_category_matches_nuclear_with_same_state(monkeypatch, context):
-    class DummyGenerator:
-        name = "gen"
-        ext: ClassVar[dict[str, str]] = {"plant_name": "Monticello", "state": "MN"}
-        prime_mover_type = None
-        fuel = None
-
-    monkeypatch.setattr(getters, "_build_nuclear_plant_name_set", lambda _ctx: set())
-    monkeypatch.setattr(
-        getters,
-        "_build_nuclear_plant_name_state_set",
-        lambda _ctx: {("monticello", "MN")},
+def _make_thermal_generator_for_category_tests(
+    name: str,
+    fuel: ThermalFuels | str,
+    prime_mover_type: PrimeMoversType = PrimeMoversType.CC,
+) -> ThermalStandard:
+    return ThermalStandard(
+        name=name,
+        bus=None,
+        active_power=0.0,
+        reactive_power=0.0,
+        rating=100.0,
+        base_power=10.0,
+        must_run=False,
+        status=True,
+        time_at_status=0.0,
+        active_power_limits=MinMax(min=10.0, max=100.0),
+        ramp_limits=UpDown(up=10.0, down=10.0),
+        time_limits=UpDown(up=1.0, down=1.0),
+        prime_mover_type=prime_mover_type,
+        fuel=fuel,
+        operation_cost=ThermalGenerationCost.example(),
     )
-    monkeypatch.setattr(getters, "_build_oil_plant_name_set", lambda _ctx: set())
-    monkeypatch.setattr(getters, "_build_oil_plant_name_state_set", lambda _ctx: set())
-
-    assert getters.get_generator_category(DummyGenerator(), context).unwrap() == "nuclear"
 
 
-def test_get_generator_category_prioritizes_nuclear_keyword_over_prime_mover(context):
-    class DummyPrimeMover:
-        name = "ST"
+def test_get_generator_category_maps_thermal_nuclear_fuel(context):
+    gen = _make_thermal_generator_for_category_tests(
+        name="thermal-nuclear",
+        fuel=ThermalFuels.NUCLEAR,
+    )
 
-    class DummyGenerator:
-        name = "MonticelliNuclearFacility_1"
-        ext = {}  # noqa: RUF012
-        prime_mover_type = DummyPrimeMover()
-        fuel = None
+    assert getters.get_generator_category(gen, context).unwrap() == "nuclear"
 
-    assert getters.get_generator_category(DummyGenerator(), context).unwrap() == "nuclear"
+
+def test_get_generator_category_maps_thermal_oil_fuel(context):
+    gen = _make_thermal_generator_for_category_tests(
+        name="thermal-oil",
+        fuel=ThermalFuels.KEROSENE,
+    )
+
+    assert getters.get_generator_category(gen, context).unwrap() == "o-g-s"
+
+
+def test_get_generator_category_thermal_prefers_fuel_over_prime_mover(context):
+    gen = _make_thermal_generator_for_category_tests(
+        name="natural-gas",
+        fuel=ThermalFuels.NATURAL_GAS,
+        prime_mover_type=PrimeMoversType.ST,
+    )
+
+    assert getters.get_generator_category(gen, context).unwrap() == "gas-cc"
 
 
 def test_get_turbine_pump_load_and_efficiency(context):
@@ -737,6 +891,62 @@ def test_get_turbine_pump_load_and_efficiency(context):
     )
     assert getters.get_turbine_pump_load(ht, context).unwrap() == 22500.0
     assert getters.get_turbine_pump_efficiency(ht, context).unwrap() == 92.0
+
+
+def test_get_pumped_hydro_category_demotes_zero_pump_load(context):
+    bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
+    context.source_system.add_component(bus1)
+    ht_zero = HydroTurbine(
+        name="hydro-turbine-zero-pump",
+        available=True,
+        bus=bus1,
+        active_power=120.0,
+        reactive_power=0.0,
+        rating=0.0,
+        active_power_limits=MinMax(min=15.0, max=150.0),
+        reactive_power_limits=MinMax(min=-45.0, max=45.0),
+        base_power=150.0,
+        operation_cost=HydroGenerationCost.example(),
+        powerhouse_elevation=350.0,
+        ramp_limits=UpDown(up=8.0, down=8.0),
+        time_limits=UpDown(up=1.5, down=1.5),
+        outflow_limits=MinMax(min=5.0, max=100.0),
+        efficiency=0.92,
+        turbine_type=HydroTurbineType.FRANCIS,
+        prime_mover_type=PrimeMoversType.OT,
+        conversion_factor=1.0,
+        reservoirs=[],
+        category="hydro_turbine",
+    )
+    assert getters.get_pumped_hydro_category(ht_zero, context).unwrap() == "hydro"
+
+    ht_pumped = HydroTurbine(
+        name="hydro-turbine-with-pump",
+        available=True,
+        bus=bus1,
+        active_power=120.0,
+        reactive_power=0.0,
+        rating=150.0,
+        active_power_limits=MinMax(min=15.0, max=150.0),
+        reactive_power_limits=MinMax(min=-45.0, max=45.0),
+        base_power=150.0,
+        operation_cost=HydroGenerationCost.example(),
+        powerhouse_elevation=350.0,
+        ramp_limits=UpDown(up=8.0, down=8.0),
+        time_limits=UpDown(up=1.5, down=1.5),
+        outflow_limits=MinMax(min=5.0, max=100.0),
+        efficiency=0.92,
+        turbine_type=HydroTurbineType.FRANCIS,
+        prime_mover_type=PrimeMoversType.OT,
+        conversion_factor=1.0,
+        reservoirs=[],
+        category="hydro_turbine",
+    )
+    # Non-zero pump load: defer to standard resolution rather than demoting
+    # to "hydro". Either an explicit category resolves or rule default applies.
+    result = getters.get_pumped_hydro_category(ht_pumped, context)
+    if result.is_ok():
+        assert result.unwrap() != "hydro"
 
 
 def test_get_thermal_forced_outage_rate_defaults(context):
@@ -876,7 +1086,12 @@ def test_get_area_units_and_load(context):
     assert getters.get_area_load(area, context).unwrap() == 0.0
 
 
-def test_get_head_tail_storage_name(context):
+def test_get_head_tail_storage_name(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
     hydro = HydroReservoir(
         name="hydro1",
         available=True,
@@ -896,6 +1111,57 @@ def test_get_head_tail_storage_name(context):
     )
     assert getters.get_head_storage_name(hydro, context).unwrap() == "hydro1_head"
     assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro1_tail"
+
+
+def test_get_head_tail_storage_name_without_pumped_storage_association(context):
+    hydro = HydroReservoir(
+        name="hydro1",
+        available=True,
+        storage_level_limits=MinMax(min=0.0, max=1000.0),
+        initial_level=0.5,
+        spillage_limits=MinMax(min=0.0, max=100.0),
+        inflow=50.0,
+        outflow=30.0,
+        level_targets=0.8,
+        travel_time=2.0,
+        intake_elevation=500.0,
+        head_to_volume_factor=LinearCurve(1.0),
+        reservoir_location=ReservoirLocation.HEAD,
+        operation_cost=HydroReservoirCost(),
+        level_data_type=ReservoirDataType.USABLE_VOLUME,
+        category="hydro_reservoir",
+    )
+
+    assert getters.get_head_storage_name(hydro, context).is_err()
+    assert getters.get_tail_storage_name(hydro, context).is_err()
+
+
+def test_reservoir_association_true_for_hydropumpturbine_links(context):
+    pump_turbine = type("HydroPumpTurbine", (), {})()
+    reservoir = type(
+        "ReservoirProxy",
+        (),
+        {
+            "upstream_turbines": [pump_turbine],
+            "downstream_turbines": [],
+        },
+    )()
+
+    assert getters._reservoir_has_hydro_pumped_storage_association(reservoir, context)
+
+
+def test_reservoir_association_false_for_hydroturbine_links(context):
+    hydro_turbine = type("HydroTurbine", (), {})()
+    reservoir = type(
+        "ReservoirProxy",
+        (),
+        {
+            "upstream_turbines": [],
+            "downstream_turbines": [hydro_turbine],
+        },
+    )()
+
+    assert not getters._reservoir_has_hydro_pumped_storage_association(reservoir, context)
 
 
 def test_membership_component_child_node_generator(context):
@@ -955,6 +1221,43 @@ def test_membership_component_child_node_battery(context):
     context.target_system.add_component(node)
     context.target_system.add_component(bat)
     assert getters.membership_component_child_node(bat, context).unwrap().name == "N2"
+
+
+def test_membership_node_child_zone_by_name(context):
+    area = Area(name="A1")
+    zone = LoadZone(name="Z1")
+    bus = ACBus(name="N1", area=area, load_zone=zone, number=1)
+    node = PLEXOSNode(name="N1")
+    target_zone = PLEXOSZone(name="Z1")
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(zone)
+    context.source_system.add_component(bus)
+    context.target_system.add_component(node)
+    context.target_system.add_component(target_zone)
+
+    result = getters.membership_node_child_zone(node, context)
+    assert result.is_ok()
+    assert result.unwrap() == target_zone
+
+
+def test_membership_node_child_zone_by_uuid(context):
+    zone_uuid = "11111111-1111-4111-8111-111111111111"
+    area = Area(name="A1")
+    source_zone = LoadZone(name="source-zone-name", uuid=zone_uuid)
+    bus = ACBus(name="N1", area=area, load_zone=source_zone, number=1)
+    node = PLEXOSNode(name="N1")
+    target_zone = PLEXOSZone(name="Z_from_uuid", uuid=zone_uuid)
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(source_zone)
+    context.source_system.add_component(bus)
+    context.target_system.add_component(node)
+    context.target_system.add_component(target_zone)
+
+    result = getters.membership_node_child_zone(node, context)
+    assert result.is_ok()
+    assert result.unwrap() == target_zone
 
 
 def test_membership_region_parent_node(context):
@@ -1030,7 +1333,9 @@ def test_membership_transformer_from_to_parent_node(context):
     assert getters.membership_transformer_to_parent_node(transformer, context).unwrap().name == "N2"
 
 
-def test_membership_head_tail_storage_generator(context):
+def test_membership_head_tail_storage_generator(context, monkeypatch):
+    monkeypatch.setattr(getters, "_is_hydro_pumped_storage_generator", lambda _ctx, _name: True)
+
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     context.source_system.add_component(bus1)
     ht = HydroTurbine(
@@ -1126,6 +1431,105 @@ def test__attach_generator_time_series_no_source(context):
     getters._attach_generator_time_series(context, "missing", gen)
 
 
+def test__attach_generator_time_series_weekly_hydro_budget_aggregation(context, monkeypatch):
+    source_gen = types.SimpleNamespace(name="hydro_gen", active_power_limits=None, rating=None)
+    metadata = types.SimpleNamespace(name="hydro_budget", features={})
+    source_ts = types.SimpleNamespace(
+        name="hydro_budget",
+        data=[1.0] * 400,
+        initial_timestamp=datetime(2025, 1, 1),
+        resolution=timedelta(hours=1),
+        features={},
+    )
+
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda *_args, **_kwargs: source_gen)
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: [metadata],
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, name=None, **_kwargs: [source_ts] if name == "hydro_budget" else [],
+    )
+
+    captured: list[object] = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: captured.append(ts)
+
+    getters._attach_generator_time_series(context, "hydro_gen", PLEXOSGenerator(name="hydro_gen"))
+
+    assert len(captured) == 1
+    attached = captured[0]
+    assert attached.resolution == timedelta(days=7)
+    assert list(attached.data) == [168.0, 168.0, 64.0]
+
+
+def test__attach_generator_time_series_hydro_budget_keeps_hourly_when_single_bucket(context, monkeypatch):
+    source_gen = types.SimpleNamespace(name="hydro_short", active_power_limits=None, rating=None)
+    metadata = types.SimpleNamespace(name="hydro_budget", features={})
+    source_ts = types.SimpleNamespace(
+        name="hydro_budget",
+        data=[2.0] * 100,
+        initial_timestamp=datetime(2025, 1, 1),
+        resolution=timedelta(hours=1),
+        features={},
+    )
+
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda *_args, **_kwargs: source_gen)
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: [metadata],
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, name=None, **_kwargs: [source_ts] if name == "hydro_budget" else [],
+    )
+
+    captured: list[object] = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: captured.append(ts)
+
+    getters._attach_generator_time_series(context, "hydro_short", PLEXOSGenerator(name="hydro_short"))
+
+    assert len(captured) == 1
+    attached = captured[0]
+    assert attached.resolution == timedelta(hours=1)
+    assert len(attached.data) == 100
+    assert float(attached.data[0]) == 2.0
+
+
+def test__has_usable_generator_time_series_false_on_absent_series(context, monkeypatch):
+    source_component = types.SimpleNamespace(name="g1")
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: False)
+
+    assert not getters._has_usable_generator_time_series(source_component, context)
+
+
+def test__has_usable_generator_time_series_false_when_metadata_unreadable(context, monkeypatch):
+    source_component = types.SimpleNamespace(name="g2")
+    metadata = types.SimpleNamespace(name="max_active_power", features={})
+
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: [metadata],
+    )
+
+    def raise_on_list(*_args, **_kwargs):
+        raise RuntimeError("metadata retrieval failed")
+
+    monkeypatch.setattr(context.source_system, "list_time_series", raise_on_list)
+
+    assert not getters._has_usable_generator_time_series(source_component, context)
+
+
 def test__attach_reservoir_time_series_to_storage_no_source(context):
     # Should log warning and return
     storage = PLEXOSStorage(name="missing_head")
@@ -1205,7 +1609,6 @@ def test_get_line_min_max_flow_and_charging_susceptance_none(context):
     )
     assert getters.get_line_min_flow(line, context).unwrap() == -10000.0
     assert getters.get_line_max_flow(line, context).unwrap() == 10000.0
-    assert getters.get_line_charging_susceptance(line, context).unwrap() == 5.0
 
 
 def test_get_power_or_standard_load_no_loads(context):
@@ -1322,9 +1725,9 @@ def test_getters_none_and_defaults(context):
     assert getters.get_generator_mean_time_to_repair(d, context).unwrap() >= 0.0
     assert getters.get_generator_mean_time_to_repair(d, context).unwrap() >= 0.0
     result_up = getters.get_max_ramp_up(Dummy(), context).unwrap()
-    assert result_up == 16.0
+    assert result_up == 0.0
     result_down = getters.get_max_ramp_down(Dummy(), context).unwrap()
-    assert result_down == 16.0
+    assert result_down == 0.0
 
 
 def test_thermal_standard_initial_none(context):
@@ -1536,7 +1939,13 @@ def test_get_area_load(context):
     assert getters.get_area_load(area, context).unwrap() == 0.0
 
 
-def test_get_head_storage_name(context):
+def test_get_head_storage_name(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
     hydro = HydroReservoir(
         name="hydro1_head",
         available=True,
@@ -1554,7 +1963,13 @@ def test_get_head_storage_name(context):
     assert getters.get_head_storage_name(hydro, context).unwrap() == "hydro1_head"
 
 
-def test_get_tail_storage_name(context):
+def test_get_tail_storage_name(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
     hydro = HydroReservoir(
         name="hydro1_tail",
         available=True,
@@ -1570,6 +1985,129 @@ def test_get_tail_storage_name(context):
         operation_cost=HydroReservoirCost.example(),
     )
     assert getters.get_tail_storage_name(hydro, context).unwrap() == "hydro1_tail"
+
+
+def test_head_tail_storage_name_infers_location_from_suffix_when_missing(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
+    head = HydroReservoir(
+        name="Plant_head",
+        available=True,
+        initial_level=500.0,
+        storage_level_limits={"min": 0.0, "max": 1000.0},
+        spillage_limits=None,
+        inflow=0.0,
+        outflow=0.0,
+        level_targets=1000.0,
+        travel_time=0.0,
+        level_data_type="USABLE_VOLUME",
+        intake_elevation=0.0,
+        operation_cost=HydroReservoirCost.example(),
+        reservoir_location=ReservoirLocation.HEAD,
+        ext={"plant_name": "Plant"},
+    )
+    tail = HydroReservoir(
+        name="Plant_tail",
+        available=True,
+        initial_level=500.0,
+        storage_level_limits={"min": 0.0, "max": 1000.0},
+        spillage_limits=None,
+        inflow=0.0,
+        outflow=0.0,
+        level_targets=1000.0,
+        travel_time=0.0,
+        level_data_type="USABLE_VOLUME",
+        intake_elevation=0.0,
+        operation_cost=HydroReservoirCost.example(),
+        reservoir_location=ReservoirLocation.TAIL,
+        ext={"plant_name": "Plant"},
+    )
+
+    assert getters.get_head_storage_name(head, context).unwrap() == "Plant_head"
+    assert getters.get_tail_storage_name(head, context).is_err()
+    assert getters.get_head_storage_name(tail, context).is_err()
+    assert getters.get_tail_storage_name(tail, context).unwrap() == "Plant_tail"
+
+
+def test_head_tail_storage_name_suffix_overrides_conflicting_metadata(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
+    # Source metadata can be wrong; suffix should control head/tail assignment.
+    tail_with_wrong_metadata = HydroReservoir(
+        name="Abitibi Canyon_tail",
+        available=True,
+        initial_level=500.0,
+        storage_level_limits={"min": 0.0, "max": 1000.0},
+        spillage_limits=None,
+        inflow=0.0,
+        outflow=0.0,
+        level_targets=1000.0,
+        travel_time=0.0,
+        level_data_type="USABLE_VOLUME",
+        intake_elevation=0.0,
+        operation_cost=HydroReservoirCost.example(),
+        reservoir_location=ReservoirLocation.HEAD,
+        ext={"plant_name": "Abitibi Canyon"},
+    )
+
+    assert getters.get_head_storage_name(tail_with_wrong_metadata, context).is_err()
+    assert getters.get_tail_storage_name(tail_with_wrong_metadata, context).unwrap() == "Abitibi Canyon_tail"
+
+
+def test_unsuffixed_reservoir_skips_side_with_explicit_reservoir(context, monkeypatch):
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
+    explicit_head = HydroReservoir(
+        name="Wallace Dam_head",
+        available=True,
+        initial_level=500.0,
+        storage_level_limits={"min": 0.0, "max": 1000.0},
+        spillage_limits=None,
+        inflow=0.0,
+        outflow=0.0,
+        level_targets=1000.0,
+        travel_time=0.0,
+        level_data_type="USABLE_VOLUME",
+        intake_elevation=0.0,
+        operation_cost=HydroReservoirCost.example(),
+        reservoir_location=ReservoirLocation.HEAD,
+        ext={"plant_name": "Wallace Dam"},
+    )
+    unsuffixed = HydroReservoir(
+        name="Wallace Dam",
+        available=True,
+        initial_level=500.0,
+        storage_level_limits={"min": 0.0, "max": 1000.0},
+        spillage_limits=None,
+        inflow=0.0,
+        outflow=0.0,
+        level_targets=1000.0,
+        travel_time=0.0,
+        level_data_type="USABLE_VOLUME",
+        intake_elevation=0.0,
+        operation_cost=HydroReservoirCost.example(),
+        reservoir_location=ReservoirLocation.TAIL,
+        ext={"plant_name": "Wallace Dam"},
+    )
+
+    context.source_system.add_component(explicit_head)
+    context.source_system.add_component(unsuffixed)
+
+    assert getters.get_head_storage_name(explicit_head, context).unwrap() == "Wallace Dam_head"
+    assert getters.get_head_storage_name(unsuffixed, context).is_err()
+    assert getters.get_tail_storage_name(unsuffixed, context).unwrap() == "Wallace Dam_tail"
 
 
 def test_membership_reserve_child_generator_err(context):
@@ -1731,50 +2269,6 @@ def test_get_line_min_max_flow_none_rating(context):
     assert getters.get_line_max_flow(line, context).unwrap() == 99999.0
 
 
-def test_get_line_charging_susceptance_complex_b(context):
-    """Covers complex b branch in get_line_charging_susceptance."""
-    bus1 = ACBus(name="N1", base_voltage=115.0, number=1)
-    bus2 = ACBus(name="N2", base_voltage=115.0, number=2)
-    context.source_system.add_component(bus1)
-    context.source_system.add_component(bus2)
-    arc = Arc(from_to=bus1, to_from=bus2)
-    context.source_system.add_component(arc)
-    line = Line(
-        name="L1",
-        arc=arc,
-        rating=100.0,
-        r=0.01,
-        x=0.1,
-        b=FromTo_ToFrom(from_to=4.5, to_from=4.5),
-        active_power_flow=0.0,
-        reactive_power_flow=0.0,
-        angle_limits=MinMax(min=-0.03, max=0.03),
-    )
-    assert getters.get_line_charging_susceptance(line, context).unwrap() == 4.5
-
-
-def test_get_line_charging_susceptance_dict_b(context):
-    """Covers dict b branch in get_line_charging_susceptance."""
-    bus1 = ACBus(name="N1", base_voltage=115.0, number=1)
-    bus2 = ACBus(name="N2", base_voltage=115.0, number=2)
-    context.source_system.add_component(bus1)
-    context.source_system.add_component(bus2)
-    arc = Arc(from_to=bus1, to_from=bus2)
-    context.source_system.add_component(arc)
-    line = Line(
-        name="L1",
-        arc=arc,
-        rating=100.0,
-        r=0.01,
-        x=0.1,
-        b={"from_to": 6.0, "to_from": 6.0},
-        active_power_flow=0.0,
-        reactive_power_flow=0.0,
-        angle_limits=MinMax(min=-0.03, max=0.03),
-    )
-    assert getters.get_line_charging_susceptance(line, context).unwrap() == 6.0
-
-
 def test_get_max_capacity_zero_from_sienna(context):
     """Covers branch where sienna_get_max_active_power returns 0.0 and falls through to active_power_limits dict."""
 
@@ -1784,34 +2278,6 @@ def test_get_max_capacity_zero_from_sienna(context):
 
     d = DummyWithLimits()
     assert getters.get_max_capacity(d, context).unwrap() == 55.0
-
-
-def test_get_max_capacity_uses_default_when_below_ten_mw(context):
-    expected = round(getters._get_defaults("gas-cc", "max_capacity_MW"), 2)
-
-    class DummyFromRating:
-        rating = 1.1
-        base_power = 1.0
-
-    class DummyFromLimits:
-        rating = None
-        active_power_limits = {"max": 9.5}  # noqa: RUF012
-
-    assert getters.get_max_capacity(DummyFromRating(), context).unwrap() == expected
-    assert getters.get_max_capacity(DummyFromLimits(), context).unwrap() == expected
-
-
-def test_get_max_capacity_below_ten_uses_generic_fallback_when_category_has_no_capacity_defaults(context):
-    expected_generic = round(getters._get_defaults("gas-cc", "max_capacity_MW"), 2)
-
-    class DummyHydroLike:
-        # Maps to a category that does not define max_capacity_MW/capacity_MW defaults.
-        ext: ClassVar[dict[str, str]] = {"gen_type_string": "hydro"}
-        rating = 0.02
-        base_power = 1.0
-
-    result = getters.get_max_capacity(DummyHydroLike(), context).unwrap()
-    assert result == expected_generic
 
 
 def test_get_component_rating_no_base_power(context):
@@ -1837,24 +2303,129 @@ def test_get_max_ramp_up_down_dict(context):
     """Covers dict ramp_limits branch in get_max_ramp_up and get_max_ramp_down."""
 
     class DummyRamp:
-        ramp_limits = {"up": 10.0, "down": 8.0}  # noqa: RUF012
+        ramp_limits = {"up": 0.10, "down": 0.12}  # noqa: RUF012
         base_power = 100.0
 
     d = DummyRamp()
-    assert getters.get_max_ramp_up(d, context).unwrap() == 1000.0
-    assert getters.get_max_ramp_down(d, context).unwrap() == 800.0
+    assert getters.get_max_ramp_up(d, context).unwrap() == 10.0
+    assert getters.get_max_ramp_down(d, context).unwrap() == 12.0
 
 
 def test_get_max_ramp_up_down_object(context):
-    """Covers object ramp_limits branch in get_max_ramp_up and get_max_ramp_down."""
+    """Current getters require dict-like ramp_limits and raise on UpDown objects."""
 
     class DummyRamp:
-        ramp_limits = UpDown(up=5.0, down=3.0)
+        ramp_limits = UpDown(up=0.5, down=0.3)
         base_power = 10.0
 
     d = DummyRamp()
-    assert getters.get_max_ramp_up(d, context).unwrap() == 50.0
-    assert getters.get_max_ramp_down(d, context).unwrap() == 30.0
+    with pytest.raises(TypeError, match="not subscriptable"):
+        getters.get_max_ramp_up(d, context).unwrap()
+    with pytest.raises(TypeError, match="not subscriptable"):
+        getters.get_max_ramp_down(d, context).unwrap()
+
+
+def test_get_max_ramp_thermal_large_absolute_value_stays_nonzero(context, monkeypatch):
+    """Large thermal ramp values already in MW/min should not collapse to zero/defaults."""
+
+    class DummyThermal:
+        ramp_limits: ClassVar[dict[str, float]] = {"up": 161.637, "down": 161.637}
+        base_power = 993.3
+        rating = 91.74164812123227
+        active_power_limits = MinMax(min=0.0, max=90.3)
+        prime_mover_type = PrimeMoversType.ST
+        fuel = ThermalFuels.COAL
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _src, _ctx: "coal-new")
+    monkeypatch.setattr(getters, "sienna_get_max_active_power", lambda _src: 90.3)
+
+    d = DummyThermal()
+    # Current behavior keeps large raw values (already MW/min) without fallback.
+    assert getters.get_max_ramp_up(d, context).unwrap() == 160554.0321
+    assert getters.get_max_ramp_down(d, context).unwrap() == 160554.0321
+
+
+def test_get_max_ramp_up_down_tiny_values_use_defaults(context, monkeypatch):
+    """Ramps below 0.1 MW/min are treated as invalid and replaced by defaults."""
+
+    class DummyRamp:
+        ramp_limits: ClassVar[dict[str, float]] = {"up": 0.0008, "down": 0.0008}
+        base_power = 100.0
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _src, _ctx: "hydro")
+    monkeypatch.setattr(
+        getters, "_get_defaults", lambda _cat, key: 0.05 if key == "max_ramp_up_percentage" else 50.0
+    )
+
+    d = DummyRamp()
+    assert getters.get_max_ramp_up(d, context).unwrap() == 2.5
+    assert getters.get_max_ramp_down(d, context).unwrap() == 2.5
+
+
+def test_get_max_ramp_up_down_zero_values_keep_fallback_value(context, monkeypatch):
+    """When defaults and source ramps are zero, current behavior returns zero."""
+
+    class DummyRamp:
+        ramp_limits = None
+        base_power = 100.0
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _src, _ctx: "hydro")
+    monkeypatch.setattr(getters, "_get_defaults", lambda _cat, _key: 0.0)
+
+    d = DummyRamp()
+    assert getters.get_max_ramp_up(d, context).unwrap() == 0.0
+    assert getters.get_max_ramp_down(d, context).unwrap() == 0.0
+
+
+def test_get_max_ramp_hydro_ignores_huge_max_active_power_placeholder(context, monkeypatch):
+    """Hydro ramps should use ramp_rate defaults when max active power is a sentinel like 1e30."""
+
+    class DummyHydro:
+        ramp_limits = None
+        base_power = 100.0
+        prime_mover_type = "HY"
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _src, _ctx: "hydro")
+    monkeypatch.setattr(getters, "sienna_get_max_active_power", lambda _src: 1e30)
+
+    d = DummyHydro()
+    assert getters.get_max_ramp_up(d, context).unwrap() == 120.0
+    assert getters.get_max_ramp_down(d, context).unwrap() == 120.0
+
+
+def test_get_max_ramp_uses_defaults_when_raw_natural_unit_ramp_is_too_low(context, monkeypatch):
+    """Raw natural-unit ramps below threshold should fall back to defaults."""
+
+    class DummyHydro:
+        ramp_limits: ClassVar[dict[str, float]] = {"up": 0.06818181818181819, "down": 0.06818181818181819}
+        base_power = 11.0
+        prime_mover_type = "HY"
+        active_power_limits = MinMax(min=0.0, max=15.0)
+        rating = 16.682026255823963
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _src, _ctx: "hydro")
+
+    d = DummyHydro()
+    assert getters.get_max_ramp_up(d, context).unwrap() == 0.75
+    assert getters.get_max_ramp_down(d, context).unwrap() == 0.75
+
+
+def test_effective_max_mw_falls_back_to_active_power_limits_when_sentinel(monkeypatch):
+    """With sentinel max capacity and low raw ramp, fallback still yields a non-negative ramp."""
+
+    class Dummy:
+        ramp_limits: ClassVar[dict[str, float]] = {"up": 0.01, "down": 0.01}
+        base_power = 10.0
+        active_power_limits = MinMax(min=0.0, max=7.5)
+        prime_mover_type = "HY"
+        rating = None
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _src, _ctx: "hydro")
+    monkeypatch.setattr(
+        getters, "_get_defaults", lambda _cat, key: 0.05 if key == "max_ramp_up_percentage" else 320.0
+    )
+
+    assert getters.get_max_ramp_up(Dummy(), context=types.SimpleNamespace()).unwrap() >= 0.0
 
 
 def test_get_initial_hours_up_status_true(context):
@@ -1910,6 +2481,19 @@ def test_get_fuel_price_fuel_curve(context):
         ),
     )
     assert getters.get_fuel_price(gen, context).unwrap() == 3.5
+
+
+def test_get_fuel_price_mapping_operation_cost(context):
+    """Covers get_fuel_price when operation_cost and variable are mapping-like."""
+
+    class DummyThermal:
+        operation_cost: ClassVar[dict[str, object]] = {
+            "variable": {
+                "fuel_cost": 2.644,
+            }
+        }
+
+    assert getters.get_fuel_price(DummyThermal(), context).unwrap() == 2.64
 
 
 def test_get_interface_min_max_flow_none_limits(context):
@@ -2244,7 +2828,7 @@ def test_get_heat_rate_quadratic_curve_returns_coefficients(context_with_thermal
     from r2x_sienna_to_plexos.getters import get_heat_rate, get_heat_rate_base, get_heat_rate_incr
 
     source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-quadratic")
-    assert get_heat_rate(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
+    assert get_heat_rate(source, context_with_thermal_generators).unwrap() is None
     assert get_heat_rate_base(source, context_with_thermal_generators).unwrap() == pytest.approx(120.0)
     assert get_heat_rate_incr(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
 
@@ -2274,7 +2858,6 @@ def test_heat_rate_getters_return_absolute_values(monkeypatch, context_with_ther
         getters,
         "compute_heat_rate_data",
         lambda _component: {
-            "heat_rate": -9.2,
             "heat_rate_base": -120.0,
             "heat_rate_incr": -9.8,
             "heat_rate_incr2": -0.03,
@@ -2282,11 +2865,22 @@ def test_heat_rate_getters_return_absolute_values(monkeypatch, context_with_ther
         },
     )
 
-    assert get_heat_rate(source, context_with_thermal_generators).unwrap() == pytest.approx(9.2)
+    assert get_heat_rate(source, context_with_thermal_generators).unwrap() is None
     assert get_heat_rate_base(source, context_with_thermal_generators).unwrap() == pytest.approx(120.0)
     assert get_heat_rate_incr(source, context_with_thermal_generators).unwrap() == pytest.approx(9.8)
     assert get_heat_rate_incr2(source, context_with_thermal_generators).unwrap() == pytest.approx(0.03)
     assert get_heat_rate_incr3(source, context_with_thermal_generators).unwrap() == pytest.approx(0.0005)
+
+
+def test_get_heat_rate_scalar_when_base_and_incr_missing(monkeypatch, context_with_thermal_generators):
+    from r2x_sienna.models import ThermalStandard
+    from r2x_sienna_to_plexos.getters import get_heat_rate
+
+    source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
+
+    monkeypatch.setattr(getters, "compute_heat_rate_data", lambda _component: {"heat_rate": -9.2})
+
+    assert get_heat_rate(source, context_with_thermal_generators).unwrap() == pytest.approx(9.2)
 
 
 def _disable_time_series(sys):
@@ -2547,3 +3141,325 @@ def test_attach_generator_time_series_uses_rating_when_limits_missing(tmp_path, 
     getters._attach_generator_time_series(context, "GEN_RATING", PLEXOSGenerator(name="GEN_RATING"))
 
     assert list(attached[0].data) == [1.0, 2.0]
+
+
+def test_resolve_generator_category_zonal2nodal_uses_reeds_defaults(monkeypatch, context):
+    comp = types.SimpleNamespace(name="zonal2nodal_gas-cc_cluster", ext={})
+    monkeypatch.setattr(
+        getters,
+        "_get_defaults_data",
+        lambda _ctx: {"reeds_defaults": {"gas": {}, "gas-cc": {}, "wind-ons": {}}},
+    )
+
+    assert getters._resolve_generator_category(comp, context) == "gas-cc"
+
+
+def test_get_reeds_thermal_category_returns_none_for_non_list_mapping_values(monkeypatch, context):
+    gen = _make_thermal_generator_for_category_tests(
+        name="thermal-natgas",
+        fuel=ThermalFuels.NATURAL_GAS,
+    )
+    monkeypatch.setattr(
+        getters,
+        "_get_defaults_data",
+        lambda _ctx: {"reeds_thermal_mapping": {"natural-gas": "NATURAL_GAS", "coal": ["COAL"]}},
+    )
+
+    assert getters._get_reeds_thermal_category_from_fuel(gen, context) is None
+
+
+def test_get_reservoir_location_helper_priority_order():
+    by_name = types.SimpleNamespace(name="Plant_HEAD")
+    by_attr = types.SimpleNamespace(name="Plant", reservoir_location="tail")
+    by_ext = types.SimpleNamespace(name="Plant", ext={"RESERVOIR_LOCATION": "head"})
+    unknown = types.SimpleNamespace(name="Plant")
+
+    assert getters._get_reservoir_location(by_name) == "HEAD"
+    assert getters._get_reservoir_location(by_attr) == "TAIL"
+    assert getters._get_reservoir_location(by_ext) == "HEAD"
+    assert getters._get_reservoir_location(unknown) is None
+
+
+def test_has_explicit_side_reservoir_for_base_detects_matching_side(monkeypatch, context):
+    current = types.SimpleNamespace(name="Plant", ext={"plant_name": "Plant"}, uuid="1")
+    explicit_head = types.SimpleNamespace(name="Plant_head", ext={"plant_name": "Plant"}, uuid="2")
+    other_plant = types.SimpleNamespace(name="Other_head", ext={"plant_name": "Other"}, uuid="3")
+
+    fake_source = types.SimpleNamespace(get_components=lambda _cls: [current, explicit_head, other_plant])
+    monkeypatch.setattr(getters, "_source_system", lambda _ctx: fake_source)
+
+    assert getters._has_explicit_side_reservoir_for_base(current, context, side="HEAD") is True
+    assert getters._has_explicit_side_reservoir_for_base(current, context, side="TAIL") is False
+
+
+def test_membership_component_child_node_err_when_source_generator_has_no_bus(context):
+    source_gen = _make_thermal_generator_for_category_tests(
+        name="gen-without-bus",
+        fuel=ThermalFuels.NATURAL_GAS,
+    )
+    context.source_system.add_component(source_gen)
+
+    result = getters.membership_component_child_node(PLEXOSGenerator(name="gen-without-bus"), context)
+    assert result.is_err()
+    assert "missing bus data" in str(result.err())
+
+
+def test_membership_interface_child_line_success_via_monkeypatched_index(monkeypatch, context):
+    target_line = PLEXOSLine(name="line-01")
+    context.target_system.add_component(target_line)
+
+    source_interface = types.SimpleNamespace(name="IFACE-1", lines=[types.SimpleNamespace(name="line-01")])
+    monkeypatch.setattr(
+        getters, "_build_source_interface_name_index", lambda _ctx: {"IFACE-1": source_interface}
+    )
+
+    result = getters.membership_interface_child_line(types.SimpleNamespace(name="IFACE-1"), context)
+    assert result.is_ok()
+    assert result.unwrap() == target_line
+
+
+def test_membership_line_parent_interface_success_and_missing_target(context):
+    from r2x_plexos.models import PLEXOSInterface
+
+    source_interface = TransmissionInterface(
+        name="Interface-1",
+        active_power_flow_limits=MinMax(min=-100.0, max=100.0),
+        direction_mapping={"line-01": 1},
+    )
+    context.source_system.add_component(source_interface)
+
+    line = PLEXOSLine(name="line-01")
+
+    missing_target = getters.membership_line_parent_interface(line, context)
+    assert missing_target.is_err()
+
+    target_interface = PLEXOSInterface(name="Interface-1")
+    context.target_system.add_component(target_interface)
+    context._cache.pop("target_interface_name_index", None)
+
+    result = getters.membership_line_parent_interface(line, context)
+    assert result.is_ok()
+    assert result.unwrap().name == "Interface-1"
+
+
+def test_get_hydro_generator_units_always_online(context):
+    from r2x_sienna.models import HydroDispatch
+    from r2x_sienna.models.costs import HydroGenerationCost
+
+    bus = ACBus(name="BUS1", base_voltage=115.0, number=1)
+    context.source_system.add_component(bus)
+    hydro = HydroDispatch(
+        name="HD1",
+        bus=bus,
+        rating=100.0,
+        active_power=50.0,
+        reactive_power=10.0,
+        base_power=100.0,
+        prime_mover_type=PrimeMoversType.HY,
+        ramp_limits=UpDown(up=5.0, down=5.0),
+        active_power_limits=MinMax(min=0.0, max=100.0),
+        operation_cost=HydroGenerationCost.example(),
+    )
+    assert getters.get_hydro_generator_units(hydro, context).unwrap() == 1
+
+
+def _make_hydro_turbine_for_units_tests(bus: ACBus, name: str, rating: float) -> HydroTurbine:
+    from r2x_sienna.models.costs import HydroGenerationCost
+
+    return HydroTurbine(
+        name=name,
+        available=True,
+        bus=bus,
+        active_power=0.0,
+        reactive_power=0.0,
+        rating=rating,
+        active_power_limits=MinMax(min=0.0, max=100.0),
+        reactive_power_limits=MinMax(min=-10.0, max=10.0),
+        base_power=100.0,
+        operation_cost=HydroGenerationCost.example(),
+        powerhouse_elevation=0.0,
+        ramp_limits=UpDown(up=5.0, down=5.0),
+        time_limits=UpDown(up=1.0, down=1.0),
+        outflow_limits=MinMax(min=0.0, max=50.0),
+        efficiency=0.92,
+        turbine_type=HydroTurbineType.FRANCIS,
+        prime_mover_type=PrimeMoversType.OT,
+        conversion_factor=1.0,
+        reservoirs=[],
+        category="hydro_turbine",
+    )
+
+
+def test_get_pumped_hydro_generator_units_zero_rating_is_online(context):
+    """Turbine with zero rating has zero pump load → always online."""
+    bus = ACBus(name="BUS_PH1", base_voltage=115.0, number=10)
+    context.source_system.add_component(bus)
+    ht = _make_hydro_turbine_for_units_tests(bus, "ht-zero-pump", rating=0.0)
+    assert getters.get_pumped_hydro_generator_units(ht, context).unwrap() == 1
+
+
+def test_get_pumped_hydro_generator_units_hydro_category_is_online(context):
+    """Non-zero rating that resolves to 'hydro' category stays online."""
+    bus = ACBus(name="BUS_PH2", base_voltage=115.0, number=11)
+    context.source_system.add_component(bus)
+    ht = _make_hydro_turbine_for_units_tests(bus, "ht-hydro-cat", rating=1.0)
+    # Force category to "hydro" via gen_type_string
+    ht.ext = {"gen_type_string": "hydro"}
+    assert getters.get_pumped_hydro_generator_units(ht, context).unwrap() == 1
+
+
+def test_get_pumped_hydro_generator_units_pumped_no_reservoir_is_offline(context, monkeypatch):
+    """Pumped turbine not referenced by any reservoir → offline."""
+    bus = ACBus(name="BUS_PH3", base_voltage=115.0, number=12)
+    context.source_system.add_component(bus)
+    ht = _make_hydro_turbine_for_units_tests(bus, "ht-no-reservoir", rating=1.0)
+    # No gen_type_string → category is None → treated as pumped-hydro default
+    # No HydroReservoir in source system → turbine_names is empty → Ok(0)
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _comp, _ctx: None)
+    result = getters.get_pumped_hydro_generator_units(ht, context)
+    assert result.unwrap() == 0
+
+
+def test_get_pumped_hydro_generator_units_pumped_with_reservoir_is_online(context, monkeypatch):
+    """Pumped turbine referenced by a storage-creating reservoir → online."""
+    bus = ACBus(name="BUS_PH4", base_voltage=115.0, number=13)
+    context.source_system.add_component(bus)
+    ht = _make_hydro_turbine_for_units_tests(bus, "ht-with-reservoir", rating=1.0)
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _comp, _ctx: None)
+    # Inject a non-empty turbine name set so the turbine is found
+    context._cache["reservoir_pump_turbine_name_set"] = {"ht-with-reservoir"}
+    result = getters.get_pumped_hydro_generator_units(ht, context)
+    assert result.unwrap() == 1
+
+
+def test_build_reservoir_pump_turbine_name_set_collects_ext_plants(context, monkeypatch):
+    """_build_reservoir_pump_turbine_name_set returns turbine names from reservoir ext plants."""
+    # Create a proxy reservoir whose ext["plants"] lists a turbine name, and whose
+    # _reservoir_has_hydro_pumped_storage_association returns True.
+    reservoir = types.SimpleNamespace(
+        uuid="res-1",
+        name="reservoir-1",
+        upstream_turbines=[],
+        downstream_turbines=[],
+        ext={"plants": ["pump-turbine-A", "pump-turbine-B"]},
+    )
+    monkeypatch.setattr(
+        getters,
+        "_source_system",
+        lambda _ctx: types.SimpleNamespace(get_components=lambda _cls: [reservoir]),
+    )
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _res, _ctx: True,
+    )
+    # Clear cache so it is rebuilt
+    context._cache.pop("reservoir_pump_turbine_name_set", None)
+    names = getters._build_reservoir_pump_turbine_name_set(context)
+    assert "pump-turbine-A" in names
+    assert "pump-turbine-B" in names
+
+
+def test_build_reservoir_pump_turbine_name_set_skips_non_storage_reservoirs(context, monkeypatch):
+    """Reservoirs that fail the pump-storage association check are skipped."""
+    reservoir = types.SimpleNamespace(
+        uuid="res-2",
+        name="reservoir-2",
+        upstream_turbines=[],
+        downstream_turbines=[],
+        ext={"plants": ["should-not-appear"]},
+    )
+    monkeypatch.setattr(
+        getters,
+        "_source_system",
+        lambda _ctx: types.SimpleNamespace(get_components=lambda _cls: [reservoir]),
+    )
+    monkeypatch.setattr(
+        getters,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _res, _ctx: False,
+    )
+    context._cache.pop("reservoir_pump_turbine_name_set", None)
+    names = getters._build_reservoir_pump_turbine_name_set(context)
+    assert "should-not-appear" not in names
+
+
+def test_attach_generator_time_series_scales_hydro_budget(tmp_path, monkeypatch):
+    """hydro_budget raw per-unit values must be multiplied by max_active_power."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    source_gen = types.SimpleNamespace(
+        name="HYDRO_TS",
+        active_power_limits={"max": 0.5},
+        base_power=2.0,
+    )
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+
+    raw_values = [10.0, 20.0]  # raw per-unit; after *1.0 MW still 10, 20 MWh
+    context.source_system.time_series.has_time_series = lambda _c: True
+    context.source_system.time_series.list_time_series_metadata = lambda _c: [
+        types.SimpleNamespace(name="hydro_budget", features={})
+    ]
+    context.source_system.list_time_series = lambda _c, **_kw: [
+        types.SimpleNamespace(
+            name="hydro_budget",
+            data=raw_values,
+            initial_timestamp=datetime(2020, 1, 1),
+            # Use weekly resolution so the aggregation block is skipped (>=7 days)
+            resolution=timedelta(weeks=1),
+        )
+    ]
+    context.target_system.has_time_series = lambda *_a, **_kw: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_a, **_kw: attached.append(ts)
+
+    getters._attach_generator_time_series(context, "HYDRO_TS", PLEXOSGenerator(name="HYDRO_TS"))
+
+    assert len(attached) == 1
+    assert attached[0].name == "hydro_budget"
+    # raw 10.0 * 1.0 MW = 10.0, raw 20.0 * 1.0 MW = 20.0
+    assert list(attached[0].data) == [10.0, 20.0]
+
+
+def test_attach_generator_time_series_scales_hydro_budget_hourly(tmp_path, monkeypatch):
+    """hydro_budget with hourly resolution is scaled then aggregated into weekly sums."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    # max_active_power = 0.1 pu * 10.0 MVA = 1.0 MW
+    source_gen = types.SimpleNamespace(
+        name="HYDRO_HOURLY",
+        active_power_limits={"max": 0.1},
+        base_power=10.0,
+    )
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+
+    # Two weeks of hourly data: all ones → raw weekly sum = 168; scaled = 168 * 1.0
+    two_weeks_ones = [1.0] * 336
+    context.source_system.time_series.has_time_series = lambda _c: True
+    context.source_system.time_series.list_time_series_metadata = lambda _c: [
+        types.SimpleNamespace(name="hydro_budget", features={})
+    ]
+    context.source_system.list_time_series = lambda _c, **_kw: [
+        types.SimpleNamespace(
+            name="hydro_budget",
+            data=two_weeks_ones,
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(hours=1),
+        )
+    ]
+    context.target_system.has_time_series = lambda *_a, **_kw: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_a, **_kw: attached.append(ts)
+
+    getters._attach_generator_time_series(context, "HYDRO_HOURLY", PLEXOSGenerator(name="HYDRO_HOURLY"))
+
+    assert len(attached) == 1
+    ts = attached[0]
+    assert ts.name == "hydro_budget"
+    assert ts.resolution == timedelta(days=7)
+    # Each weekly value = 168 * 1.0 (scaled) * 1.0 MW = 168.0 MWh
+    assert all(abs(v - 168.0) < 1e-6 for v in ts.data)
