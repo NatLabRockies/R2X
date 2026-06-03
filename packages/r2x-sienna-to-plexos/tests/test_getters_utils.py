@@ -31,7 +31,7 @@ from r2x_sienna.models import (
     VariableReserve,
 )
 from r2x_sienna.models.costs import ThermalGenerationCost
-from r2x_sienna.models.enums import PrimeMoversType, ReserveType, StorageTechs, ThermalFuels
+from r2x_sienna.models.enums import ACBusTypes, PrimeMoversType, ReserveType, StorageTechs, ThermalFuels
 from r2x_sienna.models.named_tuples import Complex, InputOutput, MinMax, UpDown
 from r2x_sienna_to_plexos import getters_utils
 
@@ -127,6 +127,72 @@ def test_compute_heat_rate_data_none_curve():
     }
 
 
+def test_compute_heat_rate_data_mapping_variable():
+    class Dummy:
+        def __init__(self):
+            self.operation_cost = {
+                "variable": {
+                    "value_curve": LinearCurve(10.0, 12),
+                    "fuel_cost": 0.05,
+                }
+            }
+
+    d = Dummy()
+    assert getters_utils.compute_heat_rate_data(d) == {
+        "heat_rate": 10.0,
+        "heat_rate_incr": 10.0,
+        "heat_rate_base": 12.0,
+    }
+
+
+def test_compute_heat_rate_data_mapping_serialized_curve():
+    class Dummy:
+        def __init__(self):
+            self.operation_cost = {
+                "variable": {
+                    "fuel_cost": 2.644,
+                    "value_curve": {
+                        "initial_input": 134.0,
+                        "function_data": {
+                            "constant_term": 0.134,
+                            "proportional_term": 12.62,
+                        },
+                    },
+                }
+            }
+
+    d = Dummy()
+    assert getters_utils.compute_heat_rate_data(d) == {
+        "heat_rate": 12.62,
+        "heat_rate_incr": 12.62,
+        "heat_rate_base": 0.134,
+    }
+
+
+def test_compute_heat_rate_data_mapping_x_coords_y_coords_curve():
+    class Dummy:
+        def __init__(self):
+            self.operation_cost = {
+                "variable": {
+                    "fuel_cost": 2.644,
+                    "value_curve": {
+                        "input_at_zero": None,
+                        "initial_input": 0.0,
+                        "function_data": {
+                            "x_coords": [0.0, 76.2],
+                            "y_coords": [8.389],
+                        },
+                    },
+                }
+            }
+
+    d = Dummy()
+    result = getters_utils.compute_heat_rate_data(d)
+    assert "heat_rate_incr" in result
+    assert isinstance(result["heat_rate_incr"], PLEXOSPropertyValue)
+    assert result["heat_rate_incr"].get_bands() == [1]
+
+
 def test_compute_markup_data_piecewise():
     class Dummy:
         operation_cost = type(
@@ -179,6 +245,30 @@ def test_ensure_region_node_memberships(context):
         assert any(m.collection == CollectionEnum.Region for m in memberships)
 
 
+def test_ensure_region_node_memberships_matches_source_bus_by_uuid_when_names_differ(context):
+    area = Area(name="A1")
+    region = PLEXOSRegion(name="A1")
+    source_bus = ACBus(name="SourceNode", area=area, number=1)
+    translated_node = PLEXOSNode(name="RenamedNode", uuid=source_bus.uuid)
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(source_bus)
+    context.target_system.add_component(region)
+    context.target_system.add_component(translated_node)
+
+    getters_utils.ensure_region_node_memberships(context)
+
+    memberships = context.target_system.get_supplemental_attributes_with_component(
+        translated_node, PLEXOSMembership
+    )
+    assert any(
+        m.collection == CollectionEnum.Region
+        and m.parent_object == translated_node
+        and m.child_object == region
+        for m in memberships
+    )
+
+
 def test_ensure_transformer_node_memberships(context):
     node1 = PLEXOSNode(name="N1")
     node2 = PLEXOSNode(name="N2")
@@ -211,7 +301,246 @@ def test_ensure_transformer_node_memberships(context):
     assert any(m.collection in (CollectionEnum.NodeFrom, CollectionEnum.NodeTo) for m in memberships)
 
 
-def test_ensure_head_tail_storage_generator_membership(context):
+def test_ensure_reference_node_memberships_creates_one_per_region(context):
+    area_ref = Area(name="A1")
+    area_other = Area(name="A2")
+    region_ref = PLEXOSRegion(name="A1")
+    region_other = PLEXOSRegion(name="A2")
+    node_ref = PLEXOSNode(name="N1", voltage=138.0, load_participation_factor=0.3)
+    node_other = PLEXOSNode(name="N2", voltage=230.0, load_participation_factor=0.2)
+    bus_ref = ACBus(name="N1", number=1, bustype=ACBusTypes.REF, area=area_ref)
+    bus_other = ACBus(name="N2", number=2, bustype=ACBusTypes.PQ, area=area_other)
+
+    context.source_system.add_component(area_ref)
+    context.source_system.add_component(area_other)
+    context.target_system.add_component(region_ref)
+    context.target_system.add_component(region_other)
+    context.target_system.add_component(node_ref)
+    context.target_system.add_component(node_other)
+    context.source_system.add_component(bus_ref)
+    context.source_system.add_component(bus_other)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    ref_memberships = context.target_system.get_supplemental_attributes_with_component(
+        node_ref, PLEXOSMembership
+    )
+    other_memberships = context.target_system.get_supplemental_attributes_with_component(
+        node_other, PLEXOSMembership
+    )
+
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region_ref
+        and m.child_object == node_ref
+        for m in ref_memberships
+    )
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region_other
+        and m.child_object == node_other
+        for m in other_memberships
+    )
+
+
+def test_ensure_reference_node_memberships_prefers_slack_bus_when_present(context):
+    area = Area(name="A1")
+    region = PLEXOSRegion(name="A1")
+    node_slack = PLEXOSNode(name="N1", voltage=115.0, load_participation_factor=0.1)
+    node_non_slack = PLEXOSNode(name="N2", voltage=500.0, load_participation_factor=0.9)
+    bus_slack = ACBus(name="N1", number=1, bustype=ACBusTypes.REF, area=area)
+    bus_non_slack = ACBus(name="N2", number=2, bustype=ACBusTypes.PQ, area=area)
+
+    context.source_system.add_component(area)
+    context.target_system.add_component(region)
+    context.target_system.add_component(node_slack)
+    context.target_system.add_component(node_non_slack)
+    context.source_system.add_component(bus_slack)
+    context.source_system.add_component(bus_non_slack)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    slack_memberships = context.target_system.get_supplemental_attributes_with_component(
+        node_slack, PLEXOSMembership
+    )
+    non_slack_memberships = context.target_system.get_supplemental_attributes_with_component(
+        node_non_slack, PLEXOSMembership
+    )
+
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region
+        and m.child_object == node_slack
+        for m in slack_memberships
+    )
+    assert not any(
+        m.collection == CollectionEnum.ReferenceNode and m.parent_object == region
+        for m in non_slack_memberships
+    )
+
+
+def test_ensure_reference_node_memberships_fallback_uses_voltage_then_lpf(context):
+    area = Area(name="A1")
+    region = PLEXOSRegion(name="A1")
+    node_low = PLEXOSNode(name="N1", voltage=115.0, load_participation_factor=0.9)
+    node_mid = PLEXOSNode(name="N2", voltage=230.0, load_participation_factor=0.1)
+    node_best = PLEXOSNode(name="N3", voltage=230.0, load_participation_factor=0.6)
+    bus_low = ACBus(name="N1", number=1, bustype=ACBusTypes.PQ, area=area)
+    bus_mid = ACBus(name="N2", number=2, bustype=ACBusTypes.PQ, area=area)
+    bus_best = ACBus(name="N3", number=3, bustype=ACBusTypes.PQ, area=area)
+
+    context.source_system.add_component(area)
+    context.target_system.add_component(region)
+    context.target_system.add_component(node_low)
+    context.target_system.add_component(node_mid)
+    context.target_system.add_component(node_best)
+    context.source_system.add_component(bus_low)
+    context.source_system.add_component(bus_mid)
+    context.source_system.add_component(bus_best)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    best_memberships = context.target_system.get_supplemental_attributes_with_component(
+        node_best, PLEXOSMembership
+    )
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region
+        and m.child_object == node_best
+        for m in best_memberships
+    )
+
+
+def test_ensure_reference_node_memberships_uses_existing_region_memberships_when_names_differ(context):
+    area = Area(name="A1")
+    region = PLEXOSRegion(name="A1")
+    bus = ACBus(name="Source-Bus-1", number=1, bustype=ACBusTypes.PQ, area=area)
+    translated_node = PLEXOSNode(name="Translated-Node-1", voltage=230.0, load_participation_factor=0.2)
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(bus)
+    context.target_system.add_component(region)
+    context.target_system.add_component(translated_node)
+
+    # Pre-existing Region membership can be node->region for CollectionEnum.Region.
+    region_membership = PLEXOSMembership(
+        parent_object=translated_node,
+        child_object=region,
+        collection=CollectionEnum.Region,
+    )
+    context.target_system.add_supplemental_attribute(translated_node, region_membership)
+    context.target_system.add_supplemental_attribute(region, region_membership)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    node_memberships = context.target_system.get_supplemental_attributes_with_component(
+        translated_node, PLEXOSMembership
+    )
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region
+        and m.child_object == translated_node
+        for m in node_memberships
+    )
+
+
+def test_ensure_reference_node_memberships_prefers_translated_slack_flag_when_names_differ(context):
+    area = Area(name="A1")
+    region = PLEXOSRegion(name="A1")
+    slack_bus = ACBus(name="Source-Slack", number=1, bustype=ACBusTypes.SLACK, area=area)
+    normal_bus = ACBus(name="Source-Normal", number=2, bustype=ACBusTypes.PQ, area=area)
+
+    slack_node = PLEXOSNode(name="RenamedSlack", voltage=115.0, load_participation_factor=0.2, is_slack_bus=1)
+    normal_node = PLEXOSNode(
+        name="RenamedNormal", voltage=500.0, load_participation_factor=0.9, is_slack_bus=0
+    )
+
+    context.source_system.add_component(area)
+    context.source_system.add_component(slack_bus)
+    context.source_system.add_component(normal_bus)
+    context.target_system.add_component(region)
+    context.target_system.add_component(slack_node)
+    context.target_system.add_component(normal_node)
+
+    slack_region_membership = PLEXOSMembership(
+        parent_object=slack_node,
+        child_object=region,
+        collection=CollectionEnum.Region,
+    )
+    normal_region_membership = PLEXOSMembership(
+        parent_object=normal_node,
+        child_object=region,
+        collection=CollectionEnum.Region,
+    )
+    context.target_system.add_supplemental_attribute(slack_node, slack_region_membership)
+    context.target_system.add_supplemental_attribute(region, slack_region_membership)
+    context.target_system.add_supplemental_attribute(normal_node, normal_region_membership)
+    context.target_system.add_supplemental_attribute(region, normal_region_membership)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    slack_memberships = context.target_system.get_supplemental_attributes_with_component(
+        slack_node, PLEXOSMembership
+    )
+    normal_memberships = context.target_system.get_supplemental_attributes_with_component(
+        normal_node, PLEXOSMembership
+    )
+
+    assert any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region
+        and m.child_object == slack_node
+        for m in slack_memberships
+    )
+    assert not any(
+        m.collection == CollectionEnum.ReferenceNode
+        and m.parent_object == region
+        and m.child_object == normal_node
+        for m in normal_memberships
+    )
+
+
+def test_ensure_reference_node_memberships_creates_one_per_region_with_global_fallback(context):
+    region1 = PLEXOSRegion(name="A1")
+    region2 = PLEXOSRegion(name="A2")
+    node = PLEXOSNode(name="OnlyNode", voltage=138.0, load_participation_factor=0.4)
+
+    context.target_system.add_component(region1)
+    context.target_system.add_component(region2)
+    context.target_system.add_component(node)
+
+    getters_utils.ensure_reference_node_memberships(context)
+
+    memberships = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
+    ref_memberships = [m for m in memberships if m.collection == CollectionEnum.ReferenceNode]
+
+    assert any(m.parent_object == region1 and m.child_object == node for m in ref_memberships)
+    assert any(m.parent_object == region2 and m.child_object == node for m in ref_memberships)
+
+
+def test_ensure_head_tail_storage_generator_membership(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    monkey_source = types.SimpleNamespace(name="foo_head")
+    monkey_source_tail = types.SimpleNamespace(name="foo_tail")
+
+    def monkeypatch_get_components(comp_type):
+        return (
+            [monkey_source, monkey_source_tail]
+            if getattr(comp_type, "__name__", "") == "HydroPumpedStorage"
+            else []
+        )
+
+    context.source_system.get_components = monkeypatch_get_components
+    monkeypatch.setattr(
+        getters_mod,
+        "_build_generator_display_name_index",
+        lambda _ctx: {
+            "foo_head": "foo_head",
+            "foo_tail": "foo_tail",
+        },
+    )
+
     gen = PLEXOSGenerator(name="foo_head")
     storage = PLEXOSStorage(name="foo_head")
     context.target_system.add_component(gen)
@@ -246,6 +575,50 @@ def test_ensure_pumped_hydro_storage_memberships(context):
     )
     assert any(m.collection == CollectionEnum.HeadStorage for m in memberships_head)
     assert any(m.collection == CollectionEnum.TailStorage for m in memberships_tail)
+
+
+def test_ensure_pumped_hydro_storages_created_synthesizes_missing(context):
+    # Pumped-hydro generator with no head/tail storage attached.
+    gen = PLEXOSGenerator(name="ph_gen", category="pumped-hydro", max_capacity=200.0)
+    context.target_system.add_component(gen)
+
+    # Hydro generator should be ignored entirely.
+    hydro_gen = PLEXOSGenerator(name="hydro_gen", category="hydro", max_capacity=50.0)
+    context.target_system.add_component(hydro_gen)
+
+    getters_utils.ensure_pumped_hydro_storages_created(context)
+
+    storages = {s.name: s for s in context.target_system.get_components(PLEXOSStorage)}
+    assert "ph_gen_head" in storages
+    assert "ph_gen_tail" in storages
+    assert storages["ph_gen_head"].units == 1
+    # 200 MW * 10 h / 1000 = 2.0 GWh; initial volume is half-full.
+    assert storages["ph_gen_head"].max_volume == 2.0
+    assert storages["ph_gen_head"].initial_volume == 1.0
+
+    memberships = context.target_system.get_supplemental_attributes_with_component(gen, PLEXOSMembership)
+    assert any(m.collection == CollectionEnum.HeadStorage for m in memberships)
+    assert any(m.collection == CollectionEnum.TailStorage for m in memberships)
+
+    # Hydro generator gets nothing synthesized.
+    assert "hydro_gen_head" not in storages
+    assert "hydro_gen_tail" not in storages
+
+
+def test_ensure_pumped_hydro_storages_created_skips_when_already_attached(context):
+    gen = PLEXOSGenerator(name="ph_gen", category="pumped-hydro", max_capacity=100.0)
+    head_storage = PLEXOSStorage(name="existing_head")
+    tail_storage = PLEXOSStorage(name="existing_tail")
+    context.target_system.add_component(gen)
+    context.target_system.add_component(head_storage)
+    context.target_system.add_component(tail_storage)
+    getters_utils._ensure_membership(context, gen, head_storage, CollectionEnum.HeadStorage)
+    getters_utils._ensure_membership(context, gen, tail_storage, CollectionEnum.TailStorage)
+
+    getters_utils.ensure_pumped_hydro_storages_created(context)
+
+    storages = {s.name for s in context.target_system.get_components(PLEXOSStorage)}
+    assert storages == {"existing_head", "existing_tail"}
 
 
 def test_ensure_generator_node_memberships(context):
@@ -332,7 +705,20 @@ def test_ensure_battery_node_memberships(context):
     assert any(m.collection.name == "Nodes" for m in memberships)
 
 
-def test_ensure_head_storage_generator_membership(context):
+def test_ensure_head_storage_generator_membership(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    context.source_system.get_components = (
+        lambda comp_type: [types.SimpleNamespace(name="GEN_head")]
+        if getattr(comp_type, "__name__", "") == "HydroPumpedStorage"
+        else []
+    )
+    monkeypatch.setattr(
+        getters_mod,
+        "_build_generator_display_name_index",
+        lambda _ctx: {"GEN_head": "GEN_head"},
+    )
+
     gen = PLEXOSGenerator(name="GEN_head")
     storage = PLEXOSStorage(name="GEN_head")
     context.target_system.add_component(gen)
@@ -342,7 +728,20 @@ def test_ensure_head_storage_generator_membership(context):
     assert any(m.collection.name == "HeadStorage" for m in memberships)
 
 
-def test_ensure_tail_storage_generator_membership(context):
+def test_ensure_tail_storage_generator_membership(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    context.source_system.get_components = (
+        lambda comp_type: [types.SimpleNamespace(name="GEN_tail")]
+        if getattr(comp_type, "__name__", "") == "HydroPumpedStorage"
+        else []
+    )
+    monkeypatch.setattr(
+        getters_mod,
+        "_build_generator_display_name_index",
+        lambda _ctx: {"GEN_tail": "GEN_tail"},
+    )
+
     gen = PLEXOSGenerator(name="GEN_tail")
     storage = PLEXOSStorage(name="GEN_tail")
     context.target_system.add_component(gen)
@@ -702,6 +1101,15 @@ def test_bus_name_to_area_and_zone_cache_and_non_area_object(context):
     assert mapping["B1"] == ("A1", "Z1")
 
 
+def test_bus_name_to_area_and_zone_uses_zone_name_attribute(context):
+    zone_like = types.SimpleNamespace(name="Z2")
+    context.source_system.get_components = lambda _comp_type: [
+        types.SimpleNamespace(name="B2", area="A2", load_zone=zone_like)
+    ]
+    mapping = getters_utils._bus_name_to_area_and_zone(context)
+    assert mapping["B2"] == ("A2", "Z2")
+
+
 def test_attach_reservoir_time_series_to_storage_paths(context):
     target_storage = PLEXOSStorage(name="Plant_head")
 
@@ -743,7 +1151,7 @@ def test_attach_reservoir_time_series_to_storage_paths(context):
     assert list(max_ts.data) == [0.5, 1.0]
 
 
-def test_hydroturbine_driven_head_tail_memberships(context, monkeypatch):
+def test_hydropumpturbine_driven_head_tail_memberships(context, monkeypatch):
     import r2x_sienna_to_plexos.getters as getters_mod
 
     monkeypatch.setattr(getters_mod, "_build_generator_display_name_index", lambda _ctx: {"TURB": "GEN"})
@@ -764,7 +1172,7 @@ def test_hydroturbine_driven_head_tail_memberships(context, monkeypatch):
     )
     turbine = types.SimpleNamespace(name="TURB", reservoirs=[head_res, tail_res])
     context.source_system.get_components = (
-        lambda comp_type: [turbine] if comp_type.__name__ == "HydroTurbine" else []
+        lambda comp_type: [turbine] if comp_type.__name__ == "HydroPumpTurbine" else []
     )
 
     getters_utils.ensure_head_storage_generator_membership(context)
@@ -927,6 +1335,127 @@ def test_ensure_reserve_time_series_skips_when_target_has_series(context, monkey
     assert added == []
 
 
+def test_ensure_reserve_time_series_collapses_requirement_variants_to_min_provision(context, monkeypatch):
+    source_reserve = VariableReserve(
+        name="RES_VARIANTS",
+        reserve_type=ReserveType.SPINNING,
+        vors=10.0,
+        max_participation_factor=0.5,
+        direction="UP",
+        requirement=100.0,
+    )
+    target_reserve = PLEXOSReserve(name="RES_VARIANTS")
+    context.source_system.add_component(source_reserve)
+    context.target_system.add_component(target_reserve)
+
+    metadata_entries = [
+        types.SimpleNamespace(name="Requirement", features={"scenario": "base"}),
+        types.SimpleNamespace(name="min-provision", features={"scenario": "base"}),
+    ]
+
+    def _list_time_series(_component, name=None, **_kwargs):
+        if name == "Requirement":
+            return [types.SimpleNamespace(name="Requirement", data=[1.0], features={"scenario": "base"})]
+        if name == "min-provision":
+            return [types.SimpleNamespace(name="min-provision", data=[1.0], features={"scenario": "base"})]
+        return []
+
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: metadata_entries,
+    )
+    monkeypatch.setattr(context.source_system, "list_time_series", _list_time_series)
+
+    added = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    context.target_system.add_time_series = lambda ts, reserve, **features: added.append(
+        (ts, reserve, features)
+    )
+
+    getters_utils.ensure_reserve_time_series(context)
+
+    assert len(added) == 1
+    ts, reserve, features = added[0]
+    assert reserve.name == "RES_VARIANTS"
+    assert ts.name == "min_provision"
+    assert ts.data == [100.0]
+    assert features == {"scenario": "base"}
+
+
+def test_attach_hydro_reservoir_inflow_to_generator_budget_adds_max_energy_day(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    monkeypatch.setattr(getters_utils, "HydroTurbine", object)
+    monkeypatch.setattr(getters_utils, "HydroPumpTurbine", type("HydroPumpTurbine", (), {}))
+
+    source_generator = types.SimpleNamespace(name="H1", rating=0.0, base_power=1.0)
+    target_generator = PLEXOSGenerator(name="H1")
+    reservoir = types.SimpleNamespace(name="R1")
+
+    monkeypatch.setattr(getters_mod, "_build_reservoir_by_turbine_index", lambda _ctx: {"H1": reservoir})
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+
+    metadata = [
+        types.SimpleNamespace(name="ignored", features={}),
+        types.SimpleNamespace(name="inflow", features={"scenario": "base"}),
+    ]
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: metadata,
+    )
+
+    source_ts = types.SimpleNamespace(
+        name="inflow",
+        data=[1.0, 2.0],
+        initial_timestamp=datetime(2025, 1, 1),
+        resolution=timedelta(hours=1),
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, name=None, **_kwargs: [source_ts] if name == "inflow" else [],
+    )
+
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    added: list[tuple[object, object, dict]] = []
+    context.target_system.add_time_series = lambda ts, comp, **features: added.append((ts, comp, features))
+
+    getters_utils._attach_hydro_reservoir_inflow_to_generator_budget(
+        context, source_generator, target_generator
+    )
+
+    assert len(added) == 1
+    ts, comp, features = added[0]
+    assert comp.name == "H1"
+    assert ts.name == "max_energy_day"
+    assert features == {"scenario": "base"}
+
+
+def test_attach_hydro_reservoir_inflow_to_generator_budget_skips_nonzero_rating(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    monkeypatch.setattr(getters_utils, "HydroTurbine", object)
+    monkeypatch.setattr(getters_utils, "HydroPumpTurbine", type("HydroPumpTurbine", (), {}))
+
+    source_generator = types.SimpleNamespace(name="H2", rating=2.0, base_power=100.0)
+    target_generator = PLEXOSGenerator(name="H2")
+
+    monkeypatch.setattr(getters_mod, "_build_reservoir_by_turbine_index", lambda _ctx: {"H2": object()})
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+
+    added = []
+    context.target_system.add_time_series = lambda *args, **kwargs: added.append((args, kwargs))
+
+    getters_utils._attach_hydro_reservoir_inflow_to_generator_budget(
+        context, source_generator, target_generator
+    )
+
+    assert added == []
+
+
 def test_ensure_membership_deduplicates_existing_membership(context):
     parent = PLEXOSGenerator(name="PARENT_GEN")
     child = PLEXOSNode(name="CHILD_NODE")
@@ -981,7 +1510,16 @@ def test_attach_reservoir_time_series_scales_max_active_power_from_turbine_limit
 def test_head_tail_memberships_from_ext_plants_and_fallback_name_matching(context, monkeypatch):
     import r2x_sienna_to_plexos.getters as getters_mod
 
-    monkeypatch.setattr(getters_mod, "_build_generator_display_name_index", lambda _ctx: {"T1": "GEN_T1"})
+    monkeypatch.setattr(
+        getters_mod,
+        "_build_generator_display_name_index",
+        lambda _ctx: {
+            "T1": "GEN_T1",
+            "GEN_T1": "GEN_T1",
+            "Fallback_head": "Fallback_head",
+            "Fallback_tail": "Fallback_tail",
+        },
+    )
 
     reservoir = types.SimpleNamespace(name="ReservoirA", ext={"plant_name": "PlantA", "plants": ["T1"]})
     turbine = types.SimpleNamespace(name="T1", reservoirs=[])
@@ -990,8 +1528,14 @@ def test_head_tail_memberships_from_ext_plants_and_fallback_name_matching(contex
         name = getattr(comp_type, "__name__", "")
         if name == "HydroReservoir":
             return [reservoir]
-        if name == "HydroTurbine":
+        if name == "HydroPumpTurbine":
             return [turbine]
+        if name == "HydroPumpedStorage":
+            return [
+                types.SimpleNamespace(name="GEN_T1"),
+                types.SimpleNamespace(name="Fallback_head"),
+                types.SimpleNamespace(name="Fallback_tail"),
+            ]
         return []
 
     context.source_system.get_components = source_get_components

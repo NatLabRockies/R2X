@@ -93,7 +93,7 @@ def test_sienna_generators_translate_to_plexos_types(tmp_path):
             prime_mover_type=PrimeMoversType.HY,
             active_power_limits=MinMax(min=10.0, max=100.0),
             reactive_power_limits=MinMax(min=-30.0, max=30.0),
-            ramp_limits=UpDown(up=5.0, down=5.0),
+            ramp_limits=None,
             time_limits=UpDown(up=1.0, down=1.0),
             base_power=100.0,
             status=True,
@@ -163,6 +163,53 @@ def test_sienna_storage_translates_to_plexos_storage(tmp_path):
         storages.extend(list(context.target_system.get_components(cls)))
     storage = [s for s in storages if s.name in ("battery", "battery_head", "battery_tail")]
     assert storage
+
+
+def test_hydro_reservoir_without_suffix_translates_to_head_and_tail_storage(tmp_path, monkeypatch):
+    from infrasys.value_curves import LinearCurve
+    from r2x_plexos.models import PLEXOSStorage
+    from r2x_sienna.models import HydroReservoir
+    from r2x_sienna.models.costs import HydroReservoirCost
+    from r2x_sienna.models.enums import ReservoirDataType, ReservoirLocation
+    from r2x_sienna.models.named_tuples import MinMax
+    from r2x_sienna_to_plexos import getters as getters_module
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.source_system.add_component(
+        HydroReservoir(
+            name="EI_Reservoir",
+            available=True,
+            storage_level_limits=MinMax(min=0.0, max=1000.0),
+            initial_level=0.5,
+            spillage_limits=MinMax(min=0.0, max=100.0),
+            inflow=50.0,
+            outflow=30.0,
+            level_targets=0.8,
+            travel_time=2.0,
+            intake_elevation=500.0,
+            head_to_volume_factor=LinearCurve(1.0),
+            reservoir_location=ReservoirLocation.HEAD,
+            operation_cost=HydroReservoirCost(),
+            level_data_type=ReservoirDataType.USABLE_VOLUME,
+            category="hydro_reservoir",
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    monkeypatch.setattr(
+        getters_module,
+        "_reservoir_has_hydro_pumped_storage_association",
+        lambda _source_component, _context: True,
+    )
+
+    result = apply_rules_to_context(context)
+    assert result.total_rules > 0
+
+    storages = list(context.target_system.get_components(PLEXOSStorage))
+    assert any(s.name in {"EI_head", "EI_Reservoir_head"} for s in storages)
+    assert any(s.name in {"EI_tail", "EI_Reservoir_tail"} for s in storages)
 
 
 def test_sienna_interface_translates_to_plexos_interface(tmp_path):
@@ -306,14 +353,17 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
     monkeypatch.setattr(translation_module, "ensure_generator_time_series", _mark("gen_ts"))
     monkeypatch.setattr(translation_module, "ensure_reserve_time_series", _mark("reserve_ts"))
     monkeypatch.setattr(translation_module, "ensure_region_node_memberships", _mark("region_node"))
+    monkeypatch.setattr(translation_module, "ensure_reference_node_memberships", _mark("reference_node"))
     monkeypatch.setattr(translation_module, "ensure_generator_node_memberships", _mark("gen_node"))
     monkeypatch.setattr(translation_module, "ensure_battery_node_memberships", _mark("battery_node"))
     monkeypatch.setattr(translation_module, "ensure_reserve_battery_memberships", _mark("reserve_battery"))
     monkeypatch.setattr(translation_module, "ensure_reserve_generator_memberships", _mark("reserve_gen"))
     monkeypatch.setattr(translation_module, "ensure_transformer_node_memberships", _mark("trf_node"))
+    monkeypatch.setattr(translation_module, "ensure_line_node_memberships", _mark("line_node"))
     monkeypatch.setattr(translation_module, "ensure_interface_line_memberships", _mark("iface_line"))
     monkeypatch.setattr(translation_module, "ensure_head_storage_generator_membership", _mark("head"))
     monkeypatch.setattr(translation_module, "ensure_tail_storage_generator_membership", _mark("tail"))
+    monkeypatch.setattr(translation_module, "ensure_pumped_hydro_storages_created", _mark("ph_storage"))
 
     source = FakeSystem(name="source")
     result = translation_module.sienna_to_plexos(source, config=types.SimpleNamespace())
@@ -324,14 +374,17 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
         "gen_ts",
         "reserve_ts",
         "region_node",
+        "reference_node",
         "gen_node",
         "battery_node",
         "reserve_battery",
         "reserve_gen",
         "trf_node",
+        "line_node",
         "iface_line",
         "head",
         "tail",
+        "ph_storage",
     ]
 
 

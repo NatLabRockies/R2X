@@ -77,7 +77,7 @@ def _build_source_system():
         status=True,
         time_at_status=0.0,
         active_power_limits=MinMax(min=20.0, max=100.0),
-        ramp_limits=UpDown(up=10.0, down=10.0),
+        ramp_limits=None,
         time_limits=UpDown(up=2.0, down=1.0),
         prime_mover_type=PrimeMoversType.CC,
         fuel=ThermalFuels.NATURAL_GAS,

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import math
-import re
-
-# Add this near the top, after imports
 from collections import defaultdict
+from collections.abc import Mapping
 from copy import deepcopy
+from datetime import timedelta
+from functools import lru_cache
 from importlib.resources import files
 from typing import Any, cast
 
@@ -22,6 +22,7 @@ from r2x_plexos.models import (
     PLEXOSNode,
     PLEXOSStorage,
     PLEXOSTransformer,
+    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
@@ -29,10 +30,12 @@ from r2x_sienna.models import (
     DiscreteControlledACBranch,
     EnergyReservoirStorage,
     HydroDispatch,
+    HydroPumpedStorage,
     HydroPumpTurbine,
     HydroReservoir,
     HydroTurbine,
     Line,
+    LoadZone,
     MonitoredLine,
     PhaseShiftingTransformer,
     PhaseShiftingTransformer3W,
@@ -55,7 +58,6 @@ from r2x_sienna.models.enums import ReserveType
 from r2x_sienna.models.getters import (
     get_max_active_power as sienna_get_max_active_power,
 )
-from r2x_sienna.models.named_tuples import FromTo_ToFrom
 from r2x_sienna.units import get_magnitude
 
 from r2x_core import Err, Ok, PluginContext, Result
@@ -75,6 +77,8 @@ from .getters_mappings import (
     SOURCE_LINE_TYPES,
 )
 
+RAMPING_THRESHOLD = 0.1  # MW/min
+
 
 def _source_system(context: PluginContext) -> Any:
     return cast(Any, context.source_system)
@@ -84,16 +88,73 @@ def _target_system(context: PluginContext) -> Any:
     return cast(Any, context.target_system)
 
 
-def _resolve_generator_category(source_component: Any, context: PluginContext) -> str | None:
-    """Resolve category via ext gen_type_string, ReEDS name patterns, or prime_mover mapping."""
-    # Get name from ext dict
-    ext = getattr(source_component, "ext", None)
-    if isinstance(ext, dict):
-        gen_type = ext.get("gen_type_string", "").lower().strip()
-        if gen_type and gen_type not in ("unknown", "other", "", "unidentified"):
-            return GEN_TYPE_STRING_MAP.get(gen_type, gen_type)
+def _get_defaults_data(context: PluginContext) -> dict[str, Any]:
+    """Load defaults.json once per plugin context."""
+    cached = context._cache.get("defaults_json")
+    if cached is not None:
+        return cast(dict[str, Any], cached)
 
-    # ReEDS name pattern
+    data = cast(dict[str, Any], _load_defaults_json())
+    context._cache["defaults_json"] = data
+    return data
+
+
+@lru_cache(maxsize=1)
+def _load_defaults_json() -> dict[str, Any]:
+    """Load defaults.json once per process for hot getter paths."""
+    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
+    with defaults_path.open() as f:
+        return cast(dict[str, Any], json.load(f))
+
+
+def _get_reeds_thermal_category_from_fuel(source_component: Any, context: PluginContext) -> str | None:
+    """Resolve thermal ReEDS category from Sienna fuel value using defaults mapping."""
+    if not isinstance(source_component, ThermalStandard | ThermalMultiStart):
+        return None
+
+    fuel = getattr(source_component, "fuel", None)
+    if fuel is None:
+        return None
+
+    fuel_str = fuel.name if hasattr(fuel, "name") else str(fuel)
+    fuel_key = str(fuel_str).strip().replace("-", "_").replace(" ", "_").upper()
+    if not fuel_key:
+        return None
+
+    defaults_data = _get_defaults_data(context)
+    mapping = defaults_data.get("reeds_thermal_mapping", {})
+    if not isinstance(mapping, dict):
+        return None
+
+    for category, fuel_values in mapping.items():
+        if not isinstance(fuel_values, list):
+            continue
+        normalized_values = {
+            str(value).strip().replace("-", "_").replace(" ", "_").upper() for value in fuel_values
+        }
+        if fuel_key in normalized_values:
+            category_str = str(category).strip()
+            if category_str in {"natural-gas", "natural_gas", "gas"}:
+                return "gas-cc"
+            return category_str
+
+    return None
+
+
+def _resolve_generator_category(source_component: Any, context: PluginContext) -> str | None:
+    """Resolve category via prime mover, ReEDS name patterns, thermal fuel mapping, or ext gen_type_string."""
+    ext = getattr(source_component, "ext", None)
+    prime_mover = getattr(source_component, "prime_mover_type", None)
+
+    # Prime mover type lookup (prime_mover_type is always a plain string, e.g. 'CC', 'PVe')
+    if prime_mover is not None:
+        defaults_data = _get_defaults_data(context)
+        pm_types: dict[str, str] = defaults_data.get("prime_mover_types", {})
+        tech = pm_types.get(prime_mover)
+        if tech:
+            return tech
+
+    # ReEDS name patterns
     raw_name = getattr(source_component, "name", "") or ""
     name = raw_name.lower()
     if name.startswith("reeds"):
@@ -103,101 +164,25 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
 
     if name.startswith("zonal2nodal_"):
         suffix = name[len("zonal2nodal_") :]
-        defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-        with defaults_path.open() as f:
-            _z2n_defaults = json.load(f)
+        _z2n_defaults = _get_defaults_data(context)
         reeds_cats = sorted(_z2n_defaults.get("reeds_defaults", {}).keys(), key=len, reverse=True)
         for cat in reeds_cats:
             cat_str = str(cat)
             if suffix == cat_str or suffix.startswith(cat_str + "_"):
                 return cat_str
 
-    # Treat explicit "nuclear" naming as high-confidence and avoid falling back to
-    # broad prime-mover mappings that can misclassify these units as thermal/coal.
-    candidate_names = [_normalize_plant_name(raw_name)]
+    # Thermal fuel mapping category
+    thermal_category = _get_reeds_thermal_category_from_fuel(source_component, context)
+    if thermal_category is not None:
+        return thermal_category
+
+    # Gen type string from ext dictionary
     if isinstance(ext, dict):
-        plant_name = ext.get("plant_name")
-        if plant_name:
-            candidate_names.append(_normalize_plant_name(str(plant_name)))
-    candidate_names = [c for c in dict.fromkeys(candidate_names) if c]
-
-    if any(_contains_nuclear_token(candidate) for candidate in candidate_names):
-        return "nuclear"
-
-    # Get category from prime mover mapping when available (higher confidence than name heuristics).
-    prime_mover = getattr(source_component, "prime_mover_type", None)
-    fuel = getattr(source_component, "fuel", None)
-
-    if prime_mover is None and isinstance(ext, dict):
-        prime_mover = ext.get("prime_mover")
-
-    pm_fuel_map: dict[str, list[str]] = (
-        getattr(getattr(context, "config", None), "prime_mover_mapping", None) or {}
-    )
-
-    if prime_mover is not None:
-        pm_str = prime_mover.name if hasattr(prime_mover, "name") else str(prime_mover).upper()
-
-        if pm_fuel_map:
-            if fuel is not None:
-                fuel_str = fuel.name if hasattr(fuel, "name") else str(fuel).upper()
-                techs = pm_fuel_map.get(f"{pm_str}_{fuel_str}")
-                if techs:
-                    return techs[0]
-            pm_only = pm_fuel_map.get(f"{pm_str}_")
-            if pm_only:
-                return pm_only[0]
-
-        defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-        with defaults_path.open() as f:
-            defaults_data = json.load(f)
-        pm_types: dict[str, str] = defaults_data.get("prime_mover_types", {})
-        tech = pm_types.get(pm_str)
-        if tech:
-            return tech
-
-    # Name-based association for oil/nuclear is exact-match and state-aware when possible.
-    source_state = _normalize_state((ext or {}).get("state")) if isinstance(ext, dict) else None
-
-    nuclear_names = _build_nuclear_plant_name_set(context)
-    nuclear_name_state = _build_nuclear_plant_name_state_set(context)
-    oil_names = _build_oil_plant_name_set(context)
-    oil_name_state = _build_oil_plant_name_state_set(context)
-
-    for candidate in candidate_names:
-        if source_state and (candidate, source_state) in nuclear_name_state:
-            return "nuclear"
-        if source_state and (candidate, source_state) in oil_name_state:
-            return "oil"
-
-        if candidate in nuclear_names:
-            return "nuclear"
-        if candidate in oil_names:
-            return "oil"
+        gen_type = ext.get("gen_type_string", "").lower().strip()
+        if gen_type and gen_type not in ("unknown", "other", "", "unidentified"):
+            return GEN_TYPE_STRING_MAP.get(gen_type, gen_type)
 
     return None
-
-
-def _normalize_plant_name(name: str) -> str:
-    """Normalize plant names for reliable exact matching."""
-    raw = str(name)
-    # Split CamelCase words before punctuation cleanup (e.g., NuclearFacility -> Nuclear Facility).
-    raw = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", raw)
-    cleaned = re.sub(r"[^a-z0-9]+", " ", raw.lower())
-    return " ".join(cleaned.split())
-
-
-def _contains_nuclear_token(name: str) -> bool:
-    """Return True when normalized name contains a standalone 'nuclear' token."""
-    return bool(re.search(r"\bnuclear\b", name))
-
-
-def _normalize_state(value: Any) -> str | None:
-    """Normalize state to two-letter uppercase when available."""
-    if value is None:
-        return None
-    state = str(value).strip().upper()
-    return state if state else None
 
 
 def _build_target_storage_name_index(context: PluginContext) -> dict[str, Any]:
@@ -286,105 +271,6 @@ def _build_battery_service_index(context: PluginContext) -> dict[str, list[Any]]
                 index[service_name].append(battery)
     result = dict(index)
     context._cache["battery_service_index"] = result
-    return result
-
-
-def _build_oil_plant_name_set(context: PluginContext) -> set[str]:
-    """Build normalized petroleum plant names set from us_power_plants.json, cached."""
-    cached = context._cache.get("oil_plant_name_set")
-    if cached is not None:
-        return cached
-    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
-    with plants_path.open() as f:
-        plants_data = json.load(f)
-    name_set = {
-        _normalize_plant_name(p["power Plant Name"])
-        for p in plants_data
-        if isinstance(p.get("Primary Energy Source"), str)
-        and p["Primary Energy Source"].lower() == "petroleum"
-        and isinstance(p.get("power Plant Name"), str)
-    }
-    context._cache["oil_plant_name_set"] = name_set
-    return name_set
-
-
-def _build_oil_plant_name_state_set(context: PluginContext) -> set[tuple[str, str]]:
-    """Build normalized petroleum (plant_name, state) set from us_power_plants.json, cached."""
-    cached = context._cache.get("oil_plant_name_state_set")
-    if cached is not None:
-        return cached
-    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
-    with plants_path.open() as f:
-        plants_data = json.load(f)
-
-    result: set[tuple[str, str]] = set()
-    for plant in plants_data:
-        if not isinstance(plant.get("Primary Energy Source"), str):
-            continue
-        if plant["Primary Energy Source"].lower() != "petroleum":
-            continue
-        if not isinstance(plant.get("power Plant Name"), str):
-            continue
-        state = _normalize_state(plant.get("State"))
-        if state is None:
-            continue
-        result.add((_normalize_plant_name(plant["power Plant Name"]), state))
-
-    context._cache["oil_plant_name_state_set"] = result
-    return result
-
-
-def _build_nuclear_plant_name_set(context: PluginContext) -> set[str]:
-    """Build normalized nuclear plant names set from defaults.json and us_power_plants.json, cached."""
-    cached = context._cache.get("nuclear_plant_name_set")
-    if cached is not None:
-        return cached
-
-    # From defaults.json nuclear_plants list
-    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults_data = json.load(f)
-    name_set = {_normalize_plant_name(p["name"]) for p in defaults_data.get("nuclear_plants", [])}
-
-    # From us_power_plants.json filtered by Primary Energy Source == "nuclear"
-    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
-    with plants_path.open() as f:
-        plants_data = json.load(f)
-    name_set |= {
-        _normalize_plant_name(p["power Plant Name"])
-        for p in plants_data
-        if isinstance(p.get("Primary Energy Source"), str)
-        and p["Primary Energy Source"].lower() == "nuclear"
-        and isinstance(p.get("power Plant Name"), str)
-    }
-
-    context._cache["nuclear_plant_name_set"] = name_set
-    return name_set
-
-
-def _build_nuclear_plant_name_state_set(context: PluginContext) -> set[tuple[str, str]]:
-    """Build normalized nuclear (plant_name, state) set from us_power_plants.json, cached."""
-    cached = context._cache.get("nuclear_plant_name_state_set")
-    if cached is not None:
-        return cached
-    plants_path = files("r2x_sienna_to_plexos.config") / "us_power_plants.json"
-    with plants_path.open() as f:
-        plants_data = json.load(f)
-
-    result: set[tuple[str, str]] = set()
-    for plant in plants_data:
-        if not isinstance(plant.get("Primary Energy Source"), str):
-            continue
-        if plant["Primary Energy Source"].lower() != "nuclear":
-            continue
-        if not isinstance(plant.get("power Plant Name"), str):
-            continue
-        state = _normalize_state(plant.get("State"))
-        if state is None:
-            continue
-        result.add((_normalize_plant_name(plant["power Plant Name"]), state))
-
-    context._cache["nuclear_plant_name_state_set"] = result
     return result
 
 
@@ -613,13 +499,62 @@ def _get_time_limit(component: Any, attr: str, ext_key: str) -> float | None:
 
 
 def _ramp_value_to_float(source_component: object, raw_value: Any) -> float:
-    """Convert ramp value to float, applying base power like sienna_get_ramp_limits does."""
+    """Convert ramp value to MW/min.
+
+    In practice, source ramp limits can appear either as:
+    - per-unit/min values (typically <= 1.0), or
+    - already absolute MW/min values.
+
+    Use a simple heuristic: scale moderate magnitudes (<= 10.0) by base power,
+    otherwise treat the value as already in MW/min.
+    """
     magnitude = get_magnitude(raw_value)
     if magnitude is None and isinstance(raw_value, int | float):
         magnitude = raw_value
     if magnitude is None:
         return 0.0
-    return float(magnitude) * resolve_base_power(source_component)
+
+    value = float(magnitude)
+    if abs(value) <= 10.0:
+        return value * resolve_base_power(source_component)
+    return value
+
+
+def _get_ramp_limit_value(source_component: object, *, default: Any, direction: str) -> float:
+    """Extract raw ramp limit value for a given direction.
+
+    Keeps the current getter behavior by relying on dict-style access when
+    ramp_limits is present.
+    """
+    ramp_limits = getattr(source_component, "ramp_limits", default)
+    raw_value = ramp_limits[direction] if ramp_limits else 0.0
+    return float(raw_value)
+
+
+def _resolve_ramp_rates(
+    source_component: object,
+    context: PluginContext,
+    *,
+    initial_ramp_mw: float,
+    defaults_key: str,
+) -> float:
+    """Apply defaults/fallback/capping logic and return final non-negative ramp."""
+    ramp_mw = initial_ramp_mw
+    category = _resolve_generator_category(source_component, context)
+    gen_ramp_pct = _get_defaults(category, defaults_key)
+    max_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "max") or 0.0
+    max_mw = abs(max_pu) * resolve_base_power(source_component)
+    if max_mw == 0.0:
+        max_mw = _get_defaults(category, "capacity_MW")
+    if ramp_mw < RAMPING_THRESHOLD:
+        ramp_mw = gen_ramp_pct * max_mw
+        if ramp_mw < RAMPING_THRESHOLD:
+            max_mw = _get_defaults(category, "capacity_MW")
+            ramp_mw = gen_ramp_pct * max_mw
+        if ramp_mw > max_mw:
+            ramp_mw = max_mw * 0.5
+
+    return max(0.0, round(ramp_mw, 4))
 
 
 def _convert_time_value(value: Any) -> float | None:
@@ -643,27 +578,10 @@ def _get_minmax_value(obj: Any, key: str) -> float | None:
     return float(val) if isinstance(val, int | float) else None
 
 
-def _get_ramp_default(source_component: object, context: PluginContext) -> float:
-    """Return the ramp default from defaults.json max_ramp_up_percentage * max active power (MW/min)."""
-    category = _resolve_generator_category(source_component, context) or "gas-cc"
-    pct = _get_defaults(category, "max_ramp_up_percentage")
-    if math.isclose(pct, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        return 0.0
-    try:
-        max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
-    except (TypeError, NotImplementedError, AttributeError, KeyError):
-        max_mw = 0.0
-    if math.isclose(max_mw, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        max_mw = _get_defaults(category, "capacity_MW") or 100.0
-    return pct * max_mw
-
-
-def _get_defaults(category: str, key: str) -> float:
+def _get_defaults(category: str | None, key: str) -> float:
     """Extract a default value from defaults.json for the given category and key."""
-    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults = json.load(f)
-    value = defaults.get("reeds_defaults", {}).get(category, {}).get(key, 0.0)
+    defaults = _load_defaults_json()
+    value = defaults.get("reeds_defaults", {}).get(category, {}).get(key, 0.0) if category else 0.0
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -703,6 +621,59 @@ def _attach_generator_time_series(
             target_generator, name=ts.name, time_series_type=SingleTimeSeries, **metadata.features
         ):
             data = np.asarray(ts.data)
+            output_resolution = ts.resolution
+
+            if ts.name == "hydro_budget":
+                # ts.data holds raw per-unit values; scale to actual MW (same logic as
+                # max_active_power TS) so that weekly sums are in MWh, not dimensionless
+                # units.  Without this, the weekly budget is ~max_active_power-factor too
+                # large (e.g. 955 MWh instead of 76 MWh for an 0.08 MW generator).
+                _max_mw = 0.0
+                _limits = getattr(source_gen, "active_power_limits", None)
+                if _limits is not None:
+                    _max_val = (
+                        _limits.get("max") if isinstance(_limits, dict) else getattr(_limits, "max", None)
+                    )
+                    if _max_val is not None:
+                        _mag = get_magnitude(_max_val)
+                        _raw = (
+                            float(_mag)
+                            if _mag is not None
+                            else float(_max_val)
+                            if isinstance(_max_val, int | float)
+                            else None
+                        )
+                        if _raw is not None:
+                            _max_mw = abs(_raw) * resolve_base_power(source_gen)
+                if _max_mw > 0.0:
+                    data = data * _max_mw
+
+            if (
+                ts.name == "hydro_budget"
+                and isinstance(ts.resolution, timedelta)
+                and ts.resolution < timedelta(days=7)
+            ):
+                seconds_per_step = ts.resolution.total_seconds()
+                if seconds_per_step > 0:
+                    points_per_week = max(int(round((7 * 86400) / seconds_per_step)), 1)
+                    full_weeks = data.size // points_per_week
+                    weekly_values: list[float] = []
+                    if full_weeks:
+                        weekly_values.extend(
+                            data[: full_weeks * points_per_week]
+                            .reshape(full_weeks, points_per_week)
+                            .sum(axis=1)
+                            .tolist()
+                        )
+                    remainder = data[full_weeks * points_per_week :]
+                    if remainder.size:
+                        weekly_values.append(float(remainder.sum()))
+
+                    # SingleTimeSeries requires at least two points.
+                    if len(weekly_values) >= 2:
+                        data = np.asarray(weekly_values, dtype=float)
+                        output_resolution = timedelta(days=7)
+
             if ts.name == "max_active_power":
                 max_mw = 0.0
                 limits = getattr(source_gen, "active_power_limits", None)
@@ -739,10 +710,38 @@ def _attach_generator_time_series(
                 data=data,
                 name=ts.name,
                 initial_timestamp=ts.initial_timestamp,
-                resolution=ts.resolution,
+                resolution=output_resolution,
             )
             _target_system(context).add_time_series(fresh_ts, target_generator, **metadata.features)
-            logger.success("Attached time series {} to generator {}", ts.name, generator_name)
+            logger.debug("Attached time series {} to generator {}", ts.name, generator_name)
+
+
+def _has_usable_generator_time_series(source_component: object, context: PluginContext) -> bool:
+    """Return True when the source generator has at least one retrievable time series."""
+    source_system = _source_system(context)
+
+    try:
+        if not source_system.time_series.has_time_series(source_component):
+            return False
+        metadata_items = source_system.time_series.list_time_series_metadata(source_component)
+    except Exception:
+        # If introspection fails, avoid accidentally deactivating the unit.
+        return True
+
+    for metadata in metadata_items:
+        features = getattr(metadata, "features", {}) or {}
+        try:
+            ts_list = source_system.list_time_series(
+                source_component,
+                name=metadata.name,
+                **features,
+            )
+        except Exception:
+            continue
+        if ts_list:
+            return True
+
+    return False
 
 
 def _attach_region_node_load_time_series(
@@ -866,18 +865,88 @@ def _find_3w_source_transformer(context: PluginContext, arm_name: str) -> tuple[
     return None
 
 
-def _get_load_mw(load: Any) -> float:
-    """Extract MW value from a StandardLoad or PowerLoad for LPF computation."""
-    magnitude = get_magnitude(getattr(load, "max_active_power", None))
+def _coerce_scalar(value: Any) -> float | None:
+    """Convert numeric-like values to float without forcing unit-stripped conversion."""
+    if isinstance(value, int | float):
+        return float(value)
+    magnitude = getattr(value, "magnitude", None)
+    if isinstance(magnitude, int | float):
+        return float(magnitude)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _power_quantity_to_mw(value: Any) -> float | None:
+    """Convert unit-bearing power quantity to MW when possible."""
+    if value is None or not hasattr(value, "to"):
+        return None
+
+    conversion_targets: tuple[tuple[str, float], ...] = (
+        ("megawatt", 1.0),
+        ("MW", 1.0),
+        ("megavolt_ampere", 1.0),
+        ("MVA", 1.0),
+        ("watt", 1e-6),
+        ("volt_ampere", 1e-6),
+        ("VA", 1e-6),
+    )
+    for unit_name, scale in conversion_targets:
+        try:
+            converted = value.to(unit_name)
+        except Exception:
+            continue
+
+        converted_magnitude = _coerce_scalar(getattr(converted, "magnitude", converted))
+        if converted_magnitude is not None:
+            return float(converted_magnitude) * scale
+
+    return None
+
+
+def _get_load_base_power(load: Any) -> float:
+    """Resolve load base power as scalar MW/MVA-like value with robust defaults."""
     base_power = getattr(load, "base_power", None)
     if base_power is None:
-        base_power = 100.0
-    if magnitude is not None:
-        return float(magnitude) * float(base_power)
+        return 100.0
+
+    base_power_from_quantity = _power_quantity_to_mw(base_power)
+    if base_power_from_quantity is not None:
+        return base_power_from_quantity
+
+    coerced = _coerce_scalar(base_power)
+    return coerced if coerced is not None else 100.0
+
+
+def _get_load_mw(load: Any) -> float:
+    """Extract MW value from a StandardLoad or PowerLoad for LPF computation."""
+    raw_max_active_power = getattr(load, "max_active_power", None)
+    base_power = _get_load_base_power(load)
+
+    direct_power_mw = _power_quantity_to_mw(raw_max_active_power)
+    if direct_power_mw is not None:
+        return direct_power_mw
+
+    magnitude = get_magnitude(raw_max_active_power)
+
+    magnitude_power_mw = _power_quantity_to_mw(magnitude)
+    if magnitude_power_mw is not None:
+        return magnitude_power_mw
+
+    magnitude_value = _coerce_scalar(magnitude)
+    if magnitude_value is not None:
+        return float(magnitude_value) * float(base_power)
+
     for attr in ("max_constant_active_power", "constant_active_power"):
         val = getattr(load, attr, None)
-        if isinstance(val, int | float) and val > 0:
-            return float(val) * float(base_power)
+        direct_attr_power_mw = _power_quantity_to_mw(val)
+        if direct_attr_power_mw is not None:
+            return direct_attr_power_mw
+
+        val_scalar = _coerce_scalar(val)
+        if val_scalar is not None and val_scalar > 0:
+            return float(val_scalar) * float(base_power)
     return 0.0
 
 
@@ -921,9 +990,7 @@ def _get_system_base_power(context: PluginContext) -> float:
 
 def _get_general_default(key: str) -> float:
     """Extract a general default value from defaults.json for the given key."""
-    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults = json.load(f)
+    defaults = _load_defaults_json()
     value = defaults.get("general_defaults", {}).get(key, 0.0)
     try:
         return float(value)
@@ -980,13 +1047,6 @@ def get_voltage_kv(source_component: ACBus, context: PluginContext) -> Result[fl
     """Extract AC voltage magnitude from base_voltage Quantity."""
     value = get_magnitude(source_component.base_voltage)
     return Ok(round(float(value), 1) if value is not None else 0.0)
-
-
-@getter
-def get_ac_voltage_magnitude_pu(source_component: ACBus, context: PluginContext) -> Result[float, ValueError]:
-    """Extract AC voltage magnitude in per unit from the source component."""
-    value = getattr(source_component, "magnitude", None)
-    return Ok(round(float(value), 3) if value is not None else 1.0)
 
 
 @getter
@@ -1110,6 +1170,12 @@ def get_area_name(source_component: Area, context: PluginContext) -> Result[str,
 
 
 @getter
+def get_zone_units(source_component: LoadZone, context: PluginContext) -> Result[float, ValueError]:
+    """Return active status for translated zones."""
+    return Ok(1.0)
+
+
+@getter
 def get_line_min_flow(
     source_component: Line
     | MonitoredLine
@@ -1227,34 +1293,6 @@ def lines_wheeling_charge_back(
     if wc_back is None:
         return Ok(_get_general_default("wheeling_charge_back"))
     return Ok(float(wc_back))
-
-
-@getter
-def get_line_charging_susceptance(
-    source_component: Line | MonitoredLine, context: PluginContext
-) -> Result[float, ValueError]:
-    """Extract line charging susceptance as float from source component."""
-    match getattr(source_component, "b", None):
-        case None:
-            return Ok(0.0)
-        case int() | float() as val:
-            return Ok(float(val))
-        case complex() as val:
-            return Ok(float(val.imag))
-        case FromTo_ToFrom() as val:
-            return Ok(float(val.from_to))
-        case dict() as val:
-            match val.get("from_to"):
-                case int() | float() as ft:
-                    return Ok(float(ft))
-                case _:
-                    return Ok(0.0)
-        case val:
-            match get_magnitude(val):
-                case int() | float() as mag:
-                    return Ok(float(mag))
-                case _:
-                    return Ok(0.0)
 
 
 @getter
@@ -1429,15 +1467,45 @@ def get_3w_transformer_tertiary_rating(
 
 @getter
 def get_generator_category(source_component: object, context: PluginContext) -> Result[str, ValueError]:
-    """Determine generator category using ReEDS tech names, gen_type_string, or prime_mover/fuel mapping.
+    """Determine generator category using ReEDS tech names, gen_type_string, and fuel/prime-mover mapping.
 
     Priority:
     1. ext["gen_type_string"] mapped through _GEN_TYPE_STRING_MAP
     2. ReEDS component name patterns (hydend, hyded, distpv, wind-ofs, etc.)
-    3. prime_mover + fuel via context.config.prime_mover_mapping
-    4. prime_mover abbreviation via defaults.json prime_mover_types
-    5. Err → rule default applies
+    3. ThermalStandard/ThermalMultiStart fuel via defaults.json reeds_thermal_mapping
+    4. prime_mover + fuel via context.config.prime_mover_mapping (non-thermal fallback)
+    5. prime_mover abbreviation via defaults.json prime_mover_types (non-thermal fallback)
+    6. Err -> rule default applies
     """
+    category = _resolve_generator_category(source_component, context)
+    if category is not None:
+        return Ok(category)
+    return Err(ValueError("Cannot resolve generator category; rule default will apply"))
+
+
+@getter
+def get_pumped_hydro_category(
+    source_component: HydroTurbine | HydroPumpTurbine, context: PluginContext
+) -> Result[str, ValueError]:
+    """Resolve category for hydro turbines, demoting zero-pump-load units to ``hydro``.
+
+    Sienna ``HydroTurbine``/``HydroPumpTurbine`` components default to a pumped
+    category, but units whose pump-load (derived from ``rating``) resolves to
+    zero are not actually pumped storage and should land in the regular
+    ``hydro`` category. When the pump load is non-zero we defer to the standard
+    category resolution chain so explicit overrides (e.g. ``gen_type_string``)
+    still apply, and otherwise let the rule default apply via ``Err``.
+    """
+    rating = getattr(source_component, "rating", None)
+    pump_load_mw = 0.0
+    if rating is not None:
+        magnitude = get_magnitude(rating)
+        if magnitude is not None:
+            pump_load_mw = abs(float(magnitude) * resolve_base_power(source_component))
+
+    if math.isclose(pump_load_mw, 0.0, abs_tol=1e-9):
+        return Ok("hydro")
+
     category = _resolve_generator_category(source_component, context)
     if category is not None:
         return Ok(category)
@@ -1450,9 +1518,19 @@ def get_fuel_price(
 ) -> Result[float, ValueError]:
     """Extract fuel price in $/GJ from fuel_cost attribute of FuelCurve, if available."""
     cost = getattr(source_component, "operation_cost", None)
-    variable = getattr(cost, "variable", None) if cost else None
-    if isinstance(variable, FuelCurve):
-        price = get_magnitude(getattr(variable, "fuel_cost", None))
+    variable = None
+    if cost is not None:
+        if isinstance(cost, Mapping):
+            variable = cost.get("variable")
+        if variable is None:
+            variable = getattr(cost, "variable", None)
+
+    if isinstance(variable, Mapping):
+        price = variable.get("fuel_cost")
+        if price is not None:
+            return Ok(round(float(price), 2))
+    elif isinstance(variable, FuelCurve):
+        price = getattr(variable, "fuel_cost", None)
         if price is not None:
             return Ok(round(float(price), 2))
     return Ok(0.0)
@@ -1462,10 +1540,15 @@ def get_fuel_price(
 def get_thermal_generator_units(
     source_component: ThermalStandard | ThermalMultiStart, context: PluginContext
 ) -> Result[int, ValueError]:
-    """Deactivate thermal generators with missing marginal-cost inputs.
+    """Return thermal generator online status.
 
-    If fuel price or heat rate resolves to zero, set units to 0 so the device is
-    not treated as nearly free generation in PLEXOS.
+    Thermal units in Sienna inputs can express cost with different combinations
+    of fuel price and heat-rate terms. Evaluate the full signal (heat rate,
+    heat rate base/increment terms, fuel price, and start cost) before deciding
+    whether a unit has usable economic metadata.
+
+    Generators default to online unless an explicit source ``units`` flag
+    disables them, or a known data-fix exception applies.
     """
     ext = getattr(source_component, "ext", None)
     if isinstance(ext, dict):
@@ -1475,75 +1558,128 @@ def get_thermal_generator_units(
         if plant_name == "monticello" and state == "TX":
             return Ok(0)
 
-    fuel_price = 0.0
-    heat_rate = 0.0
-    fuel_price_getter = cast(Any, get_fuel_price)
-    heat_rate_getter = cast(Any, get_heat_rate)
+    source_units = getattr(source_component, "units", None)
+    if source_units is not None:
+        try:
+            return Ok(1 if int(source_units) > 0 else 0)
+        except (TypeError, ValueError):
+            pass
 
+    # Consider all heat-rate components, not just heat_rate.
+    fuel_price_getter = cast(Any, get_fuel_price)
+    start_cost_getter = cast(Any, get_generator_start_cost)
+
+    def _non_zero(value: Any) -> bool:
+        try:
+            return not math.isclose(float(value), 0.0, rel_tol=0.0, abs_tol=1e-9)
+        except (TypeError, ValueError):
+            return False
+
+    fuel_price = 0.0
+    start_cost = 0.0
     match fuel_price_getter(source_component, context):
         case Ok(value):
             fuel_price = float(value)
         case Err(_):
             fuel_price = 0.0
-
-    match heat_rate_getter(source_component, context):
+    match start_cost_getter(source_component, context):
         case Ok(value):
-            heat_rate = float(value)
+            start_cost = float(value)
         case Err(_):
-            heat_rate = 0.0
+            start_cost = 0.0
 
-    if math.isclose(fuel_price, 0.0, rel_tol=0.0, abs_tol=1e-9) or math.isclose(
-        heat_rate, 0.0, rel_tol=0.0, abs_tol=1e-9
-    ):
-        return Ok(0)
+    heat_data = compute_heat_rate_data(source_component)
+    has_heat_signal = any(
+        _non_zero(heat_data.get(key))
+        for key in ("heat_rate", "heat_rate_base", "heat_rate_incr", "heat_rate_incr2", "heat_rate_incr3")
+    )
+
+    # If any economic signal exists, keep thermal online.
+    if _non_zero(fuel_price) or _non_zero(start_cost) or has_heat_signal:
+        return Ok(1)
 
     return Ok(1)
+
+
+@getter
+def get_dispatch_generator_units(
+    source_component: RenewableDispatch | RenewableNonDispatch,
+    context: PluginContext,
+) -> Result[int, ValueError]:
+    """Deactivate renewable dispatch generators that do not have source time series."""
+    return Ok(1 if _has_usable_generator_time_series(source_component, context) else 0)
+
+
+@getter
+def get_hydro_generator_units(
+    source_component: HydroDispatch,
+    context: PluginContext,
+) -> Result[int, ValueError]:
+    """Keep dispatch hydro generators online by default.
+
+    Applies to ``HydroDispatch`` and ``HydroEnergyReservoir`` source types.
+    Source ``units`` flags in Sienna data encode build counts, not operational
+    enablement, so these should not be deactivated from that field.
+    """
+    return Ok(1)
+
+
+@getter
+def get_pumped_hydro_generator_units(
+    source_component: HydroTurbine | HydroPumpTurbine,
+    context: PluginContext,
+) -> Result[int, ValueError]:
+    """Online status for pump turbine generators.
+
+    Units with zero pump load are treated as regular hydro (always online).
+    Units with non-zero pump load are only online when a HydroReservoir with a
+    pumped-storage association references this turbine — meaning a PLEXOSStorage
+    will actually be created and connected to it.
+    """
+    rating = getattr(source_component, "rating", None)
+    pump_load_mw = 0.0
+    if rating is not None:
+        magnitude = get_magnitude(rating)
+        if magnitude is not None:
+            pump_load_mw = abs(float(magnitude) * resolve_base_power(source_component))
+
+    if math.isclose(pump_load_mw, 0.0, abs_tol=1e-9):
+        return Ok(1)
+
+    # Non-zero pump load: only deactivate components that actually resolve to a pumped
+    # category.  A HydroTurbine can have rating > 0 yet still resolve to "hydro" via
+    # gen_type_string or ReEDS name patterns — those must stay online.
+    category = _resolve_generator_category(source_component, context)
+    if category is not None and "pump" not in category.lower():
+        return Ok(1)
+
+    # Category is pumped-hydro (or could not be resolved → rule default pumped-hydro):
+    # only online when a storage-creating HydroReservoir backs this turbine.
+    turbine_names = _build_reservoir_pump_turbine_name_set(context)
+    comp_name = getattr(source_component, "name", None)
+    if comp_name is not None and str(comp_name) in turbine_names:
+        return Ok(1)
+    return Ok(0)
 
 
 @getter
 def get_max_capacity(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract maximum capacity in MW from rating, active_power_limits, or max_active_power.
 
-    If extracted capacity is below 10 MW, replace it with the category-level
-    ``max_capacity_MW`` default.
+    When rating is available, max_capacity must match rating exactly.
     """
-
-    def _apply_small_capacity_default(capacity_mw: float) -> float:
-        """Replace tiny capacities with category default max capacity."""
-        if capacity_mw >= 10.0:
-            return round(capacity_mw, 2)
-
-        category = _resolve_generator_category(source_component, context) or "gas-cc"
-        default_max = _get_defaults(category, "max_capacity_MW")
-
-        if math.isclose(default_max, 0.0, rel_tol=0.0, abs_tol=1e-9):
-            # Backstop for categories that may not define max_capacity_MW.
-            default_max = _get_defaults(category, "capacity_MW")
-
-        if default_max > 0.0:
-            return round(default_max, 2)
-
-        # Final safeguard: if the resolved category has no usable defaults
-        # (common for some hydro/renewable mappings), fall back to a stable
-        # generic thermal max-capacity baseline so tiny p.u.-like values don't
-        # leak into PLEXOS max_capacity/min_stable_level.
-        generic_default = _get_defaults("gas-cc", "max_capacity_MW") or _get_defaults("gas-cc", "capacity_MW")
-        if generic_default > 0.0:
-            return round(generic_default, 2)
-
-        return round(capacity_mw, 2)
 
     rating = getattr(source_component, "rating", None)
     rating_value = get_magnitude(rating)
     if rating_value is not None:
         capacity = abs(float(rating_value) * resolve_base_power(source_component))
-        return Ok(_apply_small_capacity_default(capacity))
+        return Ok(round(capacity, 2))
 
     limits = getattr(source_component, "active_power_limits", None)
     if isinstance(limits, dict):
         max_value = limits.get("max")
         if isinstance(max_value, int | float):
-            return Ok(_apply_small_capacity_default(abs(float(max_value))))
+            return Ok(round(abs(float(max_value)), 2))
 
     try:
         value = sienna_get_max_active_power(source_component)
@@ -1551,7 +1687,7 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
         value = None
 
     if value is not None:
-        return Ok(_apply_small_capacity_default(abs(float(value))))
+        return Ok(round(abs(float(value)), 2))
 
     return Err(ValueError("active_power_limits or rating missing"))
 
@@ -1560,10 +1696,8 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
 def get_generator_commit(component: object, context: PluginContext) -> Result[int, ValueError]:
     """Return 1 if technology is in commit_technologies list or start cost is 0, -1 otherwise."""
     technology = getattr(component, "technology", "")
-    defaults_path = files("r2x_sienna_to_plexos.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults = json.load(f)
-    commit_technologies = defaults.get("commit_technologies", [])
+    defaults_data = _get_defaults_data(context)
+    commit_technologies = defaults_data.get("commit_technologies", [])
     if technology in commit_technologies:
         return Ok(1)
     cost = getattr(component, "operation_cost", None)
@@ -1574,9 +1708,59 @@ def get_generator_commit(component: object, context: PluginContext) -> Result[in
 
 
 @getter
-def get_heat_rate(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract heat_rate from computed heat rate data, round to 2 decimals, and return as float (units='GJ/MWh')"""
-    value = compute_heat_rate_data(source_component).get("heat_rate")
+def get_generator_load_point(source_component: object, context: PluginContext) -> Result[Any, ValueError]:
+    """Extract generator load point from ext dict or computed heat-rate data.
+
+    For piecewise heat-rate curves, ``compute_heat_rate_data`` provides a
+    multiband ``load_point`` property which should be passed through directly.
+    For scalar heat-rate data, fall back to ``heat_rate * fuel_price``.
+    """
+    ext = getattr(source_component, "ext", None)
+    if isinstance(ext, dict):
+        load_point = ext.get("NARIS_Load_Point")
+        if isinstance(load_point, int | float):
+            return Ok(float(load_point))
+
+    heat_rate_data = compute_heat_rate_data(source_component)
+    computed_load_point = heat_rate_data.get("load_point")
+    if computed_load_point is not None:
+        return Ok(coerce_value(computed_load_point))
+
+    heat_rate = heat_rate_data.get("heat_rate")
+    fuel_price_getter = cast(Any, get_fuel_price)
+    fuel_price_result = fuel_price_getter(source_component, context)
+    match fuel_price_result:
+        case Ok(fuel_price):
+            if heat_rate is not None and fuel_price > 0.0:
+                return Ok(float(heat_rate) * float(fuel_price))
+        case Err(_):
+            pass
+
+    return Ok(0.0)
+
+
+@getter
+def get_heat_rate(source_component: object, context: PluginContext) -> Result[float | None, ValueError]:
+    """Extract heat_rate from computed heat rate data.
+
+    When both heat_rate_base and heat_rate_incr are defined, suppress the
+    scalar heat_rate property so only the decomposed terms are exported.
+    Returning ``None`` allows rule application to skip just this field.
+    """
+    heat_rate_data = compute_heat_rate_data(source_component)
+    base_value = heat_rate_data.get("heat_rate_base")
+    has_base = False
+    if base_value is not None:
+        if isinstance(base_value, int | float):
+            has_base = not math.isclose(float(base_value), 0.0, rel_tol=0.0, abs_tol=1e-9)
+        else:
+            has_base = True
+
+    has_incr = heat_rate_data.get("heat_rate_incr") is not None
+    if has_base and has_incr:
+        return Ok(None)
+
+    value = heat_rate_data.get("heat_rate")
     return Ok(abs(float(value)) if value is not None else 0.0)
 
 
@@ -1626,59 +1810,31 @@ def get_min_down_time(source_component: object, context: PluginContext) -> Resul
 @getter
 def get_max_ramp_up(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract maximum ramp up from ramp_limits, convert to MW/min; falls back to category default."""
-    try:
-        max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
-    except (TypeError, NotImplementedError, AttributeError, KeyError):
-        max_mw = 0.0
-
-    ramp = getattr(source_component, "ramp_limits", None)
-    if isinstance(ramp, dict):
-        value = abs(_ramp_value_to_float(source_component, ramp.get("up")))
-    elif ramp is not None:
-        value = abs(_ramp_value_to_float(source_component, getattr(ramp, "up", None)))
-    else:
-        value = 0.0
-
-    # If value exceeds max capacity it is unreasonable (ramp in <1 min); fall back to default
-    if not math.isclose(max_mw, 0.0, rel_tol=0.0, abs_tol=1e-6) and value > max_mw:
-        value = 0.0
-
-    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        value = abs(_get_ramp_default(source_component, context))
-
-    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        value = max_mw
-
-    return Ok(max(value, 10))
+    ramp_up = _get_ramp_limit_value(source_component, default=0.0, direction="up")
+    ramp_up_mw = abs(ramp_up * resolve_base_power(source_component))
+    return Ok(
+        _resolve_ramp_rates(
+            source_component,
+            context,
+            initial_ramp_mw=ramp_up_mw,
+            defaults_key="max_ramp_up_percentage",
+        )
+    )
 
 
 @getter
 def get_max_ramp_down(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract maximum ramp down from ramp_limits, convert to MW/min; falls back to category default."""
-    try:
-        max_mw = float(sienna_get_max_active_power(source_component) or 0.0)
-    except (TypeError, NotImplementedError, AttributeError, KeyError):
-        max_mw = 0.0
-
-    ramp = getattr(source_component, "ramp_limits", None)
-    if isinstance(ramp, dict):
-        value = abs(_ramp_value_to_float(source_component, ramp.get("down")))
-    elif ramp is not None:
-        value = abs(_ramp_value_to_float(source_component, getattr(ramp, "down", None)))
-    else:
-        value = 0.0
-
-    # If value exceeds max capacity it is unreasonable (ramp in <1 min); fall back to default
-    if not math.isclose(max_mw, 0.0, rel_tol=0.0, abs_tol=1e-6) and value > max_mw:
-        value = 0.0
-
-    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        value = abs(_get_ramp_default(source_component, context))
-
-    if math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-6):
-        value = max_mw
-
-    return Ok(max(value, 10))
+    ramp_down = _get_ramp_limit_value(source_component, default=None, direction="down")
+    ramp_down_mw = abs(ramp_down * resolve_base_power(source_component))
+    return Ok(
+        _resolve_ramp_rates(
+            source_component,
+            context,
+            initial_ramp_mw=ramp_down_mw,
+            defaults_key="max_ramp_up_percentage",
+        )
+    )
 
 
 @getter
@@ -1711,7 +1867,7 @@ def get_generator_min_stable_level(
             max_capacity_mw = None
 
     if math.isclose(min_mw, 0.0, abs_tol=1e-6):
-        category = _resolve_generator_category(source_component, context) or "gas-cc"
+        category = _resolve_generator_category(source_component, context)
         min_mw = _get_defaults(category, "min_stable_level_percentage") * 100.0
 
         if max_capacity_mw is not None and max_capacity_mw > 0.0 and min_mw > max_capacity_mw:
@@ -1758,7 +1914,12 @@ def get_generator_mean_time_to_repair(
 @getter
 def get_generator_start_cost(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     cost = getattr(source_component, "operation_cost", None)
-    value = get_magnitude(getattr(cost, "start_up", None)) if cost else None
+    value = None
+    if cost is not None:
+        if isinstance(cost, Mapping):
+            value = cost.get("start_up")
+        if value is None:
+            value = getattr(cost, "start_up", None)
     return Ok(float(value) if value is not None else 0.0)
 
 
@@ -1768,7 +1929,12 @@ def get_generator_shutdown_cost(
 ) -> Result[float, ValueError]:
     """Extract shutdown cost in $ from operation_cost.start_up attribute of the source component."""
     cost = getattr(source_component, "operation_cost", None)
-    value = get_magnitude(getattr(cost, "shut_down", None)) if cost else None
+    value = None
+    if cost is not None:
+        if isinstance(cost, Mapping):
+            value = get_magnitude(cost.get("shut_down"))
+        if value is None:
+            value = get_magnitude(getattr(cost, "shut_down", None))
     return Ok(float(value) if value is not None else 0.0)
 
 
@@ -1880,19 +2046,176 @@ def get_turbine_pump_load(
     return Ok(0.0)
 
 
+def _reservoir_has_hydro_pumped_storage_association(
+    source_component: HydroReservoir, context: PluginContext
+) -> bool:
+    """Return True if reservoir is linked to at least one HydroPumpTurbine."""
+
+    def _is_hydro_pump_turbine(turbine: Any) -> bool:
+        return isinstance(turbine, HydroPumpTurbine) or type(turbine).__name__ == "HydroPumpTurbine"
+
+    linked_turbines = [
+        *list(getattr(source_component, "upstream_turbines", None) or []),
+        *list(getattr(source_component, "downstream_turbines", None) or []),
+    ]
+
+    if any(_is_hydro_pump_turbine(turbine) for turbine in linked_turbines):
+        return True
+
+    ext = getattr(source_component, "ext", None)
+    plant_ids = ext.get("plants") if isinstance(ext, dict) else None
+    if not isinstance(plant_ids, list):
+        return False
+
+    source_system = _source_system(context)
+    pump_turbines_by_name = {
+        str(getattr(turbine, "name", "")): turbine
+        for turbine in source_system.get_components(HydroPumpTurbine)
+    }
+    return any(isinstance(plant_id, str) and plant_id in pump_turbines_by_name for plant_id in plant_ids)
+
+
+def _build_reservoir_pump_turbine_name_set(context: PluginContext) -> set[str]:
+    """Build the set of turbine names referenced by any storage-creating HydroReservoir, cached.
+
+    Only reservoirs that pass ``_reservoir_has_hydro_pumped_storage_association``
+    are considered, so the returned names correspond to turbines that will
+    actually receive a PLEXOSStorage membership.
+    """
+    cached = context._cache.get("reservoir_pump_turbine_name_set")
+    if cached is not None:
+        return cast(set[str], cached)
+
+    names: set[str] = set()
+    for reservoir in _source_system(context).get_components(HydroReservoir):
+        if not _reservoir_has_hydro_pumped_storage_association(reservoir, context):
+            continue
+        for turbine in [
+            *list(getattr(reservoir, "upstream_turbines", None) or []),
+            *list(getattr(reservoir, "downstream_turbines", None) or []),
+        ]:
+            tname = getattr(turbine, "name", None)
+            if tname:
+                names.add(str(tname))
+        ext = getattr(reservoir, "ext", None)
+        plant_ids = ext.get("plants") if isinstance(ext, dict) else None
+        if isinstance(plant_ids, list):
+            for plant_id in plant_ids:
+                if isinstance(plant_id, str):
+                    names.add(plant_id)
+
+    context._cache["reservoir_pump_turbine_name_set"] = names
+    return names
+
+
+def _get_reservoir_location(source_component: HydroReservoir) -> str | None:
+    """Return normalized reservoir location label (HEAD/TAIL) when available.
+
+    Falls back to ext metadata and name suffixes when explicit reservoir_location
+    is missing in source data.
+    """
+    # Most reliable signal in EI data: explicit _head/_tail suffix in component name.
+    name = str(getattr(source_component, "name", "")).strip().upper()
+    if name.endswith(("_HEAD", " HEAD")):
+        return "HEAD"
+    if name.endswith(("_TAIL", " TAIL")):
+        return "TAIL"
+
+    location = getattr(source_component, "reservoir_location", None)
+    raw = getattr(location, "value", location)
+    if raw is not None:
+        label = str(raw).upper()
+        if "HEAD" in label:
+            return "HEAD"
+        if "TAIL" in label:
+            return "TAIL"
+
+    ext = getattr(source_component, "ext", None)
+    if isinstance(ext, dict):
+        ext_loc = ext.get("reservoir_location") or ext.get("RESERVOIR_LOCATION")
+        if ext_loc is not None:
+            label = str(getattr(ext_loc, "value", ext_loc)).upper()
+            if "HEAD" in label:
+                return "HEAD"
+            if "TAIL" in label:
+                return "TAIL"
+
+    return None
+
+
+def _get_reservoir_name_suffix_location(source_component: HydroReservoir) -> str | None:
+    """Return HEAD/TAIL when reservoir name explicitly ends with _head/_tail."""
+    name = str(getattr(source_component, "name", "")).strip().casefold()
+    if name.endswith(("_head", " head")):
+        return "HEAD"
+    if name.endswith(("_tail", " tail")):
+        return "TAIL"
+    return None
+
+
+def _get_reservoir_storage_base_name(source_component: HydroReservoir) -> str:
+    """Return canonical storage base name for a reservoir."""
+    ext = getattr(source_component, "ext", None)
+    if isinstance(ext, dict):
+        plant_name = ext.get("plant_name")
+        if plant_name:
+            return str(plant_name)
+    return _reservoir_base_name(source_component.name)
+
+
+def _has_explicit_side_reservoir_for_base(
+    source_component: HydroReservoir,
+    context: PluginContext,
+    side: str,
+) -> bool:
+    """Return True when another reservoir with same base explicitly maps the requested side."""
+    this_base = _get_reservoir_storage_base_name(source_component).casefold()
+    this_uuid = getattr(source_component, "uuid", None)
+
+    for other in _source_system(context).get_components(HydroReservoir):
+        other_uuid = getattr(other, "uuid", None)
+        if this_uuid is not None and other_uuid == this_uuid:
+            continue
+        if _get_reservoir_storage_base_name(other).casefold() != this_base:
+            continue
+        if _get_reservoir_name_suffix_location(other) == side:
+            return True
+
+    return False
+
+
 @getter
 def get_head_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the head reservoir (appends _head), using plant_name from ext if available."""
-    ext = getattr(source_component, "ext", None)
-    base = None
-    if isinstance(ext, dict):
-        plant_name = ext.get("plant_name")
-        if plant_name:
-            base = str(plant_name)
-    if base is None:
-        base = _reservoir_base_name(source_component.name)
+    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
+        return Err(
+            ValueError(
+                f"Skipping head storage conversion for reservoir '{source_component.name}': no HydroPumpTurbine association"
+            )
+        )
+
+    # Only explicit suffixes gate conversion. Unsuffixed reservoirs are expanded
+    # into both _head and _tail storages.
+    suffix_location = _get_reservoir_name_suffix_location(source_component)
+    if suffix_location == "TAIL":
+        return Err(
+            ValueError(
+                f"Skipping head storage conversion for reservoir '{source_component.name}': name indicates tail reservoir"
+            )
+        )
+
+    if suffix_location is None and _has_explicit_side_reservoir_for_base(
+        source_component, context, side="HEAD"
+    ):
+        return Err(
+            ValueError(
+                f"Skipping head storage conversion for reservoir '{source_component.name}': explicit head reservoir already exists for this plant"
+            )
+        )
+
+    base = _get_reservoir_storage_base_name(source_component)
     return Ok(f"{base}_head")
 
 
@@ -1912,14 +2235,33 @@ def get_tail_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the tail reservoir (appends _tail), using plant_name from ext if available."""
-    ext = getattr(source_component, "ext", None)
-    base = None
-    if isinstance(ext, dict):
-        plant_name = ext.get("plant_name")
-        if plant_name:
-            base = str(plant_name)
-    if base is None:
-        base = _reservoir_base_name(source_component.name)
+    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
+        return Err(
+            ValueError(
+                f"Skipping tail storage conversion for reservoir '{source_component.name}': no HydroPumpTurbine association"
+            )
+        )
+
+    # Only explicit suffixes gate conversion. Unsuffixed reservoirs are expanded
+    # into both _head and _tail storages.
+    suffix_location = _get_reservoir_name_suffix_location(source_component)
+    if suffix_location == "HEAD":
+        return Err(
+            ValueError(
+                f"Skipping tail storage conversion for reservoir '{source_component.name}': name indicates head reservoir"
+            )
+        )
+
+    if suffix_location is None and _has_explicit_side_reservoir_for_base(
+        source_component, context, side="TAIL"
+    ):
+        return Err(
+            ValueError(
+                f"Skipping tail storage conversion for reservoir '{source_component.name}': explicit tail reservoir already exists for this plant"
+            )
+        )
+
+    base = _get_reservoir_storage_base_name(source_component)
     return Ok(f"{base}_tail")
 
 
@@ -2246,6 +2588,14 @@ def membership_collection_region(
 
 
 @getter
+def membership_collection_zone(
+    component: object, context: PluginContext
+) -> Result[CollectionEnum, ValueError]:
+    """Return the Zone collection enum."""
+    return Ok(CollectionEnum.Zone)
+
+
+@getter
 def membership_collection_node_from(
     component: object, context: PluginContext
 ) -> Result[CollectionEnum, ValueError]:
@@ -2419,6 +2769,42 @@ def membership_region_child_node(region: object, context: PluginContext) -> Resu
 
 
 @getter
+def membership_node_child_zone(node: PLEXOSNode, context: PluginContext) -> Result[PLEXOSZone, ValueError]:
+    """Resolve a node's source bus load_zone to the translated PLEXOSZone."""
+    source_bus = _build_bus_name_index(context).get(getattr(node, "name", ""))
+    if source_bus is None:
+        return Err(ValueError(f"No source bus found for node '{getattr(node, 'name', '')}'"))
+
+    load_zone = getattr(source_bus, "load_zone", None)
+    if load_zone is None:
+        area = getattr(source_bus, "area", None)
+        load_zone = getattr(area, "load_zone", None) if area is not None else None
+    if load_zone is None:
+        return Err(ValueError(f"No load_zone found for source bus '{source_bus.name}'"))
+
+    zone_name = getattr(load_zone, "name", None)
+    zone_uuid = getattr(load_zone, "uuid", None)
+
+    target_zones = list(_target_system(context).get_components(PLEXOSZone))
+    if zone_name is not None:
+        for zone in target_zones:
+            if getattr(zone, "name", None) == str(zone_name):
+                return Ok(zone)
+
+    if zone_uuid is not None:
+        zone_uuid_str = str(zone_uuid)
+        for zone in target_zones:
+            if str(getattr(zone, "uuid", "")) == zone_uuid_str:
+                return Ok(zone)
+
+    return Err(
+        ValueError(
+            f"No translated PLEXOSZone found for bus '{source_bus.name}' load_zone '{zone_name or zone_uuid}'"
+        )
+    )
+
+
+@getter
 def membership_line_from_parent_node(
     line: PLEXOSLine, context: PluginContext
 ) -> Result[PLEXOSNode, ValueError]:
@@ -2528,6 +2914,12 @@ def _build_reservoir_by_turbine_index(context: PluginContext) -> dict[str, Any]:
             index[display_name] = reservoir
     context._cache[cache_key] = index
     return index
+
+
+def _is_hydro_pumped_storage_generator(context: PluginContext, gen_name: str) -> bool:
+    """Return True when target generator name resolves to a source HydroPumpedStorage."""
+    source_generator = _lookup_source_generator(context, gen_name)
+    return isinstance(source_generator, HydroPumpedStorage)
 
 
 @getter
