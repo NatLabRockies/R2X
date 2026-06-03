@@ -51,5 +51,6 @@ DataStore, units), see
 
 ```{toctree}
 :hidden: true
+dev_workflow.md
 CHANGELOG.md
 ```
