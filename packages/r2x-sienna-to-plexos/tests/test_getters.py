@@ -2844,6 +2844,7 @@ def test_get_heat_rate_multiband_returns_property(context_with_thermal_generator
 
 
 def test_heat_rate_getters_return_absolute_values(monkeypatch, context_with_thermal_generators):
+    import r2x_sienna_to_plexos.getters as live_getters
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import (
         get_heat_rate,
@@ -2855,7 +2856,7 @@ def test_heat_rate_getters_return_absolute_values(monkeypatch, context_with_ther
 
     source = context_with_thermal_generators.source_system.get_component(ThermalStandard, "thermal-fuel")
     monkeypatch.setattr(
-        getters,
+        live_getters,
         "compute_heat_rate_data",
         lambda _component: {
             "heat_rate_base": -120.0,
