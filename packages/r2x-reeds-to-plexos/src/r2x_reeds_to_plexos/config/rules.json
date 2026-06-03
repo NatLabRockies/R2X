@@ -171,12 +171,6 @@
     "getters": {
       "units": "get_component_units"
     },
-    "filter": {
-      "casefold": true,
-      "field": "technology",
-      "op": "eq",
-      "values": ["electrolyzer"]
-    },
     "source_type": "ReEDSElectrolyzerDemand",
     "target_type": "PLEXOSPurchaser",
     "version": 1

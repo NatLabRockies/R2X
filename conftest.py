@@ -12,6 +12,7 @@ would be to namespace getters by plugin/package in r2x_core itself.
 """
 
 import importlib
+import sys
 
 from r2x_core.getters import GETTER_REGISTRY
 
@@ -66,8 +67,8 @@ def pytest_runtest_setup(item):
                 GETTER_REGISTRY.clear()
                 for mod_name in module_names:
                     try:
-                        mod = importlib.import_module(mod_name)
-                        importlib.reload(mod)
+                        sys.modules.pop(mod_name, None)
+                        importlib.import_module(mod_name)
                     except (ImportError, ModuleNotFoundError):
                         pass
                 _last_package = pkg_name
