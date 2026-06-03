@@ -26,7 +26,7 @@ def reeds_to_sienna(system: System, config: ReEDSToSiennaConfig) -> System:
     context = PluginContext(source_system=system, config=config)
     rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
-    context.rules = rules
+    context.rules = tuple(rules)
 
     source_system = cast(Any, context.source_system)
     tmp_ts_dir = source_system.get_time_series_directory()

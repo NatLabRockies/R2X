@@ -283,7 +283,7 @@ def test_basic_node_getters(tmp_path) -> None:
     context.source_system.add_component(node)
 
     # Test node getters
-    assert getters.get_node_number(node, context).unwrap() == 123
+    assert getters.get_node_number(node, context).unwrap() == 1230
     assert getters.get_base_voltage(node, context).unwrap() == 115.0
     assert getters.get_node_angle(node, context).unwrap() == 0.0
     assert getters.is_slack_bus(node, context).unwrap() == ACBusTypes.PQ

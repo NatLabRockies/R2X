@@ -25,7 +25,7 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
     context = PluginContext(source_system=system, config=config)
     rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
-    context.rules = rules
+    context.rules = tuple(rules)
 
     assert context.source_system is not None, "source_system must be set"
     tmp_ts_dir = context.source_system.get_time_series_directory()

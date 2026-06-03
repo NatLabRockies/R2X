@@ -33,7 +33,7 @@ def reeds_to_plexos(system: System, config: ReedsToPlexosConfig) -> System:
 
     rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
-    context.rules = rules
+    context.rules = tuple(rules)
 
     assert context.source_system is not None, "source_system must be set"
     tmp_ts_dir = context.source_system.get_time_series_directory()

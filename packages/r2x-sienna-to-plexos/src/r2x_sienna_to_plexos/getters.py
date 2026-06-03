@@ -94,7 +94,7 @@ def _get_defaults_data(context: PluginContext) -> dict[str, Any]:
     if cached is not None:
         return cast(dict[str, Any], cached)
 
-    data = cast(dict[str, Any], _load_defaults_json())
+    data = _load_defaults_json()
     context._cache["defaults_json"] = data
     return data
 
