@@ -52,21 +52,7 @@ from r2x_sienna.units import Voltage
 from r2x_core import DataStore, PluginConfig, PluginContext, Result, System
 
 
-class Dummy:
-    pass
-
-
-def _make_context(**kwargs: Any) -> PluginContext:
-    """Create a PluginContext with proper typing for tests."""
-    config = PluginConfig()
-    ctx = PluginContext(config=config, **kwargs)
-    return ctx
-
-
 def test_extract_number_from_name_digits_and_dummy():
-    # Reset state
-    getters.PLEXOS_NUMBER_COUNTER = getters.PLEXOS_NUMBER_BASE
-    getters.PLEXOS_NUMBER_MAP = {}
     assert extract_number_from_name("p126_OSW") == 126
     assert extract_number_from_name("bus") == 100101
     assert extract_number_from_name("bus") == 100101
@@ -283,7 +269,7 @@ def test_basic_node_getters(tmp_path) -> None:
     context.source_system.add_component(node)
 
     # Test node getters
-    assert getters.get_node_number(node, context).unwrap() == 1230
+    assert getters.get_node_number(node, context).unwrap() == 123
     assert getters.get_base_voltage(node, context).unwrap() == 115.0
     assert getters.get_node_angle(node, context).unwrap() == 0.0
     assert getters.is_slack_bus(node, context).unwrap() == ACBusTypes.PQ
@@ -841,10 +827,6 @@ def test_area_getter(tmp_path) -> None:
 
 
 def test_plexos_node_translates_to_acbus():
-    getters.PLEXOS_NUMBER_COUNTER = getters.PLEXOS_NUMBER_BASE
-    getters.PLEXOS_NUMBER_MAP.clear()
-    getters.PLEXOS_NUMBER_USED.clear()
-
     test_cases = [
         ("p126", 126),
         ("p126_OSW", 1260),
