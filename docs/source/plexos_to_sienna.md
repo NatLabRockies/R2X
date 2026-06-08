@@ -50,7 +50,7 @@ db = PlexosDB.from_xml(xml_path)
 # Examining first the models in the plexos run would be helpful when trying
 # to translate from PLEXOS to Sienna
 model_names = db.list_objects_by_class(ClassEnum.Model)
-model_name = model_names[1] if model_names else "Base"
+model_name = model_names[0] if model_names else "Base"
 
 plexos_config = PLEXOSConfig(
     model_name=model_name,

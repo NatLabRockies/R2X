@@ -76,8 +76,6 @@ sienna_sys = parser.run()
 sienna_sys = sienna_sys.system
 context.source_system = sienna_sys
 
-log_stage_timing("Sienna parser")
-
 # =====================================
 # Define Time Series Storage
 # =====================================
@@ -88,8 +86,6 @@ sienna_sys.convert_storage(
     time_series_storage_type=TimeSeriesStorageType.ARROW,
     permanent=True,
 )
-
-log_stage_timing("Time Series Storage")
 
 # =====================================
 # Rules Definition
