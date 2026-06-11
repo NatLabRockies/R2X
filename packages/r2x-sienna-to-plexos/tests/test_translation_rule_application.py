@@ -186,7 +186,6 @@ def test_hydro_reservoir_without_suffix_translates_to_head_and_tail_storage(tmp_
             inflow=50.0,
             outflow=30.0,
             level_targets=0.8,
-            travel_time=2.0,
             intake_elevation=500.0,
             head_to_volume_factor=LinearCurve(1.0),
             reservoir_location=ReservoirLocation.HEAD,
