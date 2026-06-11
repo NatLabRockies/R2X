@@ -482,7 +482,7 @@ def _find_source_transformer(context: PluginContext, transformer_name: str) -> A
     return index.get(transformer_name)
 
 
-def _get_time_limit(component: Any, attr: str, ext_key: str) -> float | None:
+def _get_time_limit(component: Any, attr: str, ext_key: str | None) -> float | None:
     """Extract time limit from time_limits attribute or ext dict."""
     time_limits = getattr(component, "time_limits", None)
     if isinstance(time_limits, dict):
@@ -1484,6 +1484,25 @@ def get_generator_category(source_component: object, context: PluginContext) -> 
 
 
 @getter
+def get_generator_description(
+    source_component: object, context: PluginContext
+) -> Result[str | None, ValueError]:
+    """Build a description string from prime_mover_type and fuel when available."""
+    parts = []
+    prime_mover = getattr(source_component, "prime_mover_type", None)
+    if prime_mover is not None:
+        pm_str = prime_mover.name if hasattr(prime_mover, "name") else str(prime_mover)
+        parts.append(f"prime_mover: {pm_str}")
+    fuel = getattr(source_component, "fuel", None)
+    if fuel is not None:
+        fuel_str = fuel.name if hasattr(fuel, "name") else str(fuel)
+        parts.append(f"fuel_type: {fuel_str}")
+    if not parts:
+        return Ok(None)
+    return Ok(", ".join(parts))
+
+
+@getter
 def get_pumped_hydro_category(
     source_component: HydroTurbine | HydroPumpTurbine, context: PluginContext
 ) -> Result[str, ValueError]:
@@ -1796,14 +1815,14 @@ def get_heat_rate_incr3(source_component: object, context: PluginContext) -> Res
 @getter
 def get_min_up_time(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract minimum up time from time_limits or ext dict."""
-    value = _get_time_limit(source_component, "up", "NARIS_Min_Up_Time")
+    value = _get_time_limit(source_component, "up", None)
     return Ok(value if value is not None else 0.0)
 
 
 @getter
 def get_min_down_time(source_component: object, context: PluginContext) -> Result[float, ValueError]:
     """Extract minimum down time from time_limits or ext dict."""
-    value = _get_time_limit(source_component, "down", "NARIS_Min_Down_Time")
+    value = _get_time_limit(source_component, "down", None)
     return Ok(value if value is not None else 0.0)
 
 
@@ -2002,30 +2021,26 @@ def get_generator_load_subtracter(
 def get_turbine_pump_efficiency(
     source_component: HydroTurbine | HydroPumpTurbine, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Extract pump efficiency (%) from the HydroTurbine."""
-    pump_efficiency = getattr(source_component, "efficiency", None)
-    if pump_efficiency is None:
-        return Ok(100.0)
+    """Extract pump efficiency (%) from the HydroTurbine and HydroPumpTurbine."""
+    ht_pump_efficiency = getattr(source_component, "efficiency", None)
 
-    pump_val = getattr(pump_efficiency, "pump", None)
-    if pump_val is not None:
-        magnitude = get_magnitude(pump_val)
+    if isinstance(source_component, HydroTurbine):
+        default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
         value = (
-            float(magnitude)
-            if isinstance(magnitude, int | float)
-            else float(pump_val)
-            if isinstance(pump_val, int | float)
-            else None
+            ht_pump_efficiency * 100.0
+            if ht_pump_efficiency is not None and ht_pump_efficiency != 0.0
+            else default
         )
-        if value is not None:
-            return Ok(round(value * 100 if value <= 1.0 else value, 2))
-
-    if isinstance(pump_efficiency, int | float):
-        return Ok(
-            round(float(pump_efficiency) * 100 if pump_efficiency <= 1.0 else float(pump_efficiency), 2)
-        )
-
-    return Ok(100.0)
+        value = round(value, 2)
+        return Ok(value)
+    elif isinstance(source_component, HydroPumpTurbine):
+        pump = getattr(ht_pump_efficiency, "pump", None) if ht_pump_efficiency is not None else None
+        default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
+        value = pump * 100.0 if pump is not None and pump != 0.0 else default
+        value = round(value, 2)
+        return Ok(value)
+    else:
+        return Ok(89.0)
 
 
 @getter
@@ -2333,7 +2348,7 @@ def get_battery_capacity(
     value = getattr(source_component, "storage_capacity", None)
     if value is not None and float(value) != 0.0:
         return Ok(round(float(value) * resolve_base_power(source_component), 2))
-    return Ok(round(_get_defaults("battery", "average_capacity_MW"), 2))
+    return Ok(round(_get_defaults("battery", "capacity_MW"), 2))
 
 
 @getter
