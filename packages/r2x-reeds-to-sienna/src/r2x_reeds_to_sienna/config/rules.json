@@ -84,7 +84,8 @@
     "getters": {
       "name": "unique_component_name",
       "bus": "get_bus_for_region",
-      "active_power": "get_zero_active_power",
+      "services": "get_thermal_services",
+      "active_power": "get_thermal_active_power",
       "reactive_power": "get_zero_reactive_power",
       "rating": "get_capacity_as_rating",
       "base_power": "get_capacity_as_base_power",
@@ -97,7 +98,7 @@
       "time_at_status": "get_default_time_at_status",
       "ext": "get_component_ext"
     },
-    "depends_on": ["region_bus"],
+    "depends_on": ["region_bus", "variable_reserve"],
     "source_type": "ReEDSThermalGenerator",
     "target_type": "ThermalStandard",
     "version": 1

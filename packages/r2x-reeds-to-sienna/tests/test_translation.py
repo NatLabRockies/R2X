@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
 from r2x_reeds.models import (
+    EmissionType,
     FromTo_ToFrom,
     ReEDSDemand,
+    ReEDSEmission,
     ReEDSHydroGenerator,
     ReEDSInterface,
     ReEDSRegion,
@@ -195,3 +198,59 @@ def test_reeds_to_sienna_translates_interface():
 
     interchanges = list(result.get_components(AreaInterchange))
     assert any(i.name == "p1_p2" for i in interchanges)
+
+
+def test_reeds_to_sienna_attaches_emissions_data():
+    from r2x_sienna.models.attributes import EmissionsData
+    from r2x_sienna.models.enums import PollutantType
+
+    source = _build_source_system()
+
+    # Attach a CO2 emission to the source thermal generator
+    thermal_gen = next(g for g in source.get_components(ReEDSThermalGenerator) if g.name == "gas-cc_p1")
+    source.add_supplemental_attribute(thermal_gen, ReEDSEmission(rate=0.45, type=EmissionType.CO2))
+
+    result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
+
+    target_thermal = next(t for t in result.get_components(ThermalStandard) if t.name == "gas-cc_p1")
+    emissions = list(result.get_supplemental_attributes_with_component(target_thermal, EmissionsData))
+
+    assert len(emissions) == 1, f"Expected 1 EmissionsData, got {len(emissions)}"
+    attr = emissions[0]
+    assert attr.pollutant == PollutantType("CO2")
+    assert float(attr.emission_rate.function_data.proportional_term) == pytest.approx(0.45)
+
+
+def test_reeds_to_sienna_attaches_multiple_emissions():
+    from r2x_sienna.models.attributes import EmissionsData
+    from r2x_sienna.models.enums import PollutantType
+
+    source = _build_source_system()
+
+    thermal_gen = next(g for g in source.get_components(ReEDSThermalGenerator) if g.name == "gas-cc_p1")
+    source.add_supplemental_attribute(thermal_gen, ReEDSEmission(rate=0.5, type=EmissionType.CO2))
+    source.add_supplemental_attribute(thermal_gen, ReEDSEmission(rate=0.01, type=EmissionType.NOX))
+
+    result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
+
+    target_thermal = next(t for t in result.get_components(ThermalStandard) if t.name == "gas-cc_p1")
+    emissions = list(result.get_supplemental_attributes_with_component(target_thermal, EmissionsData))
+
+    assert len(emissions) == 2
+    pollutants = {attr.pollutant for attr in emissions}
+    assert PollutantType("CO2") in pollutants
+    assert PollutantType("NOX") in pollutants
+
+
+def test_reeds_to_sienna_no_emissions_without_source_attribute():
+    from r2x_sienna.models.attributes import EmissionsData
+
+    source = _build_source_system()
+    # No ReEDSEmission added — generator has no emission attributes
+
+    result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
+
+    target_thermal = next(t for t in result.get_components(ThermalStandard) if t.name == "gas-cc_p1")
+    emissions = list(result.get_supplemental_attributes_with_component(target_thermal, EmissionsData))
+
+    assert len(emissions) == 0
