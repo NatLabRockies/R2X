@@ -2251,8 +2251,14 @@ def test_get_line_min_max_flow_none_rating(context):
         reactive_power_flow=0.0,
         angle_limits=MinMax(min=-0.03, max=0.03),
     )
-    assert getters.get_line_min_flow(line, context).unwrap() == -99999.0
-    assert getters.get_line_max_flow(line, context).unwrap() == 99999.0
+    assert getters.get_line_min_flow(line, context).unwrap() == {
+        "value": -99999.0,
+        "memo": getters.FLOW_CLIP_MEMO_TEXT,
+    }
+    assert getters.get_line_max_flow(line, context).unwrap() == {
+        "value": 99999.0,
+        "memo": getters.FLOW_CLIP_MEMO_TEXT,
+    }
 
 
 def test_get_max_capacity_zero_from_sienna(context):

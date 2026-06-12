@@ -77,6 +77,7 @@ from .getters_mappings import (
     SOURCE_LINE_TYPES,
 )
 
+FLOW_CLIP_MEMO_TEXT = "Setting fixed value of \u00b199999 to flows greater/less than \u00b1100000"
 RAMPING_THRESHOLD = 0.1  # MW/min
 
 
@@ -1184,7 +1185,7 @@ def get_line_min_flow(
     | TwoTerminalLCCLine
     | TwoTerminalVSCLine,
     context: PluginContext,
-) -> Result[float, ValueError]:
+) -> Result[float | dict, ValueError]:
     """Extract line min flow as float from source component negative rating."""
     base_power = _get_system_base_power(context)
     min_flow = getattr(source_component, "rating", None)
@@ -1200,17 +1201,17 @@ def get_line_min_flow(
         if value is not None:
             flow = float(-abs(value)) * base_power
             if abs(flow) > 99999.0:
-                return Ok(-99999.0)
+                return Ok({"value": -99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
             return Ok(flow)
 
     val = _get_minmax_value(getattr(source_component, "active_power_limits_to", None), "min")
     if val is not None:
         flow = float(val) * base_power
         if abs(flow) > 99999.0:
-            return Ok(-99999.0)
+            return Ok({"value": -99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
         return Ok(flow)
 
-    return Ok(-99999.0)
+    return Ok({"value": -99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
 
 
 @getter
@@ -1222,7 +1223,7 @@ def get_line_max_flow(
     | TwoTerminalLCCLine
     | TwoTerminalVSCLine,
     context: PluginContext,
-) -> Result[float, ValueError]:
+) -> Result[float | dict, ValueError]:
     """Extract line max flow as float from source component rating."""
     base_power = _get_system_base_power(context)
     max_flow = getattr(source_component, "rating", None)
@@ -1238,17 +1239,17 @@ def get_line_max_flow(
         if value is not None:
             flow = float(abs(value)) * base_power
             if abs(flow) > 99999.0:
-                return Ok(99999.0)
+                return Ok({"value": 99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
             return Ok(flow)
 
     val = _get_minmax_value(getattr(source_component, "active_power_limits_from", None), "max")
     if val is not None:
         flow = float(abs(val)) * base_power
         if abs(flow) > 99999.0:
-            return Ok(99999.0)
+            return Ok({"value": 99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
         return Ok(flow)
 
-    return Ok(99999.0)
+    return Ok({"value": 99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
 
 
 @getter
