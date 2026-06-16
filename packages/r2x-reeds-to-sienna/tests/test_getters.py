@@ -290,3 +290,100 @@ def test_bus_number_with_z_prefix(tmp_path) -> None:
     region = ReEDSRegion(name="z122")
     result = getters.get_bus_number(region, context).unwrap()
     assert result == 122
+
+
+def test_get_gen_services_all_generator_types(tmp_path) -> None:
+    """get_gen_services must work for all generator types, not just thermal.
+
+    Regression test: previously only get_thermal_services existed; renewable,
+    hydro, and storage generators had no services getter so they could never
+    participate in reserves.
+    """
+    from r2x_sienna.models import VariableReserve
+
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    region = ReEDSRegion(name="p1")
+    area = Area(name="p1", category="region")
+    context.target_system.add_component(area)
+    bus = ACBus(name="p1_BUS", area=area, number=1, base_voltage=Voltage(115.0, "kV"))
+    context.target_system.add_component(bus)
+
+    # Add a VariableReserve to the target system
+    reserve = VariableReserve(
+        name="SPIN_UP",
+        available=True,
+        reserve_type="SPINNING",
+        direction="UP",
+        requirement=0.05,
+        time_frame=300.0,
+        sustained_time=3600.0,
+        max_output_fraction=1.0,
+        max_participation_factor=1.0,
+        deployed_fraction=1.0,
+    )
+    context.target_system.add_component(reserve)
+
+    reserve_ext = {"reserves": ["SPIN_UP"]}
+
+    thermal = ReEDSThermalGenerator(
+        name="p1_THERM",
+        region=region,
+        technology="coal-new",
+        capacity=10.0,
+        heat_rate=7.5,
+        fuel_type="coal",
+        ext=reserve_ext,
+    )
+    variable = ReEDSVariableGenerator(
+        name="p1_WIND",
+        region=region,
+        technology="wind-ons",
+        capacity=5.0,
+        ext=reserve_ext,
+    )
+    hydro = ReEDSHydroGenerator(
+        name="p1_HYDRO",
+        region=region,
+        technology="hydro",
+        capacity=8.0,
+        is_dispatchable=True,
+        ext=reserve_ext,
+    )
+    storage = ReEDSStorage(
+        name="p1_STORE",
+        region=region,
+        technology="battery_4",
+        capacity=4.0,
+        storage_duration=2.0,
+        round_trip_efficiency=0.9,
+        ext=reserve_ext,
+    )
+
+    # All generator types should resolve the reserve
+    for component in (thermal, variable, hydro, storage):
+        services = getters.get_gen_services(component, context).unwrap()
+        assert len(services) == 1, f"{type(component).__name__} should have 1 service"
+        assert services[0] is reserve, f"{type(component).__name__} service should be the VariableReserve"
+
+    # Components without reserves return an empty list
+    no_reserve = ReEDSVariableGenerator(
+        name="p1_SOLAR",
+        region=region,
+        technology="upv",
+        capacity=2.0,
+    )
+    assert getters.get_gen_services(no_reserve, context).unwrap() == []
+
+    # Unknown reserve names are silently skipped
+    partial_ext = ReEDSVariableGenerator(
+        name="p1_WIND2",
+        region=region,
+        technology="wind-ons",
+        capacity=3.0,
+        ext={"reserves": ["SPIN_UP", "NONEXISTENT_RESERVE"]},
+    )
+    partial = getters.get_gen_services(partial_ext, context).unwrap()
+    assert partial == [reserve]

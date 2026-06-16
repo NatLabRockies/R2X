@@ -346,15 +346,12 @@ def get_load_base_power(component: ReEDSDemand, context: PluginContext) -> Resul
 
 
 @getter
-def get_thermal_services(
-    component: ReEDSThermalGenerator,
-    context: PluginContext,
-) -> Result[list, ValueError]:
+def get_gen_services(component: object, context: PluginContext) -> Result[list, ValueError]:
     """Return the list of VariableReserve objects the generator participates in.
 
     Reads reserve names from ``ext['reserves']`` and looks up each already-
     translated ``VariableReserve`` in the target system.  Reserves that have
-    not been translated yet are silently skipped.
+    not been translated yet are silently skipped.  Works for all generator types.
     """
     from r2x_sienna.models import VariableReserve
 

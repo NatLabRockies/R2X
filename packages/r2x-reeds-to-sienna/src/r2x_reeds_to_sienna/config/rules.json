@@ -84,7 +84,7 @@
     "getters": {
       "name": "unique_component_name",
       "bus": "get_bus_for_region",
-      "services": "get_thermal_services",
+      "services": "get_gen_services",
       "active_power": "get_thermal_active_power",
       "reactive_power": "get_zero_reactive_power",
       "rating": "get_capacity_as_rating",
@@ -124,12 +124,14 @@
       "op": "startswith",
       "values": [
         "upv",
-        "wind-ons"
+        "wind-ons",
+        "wind-ofs"
       ]
     },
     "getters": {
       "bus": "get_bus_for_region",
       "active_power": "get_zero_active_power",
+      "services": "get_gen_services",
       "reactive_power": "get_zero_reactive_power",
       "rating": "get_capacity_as_rating",
       "base_power": "get_capacity_as_base_power",
@@ -137,7 +139,7 @@
       "operation_cost": "get_renewable_operation_cost",
       "ext": "get_component_ext"
     },
-    "depends_on": ["region_bus"],
+    "depends_on": ["region_bus", "variable_reserve"],
     "source_type": "ReEDSVariableGenerator",
     "target_type": "RenewableDispatch",
     "version": 1
@@ -163,13 +165,14 @@
     "getters": {
       "bus": "get_bus_for_region",
       "active_power": "get_zero_active_power",
+      "services": "get_gen_services",
       "reactive_power": "get_zero_reactive_power",
       "rating": "get_capacity_as_rating",
       "base_power": "get_capacity_as_base_power",
       "prime_mover_type": "get_renewable_prime_mover",
       "ext": "get_component_ext"
     },
-    "depends_on": ["region_bus"],
+    "depends_on": ["region_bus", "variable_reserve"],
     "source_type": "ReEDSVariableGenerator",
     "target_type": "RenewableNonDispatch",
     "version": 1
@@ -191,6 +194,7 @@
     "getters": {
       "bus": "get_bus_for_region",
       "active_power": "get_zero_active_power",
+      "services": "get_gen_services",
       "reactive_power": "get_zero_reactive_power",
       "rating": "hydro_rating",
       "base_power": "hydro_rating",
@@ -203,7 +207,7 @@
       "time_at_status": "get_default_time_at_status",
       "ext": "get_component_ext"
     },
-    "depends_on": ["region_bus"],
+    "depends_on": ["region_bus", "variable_reserve"],
     "source_type": "ReEDSHydroGenerator",
     "target_type": "HydroDispatch",
     "version": 1
@@ -222,6 +226,7 @@
     },
     "getters": {
       "bus": "get_bus_for_region",
+      "services": "get_gen_services",
       "rating": "storage_rating",
       "base_power": "storage_rating",
       "storage_capacity": "storage_capacity_mwh",
@@ -238,7 +243,7 @@
       "reactive_power": "get_zero_reactive_power",
       "ext": "get_component_ext"
     },
-    "depends_on": ["region_bus"],
+    "depends_on": ["region_bus", "variable_reserve"],
     "source_type": "ReEDSStorage",
     "target_type": "EnergyReservoirStorage",
     "version": 1
