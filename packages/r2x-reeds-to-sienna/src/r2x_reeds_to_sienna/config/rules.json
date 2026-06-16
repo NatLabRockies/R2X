@@ -50,6 +50,11 @@
       "name": "name",
       "uuid": "uuid"
     },
+    "filter": {
+      "field": "reserve_type",
+      "op": "neq",
+      "values": ["NON_SPINNING"]
+    },
     "getters": {
       "reserve_type": "get_reserve_type",
       "direction": "get_reserve_direction",
@@ -62,6 +67,32 @@
     },
     "source_type": "ReEDSReserve",
     "target_type": "VariableReserve",
+    "version": 1
+  },
+  {
+    "name": "variable_reserve_non_spinning",
+    "defaults": {
+      "available": true
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid"
+    },
+    "filter": {
+      "field": "reserve_type",
+      "op": "eq",
+      "values": ["NON_SPINNING"]
+    },
+    "getters": {
+      "requirement": "get_reserve_requirement",
+      "time_frame": "get_reserve_time_frame",
+      "sustained_time": "get_reserve_sustained_time",
+      "max_output_fraction": "get_reserve_max_output_fraction",
+      "max_participation_factor": "get_reserve_max_participation_factor",
+      "deployed_fraction": "get_reserve_deployed_fraction"
+    },
+    "source_type": "ReEDSReserve",
+    "target_type": "VariableReserveNonSpinning",
     "version": 1
   },
   {
@@ -200,8 +231,7 @@
       "base_power": "hydro_rating",
       "active_power_limits": "hydro_active_power_limits",
       "operation_cost": "hydro_operation_cost",
-      "prime_mover_type": "get_prime_mover",
-      "reactive_power_limits": "hydro_active_power_limits",
+      "prime_mover_type": "get_hydro_prime_mover",
       "ramp_limits": "hydro_ramp_limits",
       "time_limits": "hydro_time_limits",
       "time_at_status": "get_default_time_at_status",
@@ -289,6 +319,46 @@
     },
     "source_type": "ReEDSDemand",
     "target_type": "PowerLoad",
+    "depends_on": ["region_bus"],
+    "version": 1
+  },
+  {
+    "name": "electrolyzer_load",
+    "defaults": {
+      "category": "electrolyzer"
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "technology"
+    },
+    "getters": {
+      "bus": "get_bus_for_region",
+      "max_active_power": "get_consuming_tech_max_active_power",
+      "base_power": "get_consuming_tech_base_power"
+    },
+    "source_type": "ReEDSElectrolyzerDemand",
+    "target_type": "InterruptiblePowerLoad",
+    "depends_on": ["region_bus"],
+    "version": 1
+  },
+  {
+    "name": "datacenter_load",
+    "defaults": {
+      "category": "datacenter"
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "technology"
+    },
+    "getters": {
+      "bus": "get_bus_for_region",
+      "max_active_power": "get_consuming_tech_max_active_power",
+      "base_power": "get_consuming_tech_base_power"
+    },
+    "source_type": "ReEDSDataCenterDemand",
+    "target_type": "InterruptiblePowerLoad",
     "depends_on": ["region_bus"],
     "version": 1
   },

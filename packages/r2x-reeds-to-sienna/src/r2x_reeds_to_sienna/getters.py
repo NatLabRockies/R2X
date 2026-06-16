@@ -17,7 +17,9 @@ from r2x_core.getters import getter
 
 if TYPE_CHECKING:
     from r2x_reeds.models import (
+        ReEDSDataCenterDemand,
         ReEDSDemand,
+        ReEDSElectrolyzerDemand,
         ReEDSHydroGenerator,
         ReEDSInterface,
         ReEDSRegion,
@@ -340,8 +342,42 @@ def get_renewable_prime_mover(
 
 
 @getter
+def get_hydro_prime_mover(
+    component: ReEDSHydroGenerator, context: PluginContext
+) -> Result[PrimeMoversType, ValueError]:
+    """Always return HY (hydro) as the prime mover for hydro generators."""
+    return Ok(PrimeMoversType.HY)
+
+
+@getter
 def get_load_base_power(component: ReEDSDemand, context: PluginContext) -> Result[float | int, ValueError]:
     """Return a default load base power of 100.0 MVA."""
+    return _ok_num(100.0)
+
+
+@getter
+def get_consuming_tech_max_active_power(
+    component: ReEDSElectrolyzerDemand | ReEDSDataCenterDemand, context: PluginContext
+) -> Result[float | int, ValueError]:
+    """Return capacity as max_active_power for consuming technologies."""
+    # Prefer explicit max_active_power if set, else fall back to capacity
+    max_ap = getattr(component, "max_active_power", None)
+    if max_ap is not None:
+        return _ok_num(float(max_ap))
+    capacity = getattr(component, "capacity", None)
+    if capacity is not None:
+        return _ok_num(float(capacity))
+    return _ok_num(0.0)
+
+
+@getter
+def get_consuming_tech_base_power(
+    component: ReEDSElectrolyzerDemand | ReEDSDataCenterDemand, context: PluginContext
+) -> Result[float | int, ValueError]:
+    """Return capacity as base_power for consuming technologies."""
+    capacity = getattr(component, "capacity", None)
+    if capacity is not None:
+        return _ok_num(float(capacity))
     return _ok_num(100.0)
 
 
