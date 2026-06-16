@@ -492,6 +492,76 @@ def test_reeds_non_spinning_reserve_translates_to_variable_reserve_non_spinning(
     assert ns.sustained_time == pytest.approx(1800.0)
 
 
+def test_gen_services_attaches_non_spinning_reserve_to_generator(tmp_path) -> None:
+    """Translated generators must include VariableReserveNonSpinning in their services list.
+
+    Regression: get_gen_services previously only searched VariableReserve, so a
+    generator with ext['reserves'] referencing a NON_SPINNING reserve would get
+    an empty services list even after the reserve was translated.
+    """
+    from r2x_reeds.models import ReEDSRegion, ReEDSReserve, ReEDSStorage, ReEDSThermalGenerator
+    from r2x_sienna.models import EnergyReservoirStorage, ThermalStandard, VariableReserveNonSpinning
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+
+    region = ReEDSRegion(name="p1", category="region")
+    context.source_system.add_component(region)
+
+    context.source_system.add_component(
+        ReEDSReserve(
+            name="NON_SPIN_UP",
+            reserve_type="NON_SPINNING",
+            direction="Up",
+            time_frame=600.0,
+            duration=1800.0,
+        )
+    )
+    context.source_system.add_component(
+        ReEDSThermalGenerator(
+            name="THERM1",
+            region=region,
+            technology="gas-cc",
+            capacity=100.0,
+            heat_rate=7.5,
+            fuel_type="gas",
+            ext={"reserves": ["NON_SPIN_UP"]},
+        )
+    )
+    context.source_system.add_component(
+        ReEDSStorage(
+            name="BATT1",
+            region=region,
+            technology="battery_4",
+            capacity=50.0,
+            storage_duration=4.0,
+            round_trip_efficiency=0.9,
+            ext={"reserves": ["NON_SPIN_UP"]},
+        )
+    )
+
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    apply_rules_to_context(context)
+
+    non_spin_reserves = list(context.target_system.get_components(VariableReserveNonSpinning))
+    assert len(non_spin_reserves) == 1
+    non_spin = non_spin_reserves[0]
+
+    thermals = list(context.target_system.get_components(ThermalStandard))
+    assert len(thermals) == 1
+    assert (
+        non_spin in thermals[0].services
+    ), "ThermalStandard must have the VariableReserveNonSpinning in its services"
+
+    storages = list(context.target_system.get_components(EnergyReservoirStorage))
+    assert len(storages) == 1
+    assert (
+        non_spin in storages[0].services
+    ), "EnergyReservoirStorage must have the VariableReserveNonSpinning in its services"
+
+
 def test_reeds_spinning_reserve_does_not_produce_non_spinning(tmp_path) -> None:
     """SPINNING reserves must go to VariableReserve, not VariableReserveNonSpinning."""
     from r2x_reeds.models import ReEDSReserve

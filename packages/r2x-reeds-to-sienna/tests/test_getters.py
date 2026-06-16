@@ -391,6 +391,103 @@ def test_get_gen_services_all_generator_types(tmp_path) -> None:
     assert partial == [reserve]
 
 
+def test_get_gen_services_resolves_non_spinning_reserve(tmp_path) -> None:
+    """get_gen_services must attach VariableReserveNonSpinning, not silently drop it.
+
+    Regression: the original implementation only searched VariableReserve, so a
+    generator referencing a NON_SPINNING reserve would get an empty services list
+    even after the reserve was translated.
+    """
+    from r2x_sienna.models import VariableReserveNonSpinning
+
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    region = ReEDSRegion(name="p1")
+    area = Area(name="p1", category="region")
+    context.target_system.add_component(area)
+    bus = ACBus(name="p1_BUS", area=area, number=1, base_voltage=Voltage(115.0, "kV"))
+    context.target_system.add_component(bus)
+
+    non_spin = VariableReserveNonSpinning(
+        name="NON_SPIN_UP",
+        available=True,
+        requirement=0.03,
+        time_frame=600.0,
+        sustained_time=1800.0,
+        max_output_fraction=1.0,
+        max_participation_factor=1.0,
+        deployed_fraction=1.0,
+    )
+    context.target_system.add_component(non_spin)
+
+    ext = {"reserves": ["NON_SPIN_UP"]}
+
+    for component in (
+        ReEDSThermalGenerator(
+            name="THERM",
+            region=region,
+            technology="coal",
+            capacity=100.0,
+            heat_rate=7.5,
+            fuel_type="coal",
+            ext=ext,
+        ),
+        ReEDSVariableGenerator(name="WIND", region=region, technology="wind-ons", capacity=50.0, ext=ext),
+        ReEDSHydroGenerator(
+            name="HYDRO", region=region, technology="hydro", capacity=80.0, is_dispatchable=True, ext=ext
+        ),
+        ReEDSStorage(
+            name="BATT",
+            region=region,
+            technology="battery_4",
+            capacity=40.0,
+            storage_duration=4.0,
+            round_trip_efficiency=0.9,
+            ext=ext,
+        ),
+    ):
+        services = getters.get_gen_services(component, context).unwrap()
+        assert (
+            len(services) == 1
+        ), f"{type(component).__name__}: expected 1 NON_SPINNING service, got {len(services)}"
+        assert (
+            services[0] is non_spin
+        ), f"{type(component).__name__}: service should be the VariableReserveNonSpinning instance"
+
+    # A mix of spinning + non-spinning reserves both resolve correctly
+    from r2x_sienna.models import VariableReserve
+
+    spin = VariableReserve(
+        name="SPIN_UP",
+        available=True,
+        reserve_type="SPINNING",
+        direction="UP",
+        requirement=0.05,
+        time_frame=300.0,
+        sustained_time=3600.0,
+        max_output_fraction=1.0,
+        max_participation_factor=1.0,
+        deployed_fraction=1.0,
+    )
+    context.target_system.add_component(spin)
+
+    mixed = ReEDSStorage(
+        name="BATT2",
+        region=region,
+        technology="battery_4",
+        capacity=20.0,
+        storage_duration=2.0,
+        round_trip_efficiency=0.95,
+        ext={"reserves": ["SPIN_UP", "NON_SPIN_UP"]},
+    )
+    mixed_services = getters.get_gen_services(mixed, context).unwrap()
+    assert len(mixed_services) == 2
+    assert spin in mixed_services
+    assert non_spin in mixed_services
+
+
 def test_get_hydro_prime_mover(tmp_path) -> None:
     """get_hydro_prime_mover must always return PrimeMoversType.HY."""
     context = make_context(tmp_path)

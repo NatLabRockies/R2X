@@ -383,20 +383,26 @@ def get_consuming_tech_base_power(
 
 @getter
 def get_gen_services(component: object, context: PluginContext) -> Result[list, ValueError]:
-    """Return the list of VariableReserve objects the generator participates in.
+    """Return the list of reserve service objects the generator participates in.
 
     Reads reserve names from ``ext['reserves']`` and looks up each already-
-    translated ``VariableReserve`` in the target system.  Reserves that have
-    not been translated yet are silently skipped.  Works for all generator types.
+    translated reserve service in the target system.  Both ``VariableReserve``
+    and ``VariableReserveNonSpinning`` are searched so that NON_SPINNING
+    reserves (which map to the latter) are correctly attached.  Reserves that
+    have not been translated yet are silently skipped.  Works for all generator
+    types.
     """
-    from r2x_sienna.models import VariableReserve
+    from r2x_sienna.models import VariableReserve, VariableReserveNonSpinning
 
     ext = getattr(component, "ext", {}) or {}
     reserve_names: list[str] = ext.get("reserves", []) or []
     if not reserve_names:
         return Ok([])
 
-    reserves_by_name = {r.name: r for r in _target_system(context).get_components(VariableReserve)}
+    reserves_by_name: dict[str, object] = {}
+    for cls in (VariableReserve, VariableReserveNonSpinning):
+        for r in _target_system(context).get_components(cls):
+            reserves_by_name[r.name] = r
     return Ok([reserves_by_name[n] for n in reserve_names if n in reserves_by_name])
 
 
