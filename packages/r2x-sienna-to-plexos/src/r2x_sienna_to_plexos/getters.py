@@ -6,7 +6,6 @@ import json
 import math
 from collections import defaultdict
 from collections.abc import Mapping
-from copy import deepcopy
 from datetime import timedelta
 from functools import lru_cache
 from importlib.resources import files
@@ -524,11 +523,15 @@ def _ramp_value_to_float(source_component: object, raw_value: Any) -> float:
 def _get_ramp_limit_value(source_component: object, *, default: Any, direction: str) -> float:
     """Extract raw ramp limit value for a given direction.
 
-    Keeps the current getter behavior by relying on dict-style access when
-    ramp_limits is present.
+    Handles both dict-style and attribute-style (e.g. UpDown) ramp_limits objects.
     """
     ramp_limits = getattr(source_component, "ramp_limits", default)
-    raw_value = ramp_limits[direction] if ramp_limits else 0.0
+    if not ramp_limits:
+        return 0.0
+    if isinstance(ramp_limits, dict):
+        raw_value = ramp_limits.get(direction, 0.0)
+    else:
+        raw_value = getattr(ramp_limits, direction, 0.0)
     return float(raw_value)
 
 
@@ -543,8 +546,14 @@ def _resolve_ramp_rates(
     ramp_mw = initial_ramp_mw
     category = _resolve_generator_category(source_component, context)
     gen_ramp_pct = _get_defaults(category, defaults_key)
+    # When the primary percentage key is unset (0.0), fall back to ramp_rate.
+    if math.isclose(gen_ramp_pct, 0.0, abs_tol=1e-9):
+        gen_ramp_pct = _get_defaults(category, "ramp_rate")
     max_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "max") or 0.0
     max_mw = abs(max_pu) * resolve_base_power(source_component)
+    # Ignore sentinel / placeholder max-capacity values (e.g. 1e30 in some data sources).
+    if max_mw > 1e10:
+        max_mw = 0.0
     if max_mw == 0.0:
         max_mw = _get_defaults(category, "capacity_MW")
     if ramp_mw < RAMPING_THRESHOLD:
@@ -718,31 +727,21 @@ def _attach_generator_time_series(
 
 
 def _has_usable_generator_time_series(source_component: object, context: PluginContext) -> bool:
-    """Return True when the source generator has at least one retrievable time series."""
-    source_system = _source_system(context)
+    """Return True when the source generator has at least one registered time series.
 
+    Checks only metadata (no data reads) to keep this O(1) per generator on
+    large nodal systems where reading Arrow data for every renewable unit was the
+    dominant cost.
+    """
+    source_system = _source_system(context)
     try:
         if not source_system.time_series.has_time_series(source_component):
             return False
         metadata_items = source_system.time_series.list_time_series_metadata(source_component)
+        return bool(metadata_items)
     except Exception:
         # If introspection fails, avoid accidentally deactivating the unit.
         return True
-
-    for metadata in metadata_items:
-        features = getattr(metadata, "features", {}) or {}
-        try:
-            ts_list = source_system.list_time_series(
-                source_component,
-                name=metadata.name,
-                **features,
-            )
-        except Exception:
-            continue
-        if ts_list:
-            return True
-
-    return False
 
 
 def _attach_region_node_load_time_series(
@@ -752,8 +751,20 @@ def _attach_region_node_load_time_series(
     region_component: Any | None,
 ) -> None:
     """Aggregate load time series from all loads in the region and attach to the region's node in PLEXOS."""
-    source_system = cast(Any, context.source_system)
+    if region_component is None:
+        return
+
+    import numpy as np
+    from infrasys import SingleTimeSeries
+
     target_system = cast(Any, context.target_system)
+    # Early exit: this getter is invoked from both membership_region_parent_node and
+    # membership_region_child_node, so it is called twice per region. Skip the entire
+    # aggregation loop on the second call.
+    if target_system.has_time_series(region_component, name="load", time_series_type=SingleTimeSeries):
+        return
+
+    source_system = cast(Any, context.source_system)
     area_buses_index = _build_area_buses_index(context)
     buses_in_region = area_buses_index.get(region_name, [])
     if not buses_in_region:
@@ -766,38 +777,31 @@ def _attach_region_node_load_time_series(
         logger.debug("No loads found for region {}", region_name)
         return
 
-    aggregated_ts = None
+    aggregated_data: Any = None
+    initial_ts: Any = None
     for load in all_loads:
         if source_system.time_series.has_time_series(load):
             for ts in source_system.list_time_series(load):
                 if ts.name == "max_active_power":
                     load_mw = _get_load_mw(load)
-                    ts_copy = deepcopy(ts)
-                    ts_copy.name = "load"
+                    data = np.asarray(ts.data, dtype=float)
                     if load_mw > 0.0:
-                        import numpy as np
-
-                        ts_copy.data = np.asarray(ts_copy.data) * load_mw
-                    if aggregated_ts is None:
-                        aggregated_ts = ts_copy
+                        data = data * load_mw
+                    if aggregated_data is None:
+                        aggregated_data = data.copy()
+                        initial_ts = ts
                     else:
-                        aggregated_ts.data += ts_copy.data
+                        aggregated_data += data
                     break
 
-    if aggregated_ts is not None and region_component is not None:
-        import numpy as np
-        from infrasys import SingleTimeSeries
-
+    if aggregated_data is not None and initial_ts is not None:
         fresh_ts = SingleTimeSeries.from_array(
-            data=np.asarray(aggregated_ts.data),
+            data=aggregated_data,
             name="load",
-            initial_timestamp=aggregated_ts.initial_timestamp,
-            resolution=aggregated_ts.resolution,
+            initial_timestamp=initial_ts.initial_timestamp,
+            resolution=initial_ts.resolution,
         )
-        if not target_system.has_time_series(
-            region_component, name="load", time_series_type=SingleTimeSeries
-        ):
-            target_system.add_time_series(fresh_ts, region_component)
+        target_system.add_time_series(fresh_ts, region_component)
 
 
 def _build_bus_to_loads_index(context: PluginContext) -> dict[str, list[Any]]:
@@ -1001,8 +1005,24 @@ def _get_general_default(key: str) -> float:
 
 @getter
 def get_component_ext(source_component: object, context: PluginContext) -> Result[dict, ValueError]:
-    """Store the Sienna source type name in ext for downstream use (e.g. time series file naming)."""
-    return Ok({"sienna_type": type(source_component).__name__})
+    """Store the Sienna source type name in ext for downstream use (e.g. time series file naming).
+
+    Also stores ``description`` (prime_mover + fuel) in ext so the r2x_plexos
+    exporter can write it to the ``t_object.description`` column in the output XML.
+    """
+    ext: dict[str, Any] = {"sienna_type": type(source_component).__name__}
+
+    desc_getter = cast(Any, get_generator_description)
+    desc_result = desc_getter(source_component, context)
+    if hasattr(desc_result, "unwrap"):
+        try:
+            desc = desc_result.unwrap()
+            if desc is not None:
+                ext["description"] = desc
+        except Exception:
+            pass
+
+    return Ok(ext)
 
 
 @getter
@@ -2027,20 +2047,38 @@ def get_turbine_pump_efficiency(
 
     if isinstance(source_component, HydroTurbine):
         default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
-        value = (
-            ht_pump_efficiency * 100.0
-            if ht_pump_efficiency is not None and ht_pump_efficiency != 0.0
-            else default
-        )
-        value = round(value, 2)
-        return Ok(value)
+        if ht_pump_efficiency is not None and ht_pump_efficiency != 0.0:
+            value = (
+                float(ht_pump_efficiency) * 100.0
+                if float(ht_pump_efficiency) <= 1.0
+                else float(ht_pump_efficiency)
+            )
+        else:
+            value = default
+        return Ok(round(value, 2))
     elif isinstance(source_component, HydroPumpTurbine):
         pump = getattr(ht_pump_efficiency, "pump", None) if ht_pump_efficiency is not None else None
         default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
-        value = pump * 100.0 if pump is not None and pump != 0.0 else default
-        value = round(value, 2)
-        return Ok(value)
+        if pump is not None and pump != 0.0:
+            value = float(pump) * 100.0 if float(pump) <= 1.0 else float(pump)
+        else:
+            value = default
+        return Ok(round(value, 2))
     else:
+        # Generic fallback: use scalar efficiency if available, honouring 0-1 vs 0-100 scale.
+        if (
+            ht_pump_efficiency is not None
+            and isinstance(ht_pump_efficiency, int | float)
+            and ht_pump_efficiency != 0.0
+        ):
+            return Ok(
+                round(
+                    float(ht_pump_efficiency) * 100.0
+                    if ht_pump_efficiency <= 1.0
+                    else float(ht_pump_efficiency),
+                    2,
+                )
+            )
         return Ok(89.0)
 
 

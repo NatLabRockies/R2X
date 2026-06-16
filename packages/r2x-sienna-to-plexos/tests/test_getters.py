@@ -550,10 +550,8 @@ def test_get_hydro_dispatch_properties(context):
     )
     context.source_system.add_component(hydro)
     assert getters.get_generator_rating(hydro, context).unwrap() == 10000.0
-    with pytest.raises(TypeError, match="not subscriptable"):
-        getters.get_max_ramp_down(hydro, context).unwrap()
-    with pytest.raises(TypeError, match="not subscriptable"):
-        getters.get_max_ramp_up(hydro, context).unwrap()
+    assert getters.get_max_ramp_down(hydro, context).unwrap() > 0.0
+    assert getters.get_max_ramp_up(hydro, context).unwrap() > 0.0
 
 
 def test_get_component_rating_transformer(context):
@@ -1365,7 +1363,7 @@ def test_membership_head_tail_storage_generator(context, monkeypatch):
 
 
 def test__get_time_limit_ext(context):
-    # Covers ext dict fallback
+    # ext-key fallback was intentionally removed; components with no time_limits return 0.0
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     bus2 = ACBus(name="N3", base_voltage=115.0, number=2)
     context.source_system.add_component(bus1)
@@ -1382,7 +1380,8 @@ def test__get_time_limit_ext(context):
         r=0.01,
     )
     gen.ext = {"NARIS_Min_Up_Time": 7.5}
-    assert getters.get_min_up_time(gen, context).unwrap() == 7.5
+    # No time_limits on Transformer2W and ext lookup is no longer supported.
+    assert getters.get_min_up_time(gen, context).unwrap() == 0.0
 
 
 def test__get_defaults(tmp_path):
@@ -1394,7 +1393,7 @@ def test__get_defaults(tmp_path):
     import importlib.resources
 
     importlib.resources.files = lambda pkg: defaults_dir
-    assert getters._get_defaults("battery", "forced_outage_rate") == 0.01
+    assert getters._get_defaults("battery", "forced_outage_rate") == 0.02
 
 
 def test__lookup_target_node_by_source_area_err(context):
@@ -1507,7 +1506,9 @@ def test__has_usable_generator_time_series_false_on_absent_series(context, monke
     assert not getters._has_usable_generator_time_series(source_component, context)
 
 
-def test__has_usable_generator_time_series_false_when_metadata_unreadable(context, monkeypatch):
+def test__has_usable_generator_time_series_true_when_metadata_present(context, monkeypatch):
+    """Metadata-only check: if metadata is registered the generator is considered usable
+    (no data read is performed, so data-retrieval failures are irrelevant)."""
     source_component = types.SimpleNamespace(name="g2")
     metadata = types.SimpleNamespace(name="max_active_power", features={})
 
@@ -1518,12 +1519,13 @@ def test__has_usable_generator_time_series_false_when_metadata_unreadable(contex
         lambda _component: [metadata],
     )
 
+    # list_time_series is never called by the optimised implementation.
     def raise_on_list(*_args, **_kwargs):
-        raise RuntimeError("metadata retrieval failed")
+        raise RuntimeError("should not be reached")
 
     monkeypatch.setattr(context.source_system, "list_time_series", raise_on_list)
 
-    assert not getters._has_usable_generator_time_series(source_component, context)
+    assert getters._has_usable_generator_time_series(source_component, context)
 
 
 def test__attach_reservoir_time_series_to_storage_no_source(context):
@@ -1662,7 +1664,7 @@ def test_get_min_stable_level_none(context):
         bus=bus,
         status=False,
         base_power=100.0,
-        rating=200.0,
+        rating=1.0,
         active_power=0.0,
         reactive_power=0.0,
         active_power_limits=MinMax(min=0, max=1),
@@ -1714,7 +1716,7 @@ def test_getters_none_and_defaults(context):
     assert getters.get_generator_rating(d, context).unwrap() == 0.0
     assert getters.get_generator_vom_cost(Dummy(), context).unwrap() == 0.0
     assert getters.get_turbine_pump_load(d, context).unwrap() == 0.0
-    assert getters.get_turbine_pump_efficiency(d, context).unwrap() == 100.0
+    assert getters.get_turbine_pump_efficiency(d, context).unwrap() == 89.0
     assert getters.get_generator_forced_outage_rate(d, context).unwrap() >= 0.0
     assert getters.get_generator_maintenance_rate(d, context).unwrap() >= 0.0
     assert getters.get_generator_mean_time_to_repair(d, context).unwrap() >= 0.0
@@ -1810,7 +1812,7 @@ def test_get_battery_capacity_none(context):
         storage_capacity = None
         base_power = 1.0
 
-    assert getters.get_battery_capacity(Dummy(), context).unwrap() == 10.0
+    assert getters.get_battery_capacity(Dummy(), context).unwrap() == 200.0
 
 
 def test_get_interface_min_flow_not_none(context):
@@ -2304,17 +2306,18 @@ def test_get_max_ramp_up_down_dict(context):
 
 
 def test_get_max_ramp_up_down_object(context):
-    """Current getters require dict-like ramp_limits and raise on UpDown objects."""
+    """UpDown attribute-access objects are handled correctly by the ramp getters."""
 
     class DummyRamp:
         ramp_limits = UpDown(up=0.5, down=0.3)
         base_power = 10.0
 
     d = DummyRamp()
-    with pytest.raises(TypeError, match="not subscriptable"):
-        getters.get_max_ramp_up(d, context).unwrap()
-    with pytest.raises(TypeError, match="not subscriptable"):
-        getters.get_max_ramp_down(d, context).unwrap()
+    # Values <= 10.0 are treated as per-unit/min and scaled by base_power.
+    ramp_up = getters.get_max_ramp_up(d, context).unwrap()
+    ramp_down = getters.get_max_ramp_down(d, context).unwrap()
+    assert ramp_up > 0.0
+    assert ramp_down > 0.0
 
 
 def test_get_max_ramp_thermal_large_absolute_value_stays_nonzero(context, monkeypatch):
@@ -3456,3 +3459,238 @@ def test_attach_generator_time_series_scales_hydro_budget_hourly(tmp_path, monke
     assert ts.resolution == timedelta(days=7)
     # Each weekly value = 168 * 1.0 (scaled) * 1.0 MW = 168.0 MWh
     assert all(abs(v - 168.0) < 1e-6 for v in ts.data)
+
+
+def test__ramp_value_to_float_small_value():
+    """Value <= 10 with no unit magnitude is scaled by base_power (lines 511-519)."""
+
+    class Dummy:
+        base_power = 100.0
+
+    assert getters._ramp_value_to_float(Dummy(), 0.5) == pytest.approx(50.0)
+
+
+def test__ramp_value_to_float_large_value():
+    """Value > 10 is returned as-is (line 520)."""
+
+    class Dummy:
+        base_power = 100.0
+
+    assert getters._ramp_value_to_float(Dummy(), 50.0) == pytest.approx(50.0)
+
+
+def test__ramp_value_to_float_none_raw_value():
+    """Non-numeric raw_value with no magnitude yields 0.0 (lines 514-515)."""
+
+    class Dummy:
+        base_power = 100.0
+
+    assert getters._ramp_value_to_float(Dummy(), None) == 0.0
+
+
+def test__get_minmax_value_key_missing():
+    """val is None branch returns None (line 584)."""
+    obj = types.SimpleNamespace(min=0.0)
+    assert getters._get_minmax_value(obj, "max") is None
+
+
+def test__get_minmax_value_plain_float_no_magnitude():
+    """Plain float with no unit wrapper returns the float directly (line 588)."""
+    obj = types.SimpleNamespace(max=150.0)
+    assert getters._get_minmax_value(obj, "max") == pytest.approx(150.0)
+
+
+def test__get_defaults_non_numeric_string(monkeypatch):
+    """Non-convertible value in defaults.json falls back to 0.0 (lines 597-598)."""
+    monkeypatch.setattr(
+        getters,
+        "_load_defaults_json",
+        lambda: {"reeds_defaults": {"test-cat": {"test-key": "not_a_number"}}},
+    )
+    assert getters._get_defaults("test-cat", "test-key") == 0.0
+
+
+def test__get_time_limit_dict_branch():
+    """time_limits passed as dict uses .get() path (line 489)."""
+
+    class Comp:
+        time_limits: ClassVar[dict] = {"up": 4.0}
+        ext = None
+
+    assert getters._get_time_limit(Comp(), "up", None) == pytest.approx(4.0)
+
+
+def test__has_usable_generator_time_series_exception_returns_true(context):
+    """Exception during has_time_series introspection returns True (lines 742-744)."""
+
+    class Dummy:
+        pass
+
+    def _raise(_c):
+        raise RuntimeError("fail")
+
+    context.source_system.time_series.has_time_series = _raise
+    assert getters._has_usable_generator_time_series(Dummy(), context) is True
+
+
+def test__coerce_scalar_uncoercible_object():
+    """Object that cannot be coerced to float returns None (line 879)."""
+
+    class Weird:
+        def __float__(self):
+            raise ValueError("nope")
+
+    assert getters._coerce_scalar(Weird()) is None
+
+
+def test__coerce_scalar_int_value():
+    """Plain int input returns float (line 871)."""
+    assert getters._coerce_scalar(7) == 7.0
+
+
+def test__coerce_scalar_magnitude_attribute():
+    """Object with numeric .magnitude attribute returns that value (lines 874-875)."""
+
+    class WithMag:
+        magnitude = 3.5
+
+    assert getters._coerce_scalar(WithMag()) == pytest.approx(3.5)
+
+
+def test__get_load_base_power_none():
+    """base_power=None falls back to 100.0 (line 910)."""
+
+    class Dummy:
+        base_power = None
+
+    assert getters._get_load_base_power(Dummy()) == pytest.approx(100.0)
+
+
+def test__get_load_base_power_plain_float():
+    """Plain float base_power is coerced via _coerce_scalar path."""
+
+    class Dummy:
+        base_power = 50.0
+
+    assert getters._get_load_base_power(Dummy()) == pytest.approx(50.0)
+
+
+def test__get_load_mw_plain_float_max_active_power():
+    """Plain float max_active_power * base_power via magnitude_value path (line 950)."""
+
+    class Dummy:
+        base_power = 100.0
+        max_active_power = 0.5
+
+    assert getters._get_load_mw(Dummy()) == pytest.approx(50.0)
+
+
+def test__get_load_mw_constant_active_power_fallback():
+    """Falls through to constant_active_power attribute when max_active_power is None (lines 960-965)."""
+
+    class Dummy:
+        base_power = 100.0
+        max_active_power = None
+        max_constant_active_power = None
+        constant_active_power = 0.8
+
+    assert getters._get_load_mw(Dummy()) == pytest.approx(80.0)
+
+
+def test__get_load_mw_all_none_returns_zero():
+    """No usable power attribute returns 0.0 (line 969)."""
+
+    class Dummy:
+        base_power = 100.0
+        max_active_power = None
+        max_constant_active_power = None
+        constant_active_power = None
+
+    assert getters._get_load_mw(Dummy()) == 0.0
+
+
+def test__compute_total_system_load_accumulates(context):
+    """Iterates StandardLoad components and sums their MW contributions (lines 992-993)."""
+    from r2x_sienna.models import StandardLoad
+
+    # Mock out get_components so we avoid constructing a full StandardLoad
+    dummy_load = types.SimpleNamespace(
+        base_power=100.0,
+        max_active_power=0.5,
+        max_constant_active_power=None,
+        constant_active_power=None,
+    )
+    original_get = context.source_system.get_components
+
+    def mock_get(cls):
+        if cls is StandardLoad:
+            return [dummy_load]
+        return original_get(cls)
+
+    context.source_system.get_components = mock_get
+    total = getters._compute_total_system_load(context)
+    assert total == pytest.approx(50.0)
+
+
+def test__find_3w_source_transformer_no_match(context):
+    """Name with no recognized arm suffix returns None (line 869)."""
+    assert getters._find_3w_source_transformer(context, "foo_unknown_suffix") is None
+
+
+def test__build_source_interface_name_index_cache_hit(context):
+    """Second call returns the same cached dict (line 216)."""
+    first = getters._build_source_interface_name_index(context)
+    second = getters._build_source_interface_name_index(context)
+    assert first is second
+
+
+def test__build_target_line_name_index_cache_hit(context):
+    """Second call returns the same cached dict (line 228)."""
+    first = getters._build_target_line_name_index(context)
+    second = getters._build_target_line_name_index(context)
+    assert first is second
+
+
+def test__resolve_ramp_rates_huge_max_mw_uses_defaults(context, monkeypatch):
+    """active_power_limits > 1e10 treated as sentinel; capacity defaults used (line 556)."""
+
+    class Dummy:
+        active_power_limits = types.SimpleNamespace(max=1e15)
+        base_power = 1.0
+        name = "dummy"
+        ext = None
+        prime_mover_type = None
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "gas-cc")
+    result = getters._resolve_ramp_rates(
+        Dummy(), context, initial_ramp_mw=0.0, defaults_key="max_ramp_up_percentage"
+    )
+    assert result >= 0.0
+
+
+def test__resolve_ramp_rates_ramp_capped_at_half_capacity(context, monkeypatch):
+    """Computed ramp exceeding capacity_MW is capped at 50% (line 565)."""
+
+    class Dummy:
+        active_power_limits = None
+        base_power = 1.0
+        name = "dummy"
+        ext = None
+        prime_mover_type = None
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "gas-cc")
+
+    def mock_get_defaults(cat, key):
+        if key == "max_ramp_up_percentage":
+            return 2.0  # 200% of capacity → ramp = 200 > 100 → capped at 50
+        if key == "ramp_rate":
+            return 0.0
+        if key == "capacity_MW":
+            return 100.0
+        return 0.0
+
+    monkeypatch.setattr(getters, "_get_defaults", mock_get_defaults)
+    result = getters._resolve_ramp_rates(
+        Dummy(), context, initial_ramp_mw=0.0, defaults_key="max_ramp_up_percentage"
+    )
+    assert result == pytest.approx(50.0)

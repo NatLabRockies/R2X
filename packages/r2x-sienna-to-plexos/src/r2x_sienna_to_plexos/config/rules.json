@@ -250,7 +250,7 @@
     "target_type": "PLEXOSTransformer",
     "version": 3
   },
-    {
+  {
     "defaults": {
       "category": "trf3w-primary-winding",
       "units": 1,
@@ -261,11 +261,11 @@
       "resistance": "r_primary"
     },
     "getters": {
-        "name": "get_3w_transformer_primary_name",
-        "uuid": "get_3w_transformer_primary_uuid",
-        "units": "get_availability",
-        "rating": "get_3w_transformer_primary_rating",
-        "susceptance": "get_3w_transformer_susceptance"
+      "name": "get_3w_transformer_primary_name",
+      "uuid": "get_3w_transformer_primary_uuid",
+      "units": "get_availability",
+      "rating": "get_3w_transformer_primary_rating",
+      "susceptance": "get_3w_transformer_susceptance"
     },
     "source_type": "Transformer3W",
     "target_type": "PLEXOSTransformer",
@@ -403,7 +403,6 @@
       "start_cost": "get_generator_start_cost",
       "vom_charge": "get_generator_vom_cost",
       "load_point": "get_generator_load_point",
-      "description": "get_generator_description",
       "ext": "get_component_ext"
     },
     "source_type": "ThermalStandard",
@@ -444,7 +443,6 @@
       "start_cost": "get_generator_start_cost",
       "vom_charge": "get_generator_vom_cost",
       "load_point": "get_generator_load_point",
-      "description": "get_generator_description",
       "ext": "get_component_ext"
     },
     "source_type": "ThermalMultiStart",
@@ -475,7 +473,6 @@
       "mean_time_to_repair": "get_generator_mean_time_to_repair",
       "vom_charge": "get_generator_vom_cost",
       "max_energy_day": "get_generator_max_energy_day",
-      "description": "get_generator_description",
       "ext": "get_component_ext"
     },
     "source_type": "HydroDispatch",
@@ -505,7 +502,6 @@
       "mean_time_to_repair": "get_generator_mean_time_to_repair",
       "vom_charge": "get_generator_vom_cost",
       "max_energy_day": "get_generator_max_energy_day",
-      "description": "get_generator_description",
       "ext": "get_component_ext"
     },
     "source_type": "HydroEnergyReservoir",
@@ -534,7 +530,6 @@
       "mean_time_to_repair": "get_generator_mean_time_to_repair",
       "vom_charge": "get_generator_vom_cost",
       "max_capacity": "get_max_capacity",
-      "description": "get_generator_description",
       "ext": "get_component_ext"
     },
     "source_type": "HydroTurbine",
@@ -565,7 +560,6 @@
       "pump_efficiency": "get_turbine_pump_efficiency",
       "vom_charge": "get_generator_vom_cost",
       "max_capacity": "get_max_capacity",
-      "description": "get_generator_description",
       "ext": "get_component_ext"
     },
     "source_type": "HydroPumpTurbine",
@@ -588,7 +582,6 @@
       "rating": "get_generator_rating",
       "max_capacity": "get_max_capacity",
       "load_subtracter": "get_generator_load_subtracter",
-      "description": "get_generator_description",
       "ext": "get_component_ext"
     },
     "source_type": "RenewableDispatch",
@@ -611,7 +604,6 @@
       "rating": "get_generator_rating",
       "max_capacity": "get_max_capacity",
       "load_subtracter": "get_generator_load_subtracter",
-      "description": "get_generator_description",
       "ext": "get_component_ext"
     },
     "source_type": "RenewableNonDispatch",
