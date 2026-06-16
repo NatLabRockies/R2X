@@ -359,8 +359,11 @@ def get_load_base_power(component: ReEDSDemand, context: PluginContext) -> Resul
 def get_consuming_tech_max_active_power(
     component: ReEDSElectrolyzerDemand | ReEDSDataCenterDemand, context: PluginContext
 ) -> Result[float | int, ValueError]:
-    """Return capacity as max_active_power for consuming technologies."""
-    # Prefer explicit max_active_power if set, else fall back to capacity
+    """Return max_active_power for consuming technologies.
+
+    Prefers an explicit ``max_active_power`` field when set, then falls back to
+    ``capacity``, and finally returns 0.0 if neither is available.
+    """
     max_ap = getattr(component, "max_active_power", None)
     if max_ap is not None:
         return _ok_num(float(max_ap))
@@ -374,7 +377,10 @@ def get_consuming_tech_max_active_power(
 def get_consuming_tech_base_power(
     component: ReEDSElectrolyzerDemand | ReEDSDataCenterDemand, context: PluginContext
 ) -> Result[float | int, ValueError]:
-    """Return capacity as base_power for consuming technologies."""
+    """Return capacity as base_power for consuming technologies.
+
+    Falls back to 100.0 MVA if capacity is missing.
+    """
     capacity = getattr(component, "capacity", None)
     if capacity is not None:
         return _ok_num(float(capacity))
