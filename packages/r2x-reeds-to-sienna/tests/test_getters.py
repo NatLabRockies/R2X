@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from infrasys.cost_curves import FuelCurve, LinearCurve
 from r2x_reeds.models import (
+    ReEDSDataCenterDemand,
     ReEDSDemand,
+    ReEDSElectrolyzerDemand,
     ReEDSHydroGenerator,
     ReEDSInterface,
     ReEDSRegion,
@@ -387,3 +389,83 @@ def test_get_gen_services_all_generator_types(tmp_path) -> None:
     )
     partial = getters.get_gen_services(partial_ext, context).unwrap()
     assert partial == [reserve]
+
+
+def test_get_hydro_prime_mover(tmp_path) -> None:
+    """get_hydro_prime_mover must always return PrimeMoversType.HY."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    region = ReEDSRegion(name="p1")
+    hydro = ReEDSHydroGenerator(
+        name="p1_HYDRO",
+        region=region,
+        technology="hydro",
+        capacity=100.0,
+        is_dispatchable=True,
+    )
+    result = getters.get_hydro_prime_mover(hydro, context).unwrap()
+    assert result == PrimeMoversType.HY
+
+
+def test_get_zero_reactive_power_limits(tmp_path) -> None:
+    """get_zero_reactive_power_limits always returns MinMax(0.0, 0.0) regardless of component type."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    region = ReEDSRegion(name="p1")
+
+    # Works for any component type — hydro, storage, variable gen, etc.
+    for component in (
+        ReEDSHydroGenerator(
+            name="H", region=region, technology="hydro", capacity=100.0, is_dispatchable=True
+        ),
+        ReEDSStorage(
+            name="S",
+            region=region,
+            technology="battery_4",
+            capacity=50.0,
+            storage_duration=4.0,
+            round_trip_efficiency=0.9,
+        ),
+        ReEDSVariableGenerator(name="V", region=region, technology="wind-ons", capacity=30.0),
+    ):
+        limits = getters.get_zero_reactive_power_limits(component, context).unwrap()
+        assert limits.min == 0.0, f"{type(component).__name__} reactive_power_limits.min should be 0.0"
+        assert limits.max == 0.0, f"{type(component).__name__} reactive_power_limits.max should be 0.0"
+
+
+def test_consuming_tech_getters(tmp_path) -> None:
+    """get_consuming_tech_max_active_power and get_consuming_tech_base_power work for both consuming tech types."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    region = ReEDSRegion(name="p1")
+
+    electrolyzer = ReEDSElectrolyzerDemand(
+        name="ELEC1",
+        region=region,
+        technology="electrolyzer",
+        capacity=50.0,
+        electricity_efficiency=55.0,
+        max_active_power=40.0,
+    )
+    datacenter = ReEDSDataCenterDemand(
+        name="DC1",
+        region=region,
+        technology="datacenter",
+        capacity=30.0,
+        electricity_efficiency=1.0,
+        # max_active_power not set — should fall back to capacity
+    )
+
+    # Electrolyzer: prefers explicit max_active_power
+    assert getters.get_consuming_tech_max_active_power(electrolyzer, context).unwrap() == 40.0
+    assert getters.get_consuming_tech_base_power(electrolyzer, context).unwrap() == 50.0
+
+    # DataCenter: no explicit max_active_power → uses capacity
+    assert getters.get_consuming_tech_max_active_power(datacenter, context).unwrap() == 30.0
+    assert getters.get_consuming_tech_base_power(datacenter, context).unwrap() == 30.0

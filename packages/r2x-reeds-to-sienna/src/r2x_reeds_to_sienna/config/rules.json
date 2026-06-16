@@ -232,6 +232,7 @@
       "active_power_limits": "hydro_active_power_limits",
       "operation_cost": "hydro_operation_cost",
       "prime_mover_type": "get_hydro_prime_mover",
+      "reactive_power_limits": "get_zero_reactive_power_limits",
       "ramp_limits": "hydro_ramp_limits",
       "time_limits": "hydro_time_limits",
       "time_at_status": "get_default_time_at_status",

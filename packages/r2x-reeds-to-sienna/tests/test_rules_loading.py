@@ -172,3 +172,61 @@ def test_bus_rule_is_first() -> None:
             assert (
                 i > bus_rule_index
             ), f"Rule {rule.get('name', 'unknown')} depends on region_bus but comes before it"
+
+
+def test_has_non_spinning_reserve_rule() -> None:
+    """Verify NON_SPINNING reserves map to VariableReserveNonSpinning."""
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
+    rules_data = json.loads(rules_path.read_text())
+
+    assert any(
+        rule.get("source_type") == "ReEDSReserve" and rule.get("target_type") == "VariableReserveNonSpinning"
+        for rule in rules_data
+    ), "Missing ReEDSReserve -> VariableReserveNonSpinning rule"
+
+
+def test_spinning_reserve_rule_has_non_spinning_exclusion_filter() -> None:
+    """VariableReserve rule must exclude NON_SPINNING so they go to VariableReserveNonSpinning."""
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
+    rules_data = json.loads(rules_path.read_text())
+
+    variable_reserve_rule = next((r for r in rules_data if r.get("target_type") == "VariableReserve"), None)
+    assert variable_reserve_rule is not None, "VariableReserve rule not found"
+
+    filt = variable_reserve_rule.get("filter", {})
+    assert filt.get("field") == "reserve_type"
+    assert filt.get("op") == "neq"
+    assert "NON_SPINNING" in filt.get("values", [])
+
+
+def test_has_consuming_technology_rules() -> None:
+    """Verify consuming technology types map to InterruptiblePowerLoad."""
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
+    rules_data = json.loads(rules_path.read_text())
+
+    assert any(
+        rule.get("source_type") == "ReEDSElectrolyzerDemand"
+        and rule.get("target_type") == "InterruptiblePowerLoad"
+        for rule in rules_data
+    ), "Missing ReEDSElectrolyzerDemand -> InterruptiblePowerLoad rule"
+
+    assert any(
+        rule.get("source_type") == "ReEDSDataCenterDemand"
+        and rule.get("target_type") == "InterruptiblePowerLoad"
+        for rule in rules_data
+    ), "Missing ReEDSDataCenterDemand -> InterruptiblePowerLoad rule"
+
+
+def test_hydro_rule_uses_hydro_prime_mover() -> None:
+    """hydro_gen rule must use get_hydro_prime_mover, not get_prime_mover."""
+    rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
+    rules_data = json.loads(rules_path.read_text())
+
+    hydro_rule = next((r for r in rules_data if r.get("name") == "hydro_gen"), None)
+    assert hydro_rule is not None, "hydro_gen rule not found"
+
+    getters = hydro_rule.get("getters", {})
+    assert (
+        getters.get("prime_mover_type") == "get_hydro_prime_mover"
+    ), "hydro_gen must use get_hydro_prime_mover (not get_prime_mover)"
+    assert "reactive_power_limits" in getters, "hydro_gen missing reactive_power_limits getter"

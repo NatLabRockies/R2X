@@ -397,3 +397,191 @@ def test_multiple_regions_create_multiple_buses_and_areas(tmp_path) -> None:
 
     assert area_names == {"p1", "p2", "p3"}
     assert bus_names == {"p1_BUS", "p2_BUS", "p3_BUS"}
+
+
+def test_reeds_hydro_has_hy_prime_mover(tmp_path) -> None:
+    """Hydro generators must translate with PrimeMoversType.HY, not OT."""
+    from r2x_reeds.models import ReEDSHydroGenerator, ReEDSRegion
+    from r2x_sienna.models import HydroDispatch
+    from r2x_sienna.models.enums import PrimeMoversType
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", category="region")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSHydroGenerator(
+            name="HYDRO_PM",
+            region=region,
+            technology="hydro",
+            capacity=80.0,
+            is_dispatchable=True,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    apply_rules_to_context(context)
+
+    hydros = list(context.target_system.get_components(HydroDispatch))
+    assert len(hydros) == 1
+    assert hydros[0].prime_mover_type == PrimeMoversType.HY
+
+
+def test_reeds_hydro_has_reactive_power_limits(tmp_path) -> None:
+    """Hydro generators must translate with zeroed reactive_power_limits (no reactive data from ReEDS)."""
+    from r2x_reeds.models import ReEDSHydroGenerator, ReEDSRegion
+    from r2x_sienna.models import HydroDispatch
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", category="region")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSHydroGenerator(
+            name="HYDRO_RPL",
+            region=region,
+            technology="hydro",
+            capacity=60.0,
+            is_dispatchable=True,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    apply_rules_to_context(context)
+
+    hydros = list(context.target_system.get_components(HydroDispatch))
+    assert len(hydros) == 1
+    hydro = hydros[0]
+    assert hydro.reactive_power_limits is not None
+    assert hydro.reactive_power_limits.min == pytest.approx(0.0)
+    assert hydro.reactive_power_limits.max == pytest.approx(0.0)
+
+
+def test_reeds_non_spinning_reserve_translates_to_variable_reserve_non_spinning(tmp_path) -> None:
+    """NON_SPINNING reserves must translate to VariableReserveNonSpinning, not VariableReserve."""
+    from r2x_reeds.models import ReEDSReserve
+    from r2x_sienna.models import VariableReserve, VariableReserveNonSpinning
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.source_system.add_component(
+        ReEDSReserve(
+            name="NON_SPIN_UP",
+            reserve_type="NON_SPINNING",
+            direction="Up",
+            time_frame=600.0,
+            duration=1800.0,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    apply_rules_to_context(context)
+
+    non_spin = list(context.target_system.get_components(VariableReserveNonSpinning))
+    spinning = list(context.target_system.get_components(VariableReserve))
+
+    assert len(non_spin) == 1, "NON_SPINNING reserve must produce VariableReserveNonSpinning"
+    assert len(spinning) == 0, "NON_SPINNING reserve must NOT produce VariableReserve"
+
+    ns = non_spin[0]
+    assert ns.name == "NON_SPIN_UP"
+    assert ns.time_frame == pytest.approx(600.0)
+    assert ns.sustained_time == pytest.approx(1800.0)
+
+
+def test_reeds_spinning_reserve_does_not_produce_non_spinning(tmp_path) -> None:
+    """SPINNING reserves must go to VariableReserve, not VariableReserveNonSpinning."""
+    from r2x_reeds.models import ReEDSReserve
+    from r2x_sienna.models import VariableReserve, VariableReserveNonSpinning
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.source_system.add_component(
+        ReEDSReserve(
+            name="SPIN",
+            reserve_type="SPINNING",
+            direction="Up",
+            time_frame=300.0,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    apply_rules_to_context(context)
+
+    spinning = list(context.target_system.get_components(VariableReserve))
+    non_spin = list(context.target_system.get_components(VariableReserveNonSpinning))
+
+    assert len(spinning) == 1
+    assert len(non_spin) == 0
+
+
+def test_reeds_electrolyzer_demand_translates_to_interruptible_load(tmp_path) -> None:
+    """ReEDSElectrolyzerDemand must translate to InterruptiblePowerLoad."""
+    from r2x_reeds.models import ReEDSElectrolyzerDemand, ReEDSRegion
+    from r2x_sienna.models import InterruptiblePowerLoad
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", category="region")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSElectrolyzerDemand(
+            name="ELEC1",
+            region=region,
+            technology="electrolyzer",
+            capacity=50.0,
+            electricity_efficiency=55.0,
+            max_active_power=40.0,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    apply_rules_to_context(context)
+
+    loads = list(context.target_system.get_components(InterruptiblePowerLoad))
+    assert len(loads) == 1
+
+    load = loads[0]
+    assert load.name == "ELEC1"
+    assert load.category == "electrolyzer"
+    assert load.max_active_power.magnitude == pytest.approx(40.0)
+    assert load.base_power.magnitude == pytest.approx(50.0)
+
+
+def test_reeds_datacenter_demand_translates_to_interruptible_load(tmp_path) -> None:
+    """ReEDSDataCenterDemand must translate to InterruptiblePowerLoad."""
+    from r2x_reeds.models import ReEDSDataCenterDemand, ReEDSRegion
+    from r2x_sienna.models import InterruptiblePowerLoad
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", category="region")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSDataCenterDemand(
+            name="DC1",
+            region=region,
+            technology="datacenter",
+            capacity=200.0,
+            electricity_efficiency=1.0,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    apply_rules_to_context(context)
+
+    loads = list(context.target_system.get_components(InterruptiblePowerLoad))
+    assert len(loads) == 1
+
+    load = loads[0]
+    assert load.name == "DC1"
+    assert load.category == "datacenter"
+    # No explicit max_active_power — falls back to capacity
+    assert load.max_active_power.magnitude == pytest.approx(200.0)
+    assert load.base_power.magnitude == pytest.approx(200.0)

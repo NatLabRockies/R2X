@@ -425,6 +425,12 @@ def get_zero_reactive_power(component: object, context: PluginContext) -> Result
 
 
 @getter
+def get_zero_reactive_power_limits(component: object, context: PluginContext) -> Result[MinMax, ValueError]:
+    """Return zeroed reactive power limits for components with no reactive power data from source."""
+    return Ok(MinMax(min=0.0, max=0.0))
+
+
+@getter
 def get_default_must_run(
     component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[bool, ValueError]:
