@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from infrasys.cost_curves import FuelCurve, LinearCurve
 from r2x_reeds.models import (
+    ReEDSDataCenterDemand,
     ReEDSDemand,
+    ReEDSElectrolyzerDemand,
     ReEDSHydroGenerator,
     ReEDSInterface,
     ReEDSRegion,
@@ -290,3 +292,277 @@ def test_bus_number_with_z_prefix(tmp_path) -> None:
     region = ReEDSRegion(name="z122")
     result = getters.get_bus_number(region, context).unwrap()
     assert result == 122
+
+
+def test_get_gen_services_all_generator_types(tmp_path) -> None:
+    """get_gen_services must work for all generator types, not just thermal.
+
+    Regression test: previously only get_thermal_services existed; renewable,
+    hydro, and storage generators had no services getter so they could never
+    participate in reserves.
+    """
+    from r2x_sienna.models import VariableReserve
+
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    region = ReEDSRegion(name="p1")
+    area = Area(name="p1", category="region")
+    context.target_system.add_component(area)
+    bus = ACBus(name="p1_BUS", area=area, number=1, base_voltage=Voltage(115.0, "kV"))
+    context.target_system.add_component(bus)
+
+    # Add a VariableReserve to the target system
+    reserve = VariableReserve(
+        name="SPIN_UP",
+        available=True,
+        reserve_type="SPINNING",
+        direction="UP",
+        requirement=0.05,
+        time_frame=300.0,
+        sustained_time=3600.0,
+        max_output_fraction=1.0,
+        max_participation_factor=1.0,
+        deployed_fraction=1.0,
+    )
+    context.target_system.add_component(reserve)
+
+    reserve_ext = {"reserves": ["SPIN_UP"]}
+
+    thermal = ReEDSThermalGenerator(
+        name="p1_THERM",
+        region=region,
+        technology="coal-new",
+        capacity=10.0,
+        heat_rate=7.5,
+        fuel_type="coal",
+        ext=reserve_ext,
+    )
+    variable = ReEDSVariableGenerator(
+        name="p1_WIND",
+        region=region,
+        technology="wind-ons",
+        capacity=5.0,
+        ext=reserve_ext,
+    )
+    hydro = ReEDSHydroGenerator(
+        name="p1_HYDRO",
+        region=region,
+        technology="hydro",
+        capacity=8.0,
+        is_dispatchable=True,
+        ext=reserve_ext,
+    )
+    storage = ReEDSStorage(
+        name="p1_STORE",
+        region=region,
+        technology="battery_4",
+        capacity=4.0,
+        storage_duration=2.0,
+        round_trip_efficiency=0.9,
+        ext=reserve_ext,
+    )
+
+    # All generator types should resolve the reserve
+    for component in (thermal, variable, hydro, storage):
+        services = getters.get_gen_services(component, context).unwrap()
+        assert len(services) == 1, f"{type(component).__name__} should have 1 service"
+        assert services[0] is reserve, f"{type(component).__name__} service should be the VariableReserve"
+
+    # Components without reserves return an empty list
+    no_reserve = ReEDSVariableGenerator(
+        name="p1_SOLAR",
+        region=region,
+        technology="upv",
+        capacity=2.0,
+    )
+    assert getters.get_gen_services(no_reserve, context).unwrap() == []
+
+    # Unknown reserve names are silently skipped
+    partial_ext = ReEDSVariableGenerator(
+        name="p1_WIND2",
+        region=region,
+        technology="wind-ons",
+        capacity=3.0,
+        ext={"reserves": ["SPIN_UP", "NONEXISTENT_RESERVE"]},
+    )
+    partial = getters.get_gen_services(partial_ext, context).unwrap()
+    assert partial == [reserve]
+
+
+def test_get_gen_services_resolves_non_spinning_reserve(tmp_path) -> None:
+    """get_gen_services must attach VariableReserveNonSpinning, not silently drop it.
+
+    Regression: the original implementation only searched VariableReserve, so a
+    generator referencing a NON_SPINNING reserve would get an empty services list
+    even after the reserve was translated.
+    """
+    from r2x_sienna.models import VariableReserveNonSpinning
+
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    region = ReEDSRegion(name="p1")
+    area = Area(name="p1", category="region")
+    context.target_system.add_component(area)
+    bus = ACBus(name="p1_BUS", area=area, number=1, base_voltage=Voltage(115.0, "kV"))
+    context.target_system.add_component(bus)
+
+    non_spin = VariableReserveNonSpinning(
+        name="NON_SPIN_UP",
+        available=True,
+        requirement=0.03,
+        time_frame=600.0,
+        sustained_time=1800.0,
+        max_output_fraction=1.0,
+        max_participation_factor=1.0,
+        deployed_fraction=1.0,
+    )
+    context.target_system.add_component(non_spin)
+
+    ext = {"reserves": ["NON_SPIN_UP"]}
+
+    for component in (
+        ReEDSThermalGenerator(
+            name="THERM",
+            region=region,
+            technology="coal",
+            capacity=100.0,
+            heat_rate=7.5,
+            fuel_type="coal",
+            ext=ext,
+        ),
+        ReEDSVariableGenerator(name="WIND", region=region, technology="wind-ons", capacity=50.0, ext=ext),
+        ReEDSHydroGenerator(
+            name="HYDRO", region=region, technology="hydro", capacity=80.0, is_dispatchable=True, ext=ext
+        ),
+        ReEDSStorage(
+            name="BATT",
+            region=region,
+            technology="battery_4",
+            capacity=40.0,
+            storage_duration=4.0,
+            round_trip_efficiency=0.9,
+            ext=ext,
+        ),
+    ):
+        services = getters.get_gen_services(component, context).unwrap()
+        assert (
+            len(services) == 1
+        ), f"{type(component).__name__}: expected 1 NON_SPINNING service, got {len(services)}"
+        assert (
+            services[0] is non_spin
+        ), f"{type(component).__name__}: service should be the VariableReserveNonSpinning instance"
+
+    # A mix of spinning + non-spinning reserves both resolve correctly
+    from r2x_sienna.models import VariableReserve
+
+    spin = VariableReserve(
+        name="SPIN_UP",
+        available=True,
+        reserve_type="SPINNING",
+        direction="UP",
+        requirement=0.05,
+        time_frame=300.0,
+        sustained_time=3600.0,
+        max_output_fraction=1.0,
+        max_participation_factor=1.0,
+        deployed_fraction=1.0,
+    )
+    context.target_system.add_component(spin)
+
+    mixed = ReEDSStorage(
+        name="BATT2",
+        region=region,
+        technology="battery_4",
+        capacity=20.0,
+        storage_duration=2.0,
+        round_trip_efficiency=0.95,
+        ext={"reserves": ["SPIN_UP", "NON_SPIN_UP"]},
+    )
+    mixed_services = getters.get_gen_services(mixed, context).unwrap()
+    assert len(mixed_services) == 2
+    assert spin in mixed_services
+    assert non_spin in mixed_services
+
+
+def test_get_hydro_prime_mover(tmp_path) -> None:
+    """get_hydro_prime_mover must always return PrimeMoversType.HY."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    region = ReEDSRegion(name="p1")
+    hydro = ReEDSHydroGenerator(
+        name="p1_HYDRO",
+        region=region,
+        technology="hydro",
+        capacity=100.0,
+        is_dispatchable=True,
+    )
+    result = getters.get_hydro_prime_mover(hydro, context).unwrap()
+    assert result == PrimeMoversType.HY
+
+
+def test_get_zero_reactive_power_limits(tmp_path) -> None:
+    """get_zero_reactive_power_limits always returns MinMax(0.0, 0.0) regardless of component type."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    region = ReEDSRegion(name="p1")
+
+    # Works for any component type — hydro, storage, variable gen, etc.
+    for component in (
+        ReEDSHydroGenerator(
+            name="H", region=region, technology="hydro", capacity=100.0, is_dispatchable=True
+        ),
+        ReEDSStorage(
+            name="S",
+            region=region,
+            technology="battery_4",
+            capacity=50.0,
+            storage_duration=4.0,
+            round_trip_efficiency=0.9,
+        ),
+        ReEDSVariableGenerator(name="V", region=region, technology="wind-ons", capacity=30.0),
+    ):
+        limits = getters.get_zero_reactive_power_limits(component, context).unwrap()
+        assert limits.min == 0.0, f"{type(component).__name__} reactive_power_limits.min should be 0.0"
+        assert limits.max == 0.0, f"{type(component).__name__} reactive_power_limits.max should be 0.0"
+
+
+def test_consuming_tech_getters(tmp_path) -> None:
+    """get_consuming_tech_max_active_power and get_consuming_tech_base_power work for both consuming tech types."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    region = ReEDSRegion(name="p1")
+
+    electrolyzer = ReEDSElectrolyzerDemand(
+        name="ELEC1",
+        region=region,
+        technology="electrolyzer",
+        capacity=50.0,
+        electricity_efficiency=55.0,
+        max_active_power=40.0,
+    )
+    datacenter = ReEDSDataCenterDemand(
+        name="DC1",
+        region=region,
+        technology="datacenter",
+        capacity=30.0,
+        electricity_efficiency=1.0,
+        # max_active_power not set — should fall back to capacity
+    )
+
+    # Electrolyzer: prefers explicit max_active_power
+    assert getters.get_consuming_tech_max_active_power(electrolyzer, context).unwrap() == 40.0
+    assert getters.get_consuming_tech_base_power(electrolyzer, context).unwrap() == 50.0
+
+    # DataCenter: no explicit max_active_power → uses capacity
+    assert getters.get_consuming_tech_max_active_power(datacenter, context).unwrap() == 30.0
+    assert getters.get_consuming_tech_base_power(datacenter, context).unwrap() == 30.0
