@@ -1022,6 +1022,13 @@ def get_component_ext(source_component: object, context: PluginContext) -> Resul
         except Exception:
             pass
 
+    # Fallback: if no prime_mover/fuel description, use the resolved category (e.g. "biopower",
+    # "natural-gas") so that t_object.description is never left empty for generators.
+    if "description" not in ext:
+        category = _resolve_generator_category(source_component, context)
+        if category is not None:
+            ext["description"] = category
+
     return Ok(ext)
 
 
@@ -1508,7 +1515,13 @@ def get_generator_category(source_component: object, context: PluginContext) -> 
 def get_generator_description(
     source_component: object, context: PluginContext
 ) -> Result[str | None, ValueError]:
-    """Build a description string from prime_mover_type and fuel when available."""
+    """Build a description string for any generator.
+
+    Priority:
+    1. prime_mover_type + fuel → "prime_mover: CC, fuel_type: NATURAL_GAS"
+    2. Resolved category → "biopower", "hydro", "upv", etc.
+    3. None when neither is available (non-generator components).
+    """
     parts = []
     prime_mover = getattr(source_component, "prime_mover_type", None)
     if prime_mover is not None:
@@ -1518,9 +1531,13 @@ def get_generator_description(
     if fuel is not None:
         fuel_str = fuel.name if hasattr(fuel, "name") else str(fuel)
         parts.append(f"fuel_type: {fuel_str}")
-    if not parts:
-        return Ok(None)
-    return Ok(", ".join(parts))
+    if parts:
+        return Ok(", ".join(parts))
+    # Fallback: use resolved category so every generator gets a non-empty description.
+    category = _resolve_generator_category(source_component, context)
+    if category is not None:
+        return Ok(category)
+    return Ok(None)
 
 
 @getter
@@ -1835,16 +1852,22 @@ def get_heat_rate_incr3(source_component: object, context: PluginContext) -> Res
 
 @getter
 def get_min_up_time(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract minimum up time from time_limits or ext dict."""
+    """Extract minimum up time from time_limits or ext dict; falls back to category default."""
     value = _get_time_limit(source_component, "up", None)
-    return Ok(value if value is not None else 0.0)
+    if value is not None:
+        return Ok(value)
+    category = _resolve_generator_category(source_component, context)
+    return Ok(_get_defaults(category, "min_up_time") if category else 0.0)
 
 
 @getter
 def get_min_down_time(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract minimum down time from time_limits or ext dict."""
+    """Extract minimum down time from time_limits or ext dict; falls back to category default."""
     value = _get_time_limit(source_component, "down", None)
-    return Ok(value if value is not None else 0.0)
+    if value is not None:
+        return Ok(value)
+    category = _resolve_generator_category(source_component, context)
+    return Ok(_get_defaults(category, "min_down_time") if category else 0.0)
 
 
 @getter
@@ -1921,6 +1944,17 @@ def get_generator_min_stable_level(
     if math.isclose(min_mw, 0.0, abs_tol=1e-6) and max_capacity_mw is not None and max_capacity_mw > 0.0:
         min_mw = 0.5 * max_capacity_mw
 
+    # Nuclear generators must operate at 70 % of max capacity.
+    # If the resolved value is not within 5 % of that target, override it.
+    if (
+        max_capacity_mw is not None
+        and max_capacity_mw > 0.0
+        and _resolve_generator_category(source_component, context) == "nuclear"
+    ):
+        target_mw = 0.7 * max_capacity_mw
+        if not math.isclose(min_mw, target_mw, rel_tol=0.05):
+            min_mw = target_mw
+
     return Ok(round(min_mw, 2))
 
 
@@ -1960,7 +1994,10 @@ def get_generator_start_cost(source_component: object, context: PluginContext) -
             value = cost.get("start_up")
         if value is None:
             value = getattr(cost, "start_up", None)
-    return Ok(float(value) if value is not None else 0.0)
+    if value is not None:
+        return Ok(float(value))
+    category = _resolve_generator_category(source_component, context)
+    return Ok(_get_defaults(category, "startup_cost") if category else 0.0)
 
 
 @getter

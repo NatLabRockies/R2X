@@ -51,16 +51,6 @@ InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionD
 _SIENNA_TRANSFORMER_TYPES = (Transformer2W, TapTransformer, PhaseShiftingTransformer)
 
 
-# ---------------------------------------------------------------------------
-# SQLite IN-clause chunking fix
-# ---------------------------------------------------------------------------
-# SQLite limits bound variables to 999 per statement.  For large EI systems
-# (226k+ component associations) the vanilla r2x_core implementation issues a
-# single query with all target UUIDs as parameters, which blows the limit.
-# We replace that function at import time with an equivalent that batches the
-# IN clause into chunks of 900.
-
-
 def _chunked_setup_target_and_child_tables(
     tgt_metadata: Any,
     src_associations: Any,
@@ -116,14 +106,75 @@ def _chunked_setup_target_and_child_tables(
     return child_remapping, uuid_to_type
 
 
-try:
-    import r2x_core.time_series as _r2x_core_ts
+def _write_descriptions_to_db(system: Any, db: Any) -> None:
+    """Write ext["description"] from each translated component to t_object.description."""
+    from r2x_plexos.exporter import PLEXOS_TYPE_MAP_INVERTED
 
-    cast(Any, _r2x_core_ts)._setup_target_and_child_tables = _chunked_setup_target_and_child_tables
-    logger.debug("Applied chunked _setup_target_and_child_tables patch to r2x_core.time_series")
-except (ImportError, AttributeError) as _patch_err:
-    logger.warning("Could not patch r2x_core.time_series._setup_target_and_child_tables: {}", _patch_err)
-# ---------------------------------------------------------------------------
+    updates: list[tuple[str, str, int]] = []
+    for comp_type in system.get_component_types():
+        for comp in system.get_components(comp_type):
+            desc = (getattr(comp, "ext", None) or {}).get("description")
+            if not desc:
+                continue
+            comp_name: str = getattr(comp, "name", "") or ""
+            if not comp_name:
+                continue
+            class_enum = PLEXOS_TYPE_MAP_INVERTED.get(type(comp))
+            if class_enum is None:
+                continue
+            updates.append((str(desc), comp_name, db.get_class_id(class_enum)))
+
+    if updates:
+        db._db.executemany(
+            "UPDATE t_object SET description=? WHERE name=? AND class_id=?",
+            updates,
+        )
+        logger.debug("Wrote description to {} t_object rows", len(updates))
+
+
+def apply_chunking_patch() -> None:
+    """Apply SQLite IN-clause chunking fix to r2x_core.time_series (idempotent).
+
+    r2x_core's _setup_target_and_child_tables issues a single IN-clause query
+    with all target UUIDs, which exceeds SQLite's 999-parameter limit on large
+    systems. This replaces it with a chunked equivalent.
+    """
+    import r2x_core.time_series as _ts
+
+    if cast(Any, _ts)._setup_target_and_child_tables is _chunked_setup_target_and_child_tables:
+        return
+    cast(Any, _ts)._setup_target_and_child_tables = _chunked_setup_target_and_child_tables
+    logger.debug("Applied chunked _setup_target_and_child_tables to r2x_core.time_series")
+
+
+def apply_description_export_patch() -> None:
+    """Wrap PLEXOSExporter.prepare_export to also persist descriptions (idempotent).
+
+    The exporter's bulk object insert omits the description column. This wraps
+    prepare_export so that after objects are inserted, ext["description"] values
+    are written back to t_object.description via a batch UPDATE.
+    """
+    import r2x_plexos.exporter as _exp
+
+    if getattr(cast(Any, _exp.PLEXOSExporter).prepare_export, "_description_patched", False):
+        return
+
+    _original = _exp.PLEXOSExporter.prepare_export
+
+    def _wrapped(self: Any) -> Any:
+        result = _original(self)
+        system = getattr(self, "system", None)
+        db = getattr(self, "db", None)
+        if system is not None and db is not None:
+            try:
+                _write_descriptions_to_db(system, db)
+            except Exception as _err:
+                logger.warning("Could not write descriptions to t_object: {}", _err)
+        return result
+
+    cast(Any, _wrapped)._description_patched = True
+    cast(Any, _exp.PLEXOSExporter).prepare_export = _wrapped
+    logger.debug("Applied description-to-t_object patch to PLEXOSExporter.prepare_export")
 
 
 def _source_system(context: PluginContext) -> Any:

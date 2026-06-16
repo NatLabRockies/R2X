@@ -2682,6 +2682,63 @@ def test_get_min_stable_level_zero_fallback_uses_half_max_capacity(monkeypatch, 
     assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 30.0
 
 
+def test_get_min_stable_level_nuclear_enforced_to_70_percent(monkeypatch, context):
+    """Nuclear generators must have min stable level = 70 % of max capacity."""
+
+    class Dummy:
+        active_power_limits = {"min": 0.2, "max": 1000.0}  # noqa: RUF012
+        rating = 1000.0
+        base_power = 1.0
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "nuclear")
+
+    # raw min = 0.2 MW, max = 1000 MW -> should be overridden to 700 MW
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 700.0
+
+
+def test_get_min_stable_level_nuclear_already_at_70_percent_unchanged(monkeypatch, context):
+    """Nuclear generators already at ~70 % are left untouched."""
+
+    class Dummy:
+        active_power_limits = {"min": 0.7, "max": 1000.0}  # noqa: RUF012
+        rating = 1000.0
+        base_power = 1.0
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "nuclear")
+
+    # min = 700 MW (exactly 70 % of 1000 MW) -> no override
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 700.0
+
+
+def test_get_min_stable_level_nuclear_within_tolerance_unchanged(monkeypatch, context):
+    """Nuclear min stable level within 5 % of 70 % target is not overridden."""
+
+    class Dummy:
+        # min = 720 MW, max = 1000 MW (values already in MW, base_power = 1.0)
+        active_power_limits = {"min": 720.0, "max": 1000.0}  # noqa: RUF012
+        rating = 1000.0
+        base_power = 1.0
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "nuclear")
+
+    # 720 MW is within 5 % rel_tol of the 700 MW target -> kept as-is
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 720.0
+
+
+def test_get_min_stable_level_non_nuclear_not_affected(monkeypatch, context):
+    """Non-nuclear generators are not subject to the 70 % nuclear override."""
+
+    class Dummy:
+        active_power_limits = {"min": 0.1, "max": 100.0}  # noqa: RUF012
+        rating = 100.0
+        base_power = 1.0
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "coal")
+
+    # min = 10 MW, exactly at the 10-MW threshold -> 50 % of max = 50 MW
+    assert getters.get_generator_min_stable_level(Dummy(), context).unwrap() == 50.0
+
+
 def test_get_reserve_duration_zero(context):
     """Covers get_reserve_duration with 0 sustained_time."""
     reserve = VariableReserve(
