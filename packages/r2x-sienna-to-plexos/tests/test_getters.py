@@ -785,6 +785,32 @@ def test_get_generator_load_point_falls_back_to_heat_rate_times_fuel(monkeypatch
     assert getters.get_generator_load_point(DummyThermal(), context).unwrap() == 19.0
 
 
+def test_get_generator_load_point_negative_value_is_abs(monkeypatch, context):
+    """Negative load_point values (e.g. from sign-flipped cost curves) must be made absolute."""
+
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "compute_heat_rate_data", lambda *_: {"heat_rate": -9.5})
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(3.155))
+
+    result = getters.get_generator_load_point(DummyThermal(), context).unwrap()
+    assert result >= 0.0
+
+
+def test_get_generator_load_point_negative_scalar_load_point_is_abs(monkeypatch, context):
+    """Negative scalar computed_load_point values must be made absolute."""
+
+    class DummyThermal:
+        pass
+
+    monkeypatch.setattr(getters, "compute_heat_rate_data", lambda *_: {"load_point": -29.97})
+    monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(0.0))
+
+    result = getters.get_generator_load_point(DummyThermal(), context).unwrap()
+    assert result == 29.97
+
+
 def test_get_dispatch_generator_units_zero_when_time_series_missing(context):
     class DummyDispatch:
         pass

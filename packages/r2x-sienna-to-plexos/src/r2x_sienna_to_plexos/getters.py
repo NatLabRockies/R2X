@@ -1776,12 +1776,15 @@ def get_generator_load_point(source_component: object, context: PluginContext) -
     if isinstance(ext, dict):
         load_point = ext.get("NARIS_Load_Point")
         if isinstance(load_point, int | float):
-            return Ok(float(load_point))
+            return Ok(abs(float(load_point)))
 
     heat_rate_data = compute_heat_rate_data(source_component)
     computed_load_point = heat_rate_data.get("load_point")
     if computed_load_point is not None:
-        return Ok(coerce_value(computed_load_point))
+        coerced = coerce_value(computed_load_point)
+        if isinstance(coerced, list):
+            return Ok([abs(v) if isinstance(v, int | float) else v for v in coerced])
+        return Ok(abs(coerced) if isinstance(coerced, int | float) else coerced)
 
     heat_rate = heat_rate_data.get("heat_rate")
     fuel_price_getter = cast(Any, get_fuel_price)
@@ -1789,7 +1792,7 @@ def get_generator_load_point(source_component: object, context: PluginContext) -
     match fuel_price_result:
         case Ok(fuel_price):
             if heat_rate is not None and fuel_price > 0.0:
-                return Ok(float(heat_rate) * float(fuel_price))
+                return Ok(abs(float(heat_rate) * float(fuel_price)))
         case Err(_):
             pass
 
