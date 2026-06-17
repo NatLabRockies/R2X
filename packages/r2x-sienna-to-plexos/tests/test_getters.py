@@ -820,6 +820,51 @@ def test_get_dispatch_generator_units_zero_when_time_series_missing(context):
     assert getters.get_dispatch_generator_units(DummyDispatch(), context).unwrap() == 0
 
 
+def test_generator_units_zero_when_available_false_thermal(context):
+    """All generator unit getters must return 0 when available=False."""
+
+    class DummyThermal:
+        available = False
+        ext = None
+        units = None
+        operation_cost = None
+        prime_mover_type = None
+        fuel = None
+
+    assert getters.get_thermal_generator_units(DummyThermal(), context).unwrap() == 0
+
+
+def test_generator_units_zero_when_available_false_dispatch(context):
+    class DummyDispatch:
+        available = False
+
+    assert getters.get_dispatch_generator_units(DummyDispatch(), context).unwrap() == 0
+
+
+def test_generator_units_zero_when_available_false_hydro(context):
+    class DummyHydro:
+        available = False
+
+    assert getters.get_hydro_generator_units(DummyHydro(), context).unwrap() == 0
+
+
+def test_generator_units_zero_when_available_false_pumped_hydro(context):
+    class DummyPumpedHydro:
+        available = False
+        rating = None
+
+    assert getters.get_pumped_hydro_generator_units(DummyPumpedHydro(), context).unwrap() == 0
+
+
+def test_generator_units_not_affected_when_available_true(context):
+    """available=True (or missing) should not override normal logic."""
+
+    class DummyHydro:
+        available = True
+
+    assert getters.get_hydro_generator_units(DummyHydro(), context).unwrap() == 1
+
+
 def test_get_dispatch_generator_units_one_when_time_series_present(context):
     class DummyDispatch:
         pass
@@ -884,7 +929,7 @@ def test_get_generator_category_thermal_prefers_fuel_over_prime_mover(context):
         prime_mover_type=PrimeMoversType.ST,
     )
 
-    assert getters.get_generator_category(gen, context).unwrap() == "gas-cc"
+    assert getters.get_generator_category(gen, context).unwrap() == "natural-gas"
 
 
 def test_get_turbine_pump_load_and_efficiency(context):
@@ -1771,8 +1816,9 @@ def test_thermal_standard_initial_none(context):
         operation_cost=ThermalGenerationCost.example(),
         time_at_status=1000.0,
     )
-    assert getters.get_min_up_time(gen, context).unwrap() == 0.0
-    assert getters.get_min_down_time(gen, context).unwrap() == 0.0
+    # CC + NATURAL_GAS resolves to "natural-gas" category; defaults apply when time_limits is None
+    assert getters.get_min_up_time(gen, context).unwrap() == 6.0
+    assert getters.get_min_down_time(gen, context).unwrap() == 8.0
 
 
 def test_getters_none_costs_and_battery(context):
@@ -2346,8 +2392,8 @@ def test_get_max_ramp_up_down_object(context):
     assert ramp_down > 0.0
 
 
-def test_get_max_ramp_thermal_large_absolute_value_stays_nonzero(context, monkeypatch):
-    """Large thermal ramp values already in MW/min should not collapse to zero/defaults."""
+def test_get_max_ramp_thermal_large_absolute_value_capped_by_defaults(context, monkeypatch):
+    """Ramp values exceeding max capacity are replaced by gen_ramp_pct * max_mw from PCM defaults."""
 
     class DummyThermal:
         ramp_limits: ClassVar[dict[str, float]] = {"up": 161.637, "down": 161.637}
@@ -2357,13 +2403,16 @@ def test_get_max_ramp_thermal_large_absolute_value_stays_nonzero(context, monkey
         prime_mover_type = PrimeMoversType.ST
         fuel = ThermalFuels.COAL
 
-    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _src, _ctx: "coal-new")
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda _src, _ctx: "coal")
     monkeypatch.setattr(getters, "sienna_get_max_active_power", lambda _src: 90.3)
 
     d = DummyThermal()
-    # Current behavior keeps large raw values (already MW/min) without fallback.
-    assert getters.get_max_ramp_up(d, context).unwrap() == 160554.0321
-    assert getters.get_max_ramp_down(d, context).unwrap() == 160554.0321
+    # raw ramp = 161.637 * 993.3 = 160,554 MW/min >> max_mw = 90.3 * 993.3 ≈ 89,695 MW
+    # coal ramp_rate = 0.2 → default_ramp_mw = 0.2 * 89,695 ≈ 17,939 MW/min
+    max_mw = 90.3 * 993.3
+    expected = round(0.2 * max_mw, 4)
+    assert getters.get_max_ramp_up(d, context).unwrap() == pytest.approx(expected)
+    assert getters.get_max_ramp_down(d, context).unwrap() == pytest.approx(expected)
 
 
 def test_get_max_ramp_up_down_tiny_values_use_defaults(context, monkeypatch):
@@ -2468,8 +2517,9 @@ def test_get_initial_hours_up_status_true(context):
         operation_cost=ThermalGenerationCost.example(),
         time_at_status=500.0,
     )
-    assert getters.get_min_up_time(gen, context).unwrap() == 0.0
-    assert getters.get_min_down_time(gen, context).unwrap() == 0.0
+    # CC + NATURAL_GAS resolves to "natural-gas" category; defaults apply when time_limits is None
+    assert getters.get_min_up_time(gen, context).unwrap() == 6.0
+    assert getters.get_min_down_time(gen, context).unwrap() == 8.0
 
 
 def test_get_fuel_price_fuel_curve(context):
@@ -2680,7 +2730,7 @@ def test_get_min_stable_level_fallback_is_capped_to_half_max_capacity(monkeypatc
         rating = 80.0
         base_power = 1.0
 
-    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "gas-cc")
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "natural-gas")
     monkeypatch.setattr(
         getters,
         "_get_defaults",
@@ -2697,7 +2747,7 @@ def test_get_min_stable_level_zero_fallback_uses_half_max_capacity(monkeypatch, 
         rating = 60.0
         base_power = 1.0
 
-    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "gas-cc")
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "natural-gas")
     monkeypatch.setattr(
         getters,
         "_get_defaults",
@@ -3223,14 +3273,14 @@ def test_attach_generator_time_series_uses_rating_when_limits_missing(tmp_path, 
 
 
 def test_resolve_generator_category_zonal2nodal_uses_reeds_defaults(monkeypatch, context):
-    comp = types.SimpleNamespace(name="zonal2nodal_gas-cc_cluster", ext={})
+    comp = types.SimpleNamespace(name="zonal2nodal_natural-gas_cluster", ext={})
     monkeypatch.setattr(
         getters,
         "_get_defaults_data",
-        lambda _ctx: {"reeds_defaults": {"gas": {}, "gas-cc": {}, "wind-ons": {}}},
+        lambda _ctx: {"reeds_defaults": {"gas": {}, "natural-gas": {}, "wind-ons": {}}},
     )
 
-    assert getters._resolve_generator_category(comp, context) == "gas-cc"
+    assert getters._resolve_generator_category(comp, context) == "natural-gas"
 
 
 def test_get_reeds_thermal_category_returns_none_for_non_list_mapping_values(monkeypatch, context):
@@ -3744,15 +3794,15 @@ def test__resolve_ramp_rates_huge_max_mw_uses_defaults(context, monkeypatch):
         ext = None
         prime_mover_type = None
 
-    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "gas-cc")
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "natural-gas")
     result = getters._resolve_ramp_rates(
         Dummy(), context, initial_ramp_mw=0.0, defaults_key="max_ramp_up_percentage"
     )
     assert result >= 0.0
 
 
-def test__resolve_ramp_rates_ramp_capped_at_half_capacity(context, monkeypatch):
-    """Computed ramp exceeding capacity_MW is capped at 50% (line 565)."""
+def test__resolve_ramp_rates_ramp_capped_by_defaults_when_exceeds_capacity(context, monkeypatch):
+    """Ramp from defaults that exceeds capacity_MW is replaced by gen_ramp_pct * max_mw."""
 
     class Dummy:
         active_power_limits = None
@@ -3761,11 +3811,11 @@ def test__resolve_ramp_rates_ramp_capped_at_half_capacity(context, monkeypatch):
         ext = None
         prime_mover_type = None
 
-    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "gas-cc")
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "natural-gas")
 
     def mock_get_defaults(cat, key):
         if key == "max_ramp_up_percentage":
-            return 2.0  # 200% of capacity → ramp = 200 > 100 → capped at 50
+            return 2.0  # 200% of capacity → 200 MW > 100 MW cap → default 2.0 * 100 = 200, capped to 100
         if key == "ramp_rate":
             return 0.0
         if key == "capacity_MW":
@@ -3776,4 +3826,25 @@ def test__resolve_ramp_rates_ramp_capped_at_half_capacity(context, monkeypatch):
     result = getters._resolve_ramp_rates(
         Dummy(), context, initial_ramp_mw=0.0, defaults_key="max_ramp_up_percentage"
     )
-    assert result == pytest.approx(50.0)
+    # gen_ramp_pct=2.0, max_mw=100 → default_ramp=200 > 100 → capped to min(200, 100) = 100
+    assert result == pytest.approx(100.0)
+
+
+def test__resolve_ramp_rates_source_ramp_exceeds_max_capacity_uses_defaults(context, monkeypatch):
+    """Source ramp > max_mw is physically impossible; replace with gen_ramp_pct * max_mw."""
+
+    class Dummy:
+        active_power_limits = MinMax(min=0.0, max=100.0)
+        base_power = 1.0
+        name = "dummy"
+        ext = None
+        prime_mover_type = None
+
+    monkeypatch.setattr(getters, "_resolve_generator_category", lambda *_: "coal")
+
+    # source ramp = 500 MW/min, max_mw = 100 MW → physically impossible
+    # coal ramp_rate = 0.2 → default_ramp = 0.2 * 100 = 20 MW/min
+    result = getters._resolve_ramp_rates(
+        Dummy(), context, initial_ramp_mw=500.0, defaults_key="max_ramp_up_percentage"
+    )
+    assert result == pytest.approx(20.0)

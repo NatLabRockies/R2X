@@ -50,7 +50,8 @@
   ],
   "general_defaults": {
     "wheeling_charge": 0.001,
-    "wheeling_charge_back": 0.001
+    "wheeling_charge_back": 0.001,
+    "default_ramp_rate": 0.5
   },
   "prime_mover_types": {
     "BA": "battery",
@@ -118,6 +119,7 @@
       "forced_outage_rate": 0.02,
       "maintenance_rate": 0.0055,
       "mean_time_to_repair": 12,
+      "ramp_rate": 1.0,
       "vom_cost": 0.01,
       "initial_soc": 0.5,
       "min_soc": 0.0,
@@ -132,7 +134,8 @@
       "min_down_time": 7.0,
       "min_up_time": 7.0,
       "min_stable_level_percentage": 1.0,
-      "startup_cost": 5.3
+      "startup_cost": 5.3,
+      "vom_cost": 5.0
     },
     "coal": {
       "capacity_MW": 302.0,
@@ -225,19 +228,53 @@
       "maintenance_rate": 0.01,
       "mean_time_to_repair": 48,
       "ramp_rate": 0.8,
-      "efficiency": 0.9
+      "efficiency": 0.9,
+      "vom_cost": 3.2
     },
     "upv": {
-      "capacity_MW": 20.0
+      "capacity_MW": 20.0,
+      "ramp_rate": 1.0,
+      "vom_cost": 0.0
     },
     "wind-ofs": {
-      "capacity_MW": 15.0
+      "capacity_MW": 15.0,
+      "ramp_rate": 1.0,
+      "vom_cost": 0.0
     },
     "wind-ons": {
-      "capacity_MW": 15.5
+      "capacity_MW": 15.5,
+      "ramp_rate": 1.0,
+      "vom_cost": 0.0
     },
     "distpv": {
-      "capacity_MW": 10.0
+      "capacity_MW": 10.0,
+      "ramp_rate": 1.0,
+      "vom_cost": 0.0
+    },
+    "hydend": {
+      "capacity_MW": 150.0,
+      "ramp_rate": 0.8,
+      "vom_cost": 3.2
+    },
+    "hyded": {
+      "capacity_MW": 150.0,
+      "ramp_rate": 0.8,
+      "vom_cost": 3.2
+    },
+    "hydnpnd": {
+      "capacity_MW": 150.0,
+      "ramp_rate": 0.8,
+      "vom_cost": 3.2
+    },
+    "hydund": {
+      "capacity_MW": 150.0,
+      "ramp_rate": 0.8,
+      "vom_cost": 3.2
+    },
+    "can-imports": {
+      "capacity_MW": 1000.0,
+      "ramp_rate": 0.8,
+      "vom_cost": 0.0
     }
   }
 }

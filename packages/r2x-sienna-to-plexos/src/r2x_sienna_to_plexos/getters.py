@@ -135,7 +135,7 @@ def _get_reeds_thermal_category_from_fuel(source_component: Any, context: Plugin
         if fuel_key in normalized_values:
             category_str = str(category).strip()
             if category_str in {"natural-gas", "natural_gas", "gas"}:
-                return "gas-cc"
+                return "natural-gas"
             return category_str
 
     return None
@@ -542,13 +542,26 @@ def _resolve_ramp_rates(
     initial_ramp_mw: float,
     defaults_key: str,
 ) -> float:
-    """Apply defaults/fallback/capping logic and return final non-negative ramp."""
+    """Apply defaults/fallback/capping logic and return final non-negative ramp.
+
+    Logic (in order):
+    1. If the raw ramp is below the usability threshold, replace it with
+       ``gen_ramp_pct * max_mw`` from PCM defaults.
+    2. If the raw ramp (or the defaults-derived value) *exceeds* max_mw, it is
+       physically impossible → replace with ``gen_ramp_pct * max_mw`` from PCM
+       defaults.  If that is still > max_mw, cap at max_mw.
+    3. If the fallback is still below threshold after both passes (e.g. defaults
+       capacity also missing), the value stays as-is (floor of 0.0 at the end).
+    """
     ramp_mw = initial_ramp_mw
     category = _resolve_generator_category(source_component, context)
     gen_ramp_pct = _get_defaults(category, defaults_key)
     # When the primary percentage key is unset (0.0), fall back to ramp_rate.
     if math.isclose(gen_ramp_pct, 0.0, abs_tol=1e-9):
         gen_ramp_pct = _get_defaults(category, "ramp_rate")
+    # Last resort: general default for categories with no ramp_rate entry.
+    if math.isclose(gen_ramp_pct, 0.0, abs_tol=1e-9):
+        gen_ramp_pct = _get_general_default("default_ramp_rate")
     max_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "max") or 0.0
     max_mw = abs(max_pu) * resolve_base_power(source_component)
     # Ignore sentinel / placeholder max-capacity values (e.g. 1e30 in some data sources).
@@ -556,13 +569,18 @@ def _resolve_ramp_rates(
         max_mw = 0.0
     if max_mw == 0.0:
         max_mw = _get_defaults(category, "capacity_MW")
+
+    # --- Step 1: raw ramp below usability threshold → use PCM defaults ---
     if ramp_mw < RAMPING_THRESHOLD:
         ramp_mw = gen_ramp_pct * max_mw
         if ramp_mw < RAMPING_THRESHOLD:
             max_mw = _get_defaults(category, "capacity_MW")
             ramp_mw = gen_ramp_pct * max_mw
-        if ramp_mw > max_mw:
-            ramp_mw = max_mw * 0.5
+
+    # --- Step 2: ramp exceeds max capacity → physically impossible, use defaults ---
+    if max_mw > 0.0 and ramp_mw > max_mw:
+        default_ramp_mw = gen_ramp_pct * max_mw
+        ramp_mw = min(default_ramp_mw, max_mw)
 
     return max(0.0, round(ramp_mw, 4))
 
@@ -1593,6 +1611,12 @@ def get_fuel_price(
     return Ok(0.0)
 
 
+def _is_available(source_component: Any) -> bool:
+    """Return False only when the component explicitly sets available=False."""
+    available = getattr(source_component, "available", None)
+    return available is not False
+
+
 @getter
 def get_thermal_generator_units(
     source_component: ThermalStandard | ThermalMultiStart, context: PluginContext
@@ -1607,6 +1631,9 @@ def get_thermal_generator_units(
     Generators default to online unless an explicit source ``units`` flag
     disables them, or a known data-fix exception applies.
     """
+    if not _is_available(source_component):
+        return Ok(0)
+
     ext = getattr(source_component, "ext", None)
     if isinstance(ext, dict):
         plant_name = str(ext.get("plant_name", "")).strip().lower()
@@ -1664,6 +1691,8 @@ def get_dispatch_generator_units(
     context: PluginContext,
 ) -> Result[int, ValueError]:
     """Deactivate renewable dispatch generators that do not have source time series."""
+    if not _is_available(source_component):
+        return Ok(0)
     return Ok(1 if _has_usable_generator_time_series(source_component, context) else 0)
 
 
@@ -1678,6 +1707,8 @@ def get_hydro_generator_units(
     Source ``units`` flags in Sienna data encode build counts, not operational
     enablement, so these should not be deactivated from that field.
     """
+    if not _is_available(source_component):
+        return Ok(0)
     return Ok(1)
 
 
@@ -1693,6 +1724,9 @@ def get_pumped_hydro_generator_units(
     pumped-storage association references this turbine — meaning a PLEXOSStorage
     will actually be created and connected to it.
     """
+    if not _is_available(source_component):
+        return Ok(0)
+
     rating = getattr(source_component, "rating", None)
     pump_load_mw = 0.0
     if rating is not None:
@@ -1997,7 +2031,8 @@ def get_generator_start_cost(source_component: object, context: PluginContext) -
             value = cost.get("start_up")
         if value is None:
             value = getattr(cost, "start_up", None)
-    if value is not None:
+    # Only trust a non-zero source value; zero means "not set" — fall back to category default.
+    if value is not None and float(value) != 0.0:
         return Ok(float(value))
     category = _resolve_generator_category(source_component, context)
     return Ok(_get_defaults(category, "startup_cost") if category else 0.0)
