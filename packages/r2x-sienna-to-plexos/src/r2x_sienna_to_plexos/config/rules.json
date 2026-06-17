@@ -46,7 +46,8 @@
       "category": "category"
     },
     "getters": {
-      "units": "get_zone_units"
+      "units": "get_zone_units",
+      "category": "get_zone_category"
     },
     "source_type": "LoadZone",
     "target_type": "PLEXOSZone",

@@ -63,6 +63,7 @@ from r2x_core import Err, Ok, PluginContext, Result
 from r2x_core.getters import getter
 from r2x_sienna_to_plexos.getters_utils import (
     _attach_reservoir_time_series_to_storage,
+    _resolve_iso_rto_for_buses,
     coerce_value,
     compute_heat_rate_data,
     compute_markup_data,
@@ -1052,7 +1053,7 @@ def get_component_ext(source_component: object, context: PluginContext) -> Resul
 
 @getter
 def get_region_ext(source_component: Area, context: PluginContext) -> Result[dict, ValueError]:
-    """Return ext with sienna_type set to the load type found in this region (StandardLoad or PowerLoad)."""
+    """Return ext with sienna_type and ISO/RTO description for the region."""
     area_name = getattr(source_component, "name", "")
     ext_dict = getattr(source_component, "ext", None)
     if isinstance(ext_dict, dict):
@@ -1062,17 +1063,31 @@ def get_region_ext(source_component: Area, context: PluginContext) -> Result[dic
 
     area_buses_index = _build_area_buses_index(context)
     bus_loads_index = _build_bus_to_loads_index(context)
+
+    sienna_type = "StandardLoad"
     for bus in area_buses_index.get(area_name, []):
         for load in bus_loads_index.get(str(bus.uuid), []):
-            return Ok({"sienna_type": type(load).__name__})
+            sienna_type = type(load).__name__
+            break
+        if sienna_type != "StandardLoad":
+            break
+    else:
+        source_system = cast(Any, context.source_system)
+        for _ in source_system.get_components(StandardLoad):
+            sienna_type = "StandardLoad"
+            break
+        else:
+            for _ in source_system.get_components(PowerLoad):
+                sienna_type = "PowerLoad"
+                break
 
-    source_system = cast(Any, context.source_system)
-    for _ in source_system.get_components(StandardLoad):
-        return Ok({"sienna_type": "StandardLoad"})
-    for _ in source_system.get_components(PowerLoad):
-        return Ok({"sienna_type": "PowerLoad"})
+    region_buses = area_buses_index.get(area_name, [])
+    iso_rto = _resolve_iso_rto_for_buses(region_buses, context)
 
-    return Ok({"sienna_type": "StandardLoad"})
+    result: dict[str, Any] = {"sienna_type": sienna_type}
+    if iso_rto:
+        result["description"] = iso_rto
+    return Ok(result)
 
 
 @getter
@@ -1219,6 +1234,42 @@ def get_area_name(source_component: Area, context: PluginContext) -> Result[str,
 def get_zone_units(source_component: LoadZone, context: PluginContext) -> Result[float, ValueError]:
     """Return active status for translated zones."""
     return Ok(1.0)
+
+
+def _build_zone_buses_index(context: PluginContext) -> dict[str, list[Any]]:
+    """Map load_zone name -> list of ACBus components in that zone (cached)."""
+    cached = context._cache.get("zone_buses_index")
+    if cached is not None:
+        return cached
+    index: dict[str, list[Any]] = defaultdict(list)
+    for bus in _source_system(context).get_components(ACBus):
+        lz = getattr(bus, "load_zone", None)
+        if lz is None:
+            continue
+        if isinstance(lz, LoadZone):
+            lz_name = lz.name
+        elif hasattr(lz, "name") and lz.name:
+            lz_name = str(lz.name)
+        else:
+            lz_name = str(lz)
+        index[lz_name].append(bus)
+    result = dict(index)
+    context._cache["zone_buses_index"] = result
+    return result
+
+
+@getter
+def get_zone_category(source_component: LoadZone, context: PluginContext) -> Result[str, ValueError]:
+    """Resolve the ISO/RTO region for a LoadZone and return it as the PLEXOSZone category.
+
+    Uses geographic coordinates from each bus's supplemental GeographicInfo attribute
+    to perform a point-in-polygon lookup against stored ISO/RTO boundary multipolygons.
+    Falls back to 'zones' when no geographic data is available.
+    """
+    zone_name = getattr(source_component, "name", "")
+    buses = _build_zone_buses_index(context).get(zone_name, [])
+    iso_rto = _resolve_iso_rto_for_buses(buses, context)
+    return Ok(iso_rto if iso_rto else "zones")
 
 
 @getter
