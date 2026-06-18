@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import math
+
+import pytest
 from infrasys.cost_curves import FuelCurve, LinearCurve
 from r2x_reeds.models import (
     ReEDSDemand,
@@ -132,7 +135,7 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.get_capacity_as_base_power(thermal, context).unwrap() == 10.0
     limits = getters.get_active_power_limits(thermal, context).unwrap()
     assert limits.max == 10.0
-    assert limits.min == 0.0
+    assert limits.min == pytest.approx(0.4 * 10.0)  # min_stable_level_percentage from defaults.json
     assert getters.get_thermal_operation_cost(thermal, context).unwrap() is not None
     assert getters.get_prime_mover(thermal, context).unwrap() == PrimeMoversType.ST
     assert getters.get_fuel_enum(thermal, context).unwrap() == ThermalFuels.COAL
@@ -169,8 +172,8 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert hydro_limits.max == 8.0
     assert hydro_limits.min == 0.0
     ramp_limits = getters.hydro_ramp_limits(hydro, context).unwrap()
-    assert ramp_limits.up == 0.8
-    assert ramp_limits.down == 0.8
+    assert ramp_limits.up == pytest.approx(8.0 * 10.0 / 60.0)  # cap * rate / 60
+    assert ramp_limits.down == pytest.approx(8.0 * 10.0 / 60.0)
     time_limits = getters.hydro_time_limits(hydro, context).unwrap()
     assert time_limits.up == 0.0
     assert time_limits.down == 0.0
@@ -184,7 +187,8 @@ def test_basic_getters_return_values(tmp_path) -> None:
     power_limits = getters.storage_power_limits(storage, context).unwrap()
     assert power_limits.max == 4.0
     efficiency = getters.storage_efficiency(storage, context).unwrap()
-    assert efficiency.output == 0.9
+    assert efficiency.output == pytest.approx(math.sqrt(0.9))  # sqrt(rte)
+    assert efficiency.input == pytest.approx(math.sqrt(0.9))  # symmetric
     assert getters.storage_tech(storage, context).unwrap() == StorageTechs.LIB
     assert getters.storage_prime_mover(storage, context).unwrap() == PrimeMoversType.ES
     assert getters.storage_initial_level(storage, context).unwrap() == 0.0
