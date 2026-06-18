@@ -886,7 +886,7 @@ def ensure_source_conflicts_resolved(context: PluginContext) -> None:
                     target_system.remove_component(target_gen)
                     candidates.remove(target_gen)
                     removed += 1
-                    logger.info(
+                    logger.debug(
                         "Removed PLEXOSGenerator '{}' (available=False, superseded by Source).",
                         target_name,
                     )
@@ -1807,9 +1807,12 @@ def ensure_zone_consolidation(context: PluginContext) -> None:
         )
         iso_groups[dominant_iso].extend(fallback)
 
+    def _zone_uuid(obj: Any) -> str:
+        return str(getattr(obj, "uuid", id(obj)))
+
     for iso_name, zones in iso_groups.items():
         # Build UUID set for fast membership lookup
-        zone_uuids_to_replace: set[str] = {str(getattr(z, "uuid", id(z))) for z in zones}
+        zone_uuids_to_replace: set[str] = {_zone_uuid(z) for z in zones}
 
         # Create the single canonical zone named after the ISO/RTO
         canonical = PLEXOSZone(name=iso_name, category=iso_name, units=1)
@@ -1822,14 +1825,14 @@ def ensure_zone_consolidation(context: PluginContext) -> None:
                 (z for z in target_sys.get_components(PLEXOSZone) if getattr(z, "name", "") == iso_name),
                 None,
             )
-            if existing is not None and str(getattr(existing, "uuid", "")) not in zone_uuids_to_replace:
+            if existing is not None and _zone_uuid(existing) not in zone_uuids_to_replace:
                 canonical = existing
             else:
                 # Last resort: keep the first zone in the group as-is
                 canonical = zones[0]
-                zone_uuids_to_replace.discard(str(getattr(canonical, "uuid", "")))
+                zone_uuids_to_replace.discard(_zone_uuid(canonical))
 
-        canonical_uuid = str(getattr(canonical, "uuid", ""))
+        canonical_uuid = _zone_uuid(canonical)
 
         # Remap PLEXOSNode→Zone memberships that reference any old zone.
         # Use remove_supplemental_attribute (removes from ALL attached endpoints) so both
@@ -1840,8 +1843,7 @@ def ensure_zone_consolidation(context: PluginContext) -> None:
                 if membership.collection != CollectionEnum.Zone:
                     continue
                 child = membership.child_object
-                child_uuid = str(getattr(child, "uuid", id(child)))
-                if child_uuid not in zone_uuids_to_replace:
+                if _zone_uuid(child) not in zone_uuids_to_replace:
                     continue
                 # Remove from both endpoints at once, then add canonical membership
                 with contextlib.suppress(Exception):
@@ -1851,8 +1853,7 @@ def ensure_zone_consolidation(context: PluginContext) -> None:
         # Remove the individual per-LoadZone zones from the target system.
         # All their memberships have already been cleaned up above.
         for zone in zones:
-            zone_uuid = str(getattr(zone, "uuid", ""))
-            if zone_uuid == canonical_uuid:
+            if _zone_uuid(zone) == canonical_uuid:
                 continue  # don't remove the zone we just designated as canonical
             # Purge any remaining supplemental attributes (e.g. zone-side membership
             # registrations not reached in the node loop above) before removal.
