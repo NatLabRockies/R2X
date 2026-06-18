@@ -342,21 +342,19 @@ def _get_bus_coordinates(bus: Any, context: PluginContext) -> tuple[float, float
     return None
 
 
-def _resolve_iso_rto_for_buses(buses: list[Any], context: PluginContext) -> str | None:
-    """Determine which ISO/RTO region the majority of *buses* belong to.
+def _count_iso_rto_for_buses(buses: list[Any], context: PluginContext) -> dict[str, int]:
+    """Return a count of buses per ISO/RTO for the given bus list.
 
-    Loads the GeoJSON multipolygon boundaries for each ISO/RTO from the
-    ``config/iso-rto-coordinates/`` directory, then performs a ray-casting
-    point-in-polygon test using each bus's geographic coordinates from its
-    supplemental :class:`GeographicInfo` attribute.
+    Performs a ray-casting point-in-polygon test using each bus's geographic
+    coordinates from its supplemental :class:`GeographicInfo` attribute against
+    the GeoJSON MultiPolygon boundaries in ``config/iso-rto-coordinates/``.
 
-    Returns the ISO/RTO name (e.g. ``'ercot'``, ``'pjm'``) of whichever
-    region contains the most buses, or ``None`` when no bus has usable
-    geographic data.
+    Returns a mapping ``{iso_name: bus_count}``; buses with no usable coordinates
+    or whose location falls outside all ISO/RTO boundaries are omitted.
     """
     iso_rto_polygons = _load_iso_rto_polygons()
     if not iso_rto_polygons:
-        return None
+        return {}
 
     iso_counts: dict[str, int] = {}
     for bus in buses:
@@ -368,10 +366,32 @@ def _resolve_iso_rto_for_buses(buses: list[Any], context: PluginContext) -> str 
             if _point_in_multipolygon(lon, lat, polygons):
                 iso_counts[iso_name] = iso_counts.get(iso_name, 0) + 1
                 break  # each bus belongs to at most one ISO/RTO
+    return iso_counts
 
+
+def _resolve_iso_rto_for_buses(buses: list[Any], context: PluginContext) -> str | None:
+    """Return the single ISO/RTO that contains the most buses, or ``None``.
+
+    Used for zone categorisation where exactly one ISO/RTO label is needed.
+    """
+    iso_counts = _count_iso_rto_for_buses(buses, context)
     if not iso_counts:
         return None
     return max(iso_counts, key=iso_counts.__getitem__)
+
+
+def _resolve_iso_rto_description_for_buses(buses: list[Any], context: PluginContext) -> str | None:
+    """Return a description string listing every ISO/RTO that contains at least one bus.
+
+    When a region's buses span multiple ISO/RTOs the names are sorted
+    alphabetically and joined with ``'-'`` (e.g. ``'ercot-miso'``).
+    Returns ``None`` when no bus falls inside any ISO/RTO boundary
+    (e.g. Canadian utilities whose coordinates are outside all boundaries).
+    """
+    iso_counts = _count_iso_rto_for_buses(buses, context)
+    if not iso_counts:
+        return None
+    return "-".join(sorted(iso_counts))
 
 
 def _attach_reservoir_time_series_to_storage(

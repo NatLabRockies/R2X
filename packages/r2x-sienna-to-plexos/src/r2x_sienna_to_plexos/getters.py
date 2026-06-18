@@ -63,6 +63,7 @@ from r2x_core import Err, Ok, PluginContext, Result
 from r2x_core.getters import getter
 from r2x_sienna_to_plexos.getters_utils import (
     _attach_reservoir_time_series_to_storage,
+    _resolve_iso_rto_description_for_buses,
     _resolve_iso_rto_for_buses,
     coerce_value,
     compute_heat_rate_data,
@@ -1082,7 +1083,7 @@ def get_region_ext(source_component: Area, context: PluginContext) -> Result[dic
                 break
 
     region_buses = area_buses_index.get(area_name, [])
-    iso_rto = _resolve_iso_rto_for_buses(region_buses, context)
+    iso_rto = _resolve_iso_rto_description_for_buses(region_buses, context)
 
     result: dict[str, Any] = {"sienna_type": sienna_type}
     if iso_rto:
