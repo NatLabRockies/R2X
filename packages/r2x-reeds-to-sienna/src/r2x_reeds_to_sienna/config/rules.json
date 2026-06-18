@@ -238,7 +238,6 @@
       "ramp_limits": "hydro_ramp_limits",
       "time_limits": "hydro_time_limits",
       "time_at_status": "get_default_time_at_status",
-      "prime_mover_type": "get_hydro_prime_mover",
       "ext": "get_component_ext"
     },
     "depends_on": ["region_bus", "variable_reserve"],
@@ -327,46 +326,6 @@
     "version": 1
   },
   {
-    "name": "electrolyzer_load",
-    "defaults": {
-      "category": "electrolyzer"
-    },
-    "field_map": {
-      "name": "name",
-      "uuid": "uuid",
-      "category": "technology"
-    },
-    "getters": {
-      "bus": "get_bus_for_region",
-      "max_active_power": "get_consuming_tech_max_active_power",
-      "base_power": "get_consuming_tech_base_power"
-    },
-    "source_type": "ReEDSElectrolyzerDemand",
-    "target_type": "InterruptiblePowerLoad",
-    "depends_on": ["region_bus"],
-    "version": 1
-  },
-  {
-    "name": "datacenter_load",
-    "defaults": {
-      "category": "datacenter"
-    },
-    "field_map": {
-      "name": "name",
-      "uuid": "uuid",
-      "category": "technology"
-    },
-    "getters": {
-      "bus": "get_bus_for_region",
-      "max_active_power": "get_consuming_tech_max_active_power",
-      "base_power": "get_consuming_tech_base_power"
-    },
-    "source_type": "ReEDSDataCenterDemand",
-    "target_type": "InterruptiblePowerLoad",
-    "depends_on": ["region_bus"],
-    "version": 1
-  },
-  {
     "name": "region_line",
     "defaults": {
       "category": "line"
@@ -396,9 +355,7 @@
   {
     "name": "electrolyzer_load",
     "defaults": {
-      "category": "electrolyzer",
-      "active_power": 0.0,
-      "reactive_power": 0.0
+      "category": "electrolyzer"
     },
     "field_map": {
       "name": "name",
@@ -407,11 +364,8 @@
     },
     "getters": {
       "bus": "get_bus_for_region",
-      "active_power": "get_zero_active_power",
-      "reactive_power": "get_zero_reactive_power",
-      "max_active_power": "consuming_capacity_as_max_power",
-      "max_reactive_power": "demand_max_reactive_power",
-      "base_power": "consuming_capacity_as_base_power",
+      "max_active_power": "get_consuming_tech_max_active_power",
+      "base_power": "get_consuming_tech_base_power",
       "ext": "get_component_ext"
     },
     "depends_on": ["region_bus"],
@@ -422,9 +376,7 @@
   {
     "name": "datacenter_load",
     "defaults": {
-      "category": "data-center",
-      "active_power": 0.0,
-      "reactive_power": 0.0
+      "category": "data-center"
     },
     "field_map": {
       "name": "name",
@@ -433,11 +385,8 @@
     },
     "getters": {
       "bus": "get_bus_for_region",
-      "active_power": "get_zero_active_power",
-      "reactive_power": "get_zero_reactive_power",
-      "max_active_power": "consuming_capacity_as_max_power",
-      "max_reactive_power": "demand_max_reactive_power",
-      "base_power": "consuming_capacity_as_base_power",
+      "max_active_power": "get_consuming_tech_max_active_power",
+      "base_power": "get_consuming_tech_base_power",
       "ext": "get_component_ext"
     },
     "depends_on": ["region_bus"],
@@ -461,7 +410,7 @@
       "casefold": true,
       "field": "technology",
       "op": "not_in",
-      "values": ["electrolyzer", "data-center"]
+      "values": ["electrolyzer", "datacenter"]
     },
     "getters": {
       "bus": "get_bus_for_region",

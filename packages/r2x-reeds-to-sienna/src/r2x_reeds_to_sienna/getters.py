@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from functools import cache
 from importlib.resources import files
 from typing import TYPE_CHECKING, Any, cast
 
@@ -54,14 +55,20 @@ def _get_defaults(technology: str, key: str) -> float:
         if tech_lower.startswith(prefix):
             normalised = prefix
             break
-    defaults_path = files("r2x_reeds_to_sienna.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults = json.load(f)
+    defaults = _load_defaults_json()
     value = defaults.get("pcm_defaults", {}).get(normalised, {}).get(key, 0.0)
     try:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+@cache
+def _load_defaults_json() -> dict[str, Any]:
+    """Load and cache defaults.json (parsed once per process)."""
+    defaults_path = files("r2x_reeds_to_sienna.config") / "defaults.json"
+    with defaults_path.open() as f:
+        return json.load(f)
 
 
 def _ok_num(val: float | int) -> Result[float | int, ValueError]:
@@ -310,19 +317,7 @@ def get_thermal_operation_cost(
         technology = getattr(component, "technology", "")
         startup_cost_per_mw = _get_defaults(technology, "start_cost_per_MW")
     start_up = float(startup_cost_per_mw) * capacity
-    return Ok(
-        ThermalGenerationCost(
-            fixed=0.0,
-            shut_down=0.0,
-            start_up=start_up,
-            variable=FuelCurve(
-                value_curve=LinearCurve(heat_rate),
-                power_units=InfraUnitSystem.NATURAL_UNITS,
-                fuel_cost=fuel_price,
-                vom_cost=LinearCurve(vom_cost),
-            ),
-        )
-    )
+
     return Ok(
         ThermalGenerationCost(
             fixed=0.0,
