@@ -194,7 +194,7 @@
       "min_down_time": 48.0,
       "min_up_time": 48.0,
       "min_stable_level_percentage": 0.7,
-      "startup_cost": 0.0,
+      "startup_cost": 1000.0,
       "vom_cost": 2.5
     },
     "other": {
