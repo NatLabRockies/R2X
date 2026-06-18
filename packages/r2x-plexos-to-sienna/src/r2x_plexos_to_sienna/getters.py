@@ -57,7 +57,7 @@ from r2x_sienna.models.enums import (
     TransformerControlObjective,
     WindingGroupNumber,
 )
-from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput, MinMax
+from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput, MinMax, UpDown
 
 from r2x_core import Ok, PluginContext, Result
 from r2x_core.getters import getter
@@ -221,6 +221,15 @@ def _get_prime_mover_type(category: str) -> PrimeMoversType:
         defaults = json.load(f)
     code = defaults.get("prime_mover_types", {}).get(category, "OT")
     return getattr(PrimeMoversType, code, PrimeMoversType.OT)
+
+
+def _get_fuel_type(category: str) -> ThermalFuels:
+    """Map a generator category to a ThermalFuels enum value via defaults.json."""
+    defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
+    with defaults_path.open() as f:
+        defaults = json.load(f)
+    name = defaults.get("fuel_types", {}).get(category, "NATURAL_GAS")
+    return getattr(ThermalFuels, name, ThermalFuels.NATURAL_GAS)
 
 
 @getter
@@ -685,10 +694,19 @@ def get_gen_base_power(component: PLEXOSGenerator, context: PluginContext) -> Re
 
 
 @getter
-def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[Any, Any]:
-    """Get the active power limits of a generator."""
-    value = getattr(component, "active_power_limits", MinMax(min=0.0, max=0.0))
-    return Ok(value)
+def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[MinMax, Any]:
+    """Get active power limits using min_stable_level (MW) as min and max_capacity (MW) as max.
+
+    If ``min_stable_level`` is zero but ``min_stable_factor`` (% of max_capacity) is set,
+    the factor takes precedence.
+    """
+    max_cap = float(getattr(component, "max_capacity", 0.0) or 0.0)
+    min_stable = float(getattr(component, "min_stable_level", 0.0) or 0.0)
+    if min_stable == 0.0:
+        factor = float(getattr(component, "min_stable_factor", 0.0) or 0.0)
+        if factor > 0.0:
+            min_stable = factor / 100.0 * max_cap
+    return Ok(MinMax(min=min_stable, max=max_cap))
 
 
 @getter
@@ -747,22 +765,31 @@ def get_time_at_status(component: PLEXOSGenerator, context: PluginContext) -> Re
 def get_thermal_operation_cost(
     component: PLEXOSGenerator, context: PluginContext
 ) -> Result[ThermalGenerationCost, ValueError]:
-    """Return zeroed thermal operation cost."""
+    """Build thermal operation cost from heat_rate, fuel_price, vom_charge, and start_cost."""
+    heat_rate = float(getattr(component, "heat_rate", 0.0) or 0.0)
+    fuel_price = float(getattr(component, "fuel_price", 0.0) or 0.0)
+    vom_charge = float(getattr(component, "vom_charge", 0.0) or 0.0)
+    start_cost = float(getattr(component, "start_cost", 0.0) or 0.0)
     return Ok(
         ThermalGenerationCost(
             fixed=0.0,
             shut_down=0.0,
-            start_up=0.0,
-            variable=FuelCurve(value_curve=LinearCurve(0.0), power_units=NATURAL_UNITS, fuel_cost=0.0),
+            start_up=start_cost,
+            variable=FuelCurve(
+                value_curve=LinearCurve(heat_rate),
+                power_units=NATURAL_UNITS,
+                fuel_cost=fuel_price,
+                vom_cost=LinearCurve(vom_charge),
+            ),
         )
     )
 
 
 @getter
-def get_fuel_type(component: PLEXOSGenerator, context: PluginContext) -> Result[str, Any]:
-    """Get the fuel type of a generator."""
-    value = ThermalFuels.NATURAL_GAS
-    return Ok(str(value))
+def get_fuel_type(component: PLEXOSGenerator, context: PluginContext) -> Result[ThermalFuels, Any]:
+    """Get the fuel type of a generator by mapping its category via defaults.json."""
+    category = str(getattr(component, "category", "") or "")
+    return Ok(_get_fuel_type(category))
 
 
 @getter
@@ -804,15 +831,27 @@ def get_initial_storage_capacity_level(
 
 @getter
 def get_storage_capacity(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the storage capacity (max_volume)."""
-    return Ok(float(getattr(component, "max_volume", 0.0)))
+    """Get the storage capacity.
+
+    For PLEXOSBattery uses the ``capacity`` field (MWh).
+    For PLEXOSStorage (hydro reservoir) uses ``max_volume`` (MWh).
+    """
+    if hasattr(component, "capacity") and not hasattr(component, "max_volume"):
+        return Ok(float(getattr(component, "capacity", 0.0) or 0.0))
+    return Ok(float(getattr(component, "max_volume", 0.0) or 0.0))
 
 
 @getter
 def get_storage_level_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[MinMax, Any]:
-    """Get the storage level limits (min_volume, max_volume)."""
-    min_vol = float(getattr(component, "min_volume", 0.0))
-    max_vol = float(getattr(component, "max_volume", 0.0))
+    """Get the storage level limits.
+
+    For PLEXOSBattery: returns fractions [0, 1] (Sienna convention for batteries).
+    For PLEXOSStorage (hydro): returns absolute MWh limits from min/max_volume.
+    """
+    if hasattr(component, "capacity") and not hasattr(component, "max_volume"):
+        return Ok(MinMax(min=0.0, max=1.0))
+    min_vol = float(getattr(component, "min_volume", 0.0) or 0.0)
+    max_vol = float(getattr(component, "max_volume", 0.0) or 0.0)
     return Ok(MinMax(min=min_vol, max=max_vol))
 
 
@@ -820,33 +859,75 @@ def get_storage_level_limits(component: PLEXOSGenerator, context: PluginContext)
 def get_storage_charge_power_limits(
     component: PLEXOSGenerator, context: PluginContext
 ) -> Result[MinMax, Any]:
-    """Get the input (charge) active power limits."""
-    min_charge = float(getattr(component, "min_release", 0.0))
-    max_charge = float(getattr(component, "max_release", 0.0))
-    return Ok(MinMax(min=min_charge, max=max_charge))
+    """Get the input (charge) active power limits.
+
+    For PLEXOSBattery uses ``max_power`` (MW). For PLEXOSStorage uses ``max_release``.
+    """
+    if hasattr(component, "max_power") and not hasattr(component, "max_release"):
+        return Ok(MinMax(min=0.0, max=float(getattr(component, "max_power", 0.0) or 0.0)))
+    return Ok(MinMax(min=0.0, max=float(getattr(component, "max_release", 0.0) or 0.0)))
 
 
 @getter
 def get_storage_discharge_power_limits(
     component: PLEXOSGenerator, context: PluginContext
 ) -> Result[MinMax, Any]:
-    """Get the output (discharge) active power limits."""
-    min_discharge = float(getattr(component, "min_release", 0.0))
-    max_discharge = float(getattr(component, "max_release", 0.0))
-    return Ok(MinMax(min=min_discharge, max=max_discharge))
+    """Get the output (discharge) active power limits.
+
+    For PLEXOSBattery uses ``max_power`` (MW). For PLEXOSStorage uses ``max_release``.
+    """
+    if hasattr(component, "max_power") and not hasattr(component, "max_release"):
+        return Ok(MinMax(min=0.0, max=float(getattr(component, "max_power", 0.0) or 0.0)))
+    return Ok(MinMax(min=0.0, max=float(getattr(component, "max_release", 0.0) or 0.0)))
 
 
 @getter
 def get_storage_efficiency(component: PLEXOSGenerator, context: PluginContext) -> Result[InputOutput, Any]:
-    """Get the storage efficiency as InputOutput (in/out)."""
-    eff = float(getattr(component, "efficiency", 1.0))
-    return Ok(InputOutput(input=eff, output=eff))
+    """Get the storage efficiency as InputOutput (in/out).
+
+    For PLEXOSBattery reads ``charge_efficiency`` and ``discharge_efficiency`` (both in %).
+    For PLEXOSStorage defaults to 1.0 for both.
+    """
+    if hasattr(component, "charge_efficiency"):
+        charge = float(getattr(component, "charge_efficiency", 100.0) or 100.0) / 100.0
+        discharge = float(getattr(component, "discharge_efficiency", 100.0) or 100.0) / 100.0
+        return Ok(InputOutput(input=charge, output=discharge))
+    return Ok(InputOutput(input=1.0, output=1.0))
 
 
 @getter
 def get_storage_conversion_factor(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the conversion factor (use capacity_coefficient as proxy)."""
     return Ok(float(getattr(component, "capacity_coefficient", 1.0)))
+
+
+@getter
+def get_gen_ramp_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[UpDown | None, Any]:
+    """Get ramp limits from max_ramp_up / max_ramp_down (MW/min).
+
+    Returns None if both values are at the PLEXOS unconstrained default (1e30).
+    """
+    _UNCONSTRAINED = 1e30  # noqa: N806
+    ramp_up = float(getattr(component, "max_ramp_up", _UNCONSTRAINED) or _UNCONSTRAINED)
+    ramp_down = float(getattr(component, "max_ramp_down", _UNCONSTRAINED) or _UNCONSTRAINED)
+    up_val = None if ramp_up >= _UNCONSTRAINED else ramp_up
+    down_val = None if ramp_down >= _UNCONSTRAINED else ramp_down
+    if up_val is None and down_val is None:
+        return Ok(None)
+    return Ok(UpDown(up=up_val or 0.0, down=down_val or 0.0))
+
+
+@getter
+def get_gen_time_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[UpDown | None, Any]:
+    """Get time limits from min_up_time / min_down_time (hours).
+
+    Returns None if both are zero (the PLEXOS default, meaning no constraint).
+    """
+    min_up = float(getattr(component, "min_up_time", 0.0) or 0.0)
+    min_down = float(getattr(component, "min_down_time", 0.0) or 0.0)
+    if min_up == 0.0 and min_down == 0.0:
+        return Ok(None)
+    return Ok(UpDown(up=min_up, down=min_down))
 
 
 @getter
