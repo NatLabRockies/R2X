@@ -542,8 +542,32 @@ def get_interface_name(component: ReEDSInterface, context: PluginContext) -> Res
 def min_capacity_factor_percent(
     component: ReEDSGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert minimum capacity factor (0-1) to percent."""
+    """Convert minimum capacity factor (0-1) to percent.
+
+    Reads from `capacity_factor_range.min` (ThermalGenerator) or `min_capacity_factor`.
+    """
     factor = getattr(component, "min_capacity_factor", None)
+    if factor is None:
+        cfr = getattr(component, "capacity_factor_range", None)
+        if cfr is not None:
+            factor = getattr(cfr, "min", None)
+    return Ok(_float_or_zero(factor) * 100.0)
+
+
+@getter
+def max_capacity_factor_percent(
+    component: ReEDSGenerator, context: PluginContext
+) -> Result[float, ValueError]:
+    """Convert maximum capacity factor (0-1) to percent.
+
+    Reads from `max_capacity_factor` (VariableGenerator) or `capacity_factor_range.max`
+    (ThermalGenerator). Returns 0 if neither is set.
+    """
+    factor = getattr(component, "max_capacity_factor", None)
+    if factor is None:
+        cfr = getattr(component, "capacity_factor_range", None)
+        if cfr is not None:
+            factor = getattr(cfr, "max", None)
     return Ok(_float_or_zero(factor) * 100.0)
 
 
@@ -580,16 +604,22 @@ def lines_loss_incremental(
 
 @getter
 def lines_wheeling_charge(line: Any, context: PluginContext) -> Result[float, ValueError]:
-    """Return the wheeling charge for the forward direction (from_region to to_region)."""
-    wc = getattr(line, "wheeling_charge", 0.001)
-    return Ok(float(wc))
+    """Return the wheeling charge for the forward direction (from_region to to_region).
+
+    Uses `hurdle_rate` from `ReEDSTransmissionLine`. Falls back to 0.0 if not set.
+    """
+    wc = getattr(line, "hurdle_rate", None)
+    return Ok(_float_or_zero(wc))
 
 
 @getter
 def lines_wheeling_charge_back(line: Any, context: PluginContext) -> Result[float, ValueError]:
-    """Return the wheeling charge for the reverse direction (to_region to from_region)."""
-    wc_back = getattr(line, "wheeling_charge_back", 0.001)
-    return Ok(float(wc_back))
+    """Return the wheeling charge for the reverse direction (to_region to from_region).
+
+    Uses `hurdle_rate` from `ReEDSTransmissionLine` symmetrically. Falls back to 0.0 if not set.
+    """
+    wc_back = getattr(line, "hurdle_rate", None)
+    return Ok(_float_or_zero(wc_back))
 
 
 @getter
@@ -776,6 +806,13 @@ def supply_curve_cost_getter(
     """Return supply curve cost as build cost."""
     cost = getattr(component, "supply_curve_cost", None)
     return Ok(_float_or_zero(cost))
+
+
+@getter
+def battery_duration(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
+    """Return the storage duration in hours for PLEXOSBattery.duration."""
+    duration = getattr(component, "storage_duration", None)
+    return Ok(_float_or_zero(duration))
 
 
 @getter
