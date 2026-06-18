@@ -20,7 +20,9 @@ from r2x_core.getters import getter
 if TYPE_CHECKING:
     from r2x_reeds.models import (
         ReEDSConsumingTechnology,
+        ReEDSDataCenterDemand,
         ReEDSDemand,
+        ReEDSElectrolyzerDemand,
         ReEDSHydroGenerator,
         ReEDSInterface,
         ReEDSRegion,
@@ -402,7 +404,7 @@ def get_renewable_prime_mover(
 def get_hydro_prime_mover(
     component: ReEDSHydroGenerator, context: PluginContext
 ) -> Result[PrimeMoversType, ValueError]:
-    """Return the hydro prime mover type."""
+    """Always return HY (hydro) as the prime mover for hydro generators."""
     return Ok(PrimeMoversType.HY)
 
 
@@ -413,24 +415,59 @@ def get_load_base_power(component: ReEDSDemand, context: PluginContext) -> Resul
 
 
 @getter
-def get_thermal_services(
-    component: ReEDSThermalGenerator,
-    context: PluginContext,
-) -> Result[list, ValueError]:
-    """Return the list of VariableReserve objects the generator participates in.
+def get_consuming_tech_max_active_power(
+    component: ReEDSElectrolyzerDemand | ReEDSDataCenterDemand, context: PluginContext
+) -> Result[float | int, ValueError]:
+    """Return max_active_power for consuming technologies.
+
+    Prefers an explicit ``max_active_power`` field when set, then falls back to
+    ``capacity``, and finally returns 0.0 if neither is available.
+    """
+    max_ap = getattr(component, "max_active_power", None)
+    if max_ap is not None:
+        return _ok_num(float(max_ap))
+    capacity = getattr(component, "capacity", None)
+    if capacity is not None:
+        return _ok_num(float(capacity))
+    return _ok_num(0.0)
+
+
+@getter
+def get_consuming_tech_base_power(
+    component: ReEDSElectrolyzerDemand | ReEDSDataCenterDemand, context: PluginContext
+) -> Result[float | int, ValueError]:
+    """Return capacity as base_power for consuming technologies.
+
+    Falls back to 100.0 MVA if capacity is missing.
+    """
+    capacity = getattr(component, "capacity", None)
+    if capacity is not None:
+        return _ok_num(float(capacity))
+    return _ok_num(100.0)
+
+
+@getter
+def get_gen_services(component: object, context: PluginContext) -> Result[list, ValueError]:
+    """Return the list of reserve service objects the generator participates in.
 
     Reads reserve names from ``ext['reserves']`` and looks up each already-
-    translated ``VariableReserve`` in the target system.  Reserves that have
-    not been translated yet are silently skipped.
+    translated reserve service in the target system.  Both ``VariableReserve``
+    and ``VariableReserveNonSpinning`` are searched so that NON_SPINNING
+    reserves (which map to the latter) are correctly attached.  Reserves that
+    have not been translated yet are silently skipped.  Works for all generator
+    types.
     """
-    from r2x_sienna.models import VariableReserve
+    from r2x_sienna.models import VariableReserve, VariableReserveNonSpinning
 
     ext = getattr(component, "ext", {}) or {}
     reserve_names: list[str] = ext.get("reserves", []) or []
     if not reserve_names:
         return Ok([])
 
-    reserves_by_name = {r.name: r for r in _target_system(context).get_components(VariableReserve)}
+    reserves_by_name: dict[str, object] = {}
+    for cls in (VariableReserve, VariableReserveNonSpinning):
+        for r in _target_system(context).get_components(cls):
+            reserves_by_name[r.name] = r
     return Ok([reserves_by_name[n] for n in reserve_names if n in reserves_by_name])
 
 
@@ -456,6 +493,12 @@ def get_zero_active_power(component: object, context: PluginContext) -> Result[f
 def get_zero_reactive_power(component: object, context: PluginContext) -> Result[float | int, ValueError]:
     """Return zero reactive power placeholder."""
     return _ok_num(0.0)
+
+
+@getter
+def get_zero_reactive_power_limits(component: object, context: PluginContext) -> Result[MinMax, ValueError]:
+    """Return zeroed reactive power limits for components with no reactive power data from source."""
+    return Ok(MinMax(min=0.0, max=0.0))
 
 
 @getter
