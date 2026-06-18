@@ -152,19 +152,27 @@ def get_load_participation_factor(
     if transmission_region is None:
         return Ok(1.0)
 
-    # Build a map of region_name → total demand (MW) for the whole zone in one pass
-    zone_demand: dict[str, float] = {}
-    for demand in context.source_system.get_components(ReEDSDemand):
-        region = getattr(demand, "region", None)
-        if region is None:
-            continue
-        if getattr(region, "transmission_region", None) != transmission_region:
-            continue
-        region_name = getattr(region, "name", "")
-        zone_demand[region_name] = zone_demand.get(region_name, 0.0) + _float_or_zero(
-            getattr(demand, "max_active_power", 0.0)
-        )
+    # Build and cache a {transmission_region: {region_name: total_demand}} map on first call
+    # so subsequent per-region calls are O(1) instead of O(D) each.
+    _cache_key = "_load_participation_demand_map"
+    demand_map: dict[str, dict[str, float]] | None = context._cache.get(_cache_key)
+    if demand_map is None:
+        demand_map = {}
+        for demand in context.source_system.get_components(ReEDSDemand):
+            region = getattr(demand, "region", None)
+            if region is None:
+                continue
+            tr = getattr(region, "transmission_region", None)
+            if tr is None:
+                continue
+            region_name = getattr(region, "name", "")
+            tr_map = demand_map.setdefault(tr, {})
+            tr_map[region_name] = tr_map.get(region_name, 0.0) + _float_or_zero(
+                getattr(demand, "max_active_power", 0.0)
+            )
+        context._cache[_cache_key] = demand_map
 
+    zone_demand = demand_map.get(transmission_region, {})
     total_load = sum(zone_demand.values())
     if total_load == 0.0:
         return Ok(0.0)
