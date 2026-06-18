@@ -187,6 +187,10 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
         if gen_type and gen_type not in ("unknown", "other", "", "unidentified"):
             return GEN_TYPE_STRING_MAP.get(gen_type, gen_type)
 
+    # Source (BTB HVDC) components always use the source_b2b category
+    if isinstance(source_component, Source):
+        return "source_b2b"
+
     return None
 
 
@@ -3258,7 +3262,7 @@ def _extract_offer_bands(cost_curve: object) -> tuple[PLEXOSPropertyValue, PLEXO
 @getter
 def get_source_category(source_component: Source, context: PluginContext) -> Result[str, ValueError]:
     """Return the fixed PLEXOSGenerator category for Source (import/export) components."""
-    return Ok("source_btb")
+    return Ok("source_b2b")
 
 
 @getter
@@ -3292,6 +3296,41 @@ def get_source_max_capacity(source_component: Source, context: PluginContext) ->
         if xs:
             return Ok(round(abs(float(xs[-1])), 2))
     return Ok(0.0)
+
+
+@getter
+def get_source_max_ramp_up(source_component: Source, context: PluginContext) -> Result[float, ValueError]:
+    """Return max ramp-up (MW/min) for a Source: max_capacity * ramp_rate from source_b2b defaults."""
+    match cast(Any, get_source_max_capacity)(source_component, context):
+        case Ok(max_cap):
+            ramp_pct = _get_defaults("source_b2b", "ramp_rate")
+            return Ok(round(float(max_cap) * ramp_pct, 4))
+        case err:
+            return err
+
+
+@getter
+def get_source_max_ramp_down(source_component: Source, context: PluginContext) -> Result[float, ValueError]:
+    """Return max ramp-down (MW/min) for a Source: max_capacity * ramp_rate from source_b2b defaults."""
+    match cast(Any, get_source_max_capacity)(source_component, context):
+        case Ok(max_cap):
+            ramp_pct = _get_defaults("source_b2b", "ramp_rate")
+            return Ok(round(float(max_cap) * ramp_pct, 4))
+        case err:
+            return err
+
+
+@getter
+def get_source_min_stable_level(
+    source_component: Source, context: PluginContext
+) -> Result[float, ValueError]:
+    """Return min stable level as min_stable_level_percentage * max_capacity for Source (b2b)."""
+    match cast(Any, get_source_max_capacity)(source_component, context):
+        case Ok(max_cap):
+            pct = _get_defaults("source_b2b", "min_stable_level_percentage")
+            return Ok(round(float(max_cap) * pct, 2))
+        case err:
+            return err
 
 
 @getter

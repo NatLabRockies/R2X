@@ -717,8 +717,7 @@
   },
   {
     "defaults": {
-      "category": "source_btb",
-      "min_stable_level": 0.0,
+      "category": "source_b2b",
       "offer_price": 10000,
       "offer_quantity": 0,
       "pump_bid_price": -10000,
@@ -738,6 +737,12 @@
       "offer_quantity": "get_source_offer_quantity",
       "pump_bid_price": "get_source_pump_bid_price",
       "pump_bid_quantity": "get_source_pump_bid_quantity",
+      "forced_outage_rate": "get_generator_forced_outage_rate",
+      "maintenance_rate": "get_generator_maintenance_rate",
+      "mean_time_to_repair": "get_generator_mean_time_to_repair",
+      "max_ramp_up": "get_source_max_ramp_up",
+      "max_ramp_down": "get_source_max_ramp_down",
+      "min_stable_level": "get_source_min_stable_level",
       "ext": "get_component_ext"
     },
     "source_type": "Source",

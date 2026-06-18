@@ -236,7 +236,7 @@ def _make_source_component(bus: ACBus, name: str = "SRC1", available: bool = Tru
 
 
 def test_source_translates_to_plexos_generator():
-    """A Source component should become a PLEXOSGenerator with category 'source_btb'."""
+    """A Source component should become a PLEXOSGenerator with category 'source_b2b'."""
     source = _build_source_system()
     bus2 = next(b for b in source.get_components(ACBus) if b.name == "Bus-2")
     src = _make_source_component(bus2, name="SRC1")
@@ -247,7 +247,7 @@ def test_source_translates_to_plexos_generator():
     generators = {g.name: g for g in result.get_components(PLEXOSGenerator)}
     assert "SRC1" in generators
     gen = generators["SRC1"]
-    assert gen.category == "source_btb"
+    assert gen.category == "source_b2b"
     # max_capacity = active_power_limits.max (1.0 pu) * base_power (200 MVA) = 200 MW
     assert gen.max_capacity == 200.0
     assert gen.units == 1  # available=True
@@ -323,7 +323,7 @@ def test_source_conflict_resolution_removes_unavailable_generator():
     # Only one PLEXOSGenerator named "CONFLICT" should remain — the one from Source.
     conflict_gens = [g for g in result.get_components(PLEXOSGenerator) if g.name == "CONFLICT"]
     assert len(conflict_gens) == 1
-    assert conflict_gens[0].category == "source_btb"
+    assert conflict_gens[0].category == "source_b2b"
 
 
 def _make_ie_cost(

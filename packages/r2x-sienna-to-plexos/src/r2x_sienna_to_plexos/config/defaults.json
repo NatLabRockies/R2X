@@ -276,7 +276,7 @@
       "ramp_rate": 0.8,
       "vom_cost": 0.0
     },
-    "source_btb": {
+    "source_b2b": {
       "capacity_MW": 1000.0,
       "forced_outage_rate": 0.02,
       "maintenance_rate": 0.01,
@@ -284,7 +284,7 @@
       "ramp_rate": 1.0,
       "min_down_time": 0.0,
       "min_up_time": 0.0,
-      "min_stable_level_percentage": 0.0,
+      "min_stable_level_percentage": 0.5,
       "startup_cost": 0.0,
       "vom_cost": 0.0
     }
