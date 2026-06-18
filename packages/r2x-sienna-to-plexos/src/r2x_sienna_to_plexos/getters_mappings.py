@@ -10,6 +10,7 @@ from r2x_sienna.models import (
     MonitoredLine,
     RenewableDispatch,
     RenewableNonDispatch,
+    Source,
     SynchronousCondenser,
     ThermalMultiStart,
     ThermalStandard,
@@ -31,6 +32,7 @@ SOURCE_GENERATOR_TYPES = [
     RenewableNonDispatch,
     SynchronousCondenser,
     HydroPumpTurbine,
+    Source,
 ]
 
 SOURCE_LINE_TYPES = [

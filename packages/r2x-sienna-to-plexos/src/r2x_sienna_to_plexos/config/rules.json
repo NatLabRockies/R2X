@@ -716,6 +716,35 @@
     "version": 1
   },
   {
+    "defaults": {
+      "category": "source_btb",
+      "min_stable_level": 0.0,
+      "offer_price": 10000,
+      "offer_quantity": 0,
+      "pump_bid_price": -10000,
+      "pump_bid_quantity": 0
+    },
+    "field_map": {
+      "uuid": "uuid"
+    },
+    "getters": {
+      "name": "get_generator_name",
+      "units": "get_source_units",
+      "commit": "get_generator_commit",
+      "category": "get_source_category",
+      "rating": "get_source_max_capacity",
+      "max_capacity": "get_source_max_capacity",
+      "offer_price": "get_source_offer_price",
+      "offer_quantity": "get_source_offer_quantity",
+      "pump_bid_price": "get_source_pump_bid_price",
+      "pump_bid_quantity": "get_source_pump_bid_quantity",
+      "ext": "get_component_ext"
+    },
+    "source_type": "Source",
+    "target_type": "PLEXOSGenerator",
+    "version": 1
+  },
+  {
     "name": "region_node_membership",
     "system": "target",
     "getters": {

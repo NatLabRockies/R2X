@@ -839,6 +839,62 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
     logger.info("Total {} TailStorage-Generator memberships created (including fallback).", total_memberships)
 
 
+def ensure_source_conflicts_resolved(context: PluginContext) -> None:
+    """Remove PLEXOSGenerators for available=False source generators that are replaced by Source components.
+
+    When a source generator (e.g. ThermalStandard) has ``available=False`` and a
+    ``Source`` component with the same name also exists in the source system, the
+    PLEXOSGenerator created from the unavailable generator is removed from the
+    target.  The PLEXOSGenerator created from the ``Source`` component takes
+    precedence.
+    """
+    from r2x_sienna.models import Source
+
+    from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
+    from r2x_sienna_to_plexos.getters_mappings import SOURCE_GENERATOR_TYPES
+
+    source_system = _source_system(context)
+    target_system = _target_system(context)
+
+    # Collect all Source component names.
+    source_names = {s.name for s in source_system.get_components(Source)}
+    if not source_names:
+        return
+
+    display_name_index = _build_generator_display_name_index(context)
+
+    # Build a name → list-of-generators map for the target (duplicate names are allowed).
+    target_gens_by_name: dict[str, list[Any]] = {}
+    for g in target_system.get_components(PLEXOSGenerator):
+        target_gens_by_name.setdefault(g.name, []).append(g)
+
+    removed = 0
+    for gen_type in SOURCE_GENERATOR_TYPES:
+        if gen_type is Source:
+            continue
+        for gen in source_system.get_components(gen_type):
+            if gen.name not in source_names:
+                continue
+            if getattr(gen, "available", True):
+                continue
+            # This generator is available=False AND a Source with the same name exists.
+            target_name = display_name_index.get(gen.name, gen.name)
+            candidates = target_gens_by_name.get(target_name, [])
+            for target_gen in list(candidates):
+                ext = getattr(target_gen, "ext", {}) or {}
+                if ext.get("sienna_type") != "Source":
+                    target_system.remove_component(target_gen)
+                    candidates.remove(target_gen)
+                    removed += 1
+                    logger.info(
+                        "Removed PLEXOSGenerator '{}' (available=False, superseded by Source).",
+                        target_name,
+                    )
+
+    if removed:
+        logger.info("Source conflict resolution removed {} PLEXOSGenerator(s).", removed)
+
+
 def ensure_generator_node_memberships(context: PluginContext) -> None:
     """Ensure every translated generator has a node membership based on its source bus."""
     from r2x_sienna_to_plexos.getters import _build_generator_display_name_index

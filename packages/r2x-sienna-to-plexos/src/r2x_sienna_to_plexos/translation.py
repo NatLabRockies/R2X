@@ -26,6 +26,7 @@ from .getters_utils import (
     ensure_reserve_battery_memberships,
     ensure_reserve_generator_memberships,
     ensure_reserve_time_series,
+    ensure_source_conflicts_resolved,
     ensure_tail_storage_generator_membership,
     ensure_transformer_node_memberships,
     ensure_zone_consolidation,
@@ -65,6 +66,7 @@ def sienna_to_plexos(system: System, config: SiennaToPlexosConfig) -> System:
     context.target_system = plexos_system
 
     apply_rules_to_context(context)
+    ensure_source_conflicts_resolved(context)
     ensure_zone_consolidation(context)
     ensure_generator_time_series(context)
     ensure_reserve_time_series(context)

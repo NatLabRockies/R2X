@@ -11,9 +11,11 @@ from functools import lru_cache
 from importlib.resources import files
 from typing import Any, cast
 
-from infrasys.cost_curves import FuelCurve
+from infrasys.cost_curves import CostCurve, FuelCurve
+from infrasys.function_data import PiecewiseStepData
 from loguru import logger
 from plexosdb.enums import CollectionEnum
+from r2x_plexos import PLEXOSPropertyValue
 from r2x_plexos.models import (
     PLEXOSBattery,
     PLEXOSGenerator,
@@ -41,6 +43,7 @@ from r2x_sienna.models import (
     PowerLoad,
     RenewableDispatch,
     RenewableNonDispatch,
+    Source,
     StandardLoad,
     TapTransformer,
     ThermalMultiStart,
@@ -395,10 +398,18 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
     1. ext["unit_name"] — used as-is, deduplicated when shared
     2. ext["plant_name"] — deduplicated with _1, _2, ... suffixes when shared
     3. original component name — same dedup logic as plant_name
+
+    Generators with ``available=False`` that share a name with a ``Source``
+    component are excluded from this index because ``ensure_source_conflicts_resolved``
+    will remove them from the target system.
     """
     cached = context._cache.get("generator_display_name_index")
     if cached is not None:
         return cached
+
+    # Pre-compute Source names to skip available=False generators that are
+    # superseded by a Source with the same name.
+    source_names_set = {s.name for s in _source_system(context).get_components(Source)}
 
     result: dict[str, str] = {}
     needs_dedup: list[tuple[str, str]] = []
@@ -406,6 +417,9 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
     for gen_type in SOURCE_GENERATOR_TYPES:
         for gen in _source_system(context).get_components(gen_type):
             orig = gen.name
+            # Skip available=False generators that will be replaced by a Source.
+            if gen_type is not Source and not getattr(gen, "available", True) and orig in source_names_set:
+                continue
             ext = getattr(gen, "ext", None)
             ext_dict = ext if isinstance(ext, dict) else {}
 
@@ -3207,3 +3221,126 @@ def membership_line_parent_interface(line: PLEXOSLine, context: PluginContext) -
         return Err(ValueError(f"No PLEXOSInterface found with name '{interface_name}'"))
 
     return Ok(target_iface)
+
+
+def _extract_offer_bands(cost_curve: object) -> tuple[PLEXOSPropertyValue, PLEXOSPropertyValue] | None:
+    """Extract (quantities, prices) as PLEXOSPropertyValue from a CostCurve[IncrementalCurve[PiecewiseStepData]].
+
+    Each PLEXOSPropertyValue has one entry per band (band 1, 2, …, N).
+    Returns None when the curve is absent or is not a CostCurve backed by PiecewiseStepData.
+    """
+    if not isinstance(cost_curve, CostCurve):
+        return None
+    value_curve = getattr(cost_curve, "value_curve", None)
+    fd = getattr(value_curve, "function_data", None)
+    if not isinstance(fd, PiecewiseStepData):
+        return None
+    xs: list[float] = fd.x_coords
+    ys: list[float] = fd.y_coords
+    if len(xs) < 2 or len(ys) != len(xs) - 1:
+        return None
+
+    quantities = PLEXOSPropertyValue()
+    prices = PLEXOSPropertyValue()
+    for band, (q, p) in enumerate(
+        zip(
+            [round(xs[i + 1] - xs[i], 6) for i in range(len(ys))],
+            [round(float(y), 6) for y in ys],
+            strict=False,
+        ),
+        start=1,
+    ):
+        quantities.add_entry(value=q, band=band)
+        prices.add_entry(value=p, band=band)
+    return quantities, prices
+
+
+@getter
+def get_source_category(source_component: Source, context: PluginContext) -> Result[str, ValueError]:
+    """Return the fixed PLEXOSGenerator category for Source (import/export) components."""
+    return Ok("source_btb")
+
+
+@getter
+def get_source_units(source_component: Source, context: PluginContext) -> Result[int, ValueError]:
+    """Return 1 if the Source is available, 0 otherwise."""
+    return Ok(1 if _is_available(source_component) else 0)
+
+
+@getter
+def get_source_max_capacity(source_component: Source, context: PluginContext) -> Result[float, ValueError]:
+    """Extract max capacity (MW) from Source active_power_limits.max * base_power.
+
+    Falls back to the last x-coordinate of ``import_offer_curves`` (already in
+    MW for NATURAL_UNITS curves) when the active_power_limits product is zero.
+    """
+    limits = getattr(source_component, "active_power_limits", None)
+    max_pu = getattr(limits, "max", None) if limits is not None else None
+    if max_pu is None and isinstance(limits, dict):
+        max_pu = limits.get("max")
+    base_power = float(getattr(source_component, "base_power", 1.0) or 1.0)
+    capacity = round(abs(float(max_pu or 0.0)) * base_power, 2)
+    if capacity > 0.0:
+        return Ok(capacity)
+    # Fall back to the extent of the import offer curve (units already MW).
+    cost = getattr(source_component, "operation_cost", None)
+    import_curve = getattr(cost, "import_offer_curves", None)
+    if isinstance(import_curve, CostCurve):
+        value_curve = getattr(import_curve, "value_curve", None)
+        fd = getattr(value_curve, "function_data", None)
+        xs = getattr(fd, "x_coords", None)
+        if xs:
+            return Ok(round(abs(float(xs[-1])), 2))
+    return Ok(0.0)
+
+
+@getter
+def get_source_offer_price(
+    source_component: Source, context: PluginContext
+) -> Result[PLEXOSPropertyValue, ValueError]:
+    """Extract offer-price bands ($/MWh) from Source import_offer_curves PiecewiseStepData."""
+    cost = getattr(source_component, "operation_cost", None)
+    curve = getattr(cost, "import_offer_curves", None)
+    bands = _extract_offer_bands(curve)
+    if bands is None:
+        return Err(ValueError("No import_offer_curves PiecewiseStepData found"))
+    return Ok(bands[1])
+
+
+@getter
+def get_source_offer_quantity(
+    source_component: Source, context: PluginContext
+) -> Result[PLEXOSPropertyValue, ValueError]:
+    """Extract offer-quantity bands (MW) from Source import_offer_curves PiecewiseStepData."""
+    cost = getattr(source_component, "operation_cost", None)
+    curve = getattr(cost, "import_offer_curves", None)
+    bands = _extract_offer_bands(curve)
+    if bands is None:
+        return Err(ValueError("No import_offer_curves PiecewiseStepData found"))
+    return Ok(bands[0])
+
+
+@getter
+def get_source_pump_bid_price(
+    source_component: Source, context: PluginContext
+) -> Result[PLEXOSPropertyValue, ValueError]:
+    """Extract pump-bid-price bands ($/MWh) from Source export_offer_curves PiecewiseStepData."""
+    cost = getattr(source_component, "operation_cost", None)
+    curve = getattr(cost, "export_offer_curves", None)
+    bands = _extract_offer_bands(curve)
+    if bands is None:
+        return Err(ValueError("No export_offer_curves PiecewiseStepData found"))
+    return Ok(bands[1])
+
+
+@getter
+def get_source_pump_bid_quantity(
+    source_component: Source, context: PluginContext
+) -> Result[PLEXOSPropertyValue, ValueError]:
+    """Extract pump-bid-quantity bands (MW) from Source export_offer_curves PiecewiseStepData."""
+    cost = getattr(source_component, "operation_cost", None)
+    curve = getattr(cost, "export_offer_curves", None)
+    bands = _extract_offer_bands(curve)
+    if bands is None:
+        return Err(ValueError("No export_offer_curves PiecewiseStepData found"))
+    return Ok(bands[0])

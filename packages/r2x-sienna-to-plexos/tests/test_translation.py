@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from infrasys.cost_curves import FuelCurve, UnitSystem
-from infrasys.function_data import LinearFunctionData
-from infrasys.value_curves import InputOutputCurve
+from infrasys.function_data import LinearFunctionData, PiecewiseStepData
+from infrasys.value_curves import IncrementalCurve, InputOutputCurve
 from r2x_plexos.models import (
     PLEXOSBattery,
     PLEXOSGenerator,
@@ -20,11 +20,12 @@ from r2x_sienna.models import (
     EnergyReservoirStorage,
     Line,
     RenewableDispatch,
+    Source,
     ThermalStandard,
     TransmissionInterface,
     VariableReserve,
 )
-from r2x_sienna.models.costs import RenewableGenerationCost, ThermalGenerationCost
+from r2x_sienna.models.costs import ImportExportCost, RenewableGenerationCost, ThermalGenerationCost
 from r2x_sienna.models.enums import (
     ACBusTypes,
     PrimeMoversType,
@@ -214,3 +215,185 @@ def test_sienna_to_plexos_translates_interface():
 
     interfaces = list(result.get_components(PLEXOSInterface))
     assert any(i.name == "IF_A1" for i in interfaces)
+
+
+def _make_source_component(bus: ACBus, name: str = "SRC1", available: bool = True) -> Source:
+    """Build a minimal Source component for testing."""
+    return Source(
+        name=name,
+        available=available,
+        base_power=200.0,
+        active_power=0.5,
+        reactive_power=0.0,
+        active_power_limits=MinMax(min=0.0, max=1.0),
+        R_th=0.0,
+        X_th=0.1,
+        internal_voltage=1.0,
+        internal_angle=0.0,
+        operation_cost=ImportExportCost(),
+        bus=bus,
+    )
+
+
+def test_source_translates_to_plexos_generator():
+    """A Source component should become a PLEXOSGenerator with category 'source_btb'."""
+    source = _build_source_system()
+    bus2 = next(b for b in source.get_components(ACBus) if b.name == "Bus-2")
+    src = _make_source_component(bus2, name="SRC1")
+    source.add_component(src)
+
+    result = sienna_to_plexos(source, config=SiennaToPlexosConfig())
+
+    generators = {g.name: g for g in result.get_components(PLEXOSGenerator)}
+    assert "SRC1" in generators
+    gen = generators["SRC1"]
+    assert gen.category == "source_btb"
+    # max_capacity = active_power_limits.max (1.0 pu) * base_power (200 MVA) = 200 MW
+    assert gen.max_capacity == 200.0
+    assert gen.units == 1  # available=True
+
+
+def test_unavailable_source_has_units_zero():
+    """A Source with available=False should have units=0 in the PLEXOS generator."""
+    source = _build_source_system()
+    bus2 = next(b for b in source.get_components(ACBus) if b.name == "Bus-2")
+    src = _make_source_component(bus2, name="SRC_OFF", available=False)
+    source.add_component(src)
+
+    result = sienna_to_plexos(source, config=SiennaToPlexosConfig())
+
+    generators = {g.name: g for g in result.get_components(PLEXOSGenerator)}
+    assert "SRC_OFF" in generators
+    assert generators["SRC_OFF"].units == 0
+
+
+def test_source_gets_node_membership():
+    """A Source's PLEXOSGenerator should receive a node membership for its bus."""
+    source = _build_source_system()
+    bus2 = next(b for b in source.get_components(ACBus) if b.name == "Bus-2")
+    src = _make_source_component(bus2, name="SRC1")
+    source.add_component(src)
+
+    result = sienna_to_plexos(source, config=SiennaToPlexosConfig())
+
+    generators = {g.name: g for g in result.get_components(PLEXOSGenerator)}
+    assert "SRC1" in generators
+
+
+def test_source_conflict_resolution_removes_unavailable_generator():
+    """When a Source and an available=False generator share the same name, the generator is removed."""
+    source = _build_source_system()
+    bus2 = next(b for b in source.get_components(ACBus) if b.name == "Bus-2")
+
+    # Add a ThermalStandard that is unavailable, using the same name as the Source.
+    conflicting_gen = ThermalStandard(
+        name="CONFLICT",
+        bus=bus2,
+        available=False,
+        active_power=0.0,
+        reactive_power=0.0,
+        rating=50.0,
+        base_power=50.0,
+        must_run=False,
+        status=False,
+        time_at_status=0.0,
+        active_power_limits=MinMax(min=10.0, max=50.0),
+        ramp_limits=None,
+        time_limits=None,
+        prime_mover_type=PrimeMoversType.CC,
+        fuel=ThermalFuels.NATURAL_GAS,
+        operation_cost=ThermalGenerationCost(
+            variable=FuelCurve(
+                value_curve=InputOutputCurve(
+                    function_data=LinearFunctionData(proportional_term=9.5, constant_term=0.0),
+                ),
+                fuel_cost=2.5,
+                power_units=UnitSystem.NATURAL_UNITS,
+            ),
+        ),
+    )
+    source.add_component(conflicting_gen)
+
+    # Add a Source with the same name.
+    src = _make_source_component(bus2, name="CONFLICT")
+    source.add_component(src)
+
+    result = sienna_to_plexos(source, config=SiennaToPlexosConfig())
+
+    # Only one PLEXOSGenerator named "CONFLICT" should remain — the one from Source.
+    conflict_gens = [g for g in result.get_components(PLEXOSGenerator) if g.name == "CONFLICT"]
+    assert len(conflict_gens) == 1
+    assert conflict_gens[0].category == "source_btb"
+
+
+def _make_ie_cost(
+    import_power: list[float],
+    import_price: list[float],
+    export_power: list[float],
+    export_price: list[float],
+) -> ImportExportCost:
+    """Build an ImportExportCost with piecewise step offer curves."""
+    from infrasys.cost_curves import CostCurve
+
+    import_curve = CostCurve(
+        value_curve=IncrementalCurve(
+            function_data=PiecewiseStepData(x_coords=import_power, y_coords=import_price),
+            initial_input=0.0,
+            input_at_zero=0.0,
+        ),
+        power_units=UnitSystem.NATURAL_UNITS,
+    )
+    export_curve = CostCurve(
+        value_curve=IncrementalCurve(
+            function_data=PiecewiseStepData(x_coords=export_power, y_coords=export_price),
+            initial_input=0.0,
+            input_at_zero=0.0,
+        ),
+        power_units=UnitSystem.NATURAL_UNITS,
+    )
+    return ImportExportCost(import_offer_curves=import_curve, export_offer_curves=export_curve)
+
+
+def test_source_offer_curves_populate_plexos_fields():
+    """Import/export offer curves on Source should be translated to offer_price/quantity and pump_bid fields."""
+    source = _build_source_system()
+    bus2 = next(b for b in source.get_components(ACBus) if b.name == "Bus-2")
+
+    ie_cost = _make_ie_cost(
+        import_power=[0.0, 100.0, 105.0, 120.0, 200.0],
+        import_price=[5.0, 10.0, 20.0, 40.0],
+        export_power=[0.0, 100.0, 105.0, 120.0, 200.0],
+        export_price=[40.0, 20.0, 10.0, 5.0],
+    )
+    src = Source(
+        name="SRC_CURVE",
+        available=True,
+        base_power=0.0,  # capacity comes from the curve
+        active_power=0.0,
+        reactive_power=0.0,
+        active_power_limits=MinMax(min=0.0, max=0.0),
+        R_th=0.0,
+        X_th=0.1,
+        internal_voltage=1.0,
+        internal_angle=0.0,
+        operation_cost=ie_cost,
+        bus=bus2,
+    )
+    source.add_component(src)
+
+    result = sienna_to_plexos(source, config=SiennaToPlexosConfig())
+
+    generators = {g.name: g for g in result.get_components(PLEXOSGenerator)}
+    assert "SRC_CURVE" in generators
+    gen = generators["SRC_CURVE"]
+
+    # max_capacity falls back to import curve extent (200 MW)
+    assert gen.max_capacity == 200.0
+
+    # offer bands from import_offer_curves
+    assert gen.offer_price == {1: 5.0, 2: 10.0, 3: 20.0, 4: 40.0}
+    assert gen.offer_quantity == {1: 100.0, 2: 5.0, 3: 15.0, 4: 80.0}
+
+    # pump bid bands from export_offer_curves
+    assert gen.pump_bid_price == {1: 40.0, 2: 20.0, 3: 10.0, 4: 5.0}
+    assert gen.pump_bid_quantity == {1: 100.0, 2: 5.0, 3: 15.0, 4: 80.0}
