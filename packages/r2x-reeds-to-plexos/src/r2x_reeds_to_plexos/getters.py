@@ -132,6 +132,48 @@ def region_load(component: ReEDSRegion, context: PluginContext) -> Result[float 
 
 
 @getter
+def get_load_participation_factor(
+    component: ReEDSRegion, context: PluginContext
+) -> Result[float, ValueError]:
+    """Compute load participation factor as region_load / total_load_in_transmission_region.
+
+    Load is sourced from ``ReEDSDemand.max_active_power`` (not ``ReEDSRegion.load``,
+    which is always 0 because demand is stored on the demand component, not the region).
+    Groups all regions that share the same ``transmission_region`` and returns this
+    region's fractional share.  Falls back to 1.0 when no grouping is available and
+    to 0.0 when this region has no associated demand.
+    """
+    from r2x_reeds.models.components import ReEDSDemand
+
+    if context.source_system is None:
+        return Ok(1.0)
+
+    transmission_region = getattr(component, "transmission_region", None)
+    if transmission_region is None:
+        return Ok(1.0)
+
+    # Build a map of region_name → total demand (MW) for the whole zone in one pass
+    zone_demand: dict[str, float] = {}
+    for demand in context.source_system.get_components(ReEDSDemand):
+        region = getattr(demand, "region", None)
+        if region is None:
+            continue
+        if getattr(region, "transmission_region", None) != transmission_region:
+            continue
+        region_name = getattr(region, "name", "")
+        zone_demand[region_name] = zone_demand.get(region_name, 0.0) + _float_or_zero(
+            getattr(demand, "max_active_power", 0.0)
+        )
+
+    total_load = sum(zone_demand.values())
+    if total_load == 0.0:
+        return Ok(0.0)
+
+    this_region_load = zone_demand.get(getattr(component, "name", ""), 0.0)
+    return Ok(round(this_region_load / total_load, 6))
+
+
+@getter
 def region_ext(component: ReEDSRegion, context: PluginContext) -> Result[dict, ValueError]:
     """Return the PLEXOS region ext dict for a ReEDSRegion, including transmission_region."""
     ext = getattr(component, "ext", {}) or {}

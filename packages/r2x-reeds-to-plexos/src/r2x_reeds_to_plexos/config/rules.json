@@ -399,7 +399,7 @@
       "category": "reeds-nodes",
       "allow_dump_energy": -1,
       "allow_unserved_energy": -1,
-      "load_participation_factor": 0
+      "load_participation_factor": 1
     },
     "field_map": {
       "name": "name",
@@ -407,7 +407,8 @@
       "ext": "ext"
     },
     "getters": {
-      "units": "get_component_units"
+      "units": "get_component_units",
+      "load_participation_factor": "get_load_participation_factor"
     },
     "source_type": "ReEDSRegion",
     "target_type": "PLEXOSNode",
