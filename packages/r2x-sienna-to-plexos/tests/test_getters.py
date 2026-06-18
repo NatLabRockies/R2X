@@ -3848,3 +3848,58 @@ def test__resolve_ramp_rates_source_ramp_exceeds_max_capacity_uses_defaults(cont
         Dummy(), context, initial_ramp_mw=500.0, defaults_key="max_ramp_up_percentage"
     )
     assert result == pytest.approx(20.0)
+
+
+def test_get_reeds_thermal_category_not_thermal_returns_none(context):
+    """Non-thermal component always returns None (covers line 119)."""
+    result = getters._get_reeds_thermal_category_from_fuel(
+        types.SimpleNamespace(name="gen", fuel=None), context
+    )
+    assert result is None
+
+
+def test_get_zone_category_no_buses_returns_zones(context):
+    """LoadZone with no buses has no ISO/RTO → category is 'zones'."""
+    lz = LoadZone(name="ZoneNoData")
+    context.source_system.add_component(lz)
+    result = getters.get_zone_category(lz, context)
+    assert result.is_ok()
+    assert result.unwrap() == "zones"
+
+
+def test_get_zone_category_with_buses_no_geo_returns_zones(context):
+    """Buses with no geographic info still return 'zones' fallback."""
+    lz = LoadZone(name="ZoneWithBus")
+    bus = ACBus(name="B1", base_voltage=115.0, number=1, load_zone=lz)
+    context.source_system.add_component(bus)  # auto_add_composed_components adds lz too
+
+    result = getters.get_zone_category(lz, context)
+    assert result.is_ok()
+    # No geo coords → _resolve_iso_rto_for_buses returns None → category="zones"
+    assert result.unwrap() == "zones"
+
+
+def test_get_region_ext_basic_no_buses(context):
+    """Basic call with no buses covers most of get_region_ext (lines 1071-1089)."""
+    area = Area(name="TestArea")
+    context.source_system.add_component(area)
+    result = getters.get_region_ext(area, context)
+    assert result.is_ok()
+    val = result.unwrap()
+    assert val["sienna_type"] == "StandardLoad"
+    assert "description" not in val
+
+
+def test_get_region_ext_arname_ext_and_iso_description(context, monkeypatch):
+    """Covers ARNAME branch (line 1074) and iso_rto description path (line 1090)."""
+    monkeypatch.setattr(
+        getters,
+        "_resolve_iso_rto_description_for_buses",
+        lambda buses, ctx: "ercot",
+    )
+    area = Area(name="TestArea", ext={"ARNAME": "AR_TEST"})
+    context.source_system.add_component(area)
+    result = getters.get_region_ext(area, context)
+    assert result.is_ok()
+    val = result.unwrap()
+    assert val.get("description") == "ercot"

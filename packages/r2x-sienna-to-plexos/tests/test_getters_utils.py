@@ -1615,3 +1615,194 @@ def test_generator_node_memberships_deduplicate_same_target_node(context, monkey
     gen = context.target_system.get_component(PLEXOSGenerator, "GEN_A")
     memberships = context.target_system.get_supplemental_attributes_with_component(gen, PLEXOSMembership)
     assert len([m for m in memberships if m.collection == CollectionEnum.Nodes]) == 1
+
+
+def test_ray_cast_point_in_ring_inside():
+    ring = [[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0], [0.0, 0.0]]
+    assert getters_utils._ray_cast_point_in_ring(1.0, 1.0, ring) is True
+
+
+def test_ray_cast_point_in_ring_outside():
+    ring = [[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0], [0.0, 0.0]]
+    assert getters_utils._ray_cast_point_in_ring(3.0, 3.0, ring) is False
+
+
+def test_point_in_multipolygon_inside_no_holes():
+    outer = [[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0], [0.0, 0.0]]
+    assert getters_utils._point_in_multipolygon(2.0, 2.0, [[outer]]) is True
+
+
+def test_point_in_multipolygon_outside():
+    outer = [[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0], [0.0, 0.0]]
+    assert getters_utils._point_in_multipolygon(5.0, 5.0, [[outer]]) is False
+
+
+def test_point_in_multipolygon_point_in_hole_returns_false():
+    outer = [[0.0, 0.0], [6.0, 0.0], [6.0, 6.0], [0.0, 6.0], [0.0, 0.0]]
+    hole = [[2.0, 2.0], [4.0, 2.0], [4.0, 4.0], [2.0, 4.0], [2.0, 2.0]]
+    assert getters_utils._point_in_multipolygon(3.0, 3.0, [[outer, hole]]) is False
+
+
+def test_point_in_multipolygon_outside_hole_is_true():
+    outer = [[0.0, 0.0], [6.0, 0.0], [6.0, 6.0], [0.0, 6.0], [0.0, 0.0]]
+    hole = [[2.0, 2.0], [4.0, 2.0], [4.0, 4.0], [2.0, 4.0], [2.0, 2.0]]
+    assert getters_utils._point_in_multipolygon(0.5, 0.5, [[outer, hole]]) is True
+
+
+def test_get_bus_coordinates_returns_none_for_unregistered_bus(context):
+    # Passing a plain object: get_supplemental_attributes_with_component will either
+    # raise or return empty → _get_bus_coordinates returns None (covers line 357)
+    result = getters_utils._get_bus_coordinates(object(), context)
+    assert result is None
+
+
+def test_count_iso_rto_buses_no_coords(context, monkeypatch):
+    outer = [[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0], [0.0, 0.0]]
+    monkeypatch.setattr(getters_utils, "_load_iso_rto_polygons", lambda: {"test_rto": [[outer]]})
+    # bus with no geo info → _get_bus_coordinates returns None → loop continues without match
+    result = getters_utils._count_iso_rto_for_buses([object()], context)
+    assert result == {}
+
+
+def test_count_iso_rto_buses_with_match(context, monkeypatch):
+    outer = [[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0], [0.0, 0.0]]
+    monkeypatch.setattr(getters_utils, "_load_iso_rto_polygons", lambda: {"test_rto": [[outer]]})
+    monkeypatch.setattr(getters_utils, "_get_bus_coordinates", lambda bus, ctx: (2.0, 2.0))
+    result = getters_utils._count_iso_rto_for_buses([object()], context)
+    assert result == {"test_rto": 1}
+
+
+def test_resolve_iso_rto_for_buses_returns_max(context, monkeypatch):
+    monkeypatch.setattr(
+        getters_utils,
+        "_count_iso_rto_for_buses",
+        lambda buses, ctx: {"ercot": 5, "miso": 2},
+    )
+    result = getters_utils._resolve_iso_rto_for_buses([object()], context)
+    assert result == "ercot"
+
+
+def test_resolve_iso_rto_for_buses_empty_returns_none(context, monkeypatch):
+    monkeypatch.setattr(
+        getters_utils,
+        "_count_iso_rto_for_buses",
+        lambda buses, ctx: {},
+    )
+    result = getters_utils._resolve_iso_rto_for_buses([], context)
+    assert result is None
+
+
+def test_resolve_iso_rto_description_sorted_join(context, monkeypatch):
+    monkeypatch.setattr(
+        getters_utils,
+        "_count_iso_rto_for_buses",
+        lambda buses, ctx: {"miso": 1, "ercot": 2},
+    )
+    result = getters_utils._resolve_iso_rto_description_for_buses([object()], context)
+    assert result == "ercot-miso"
+
+
+def test_resolve_iso_rto_description_empty_returns_none(context, monkeypatch):
+    monkeypatch.setattr(
+        getters_utils,
+        "_count_iso_rto_for_buses",
+        lambda buses, ctx: {},
+    )
+    result = getters_utils._resolve_iso_rto_description_for_buses([], context)
+    assert result is None
+
+
+def test_bus_to_area_name_returns_str_for_non_area():
+    bus = types.SimpleNamespace(area="my_area_string")
+    result = getters_utils._bus_to_area_name(bus)
+    assert result == "my_area_string"
+
+
+def test_bus_to_area_name_returns_none_when_no_area():
+    bus = types.SimpleNamespace(area=None)
+    result = getters_utils._bus_to_area_name(bus)
+    assert result is None
+
+
+def test_write_descriptions_to_db_records_updates():
+    from r2x_core import System
+
+    sys = System(name="target")
+    gen = PLEXOSGenerator(name="GEN1", ext={"description": "coal"})
+    sys.add_component(gen)
+
+    executed: list = []
+
+    class _MockConn:
+        def executemany(self, sql, params):
+            executed.extend(list(params))
+
+    class MockDB:
+        _db = _MockConn()
+
+        def get_class_id(self, class_enum):
+            return 42
+
+    getters_utils._write_descriptions_to_db(sys, MockDB())
+    # PLEXOSGenerator is in PLEXOS_TYPE_MAP_INVERTED; expect one description update row
+    assert len(executed) == 1
+    assert executed[0][0] == "coal"  # description value
+    assert executed[0][1] == "GEN1"  # component name
+
+
+def test_ensure_zone_consolidation_no_zones_early_return(context):
+    """When target system has no PLEXOSZone components the function returns early."""
+    getters_utils.ensure_zone_consolidation(context)
+    # No zones means get_components(PLEXOSZone) is empty → early return without error
+
+
+def test_ensure_zone_consolidation_only_fallback_logs_and_skips(context):
+    """When all zones have category 'zones', no consolidation is performed."""
+    from r2x_plexos.models import PLEXOSZone
+
+    z1 = PLEXOSZone(name="lz_1", category="zones", units=1.0)
+    context.target_system.add_component(z1)
+
+    getters_utils.ensure_zone_consolidation(context)
+    # Function logs a warning and returns; original zone remains
+    zones = list(context.target_system.get_components(PLEXOSZone))
+    assert any(z.name == "lz_1" for z in zones)
+
+
+def test_ensure_zone_consolidation_merges_iso_rto_zones(context):
+    """Zones sharing an ISO/RTO category are merged into one canonical zone."""
+    from r2x_plexos.models import PLEXOSZone
+
+    # Two zones with ISO/RTO category + one fallback zone
+    z1 = PLEXOSZone(name="lz_houston", category="ercot", units=1.0)
+    z2 = PLEXOSZone(name="lz_dallas", category="ercot", units=1.0)
+    z_fb = PLEXOSZone(name="lz_fallback", category="zones", units=1.0)
+    context.target_system.add_component(z1)
+    context.target_system.add_component(z2)
+    context.target_system.add_component(z_fb)
+
+    # Add nodes and wire them to zones
+    n1 = PLEXOSNode(name="N1")
+    n2 = PLEXOSNode(name="N2")
+    n3 = PLEXOSNode(name="N3")
+    context.target_system.add_component(n1)
+    context.target_system.add_component(n2)
+    context.target_system.add_component(n3)
+
+    getters_utils._ensure_membership(context, n1, z1, CollectionEnum.Zone)
+    getters_utils._ensure_membership(context, n2, z2, CollectionEnum.Zone)
+    getters_utils._ensure_membership(context, n3, z_fb, CollectionEnum.Zone)
+
+    getters_utils.ensure_zone_consolidation(context)
+
+    # After consolidation a canonical "ercot" zone must exist
+    zones = list(context.target_system.get_components(PLEXOSZone))
+    zone_names = {z.name for z in zones}
+    assert "ercot" in zone_names
+
+    # All nodes must have at least one Zone membership pointing to the canonical zone
+    canonical = next(z for z in zones if z.name == "ercot")
+    for node in [n1, n2, n3]:
+        mems = context.target_system.get_supplemental_attributes_with_component(node, PLEXOSMembership)
+        zone_mems = [m for m in mems if m.collection == CollectionEnum.Zone]
+        assert any(m.child_object is canonical or m.parent_object is canonical for m in zone_mems)
