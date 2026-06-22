@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from importlib.resources import files
 
 import pytest
@@ -203,7 +204,7 @@ def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
     assert hydro.category == "hydro"
     assert hydro.rating == 100.0
     assert hydro.active_power_limits.max == 100.0
-    assert hydro.ramp_limits.up == pytest.approx(10.0)
+    assert hydro.ramp_limits.up == pytest.approx(100.0 * 10.0 / 60.0)  # cap * rate / 60
     assert hydro.time_limits.up == 0.0
     assert hydro.time_limits.down == 0.0
 
@@ -240,7 +241,7 @@ def test_reeds_storage_translates_to_energy_reservoir(tmp_path) -> None:
     assert storage.category == "battery_4"
     assert storage.rating == 50.0
     assert storage.storage_capacity == 200.0  # 50 * 4
-    assert storage.efficiency.output == pytest.approx(0.85)
+    assert storage.efficiency.output == pytest.approx(math.sqrt(0.85))  # sqrt(rte)
 
 
 def test_reeds_demand_translates_to_power_load(tmp_path) -> None:

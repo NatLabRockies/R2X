@@ -10,6 +10,7 @@ from r2x_sienna.models import (
     MonitoredLine,
     RenewableDispatch,
     RenewableNonDispatch,
+    Source,
     SynchronousCondenser,
     ThermalMultiStart,
     ThermalStandard,
@@ -31,6 +32,7 @@ SOURCE_GENERATOR_TYPES = [
     RenewableNonDispatch,
     SynchronousCondenser,
     HydroPumpTurbine,
+    Source,
 ]
 
 SOURCE_LINE_TYPES = [
@@ -49,8 +51,8 @@ GEN_TYPE_STRING_MAP: dict[str, str] = {
     "hydro": "hyded",
     "nuclear": "nuclear",
     "coal": "coal-new",
-    "gas": "gas-cc",
-    "natural_gas": "gas-cc",
+    "gas": "natural-gas",
+    "natural_gas": "natural-gas",
     "geothermal": "geothermal",
     "biomass": "biopower",
     "battery": "battery",

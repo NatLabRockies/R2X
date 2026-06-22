@@ -6,15 +6,16 @@ import json
 import math
 from collections import defaultdict
 from collections.abc import Mapping
-from copy import deepcopy
 from datetime import timedelta
 from functools import lru_cache
 from importlib.resources import files
 from typing import Any, cast
 
-from infrasys.cost_curves import FuelCurve
+from infrasys.cost_curves import CostCurve, FuelCurve
+from infrasys.function_data import PiecewiseStepData
 from loguru import logger
 from plexosdb.enums import CollectionEnum
+from r2x_plexos import PLEXOSPropertyValue
 from r2x_plexos.models import (
     PLEXOSBattery,
     PLEXOSGenerator,
@@ -42,6 +43,7 @@ from r2x_sienna.models import (
     PowerLoad,
     RenewableDispatch,
     RenewableNonDispatch,
+    Source,
     StandardLoad,
     TapTransformer,
     ThermalMultiStart,
@@ -64,6 +66,8 @@ from r2x_core import Err, Ok, PluginContext, Result
 from r2x_core.getters import getter
 from r2x_sienna_to_plexos.getters_utils import (
     _attach_reservoir_time_series_to_storage,
+    _resolve_iso_rto_description_for_buses,
+    _resolve_iso_rto_for_buses,
     coerce_value,
     compute_heat_rate_data,
     compute_markup_data,
@@ -77,6 +81,7 @@ from .getters_mappings import (
     SOURCE_LINE_TYPES,
 )
 
+FLOW_CLIP_MEMO_TEXT = "Setting fixed value of \u00b199999 to flows greater/less than \u00b1100000"
 RAMPING_THRESHOLD = 0.1  # MW/min
 
 
@@ -135,7 +140,7 @@ def _get_reeds_thermal_category_from_fuel(source_component: Any, context: Plugin
         if fuel_key in normalized_values:
             category_str = str(category).strip()
             if category_str in {"natural-gas", "natural_gas", "gas"}:
-                return "gas-cc"
+                return "natural-gas"
             return category_str
 
     return None
@@ -181,6 +186,10 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
         gen_type = ext.get("gen_type_string", "").lower().strip()
         if gen_type and gen_type not in ("unknown", "other", "", "unidentified"):
             return GEN_TYPE_STRING_MAP.get(gen_type, gen_type)
+
+    # Source (BTB HVDC) components always use the source_b2b category
+    if isinstance(source_component, Source):
+        return "source_b2b"
 
     return None
 
@@ -393,10 +402,18 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
     1. ext["unit_name"] — used as-is, deduplicated when shared
     2. ext["plant_name"] — deduplicated with _1, _2, ... suffixes when shared
     3. original component name — same dedup logic as plant_name
+
+    Generators with ``available=False`` that share a name with a ``Source``
+    component are excluded from this index because ``ensure_source_conflicts_resolved``
+    will remove them from the target system.
     """
     cached = context._cache.get("generator_display_name_index")
     if cached is not None:
         return cached
+
+    # Pre-compute Source names to skip available=False generators that are
+    # superseded by a Source with the same name.
+    source_names_set = {s.name for s in _source_system(context).get_components(Source)}
 
     result: dict[str, str] = {}
     needs_dedup: list[tuple[str, str]] = []
@@ -404,6 +421,9 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
     for gen_type in SOURCE_GENERATOR_TYPES:
         for gen in _source_system(context).get_components(gen_type):
             orig = gen.name
+            # Skip available=False generators that will be replaced by a Source.
+            if gen_type is not Source and not getattr(gen, "available", True) and orig in source_names_set:
+                continue
             ext = getattr(gen, "ext", None)
             ext_dict = ext if isinstance(ext, dict) else {}
 
@@ -482,7 +502,7 @@ def _find_source_transformer(context: PluginContext, transformer_name: str) -> A
     return index.get(transformer_name)
 
 
-def _get_time_limit(component: Any, attr: str, ext_key: str) -> float | None:
+def _get_time_limit(component: Any, attr: str, ext_key: str | None) -> float | None:
     """Extract time limit from time_limits attribute or ext dict."""
     time_limits = getattr(component, "time_limits", None)
     if isinstance(time_limits, dict):
@@ -523,11 +543,15 @@ def _ramp_value_to_float(source_component: object, raw_value: Any) -> float:
 def _get_ramp_limit_value(source_component: object, *, default: Any, direction: str) -> float:
     """Extract raw ramp limit value for a given direction.
 
-    Keeps the current getter behavior by relying on dict-style access when
-    ramp_limits is present.
+    Handles both dict-style and attribute-style (e.g. UpDown) ramp_limits objects.
     """
     ramp_limits = getattr(source_component, "ramp_limits", default)
-    raw_value = ramp_limits[direction] if ramp_limits else 0.0
+    if not ramp_limits:
+        return 0.0
+    if isinstance(ramp_limits, dict):
+        raw_value = ramp_limits.get(direction, 0.0)
+    else:
+        raw_value = getattr(ramp_limits, direction, 0.0)
     return float(raw_value)
 
 
@@ -538,21 +562,45 @@ def _resolve_ramp_rates(
     initial_ramp_mw: float,
     defaults_key: str,
 ) -> float:
-    """Apply defaults/fallback/capping logic and return final non-negative ramp."""
+    """Apply defaults/fallback/capping logic and return final non-negative ramp.
+
+    Logic (in order):
+    1. If the raw ramp is below the usability threshold, replace it with
+       ``gen_ramp_pct * max_mw`` from PCM defaults.
+    2. If the raw ramp (or the defaults-derived value) *exceeds* max_mw, it is
+       physically impossible → replace with ``gen_ramp_pct * max_mw`` from PCM
+       defaults.  If that is still > max_mw, cap at max_mw.
+    3. If the fallback is still below threshold after both passes (e.g. defaults
+       capacity also missing), the value stays as-is (floor of 0.0 at the end).
+    """
     ramp_mw = initial_ramp_mw
     category = _resolve_generator_category(source_component, context)
     gen_ramp_pct = _get_defaults(category, defaults_key)
+    # When the primary percentage key is unset (0.0), fall back to ramp_rate.
+    if math.isclose(gen_ramp_pct, 0.0, abs_tol=1e-9):
+        gen_ramp_pct = _get_defaults(category, "ramp_rate")
+    # Last resort: general default for categories with no ramp_rate entry.
+    if math.isclose(gen_ramp_pct, 0.0, abs_tol=1e-9):
+        gen_ramp_pct = _get_general_default("default_ramp_rate")
     max_pu = _get_minmax_value(getattr(source_component, "active_power_limits", None), "max") or 0.0
     max_mw = abs(max_pu) * resolve_base_power(source_component)
+    # Ignore sentinel / placeholder max-capacity values (e.g. 1e30 in some data sources).
+    if max_mw > 1e10:
+        max_mw = 0.0
     if max_mw == 0.0:
         max_mw = _get_defaults(category, "capacity_MW")
+
+    # --- Step 1: raw ramp below usability threshold → use PCM defaults ---
     if ramp_mw < RAMPING_THRESHOLD:
         ramp_mw = gen_ramp_pct * max_mw
         if ramp_mw < RAMPING_THRESHOLD:
             max_mw = _get_defaults(category, "capacity_MW")
             ramp_mw = gen_ramp_pct * max_mw
-        if ramp_mw > max_mw:
-            ramp_mw = max_mw * 0.5
+
+    # --- Step 2: ramp exceeds max capacity → physically impossible, use defaults ---
+    if max_mw > 0.0 and ramp_mw > max_mw:
+        default_ramp_mw = gen_ramp_pct * max_mw
+        ramp_mw = min(default_ramp_mw, max_mw)
 
     return max(0.0, round(ramp_mw, 4))
 
@@ -717,31 +765,21 @@ def _attach_generator_time_series(
 
 
 def _has_usable_generator_time_series(source_component: object, context: PluginContext) -> bool:
-    """Return True when the source generator has at least one retrievable time series."""
-    source_system = _source_system(context)
+    """Return True when the source generator has at least one registered time series.
 
+    Checks only metadata (no data reads) to keep this O(1) per generator on
+    large nodal systems where reading Arrow data for every renewable unit was the
+    dominant cost.
+    """
+    source_system = _source_system(context)
     try:
         if not source_system.time_series.has_time_series(source_component):
             return False
         metadata_items = source_system.time_series.list_time_series_metadata(source_component)
+        return bool(metadata_items)
     except Exception:
         # If introspection fails, avoid accidentally deactivating the unit.
         return True
-
-    for metadata in metadata_items:
-        features = getattr(metadata, "features", {}) or {}
-        try:
-            ts_list = source_system.list_time_series(
-                source_component,
-                name=metadata.name,
-                **features,
-            )
-        except Exception:
-            continue
-        if ts_list:
-            return True
-
-    return False
 
 
 def _attach_region_node_load_time_series(
@@ -751,8 +789,20 @@ def _attach_region_node_load_time_series(
     region_component: Any | None,
 ) -> None:
     """Aggregate load time series from all loads in the region and attach to the region's node in PLEXOS."""
-    source_system = cast(Any, context.source_system)
+    if region_component is None:
+        return
+
+    import numpy as np
+    from infrasys import SingleTimeSeries
+
     target_system = cast(Any, context.target_system)
+    # Early exit: this getter is invoked from both membership_region_parent_node and
+    # membership_region_child_node, so it is called twice per region. Skip the entire
+    # aggregation loop on the second call.
+    if target_system.has_time_series(region_component, name="load", time_series_type=SingleTimeSeries):
+        return
+
+    source_system = cast(Any, context.source_system)
     area_buses_index = _build_area_buses_index(context)
     buses_in_region = area_buses_index.get(region_name, [])
     if not buses_in_region:
@@ -765,38 +815,31 @@ def _attach_region_node_load_time_series(
         logger.debug("No loads found for region {}", region_name)
         return
 
-    aggregated_ts = None
+    aggregated_data: Any = None
+    initial_ts: Any = None
     for load in all_loads:
         if source_system.time_series.has_time_series(load):
             for ts in source_system.list_time_series(load):
                 if ts.name == "max_active_power":
                     load_mw = _get_load_mw(load)
-                    ts_copy = deepcopy(ts)
-                    ts_copy.name = "load"
+                    data = np.asarray(ts.data, dtype=float)
                     if load_mw > 0.0:
-                        import numpy as np
-
-                        ts_copy.data = np.asarray(ts_copy.data) * load_mw
-                    if aggregated_ts is None:
-                        aggregated_ts = ts_copy
+                        data = data * load_mw
+                    if aggregated_data is None:
+                        aggregated_data = data.copy()
+                        initial_ts = ts
                     else:
-                        aggregated_ts.data += ts_copy.data
+                        aggregated_data += data
                     break
 
-    if aggregated_ts is not None and region_component is not None:
-        import numpy as np
-        from infrasys import SingleTimeSeries
-
+    if aggregated_data is not None and initial_ts is not None:
         fresh_ts = SingleTimeSeries.from_array(
-            data=np.asarray(aggregated_ts.data),
+            data=aggregated_data,
             name="load",
-            initial_timestamp=aggregated_ts.initial_timestamp,
-            resolution=aggregated_ts.resolution,
+            initial_timestamp=initial_ts.initial_timestamp,
+            resolution=initial_ts.resolution,
         )
-        if not target_system.has_time_series(
-            region_component, name="load", time_series_type=SingleTimeSeries
-        ):
-            target_system.add_time_series(fresh_ts, region_component)
+        target_system.add_time_series(fresh_ts, region_component)
 
 
 def _build_bus_to_loads_index(context: PluginContext) -> dict[str, list[Any]]:
@@ -1000,13 +1043,36 @@ def _get_general_default(key: str) -> float:
 
 @getter
 def get_component_ext(source_component: object, context: PluginContext) -> Result[dict, ValueError]:
-    """Store the Sienna source type name in ext for downstream use (e.g. time series file naming)."""
-    return Ok({"sienna_type": type(source_component).__name__})
+    """Store the Sienna source type name in ext for downstream use (e.g. time series file naming).
+
+    Also stores ``description`` (prime_mover + fuel) in ext so the r2x_plexos
+    exporter can write it to the ``t_object.description`` column in the output XML.
+    """
+    ext: dict[str, Any] = {"sienna_type": type(source_component).__name__}
+
+    desc_getter = cast(Any, get_generator_description)
+    desc_result = desc_getter(source_component, context)
+    if hasattr(desc_result, "unwrap"):
+        try:
+            desc = desc_result.unwrap()
+            if desc is not None:
+                ext["description"] = desc
+        except Exception:
+            pass
+
+    # Fallback: if no prime_mover/fuel description, use the resolved category (e.g. "biopower",
+    # "natural-gas") so that t_object.description is never left empty for generators.
+    if "description" not in ext:
+        category = _resolve_generator_category(source_component, context)
+        if category is not None:
+            ext["description"] = category
+
+    return Ok(ext)
 
 
 @getter
 def get_region_ext(source_component: Area, context: PluginContext) -> Result[dict, ValueError]:
-    """Return ext with sienna_type set to the load type found in this region (StandardLoad or PowerLoad)."""
+    """Return ext with sienna_type and ISO/RTO description for the region."""
     area_name = getattr(source_component, "name", "")
     ext_dict = getattr(source_component, "ext", None)
     if isinstance(ext_dict, dict):
@@ -1016,17 +1082,31 @@ def get_region_ext(source_component: Area, context: PluginContext) -> Result[dic
 
     area_buses_index = _build_area_buses_index(context)
     bus_loads_index = _build_bus_to_loads_index(context)
+
+    sienna_type = "StandardLoad"
     for bus in area_buses_index.get(area_name, []):
         for load in bus_loads_index.get(str(bus.uuid), []):
-            return Ok({"sienna_type": type(load).__name__})
+            sienna_type = type(load).__name__
+            break
+        if sienna_type != "StandardLoad":
+            break
+    else:
+        source_system = cast(Any, context.source_system)
+        for _ in source_system.get_components(StandardLoad):
+            sienna_type = "StandardLoad"
+            break
+        else:
+            for _ in source_system.get_components(PowerLoad):
+                sienna_type = "PowerLoad"
+                break
 
-    source_system = cast(Any, context.source_system)
-    for _ in source_system.get_components(StandardLoad):
-        return Ok({"sienna_type": "StandardLoad"})
-    for _ in source_system.get_components(PowerLoad):
-        return Ok({"sienna_type": "PowerLoad"})
+    region_buses = area_buses_index.get(area_name, [])
+    iso_rto = _resolve_iso_rto_description_for_buses(region_buses, context)
 
-    return Ok({"sienna_type": "StandardLoad"})
+    result: dict[str, Any] = {"sienna_type": sienna_type}
+    if iso_rto:
+        result["description"] = iso_rto
+    return Ok(result)
 
 
 @getter
@@ -1175,6 +1255,42 @@ def get_zone_units(source_component: LoadZone, context: PluginContext) -> Result
     return Ok(1.0)
 
 
+def _build_zone_buses_index(context: PluginContext) -> dict[str, list[Any]]:
+    """Map load_zone name -> list of ACBus components in that zone (cached)."""
+    cached = context._cache.get("zone_buses_index")
+    if cached is not None:
+        return cached
+    index: dict[str, list[Any]] = defaultdict(list)
+    for bus in _source_system(context).get_components(ACBus):
+        lz = getattr(bus, "load_zone", None)
+        if lz is None:
+            continue
+        if isinstance(lz, LoadZone):
+            lz_name = lz.name
+        elif hasattr(lz, "name") and lz.name:
+            lz_name = str(lz.name)
+        else:
+            lz_name = str(lz)
+        index[lz_name].append(bus)
+    result = dict(index)
+    context._cache["zone_buses_index"] = result
+    return result
+
+
+@getter
+def get_zone_category(source_component: LoadZone, context: PluginContext) -> Result[str, ValueError]:
+    """Resolve the ISO/RTO region for a LoadZone and return it as the PLEXOSZone category.
+
+    Uses geographic coordinates from each bus's supplemental GeographicInfo attribute
+    to perform a point-in-polygon lookup against stored ISO/RTO boundary multipolygons.
+    Falls back to 'zones' when no geographic data is available.
+    """
+    zone_name = getattr(source_component, "name", "")
+    buses = _build_zone_buses_index(context).get(zone_name, [])
+    iso_rto = _resolve_iso_rto_for_buses(buses, context)
+    return Ok(iso_rto if iso_rto else "zones")
+
+
 @getter
 def get_line_min_flow(
     source_component: Line
@@ -1184,7 +1300,7 @@ def get_line_min_flow(
     | TwoTerminalLCCLine
     | TwoTerminalVSCLine,
     context: PluginContext,
-) -> Result[float, ValueError]:
+) -> Result[float | dict, ValueError]:
     """Extract line min flow as float from source component negative rating."""
     base_power = _get_system_base_power(context)
     min_flow = getattr(source_component, "rating", None)
@@ -1200,17 +1316,17 @@ def get_line_min_flow(
         if value is not None:
             flow = float(-abs(value)) * base_power
             if abs(flow) > 99999.0:
-                return Ok(-99999.0)
+                return Ok({"value": -99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
             return Ok(flow)
 
     val = _get_minmax_value(getattr(source_component, "active_power_limits_to", None), "min")
     if val is not None:
         flow = float(val) * base_power
         if abs(flow) > 99999.0:
-            return Ok(-99999.0)
+            return Ok({"value": -99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
         return Ok(flow)
 
-    return Ok(-99999.0)
+    return Ok({"value": -99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
 
 
 @getter
@@ -1222,7 +1338,7 @@ def get_line_max_flow(
     | TwoTerminalLCCLine
     | TwoTerminalVSCLine,
     context: PluginContext,
-) -> Result[float, ValueError]:
+) -> Result[float | dict, ValueError]:
     """Extract line max flow as float from source component rating."""
     base_power = _get_system_base_power(context)
     max_flow = getattr(source_component, "rating", None)
@@ -1238,17 +1354,17 @@ def get_line_max_flow(
         if value is not None:
             flow = float(abs(value)) * base_power
             if abs(flow) > 99999.0:
-                return Ok(99999.0)
+                return Ok({"value": 99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
             return Ok(flow)
 
     val = _get_minmax_value(getattr(source_component, "active_power_limits_from", None), "max")
     if val is not None:
         flow = float(abs(val)) * base_power
         if abs(flow) > 99999.0:
-            return Ok(99999.0)
+            return Ok({"value": 99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
         return Ok(flow)
 
-    return Ok(99999.0)
+    return Ok({"value": 99999.0, "memo": FLOW_CLIP_MEMO_TEXT})
 
 
 @getter
@@ -1484,6 +1600,35 @@ def get_generator_category(source_component: object, context: PluginContext) -> 
 
 
 @getter
+def get_generator_description(
+    source_component: object, context: PluginContext
+) -> Result[str | None, ValueError]:
+    """Build a description string for any generator.
+
+    Priority:
+    1. prime_mover_type + fuel → "prime_mover: CC, fuel_type: NATURAL_GAS"
+    2. Resolved category → "biopower", "hydro", "upv", etc.
+    3. None when neither is available (non-generator components).
+    """
+    parts = []
+    prime_mover = getattr(source_component, "prime_mover_type", None)
+    if prime_mover is not None:
+        pm_str = prime_mover.name if hasattr(prime_mover, "name") else str(prime_mover)
+        parts.append(f"prime_mover: {pm_str}")
+    fuel = getattr(source_component, "fuel", None)
+    if fuel is not None:
+        fuel_str = fuel.name if hasattr(fuel, "name") else str(fuel)
+        parts.append(f"fuel_type: {fuel_str}")
+    if parts:
+        return Ok(", ".join(parts))
+    # Fallback: use resolved category so every generator gets a non-empty description.
+    category = _resolve_generator_category(source_component, context)
+    if category is not None:
+        return Ok(category)
+    return Ok(None)
+
+
+@getter
 def get_pumped_hydro_category(
     source_component: HydroTurbine | HydroPumpTurbine, context: PluginContext
 ) -> Result[str, ValueError]:
@@ -1536,6 +1681,12 @@ def get_fuel_price(
     return Ok(0.0)
 
 
+def _is_available(source_component: Any) -> bool:
+    """Return False only when the component explicitly sets available=False."""
+    available = getattr(source_component, "available", None)
+    return available is not False
+
+
 @getter
 def get_thermal_generator_units(
     source_component: ThermalStandard | ThermalMultiStart, context: PluginContext
@@ -1550,6 +1701,9 @@ def get_thermal_generator_units(
     Generators default to online unless an explicit source ``units`` flag
     disables them, or a known data-fix exception applies.
     """
+    if not _is_available(source_component):
+        return Ok(0)
+
     ext = getattr(source_component, "ext", None)
     if isinstance(ext, dict):
         plant_name = str(ext.get("plant_name", "")).strip().lower()
@@ -1607,6 +1761,8 @@ def get_dispatch_generator_units(
     context: PluginContext,
 ) -> Result[int, ValueError]:
     """Deactivate renewable dispatch generators that do not have source time series."""
+    if not _is_available(source_component):
+        return Ok(0)
     return Ok(1 if _has_usable_generator_time_series(source_component, context) else 0)
 
 
@@ -1621,6 +1777,8 @@ def get_hydro_generator_units(
     Source ``units`` flags in Sienna data encode build counts, not operational
     enablement, so these should not be deactivated from that field.
     """
+    if not _is_available(source_component):
+        return Ok(0)
     return Ok(1)
 
 
@@ -1636,6 +1794,9 @@ def get_pumped_hydro_generator_units(
     pumped-storage association references this turbine — meaning a PLEXOSStorage
     will actually be created and connected to it.
     """
+    if not _is_available(source_component):
+        return Ok(0)
+
     rating = getattr(source_component, "rating", None)
     pump_load_mw = 0.0
     if rating is not None:
@@ -1719,12 +1880,15 @@ def get_generator_load_point(source_component: object, context: PluginContext) -
     if isinstance(ext, dict):
         load_point = ext.get("NARIS_Load_Point")
         if isinstance(load_point, int | float):
-            return Ok(float(load_point))
+            return Ok(abs(float(load_point)))
 
     heat_rate_data = compute_heat_rate_data(source_component)
     computed_load_point = heat_rate_data.get("load_point")
     if computed_load_point is not None:
-        return Ok(coerce_value(computed_load_point))
+        coerced = coerce_value(computed_load_point)
+        if isinstance(coerced, list):
+            return Ok([abs(v) if isinstance(v, int | float) else v for v in coerced])
+        return Ok(abs(coerced) if isinstance(coerced, int | float) else coerced)
 
     heat_rate = heat_rate_data.get("heat_rate")
     fuel_price_getter = cast(Any, get_fuel_price)
@@ -1732,7 +1896,7 @@ def get_generator_load_point(source_component: object, context: PluginContext) -
     match fuel_price_result:
         case Ok(fuel_price):
             if heat_rate is not None and fuel_price > 0.0:
-                return Ok(float(heat_rate) * float(fuel_price))
+                return Ok(abs(float(heat_rate) * float(fuel_price)))
         case Err(_):
             pass
 
@@ -1795,16 +1959,22 @@ def get_heat_rate_incr3(source_component: object, context: PluginContext) -> Res
 
 @getter
 def get_min_up_time(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract minimum up time from time_limits or ext dict."""
-    value = _get_time_limit(source_component, "up", "NARIS_Min_Up_Time")
-    return Ok(value if value is not None else 0.0)
+    """Extract minimum up time from time_limits or ext dict; falls back to category default."""
+    value = _get_time_limit(source_component, "up", None)
+    if value is not None:
+        return Ok(value)
+    category = _resolve_generator_category(source_component, context)
+    return Ok(_get_defaults(category, "min_up_time") if category else 0.0)
 
 
 @getter
 def get_min_down_time(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract minimum down time from time_limits or ext dict."""
-    value = _get_time_limit(source_component, "down", "NARIS_Min_Down_Time")
-    return Ok(value if value is not None else 0.0)
+    """Extract minimum down time from time_limits or ext dict; falls back to category default."""
+    value = _get_time_limit(source_component, "down", None)
+    if value is not None:
+        return Ok(value)
+    category = _resolve_generator_category(source_component, context)
+    return Ok(_get_defaults(category, "min_down_time") if category else 0.0)
 
 
 @getter
@@ -1881,6 +2051,17 @@ def get_generator_min_stable_level(
     if math.isclose(min_mw, 0.0, abs_tol=1e-6) and max_capacity_mw is not None and max_capacity_mw > 0.0:
         min_mw = 0.5 * max_capacity_mw
 
+    # Nuclear generators must operate at 70 % of max capacity.
+    # If the resolved value is not within 5 % of that target, override it.
+    if (
+        max_capacity_mw is not None
+        and max_capacity_mw > 0.0
+        and _resolve_generator_category(source_component, context) == "nuclear"
+    ):
+        target_mw = 0.7 * max_capacity_mw
+        if not math.isclose(min_mw, target_mw, rel_tol=0.05):
+            min_mw = target_mw
+
     return Ok(round(min_mw, 2))
 
 
@@ -1920,7 +2101,11 @@ def get_generator_start_cost(source_component: object, context: PluginContext) -
             value = cost.get("start_up")
         if value is None:
             value = getattr(cost, "start_up", None)
-    return Ok(float(value) if value is not None else 0.0)
+    # Only trust a non-zero source value; zero means "not set" — fall back to category default.
+    if value is not None and float(value) != 0.0:
+        return Ok(float(value))
+    category = _resolve_generator_category(source_component, context)
+    return Ok(_get_defaults(category, "startup_cost") if category else 0.0)
 
 
 @getter
@@ -2002,30 +2187,44 @@ def get_generator_load_subtracter(
 def get_turbine_pump_efficiency(
     source_component: HydroTurbine | HydroPumpTurbine, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Extract pump efficiency (%) from the HydroTurbine."""
-    pump_efficiency = getattr(source_component, "efficiency", None)
-    if pump_efficiency is None:
-        return Ok(100.0)
+    """Extract pump efficiency (%) from the HydroTurbine and HydroPumpTurbine."""
+    ht_pump_efficiency = getattr(source_component, "efficiency", None)
 
-    pump_val = getattr(pump_efficiency, "pump", None)
-    if pump_val is not None:
-        magnitude = get_magnitude(pump_val)
-        value = (
-            float(magnitude)
-            if isinstance(magnitude, int | float)
-            else float(pump_val)
-            if isinstance(pump_val, int | float)
-            else None
-        )
-        if value is not None:
-            return Ok(round(value * 100 if value <= 1.0 else value, 2))
-
-    if isinstance(pump_efficiency, int | float):
-        return Ok(
-            round(float(pump_efficiency) * 100 if pump_efficiency <= 1.0 else float(pump_efficiency), 2)
-        )
-
-    return Ok(100.0)
+    if isinstance(source_component, HydroTurbine):
+        default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
+        if ht_pump_efficiency is not None and ht_pump_efficiency != 0.0:
+            value = (
+                float(ht_pump_efficiency) * 100.0
+                if float(ht_pump_efficiency) <= 1.0
+                else float(ht_pump_efficiency)
+            )
+        else:
+            value = default
+        return Ok(round(value, 2))
+    elif isinstance(source_component, HydroPumpTurbine):
+        pump = getattr(ht_pump_efficiency, "pump", None) if ht_pump_efficiency is not None else None
+        default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
+        if pump is not None and pump != 0.0:
+            value = float(pump) * 100.0 if float(pump) <= 1.0 else float(pump)
+        else:
+            value = default
+        return Ok(round(value, 2))
+    else:
+        # Generic fallback: use scalar efficiency if available, honouring 0-1 vs 0-100 scale.
+        if (
+            ht_pump_efficiency is not None
+            and isinstance(ht_pump_efficiency, int | float)
+            and ht_pump_efficiency != 0.0
+        ):
+            return Ok(
+                round(
+                    float(ht_pump_efficiency) * 100.0
+                    if ht_pump_efficiency <= 1.0
+                    else float(ht_pump_efficiency),
+                    2,
+                )
+            )
+        return Ok(89.0)
 
 
 @getter
@@ -2333,7 +2532,7 @@ def get_battery_capacity(
     value = getattr(source_component, "storage_capacity", None)
     if value is not None and float(value) != 0.0:
         return Ok(round(float(value) * resolve_base_power(source_component), 2))
-    return Ok(round(_get_defaults("battery", "average_capacity_MW"), 2))
+    return Ok(round(_get_defaults("battery", "capacity_MW"), 2))
 
 
 @getter
@@ -3026,3 +3225,161 @@ def membership_line_parent_interface(line: PLEXOSLine, context: PluginContext) -
         return Err(ValueError(f"No PLEXOSInterface found with name '{interface_name}'"))
 
     return Ok(target_iface)
+
+
+def _extract_offer_bands(cost_curve: object) -> tuple[PLEXOSPropertyValue, PLEXOSPropertyValue] | None:
+    """Extract (quantities, prices) as PLEXOSPropertyValue from a CostCurve[IncrementalCurve[PiecewiseStepData]].
+
+    Each PLEXOSPropertyValue has one entry per band (band 1, 2, …, N).
+    Returns None when the curve is absent or is not a CostCurve backed by PiecewiseStepData.
+    """
+    if not isinstance(cost_curve, CostCurve):
+        return None
+    value_curve = getattr(cost_curve, "value_curve", None)
+    fd = getattr(value_curve, "function_data", None)
+    if not isinstance(fd, PiecewiseStepData):
+        return None
+    xs: list[float] = fd.x_coords
+    ys: list[float] = fd.y_coords
+    if len(xs) < 2 or len(ys) != len(xs) - 1:
+        return None
+
+    quantities = PLEXOSPropertyValue()
+    prices = PLEXOSPropertyValue()
+    for band, (q, p) in enumerate(
+        zip(
+            [round(xs[i + 1] - xs[i], 6) for i in range(len(ys))],
+            [round(float(y), 6) for y in ys],
+            strict=False,
+        ),
+        start=1,
+    ):
+        quantities.add_entry(value=q, band=band)
+        prices.add_entry(value=p, band=band)
+    return quantities, prices
+
+
+@getter
+def get_source_category(source_component: Source, context: PluginContext) -> Result[str, ValueError]:
+    """Return the fixed PLEXOSGenerator category for Source (import/export) components."""
+    return Ok("source_b2b")
+
+
+@getter
+def get_source_units(source_component: Source, context: PluginContext) -> Result[int, ValueError]:
+    """Return 1 if the Source is available, 0 otherwise."""
+    return Ok(1 if _is_available(source_component) else 0)
+
+
+@getter
+def get_source_max_capacity(source_component: Source, context: PluginContext) -> Result[float, ValueError]:
+    """Extract max capacity (MW) from Source active_power_limits.max * base_power.
+
+    Falls back to the last x-coordinate of ``import_offer_curves`` (already in
+    MW for NATURAL_UNITS curves) when the active_power_limits product is zero.
+    """
+    limits = getattr(source_component, "active_power_limits", None)
+    max_pu = getattr(limits, "max", None) if limits is not None else None
+    if max_pu is None and isinstance(limits, dict):
+        max_pu = limits.get("max")
+    base_power = float(getattr(source_component, "base_power", 1.0) or 1.0)
+    capacity = round(abs(float(max_pu or 0.0)) * base_power, 2)
+    if capacity > 0.0:
+        return Ok(capacity)
+    # Fall back to the extent of the import offer curve (units already MW).
+    cost = getattr(source_component, "operation_cost", None)
+    import_curve = getattr(cost, "import_offer_curves", None)
+    if isinstance(import_curve, CostCurve):
+        value_curve = getattr(import_curve, "value_curve", None)
+        fd = getattr(value_curve, "function_data", None)
+        xs = getattr(fd, "x_coords", None)
+        if xs:
+            return Ok(round(abs(float(xs[-1])), 2))
+    return Ok(0.0)
+
+
+@getter
+def get_source_max_ramp_up(source_component: Source, context: PluginContext) -> Result[float, ValueError]:
+    """Return max ramp-up (MW/min) for a Source: max_capacity * ramp_rate from source_b2b defaults."""
+    match cast(Any, get_source_max_capacity)(source_component, context):
+        case Ok(max_cap):
+            ramp_pct = _get_defaults("source_b2b", "ramp_rate")
+            return Ok(round(float(max_cap) * ramp_pct, 4))
+        case err:
+            return err
+
+
+@getter
+def get_source_max_ramp_down(source_component: Source, context: PluginContext) -> Result[float, ValueError]:
+    """Return max ramp-down (MW/min) for a Source: max_capacity * ramp_rate from source_b2b defaults."""
+    match cast(Any, get_source_max_capacity)(source_component, context):
+        case Ok(max_cap):
+            ramp_pct = _get_defaults("source_b2b", "ramp_rate")
+            return Ok(round(float(max_cap) * ramp_pct, 4))
+        case err:
+            return err
+
+
+@getter
+def get_source_min_stable_level(
+    source_component: Source, context: PluginContext
+) -> Result[float, ValueError]:
+    """Return min stable level as min_stable_level_percentage * max_capacity for Source (b2b)."""
+    match cast(Any, get_source_max_capacity)(source_component, context):
+        case Ok(max_cap):
+            pct = _get_defaults("source_b2b", "min_stable_level_percentage")
+            return Ok(round(float(max_cap) * pct, 2))
+        case err:
+            return err
+
+
+@getter
+def get_source_offer_price(
+    source_component: Source, context: PluginContext
+) -> Result[PLEXOSPropertyValue, ValueError]:
+    """Extract offer-price bands ($/MWh) from Source import_offer_curves PiecewiseStepData."""
+    cost = getattr(source_component, "operation_cost", None)
+    curve = getattr(cost, "import_offer_curves", None)
+    bands = _extract_offer_bands(curve)
+    if bands is None:
+        return Err(ValueError("No import_offer_curves PiecewiseStepData found"))
+    return Ok(bands[1])
+
+
+@getter
+def get_source_offer_quantity(
+    source_component: Source, context: PluginContext
+) -> Result[PLEXOSPropertyValue, ValueError]:
+    """Extract offer-quantity bands (MW) from Source import_offer_curves PiecewiseStepData."""
+    cost = getattr(source_component, "operation_cost", None)
+    curve = getattr(cost, "import_offer_curves", None)
+    bands = _extract_offer_bands(curve)
+    if bands is None:
+        return Err(ValueError("No import_offer_curves PiecewiseStepData found"))
+    return Ok(bands[0])
+
+
+@getter
+def get_source_pump_bid_price(
+    source_component: Source, context: PluginContext
+) -> Result[PLEXOSPropertyValue, ValueError]:
+    """Extract pump-bid-price bands ($/MWh) from Source export_offer_curves PiecewiseStepData."""
+    cost = getattr(source_component, "operation_cost", None)
+    curve = getattr(cost, "export_offer_curves", None)
+    bands = _extract_offer_bands(curve)
+    if bands is None:
+        return Err(ValueError("No export_offer_curves PiecewiseStepData found"))
+    return Ok(bands[1])
+
+
+@getter
+def get_source_pump_bid_quantity(
+    source_component: Source, context: PluginContext
+) -> Result[PLEXOSPropertyValue, ValueError]:
+    """Extract pump-bid-quantity bands (MW) from Source export_offer_curves PiecewiseStepData."""
+    cost = getattr(source_component, "operation_cost", None)
+    curve = getattr(cost, "export_offer_curves", None)
+    bands = _extract_offer_bands(curve)
+    if bands is None:
+        return Err(ValueError("No export_offer_curves PiecewiseStepData found"))
+    return Ok(bands[0])

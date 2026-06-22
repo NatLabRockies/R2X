@@ -5,6 +5,7 @@ from __future__ import annotations
 import types
 from typing import Any, cast
 
+import pytest
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
     PLEXOSBattery,
@@ -379,7 +380,7 @@ def test_generator_getters(tmp_path) -> None:
 
     limits = getters.get_gen_active_power_limits(gen, context).unwrap()
     assert limits.min == 0.0
-    assert limits.max == 0.0
+    assert limits.max == 100.0  # max_capacity
 
     reactive_limits = getters.get_gen_reactive_power_limits(gen, context).unwrap()
     assert reactive_limits.min == 0.0
@@ -499,7 +500,7 @@ def test_storage_getters(tmp_path) -> None:
 
     level_limits = getters.get_storage_level_limits(battery, context).unwrap()
     assert level_limits.min == 0.0
-    assert level_limits.max == 0.0
+    assert level_limits.max == 1.0  # battery fraction convention
 
     charge_limits = getters.get_storage_charge_power_limits(battery, context).unwrap()
     assert charge_limits.max == 0.0
@@ -508,8 +509,8 @@ def test_storage_getters(tmp_path) -> None:
     assert discharge_limits.max == 0.0
 
     efficiency = getters.get_storage_efficiency(battery, context).unwrap()
-    assert efficiency.input == 1.0
-    assert efficiency.output == 1.0
+    assert efficiency.input == pytest.approx(0.7)  # charge_efficiency=70 / 100
+    assert efficiency.output == pytest.approx(1.0)  # discharge_efficiency=100 / 100
 
     assert getters.get_storage_technology_type(battery, context).unwrap() == StorageTechs.OTHER_CHEM
     assert getters.get_storage_conversion_factor(battery, context).unwrap() == 1.0

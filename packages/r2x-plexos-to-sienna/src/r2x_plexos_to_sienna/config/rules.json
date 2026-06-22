@@ -297,6 +297,8 @@
       "status": "get_gen_status",
       "time_at_status": "get_time_at_status",
       "operation_cost": "get_thermal_operation_cost",
+      "ramp_limits": "get_gen_ramp_limits",
+      "time_limits": "get_gen_time_limits",
       "services": "get_device_services",
       "fuel": "get_fuel_type"
     },
@@ -350,6 +352,8 @@
       "operation_cost": "get_thermal_operation_cost",
       "fuel": "get_fuel_type",
       "start_types": "get_gen_start_types",
+      "ramp_limits": "get_gen_ramp_limits",
+      "time_limits": "get_gen_time_limits",
       "services": "get_device_services"
     },
     "filter": {
@@ -384,7 +388,9 @@
       "time_at_status": "get_time_at_status",
       "status": "get_gen_status",
       "services": "get_device_services",
-      "operation_cost": "get_hydro_gen_operation_cost"
+      "operation_cost": "get_hydro_gen_operation_cost",
+      "ramp_limits": "get_gen_ramp_limits",
+      "time_limits": "get_gen_time_limits"
     },
     "filter": {
       "field": "category",
@@ -430,6 +436,8 @@
       "base_power": "get_gen_base_power",
       "services": "get_device_services",
       "operation_cost": "get_hydro_gen_operation_cost",
+      "ramp_limits": "get_gen_ramp_limits",
+      "time_limits": "get_gen_time_limits",
       "prime_mover_type": "get_prime_mover_type"
     },
     "filter": {

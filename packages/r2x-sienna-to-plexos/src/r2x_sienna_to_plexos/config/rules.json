@@ -46,7 +46,8 @@
       "category": "category"
     },
     "getters": {
-      "units": "get_zone_units"
+      "units": "get_zone_units",
+      "category": "get_zone_category"
     },
     "source_type": "LoadZone",
     "target_type": "PLEXOSZone",
@@ -250,7 +251,7 @@
     "target_type": "PLEXOSTransformer",
     "version": 3
   },
-    {
+  {
     "defaults": {
       "category": "trf3w-primary-winding",
       "units": 1,
@@ -261,11 +262,11 @@
       "resistance": "r_primary"
     },
     "getters": {
-        "name": "get_3w_transformer_primary_name",
-        "uuid": "get_3w_transformer_primary_uuid",
-        "units": "get_availability",
-        "rating": "get_3w_transformer_primary_rating",
-        "susceptance": "get_3w_transformer_susceptance"
+      "name": "get_3w_transformer_primary_name",
+      "uuid": "get_3w_transformer_primary_uuid",
+      "units": "get_availability",
+      "rating": "get_3w_transformer_primary_rating",
+      "susceptance": "get_3w_transformer_susceptance"
     },
     "source_type": "Transformer3W",
     "target_type": "PLEXOSTransformer",
@@ -582,10 +583,6 @@
       "rating": "get_generator_rating",
       "max_capacity": "get_max_capacity",
       "load_subtracter": "get_generator_load_subtracter",
-      "min_stable_level": "get_generator_min_stable_level",
-      "forced_outage_rate": "get_generator_forced_outage_rate",
-      "maintenance_rate": "get_generator_maintenance_rate",
-      "mean_time_to_repair": "get_generator_mean_time_to_repair",
       "ext": "get_component_ext"
     },
     "source_type": "RenewableDispatch",
@@ -608,10 +605,6 @@
       "rating": "get_generator_rating",
       "max_capacity": "get_max_capacity",
       "load_subtracter": "get_generator_load_subtracter",
-      "min_stable_level": "get_generator_min_stable_level",
-      "forced_outage_rate": "get_generator_forced_outage_rate",
-      "maintenance_rate": "get_generator_maintenance_rate",
-      "mean_time_to_repair": "get_generator_mean_time_to_repair",
       "ext": "get_component_ext"
     },
     "source_type": "RenewableNonDispatch",
@@ -720,6 +713,40 @@
     },
     "source_type": "TransmissionInterface",
     "target_type": "PLEXOSInterface",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "source_b2b",
+      "offer_price": 10000,
+      "offer_quantity": 0,
+      "pump_bid_price": -10000,
+      "pump_bid_quantity": 0
+    },
+    "field_map": {
+      "uuid": "uuid"
+    },
+    "getters": {
+      "name": "get_generator_name",
+      "units": "get_source_units",
+      "commit": "get_generator_commit",
+      "category": "get_source_category",
+      "rating": "get_source_max_capacity",
+      "max_capacity": "get_source_max_capacity",
+      "offer_price": "get_source_offer_price",
+      "offer_quantity": "get_source_offer_quantity",
+      "pump_bid_price": "get_source_pump_bid_price",
+      "pump_bid_quantity": "get_source_pump_bid_quantity",
+      "forced_outage_rate": "get_generator_forced_outage_rate",
+      "maintenance_rate": "get_generator_maintenance_rate",
+      "mean_time_to_repair": "get_generator_mean_time_to_repair",
+      "max_ramp_up": "get_source_max_ramp_up",
+      "max_ramp_down": "get_source_max_ramp_down",
+      "min_stable_level": "get_source_min_stable_level",
+      "ext": "get_component_ext"
+    },
+    "source_type": "Source",
+    "target_type": "PLEXOSGenerator",
     "version": 1
   },
   {

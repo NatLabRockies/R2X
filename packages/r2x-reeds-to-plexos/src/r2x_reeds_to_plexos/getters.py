@@ -132,6 +132,56 @@ def region_load(component: ReEDSRegion, context: PluginContext) -> Result[float 
 
 
 @getter
+def get_load_participation_factor(
+    component: ReEDSRegion, context: PluginContext
+) -> Result[float, ValueError]:
+    """Compute load participation factor as region_load / total_load_in_transmission_region.
+
+    Load is sourced from ``ReEDSDemand.max_active_power`` (not ``ReEDSRegion.load``,
+    which is always 0 because demand is stored on the demand component, not the region).
+    Groups all regions that share the same ``transmission_region`` and returns this
+    region's fractional share.  Falls back to 1.0 when no grouping is available and
+    to 0.0 when this region has no associated demand.
+    """
+    from r2x_reeds.models.components import ReEDSDemand
+
+    if context.source_system is None:
+        return Ok(1.0)
+
+    transmission_region = getattr(component, "transmission_region", None)
+    if transmission_region is None:
+        return Ok(1.0)
+
+    # Build and cache a {transmission_region: {region_name: total_demand}} map on first call
+    # so subsequent per-region calls are O(1) instead of O(D) each.
+    _cache_key = "_load_participation_demand_map"
+    demand_map: dict[str, dict[str, float]] | None = context._cache.get(_cache_key)
+    if demand_map is None:
+        demand_map = {}
+        for demand in context.source_system.get_components(ReEDSDemand):
+            region = getattr(demand, "region", None)
+            if region is None:
+                continue
+            tr = getattr(region, "transmission_region", None)
+            if tr is None:
+                continue
+            region_name = getattr(region, "name", "")
+            tr_map = demand_map.setdefault(tr, {})
+            tr_map[region_name] = tr_map.get(region_name, 0.0) + _float_or_zero(
+                getattr(demand, "max_active_power", 0.0)
+            )
+        context._cache[_cache_key] = demand_map
+
+    zone_demand = demand_map.get(transmission_region, {})
+    total_load = sum(zone_demand.values())
+    if total_load == 0.0:
+        return Ok(0.0)
+
+    this_region_load = zone_demand.get(getattr(component, "name", ""), 0.0)
+    return Ok(round(this_region_load / total_load, 6))
+
+
+@getter
 def region_ext(component: ReEDSRegion, context: PluginContext) -> Result[dict, ValueError]:
     """Return the PLEXOS region ext dict for a ReEDSRegion, including transmission_region."""
     ext = getattr(component, "ext", {}) or {}
@@ -500,8 +550,32 @@ def get_interface_name(component: ReEDSInterface, context: PluginContext) -> Res
 def min_capacity_factor_percent(
     component: ReEDSGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert minimum capacity factor (0-1) to percent."""
+    """Convert minimum capacity factor (0-1) to percent.
+
+    Reads from `capacity_factor_range.min` (ThermalGenerator) or `min_capacity_factor`.
+    """
     factor = getattr(component, "min_capacity_factor", None)
+    if factor is None:
+        cfr = getattr(component, "capacity_factor_range", None)
+        if cfr is not None:
+            factor = getattr(cfr, "min", None)
+    return Ok(_float_or_zero(factor) * 100.0)
+
+
+@getter
+def max_capacity_factor_percent(
+    component: ReEDSGenerator, context: PluginContext
+) -> Result[float, ValueError]:
+    """Convert maximum capacity factor (0-1) to percent.
+
+    Reads from `max_capacity_factor` (VariableGenerator) or `capacity_factor_range.max`
+    (ThermalGenerator). Returns 0 if neither is set.
+    """
+    factor = getattr(component, "max_capacity_factor", None)
+    if factor is None:
+        cfr = getattr(component, "capacity_factor_range", None)
+        if cfr is not None:
+            factor = getattr(cfr, "max", None)
     return Ok(_float_or_zero(factor) * 100.0)
 
 
@@ -538,16 +612,22 @@ def lines_loss_incremental(
 
 @getter
 def lines_wheeling_charge(line: Any, context: PluginContext) -> Result[float, ValueError]:
-    """Return the wheeling charge for the forward direction (from_region to to_region)."""
-    wc = getattr(line, "wheeling_charge", 0.001)
-    return Ok(float(wc))
+    """Return the wheeling charge for the forward direction (from_region to to_region).
+
+    Uses `hurdle_rate` from `ReEDSTransmissionLine`. Falls back to 0.0 if not set.
+    """
+    wc = getattr(line, "hurdle_rate", None)
+    return Ok(_float_or_zero(wc))
 
 
 @getter
 def lines_wheeling_charge_back(line: Any, context: PluginContext) -> Result[float, ValueError]:
-    """Return the wheeling charge for the reverse direction (to_region to from_region)."""
-    wc_back = getattr(line, "wheeling_charge_back", 0.001)
-    return Ok(float(wc_back))
+    """Return the wheeling charge for the reverse direction (to_region to from_region).
+
+    Uses `hurdle_rate` from `ReEDSTransmissionLine` symmetrically. Falls back to 0.0 if not set.
+    """
+    wc_back = getattr(line, "hurdle_rate", None)
+    return Ok(_float_or_zero(wc_back))
 
 
 @getter
@@ -734,6 +814,13 @@ def supply_curve_cost_getter(
     """Return supply curve cost as build cost."""
     cost = getattr(component, "supply_curve_cost", None)
     return Ok(_float_or_zero(cost))
+
+
+@getter
+def battery_duration(component: ReEDSStorage, context: PluginContext) -> Result[float, ValueError]:
+    """Return the storage duration in hours for PLEXOSBattery.duration."""
+    duration = getattr(component, "storage_duration", None)
+    return Ok(_float_or_zero(duration))
 
 
 @getter

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from functools import cache
+from importlib.resources import files
 from typing import TYPE_CHECKING, Any, cast
 
 from infrasys.cost_curves import CostCurve, FuelCurve, LinearCurve
@@ -17,6 +20,7 @@ from r2x_core.getters import getter
 
 if TYPE_CHECKING:
     from r2x_reeds.models import (
+        ReEDSConsumingTechnology,
         ReEDSDataCenterDemand,
         ReEDSDemand,
         ReEDSElectrolyzerDemand,
@@ -36,6 +40,35 @@ if TYPE_CHECKING:
 
 _NON_NUMERIC_REGION_BUS_NUMBERS: dict[str, int] = {}
 _NEXT_AVAILABLE_BUS_NUMBER = 999999
+
+
+def _get_defaults(technology: str, key: str) -> float:
+    """Look up a pcm_defaults value for a given technology and key.
+
+    Applies prefix normalisation identical to the reeds-to-plexos helper so that,
+    e.g., ``battery_4`` resolves to the ``battery`` bucket.
+    """
+    prefixes = ("battery", "csp", "wind-ons", "wind-ofs", "geohydro_allkm", "egs_nearfield", "egs")
+    tech_lower = technology.lower()
+    normalised = tech_lower
+    for prefix in prefixes:
+        if tech_lower.startswith(prefix):
+            normalised = prefix
+            break
+    defaults = _load_defaults_json()
+    value = defaults.get("pcm_defaults", {}).get(normalised, {}).get(key, 0.0)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@cache
+def _load_defaults_json() -> dict[str, Any]:
+    """Load and cache defaults.json (parsed once per process)."""
+    defaults_path = files("r2x_reeds_to_sienna.config") / "defaults.json"
+    with defaults_path.open() as f:
+        return json.load(f)
 
 
 def _ok_num(val: float | int) -> Result[float | int, ValueError]:
@@ -250,9 +283,20 @@ def get_active_power_limits(
     component: ReEDSThermalGenerator,
     context: PluginContext,
 ) -> Result[MinMax, ValueError]:
-    """Create a MinMax limit using capacity as the max."""
-    capacity = getattr(component, "capacity", 0.0)
-    return Ok(MinMax(min=0.0, max=float(capacity)))
+    """Create a MinMax limit using capacity as max and min_stable_level * capacity as min.
+
+    Falls back to ``min_stable_level_percentage`` from defaults.json when the
+    source field is not populated.
+    """
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+    min_stable = getattr(component, "min_stable_level", None)
+    if min_stable is not None:
+        min_mw = float(min_stable) * capacity
+    else:
+        technology = getattr(component, "technology", "")
+        default_frac = _get_defaults(technology, "min_stable_level_percentage")
+        min_mw = default_frac * capacity
+    return Ok(MinMax(min=min_mw, max=capacity))
 
 
 @getter
@@ -260,15 +304,25 @@ def get_thermal_operation_cost(
     component: ReEDSThermalGenerator,
     context: PluginContext,
 ) -> Result[ThermalGenerationCost, ValueError]:
-    """Build thermal operation cost from heat_rate, fuel_price, and vom_cost."""
+    """Build thermal operation cost from heat_rate, fuel_price, vom_cost, and startup_cost.
+
+    Falls back to ``start_cost_per_MW`` from defaults.json when ``startup_cost`` is not set.
+    """
     heat_rate = float(getattr(component, "heat_rate", 0.0) or 0.0)
     fuel_price = float(getattr(component, "fuel_price", 0.0) or 0.0)
     vom_cost = float(getattr(component, "vom_cost", 0.0) or 0.0)
+    startup_cost_per_mw = getattr(component, "startup_cost", None)
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+    if startup_cost_per_mw is None:
+        technology = getattr(component, "technology", "")
+        startup_cost_per_mw = _get_defaults(technology, "start_cost_per_MW")
+    start_up = float(startup_cost_per_mw) * capacity
+
     return Ok(
         ThermalGenerationCost(
             fixed=0.0,
             shut_down=0.0,
-            start_up=0.0,
+            start_up=start_up,
             variable=FuelCurve(
                 value_curve=LinearCurve(heat_rate),
                 power_units=InfraUnitSystem.NATURAL_UNITS,
@@ -462,6 +516,48 @@ def get_default_time_at_status(
 ) -> Result[float | int, ValueError]:
     """Return zeroed time_at_status."""
     return _ok_num(0.0)
+
+
+@getter
+def thermal_ramp_limits(
+    component: ReEDSThermalGenerator, context: PluginContext
+) -> Result[UpDown | None, ValueError]:
+    """Convert ramp_rate (fraction/hour) to MW/min for Sienna ramp_limits.
+
+    Falls back to ``max_ramp_up_percentage`` from defaults.json (fraction of capacity
+    per hour) when the source field is not populated. Returns None only if both the
+    source field and the default are zero.
+    """
+    ramp_rate = getattr(component, "ramp_rate", None)
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+    if ramp_rate is None:
+        technology = getattr(component, "technology", "")
+        ramp_rate = _get_defaults(technology, "max_ramp_up_percentage")
+        if not ramp_rate:
+            return Ok(None)
+    ramp_mw_per_min = float(ramp_rate) * capacity / 60.0
+    return Ok(UpDown(up=ramp_mw_per_min, down=ramp_mw_per_min))
+
+
+@getter
+def thermal_time_limits(
+    component: ReEDSThermalGenerator, context: PluginContext
+) -> Result[UpDown | None, ValueError]:
+    """Map min_up_time / min_down_time (hours) to Sienna UpDown time_limits.
+
+    Falls back to ``min_up_time`` / ``min_down_time`` from defaults.json.
+    Returns None only when both resolved values are zero.
+    """
+    min_up = getattr(component, "min_up_time", None)
+    min_down = getattr(component, "min_down_time", None)
+    technology = getattr(component, "technology", "")
+    if min_up is None:
+        min_up = _get_defaults(technology, "min_up_time") or None
+    if min_down is None:
+        min_down = _get_defaults(technology, "min_down_time") or None
+    if min_up is None and min_down is None:
+        return Ok(None)
+    return Ok(UpDown(up=float(min_up or 0.0), down=float(min_down or 0.0)))
 
 
 @getter
@@ -702,10 +798,17 @@ def hydro_active_power_limits(
 
 @getter
 def hydro_ramp_limits(component: ReEDSHydroGenerator, context: PluginContext) -> Result[UpDown, ValueError]:
-    """Min/max ramp limits for hydro."""
+    """Convert ramp_rate (fraction/hour) to MW/min for Sienna ramp_limits.
+
+    Falls back to ``max_ramp_up_percentage`` from defaults.json when the source
+    field is not populated.
+    """
     cap = float(getattr(component, "capacity", 0.0) or 0.0)
-    ramp_rate = float(getattr(component, "ramp_rate", 0.0) or 0.0)
-    ramp_limit = cap * ramp_rate / 100.0
+    ramp_rate = getattr(component, "ramp_rate", None)
+    if ramp_rate is None:
+        technology = getattr(component, "technology", "")
+        ramp_rate = _get_defaults(technology, "max_ramp_up_percentage") or 0.0
+    ramp_limit = cap * float(ramp_rate) / 60.0
     return Ok(UpDown(up=ramp_limit, down=ramp_limit))
 
 
@@ -768,10 +871,17 @@ def storage_power_limits(component: ReEDSStorage, context: PluginContext) -> Res
 
 @getter
 def storage_efficiency(component: ReEDSStorage, context: PluginContext) -> Result[InputOutput, ValueError]:
-    """Map round-trip efficiency to input/output pair."""
+    """Map round-trip efficiency to symmetric input/output pair.
+
+    Splits the round-trip efficiency as sqrt(rte) for both charge and discharge,
+    so input * output = rte.
+    """
+    import math
+
     default_eff = 0.95
     rte = float(getattr(component, "round_trip_efficiency", default_eff) or default_eff)
-    return Ok(InputOutput(input=default_eff, output=rte))
+    one_side = math.sqrt(max(rte, 0.0))
+    return Ok(InputOutput(input=one_side, output=one_side))
 
 
 @getter
@@ -803,3 +913,19 @@ def storage_conversion_factor(
 ) -> Result[float | int, ValueError]:
     """Default conversion factor."""
     return _ok_num(1.0)
+
+
+@getter
+def consuming_capacity_as_max_power(
+    component: ReEDSConsumingTechnology, context: PluginContext
+) -> Result[float | int, ValueError]:
+    """Return the consuming technology capacity (MW) as max_active_power."""
+    return _ok_num(float(getattr(component, "capacity", 0.0) or 0.0))
+
+
+@getter
+def consuming_capacity_as_base_power(
+    component: ReEDSConsumingTechnology, context: PluginContext
+) -> Result[float | int, ValueError]:
+    """Return the consuming technology capacity (MW) as base_power."""
+    return _ok_num(float(getattr(component, "capacity", 0.0) or 0.0))

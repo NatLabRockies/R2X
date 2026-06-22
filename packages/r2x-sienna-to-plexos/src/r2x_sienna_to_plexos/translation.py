@@ -12,6 +12,8 @@ from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose
 from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
 
 from .getters_utils import (
+    apply_chunking_patch,
+    apply_description_export_patch,
     ensure_battery_node_memberships,
     ensure_generator_node_memberships,
     ensure_generator_time_series,
@@ -23,9 +25,10 @@ from .getters_utils import (
     ensure_region_node_memberships,
     ensure_reserve_battery_memberships,
     ensure_reserve_generator_memberships,
-    ensure_reserve_time_series,
+    ensure_source_conflicts_resolved,
     ensure_tail_storage_generator_membership,
     ensure_transformer_node_memberships,
+    ensure_zone_consolidation,
 )
 
 
@@ -40,6 +43,9 @@ def sienna_to_plexos(system: System, config: SiennaToPlexosConfig) -> System:
     Returns:
         The translated PLEXOS system.
     """
+    apply_chunking_patch()
+    apply_description_export_patch()
+
     context = PluginContext(source_system=system, config=config)
     rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
@@ -59,8 +65,9 @@ def sienna_to_plexos(system: System, config: SiennaToPlexosConfig) -> System:
     context.target_system = plexos_system
 
     apply_rules_to_context(context)
+    ensure_source_conflicts_resolved(context)
+    ensure_zone_consolidation(context)
     ensure_generator_time_series(context)
-    ensure_reserve_time_series(context)
     ensure_region_node_memberships(context)
     ensure_reference_node_memberships(context)
     ensure_generator_node_memberships(context)

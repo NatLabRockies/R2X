@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
+import json
 import math
+import pathlib
+from collections import defaultdict
 from collections.abc import Mapping
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, cast
@@ -24,6 +28,7 @@ from r2x_plexos.models import (
     PLEXOSReserve,
     PLEXOSStorage,
     PLEXOSTransformer,
+    PLEXOSZone,
 )
 from r2x_sienna.models import (
     ACBus,
@@ -49,16 +54,8 @@ if TYPE_CHECKING:
 InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionData | PiecewiseLinearData]
 
 _SIENNA_TRANSFORMER_TYPES = (Transformer2W, TapTransformer, PhaseShiftingTransformer)
-
-
-# ---------------------------------------------------------------------------
-# SQLite IN-clause chunking fix
-# ---------------------------------------------------------------------------
-# SQLite limits bound variables to 999 per statement.  For large EI systems
-# (226k+ component associations) the vanilla r2x_core implementation issues a
-# single query with all target UUIDs as parameters, which blows the limit.
-# We replace that function at import time with an equivalent that batches the
-# IN clause into chunks of 900.
+_ISO_RTO_POLYGONS: dict[str, list] | None = None
+_ISO_RTO_CONFIG_DIR = pathlib.Path(__file__).parent / "config" / "iso-rto-coordinates"
 
 
 def _chunked_setup_target_and_child_tables(
@@ -116,14 +113,75 @@ def _chunked_setup_target_and_child_tables(
     return child_remapping, uuid_to_type
 
 
-try:
-    import r2x_core.time_series as _r2x_core_ts
+def _write_descriptions_to_db(system: Any, db: Any) -> None:
+    """Write ext["description"] from each translated component to t_object.description."""
+    from r2x_plexos.exporter import PLEXOS_TYPE_MAP_INVERTED
 
-    cast(Any, _r2x_core_ts)._setup_target_and_child_tables = _chunked_setup_target_and_child_tables
-    logger.debug("Applied chunked _setup_target_and_child_tables patch to r2x_core.time_series")
-except (ImportError, AttributeError) as _patch_err:
-    logger.warning("Could not patch r2x_core.time_series._setup_target_and_child_tables: {}", _patch_err)
-# ---------------------------------------------------------------------------
+    updates: list[tuple[str, str, int]] = []
+    for comp_type in system.get_component_types():
+        for comp in system.get_components(comp_type):
+            desc = (getattr(comp, "ext", None) or {}).get("description")
+            if not desc:
+                continue
+            comp_name: str = getattr(comp, "name", "") or ""
+            if not comp_name:
+                continue
+            class_enum = PLEXOS_TYPE_MAP_INVERTED.get(type(comp))
+            if class_enum is None:
+                continue
+            updates.append((str(desc), comp_name, db.get_class_id(class_enum)))
+
+    if updates:
+        db._db.executemany(
+            "UPDATE t_object SET description=? WHERE name=? AND class_id=?",
+            updates,
+        )
+        logger.debug("Wrote description to {} t_object rows", len(updates))
+
+
+def apply_chunking_patch() -> None:
+    """Apply SQLite IN-clause chunking fix to r2x_core.time_series (idempotent).
+
+    r2x_core's _setup_target_and_child_tables issues a single IN-clause query
+    with all target UUIDs, which exceeds SQLite's 999-parameter limit on large
+    systems. This replaces it with a chunked equivalent.
+    """
+    import r2x_core.time_series as _ts
+
+    if cast(Any, _ts)._setup_target_and_child_tables is _chunked_setup_target_and_child_tables:
+        return
+    cast(Any, _ts)._setup_target_and_child_tables = _chunked_setup_target_and_child_tables
+    logger.debug("Applied chunked _setup_target_and_child_tables to r2x_core.time_series")
+
+
+def apply_description_export_patch() -> None:
+    """Wrap PLEXOSExporter.prepare_export to also persist descriptions (idempotent).
+
+    The exporter's bulk object insert omits the description column. This wraps
+    prepare_export so that after objects are inserted, ext["description"] values
+    are written back to t_object.description via a batch UPDATE.
+    """
+    import r2x_plexos.exporter as _exp
+
+    if getattr(cast(Any, _exp.PLEXOSExporter).prepare_export, "_description_patched", False):
+        return
+
+    _original = _exp.PLEXOSExporter.prepare_export
+
+    def _wrapped(self: Any) -> Any:
+        result = _original(self)
+        system = getattr(self, "system", None)
+        db = getattr(self, "db", None)
+        if system is not None and db is not None:
+            try:
+                _write_descriptions_to_db(system, db)
+            except Exception as _err:
+                logger.warning("Could not write descriptions to t_object: {}", _err)
+        return result
+
+    cast(Any, _wrapped)._description_patched = True
+    cast(Any, _exp.PLEXOSExporter).prepare_export = _wrapped
+    logger.debug("Applied description-to-t_object patch to PLEXOSExporter.prepare_export")
 
 
 def _source_system(context: PluginContext) -> Any:
@@ -218,6 +276,122 @@ def _bus_to_area_name(bus: Any) -> str | None:
     if area:
         return str(area)
     return None
+
+
+def _load_iso_rto_polygons() -> dict[str, list]:
+    """Load ISO/RTO GeoJSON MultiPolygon boundaries from config directory (module-level cache)."""
+    global _ISO_RTO_POLYGONS
+    if _ISO_RTO_POLYGONS is not None:
+        return _ISO_RTO_POLYGONS
+    result: dict[str, list] = {}
+    for path in sorted(_ISO_RTO_CONFIG_DIR.glob("*.json")):
+        try:
+            data = json.loads(path.read_text())
+        except Exception:
+            logger.warning("Could not load ISO/RTO coordinate file: {}", path)
+            continue
+        if data.get("type") == "MultiPolygon":
+            result[path.stem] = data["coordinates"]
+    _ISO_RTO_POLYGONS = result
+    return result
+
+
+def _ray_cast_point_in_ring(lon: float, lat: float, ring: list) -> bool:
+    """Ray-casting test: return True if (lon, lat) is inside the polygon ring."""
+    inside = False
+    n = len(ring)
+    j = n - 1
+    for i in range(n):
+        xi, yi = ring[i][0], ring[i][1]
+        xj, yj = ring[j][0], ring[j][1]
+        if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _point_in_multipolygon(lon: float, lat: float, polygons: list) -> bool:
+    """Return True if (lon, lat) is inside any polygon in a GeoJSON MultiPolygon.
+
+    Each element of *polygons* is a GeoJSON polygon: a list where index 0 is
+    the outer ring and subsequent indices are holes (inner rings).
+    """
+    for polygon in polygons:
+        outer_ring = polygon[0]
+        if _ray_cast_point_in_ring(lon, lat, outer_ring):
+            in_hole = any(_ray_cast_point_in_ring(lon, lat, hole) for hole in polygon[1:])
+            if not in_hole:
+                return True
+    return False
+
+
+def _get_bus_coordinates(bus: Any, context: PluginContext) -> tuple[float, float] | None:
+    """Return (longitude, latitude) for *bus* via its supplemental GeographicInfo attribute."""
+    try:
+        from r2x_sienna.models import GeographicInfo
+
+        attrs = _source_system(context).get_supplemental_attributes_with_component(bus, GeographicInfo)
+        for attr in attrs:
+            geo = getattr(attr, "geo_json", None)
+            if geo is not None:
+                coords = getattr(geo, "coordinates", None)
+                if coords and len(coords) >= 2:
+                    return float(coords[0]), float(coords[1])
+    except Exception:
+        pass
+    return None
+
+
+def _count_iso_rto_for_buses(buses: list[Any], context: PluginContext) -> dict[str, int]:
+    """Return a count of buses per ISO/RTO for the given bus list.
+
+    Performs a ray-casting point-in-polygon test using each bus's geographic
+    coordinates from its supplemental :class:`GeographicInfo` attribute against
+    the GeoJSON MultiPolygon boundaries in ``config/iso-rto-coordinates/``.
+
+    Returns a mapping ``{iso_name: bus_count}``; buses with no usable coordinates
+    or whose location falls outside all ISO/RTO boundaries are omitted.
+    """
+    iso_rto_polygons = _load_iso_rto_polygons()
+    if not iso_rto_polygons:
+        return {}
+
+    iso_counts: dict[str, int] = {}
+    for bus in buses:
+        coords = _get_bus_coordinates(bus, context)
+        if coords is None:
+            continue
+        lon, lat = coords
+        for iso_name, polygons in iso_rto_polygons.items():
+            if _point_in_multipolygon(lon, lat, polygons):
+                iso_counts[iso_name] = iso_counts.get(iso_name, 0) + 1
+                break  # each bus belongs to at most one ISO/RTO
+    return iso_counts
+
+
+def _resolve_iso_rto_for_buses(buses: list[Any], context: PluginContext) -> str | None:
+    """Return the single ISO/RTO that contains the most buses, or ``None``.
+
+    Used for zone categorisation where exactly one ISO/RTO label is needed.
+    """
+    iso_counts = _count_iso_rto_for_buses(buses, context)
+    if not iso_counts:
+        return None
+    return max(iso_counts, key=iso_counts.__getitem__)
+
+
+def _resolve_iso_rto_description_for_buses(buses: list[Any], context: PluginContext) -> str | None:
+    """Return a description string listing every ISO/RTO that contains at least one bus.
+
+    When a region's buses span multiple ISO/RTOs the names are sorted
+    alphabetically and joined with ``'-'`` (e.g. ``'ercot-miso'``).
+    Returns ``None`` when no bus falls inside any ISO/RTO boundary
+    (e.g. Canadian utilities whose coordinates are outside all boundaries).
+    """
+    iso_counts = _count_iso_rto_for_buses(buses, context)
+    if not iso_counts:
+        return None
+    return "-".join(sorted(iso_counts))
 
 
 def _attach_reservoir_time_series_to_storage(
@@ -663,6 +837,62 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
                     _ensure_membership(context, gen, storage, CollectionEnum.TailStorage)
                     total_memberships += 1
     logger.info("Total {} TailStorage-Generator memberships created (including fallback).", total_memberships)
+
+
+def ensure_source_conflicts_resolved(context: PluginContext) -> None:
+    """Remove PLEXOSGenerators for available=False source generators that are replaced by Source components.
+
+    When a source generator (e.g. ThermalStandard) has ``available=False`` and a
+    ``Source`` component with the same name also exists in the source system, the
+    PLEXOSGenerator created from the unavailable generator is removed from the
+    target.  The PLEXOSGenerator created from the ``Source`` component takes
+    precedence.
+    """
+    from r2x_sienna.models import Source
+
+    from r2x_sienna_to_plexos.getters import _build_generator_display_name_index
+    from r2x_sienna_to_plexos.getters_mappings import SOURCE_GENERATOR_TYPES
+
+    source_system = _source_system(context)
+    target_system = _target_system(context)
+
+    # Collect all Source component names.
+    source_names = {s.name for s in source_system.get_components(Source)}
+    if not source_names:
+        return
+
+    display_name_index = _build_generator_display_name_index(context)
+
+    # Build a name → list-of-generators map for the target (duplicate names are allowed).
+    target_gens_by_name: dict[str, list[Any]] = {}
+    for g in target_system.get_components(PLEXOSGenerator):
+        target_gens_by_name.setdefault(g.name, []).append(g)
+
+    removed = 0
+    for gen_type in SOURCE_GENERATOR_TYPES:
+        if gen_type is Source:
+            continue
+        for gen in source_system.get_components(gen_type):
+            if gen.name not in source_names:
+                continue
+            if getattr(gen, "available", True):
+                continue
+            # This generator is available=False AND a Source with the same name exists.
+            target_name = display_name_index.get(gen.name, gen.name)
+            candidates = target_gens_by_name.get(target_name, [])
+            for target_gen in list(candidates):
+                ext = getattr(target_gen, "ext", {}) or {}
+                if ext.get("sienna_type") != "Source":
+                    target_system.remove_component(target_gen)
+                    candidates.remove(target_gen)
+                    removed += 1
+                    logger.debug(
+                        "Removed PLEXOSGenerator '{}' (available=False, superseded by Source).",
+                        target_name,
+                    )
+
+    if removed:
+        logger.info("Source conflict resolution removed {} PLEXOSGenerator(s).", removed)
 
 
 def ensure_generator_node_memberships(context: PluginContext) -> None:
@@ -1531,3 +1761,120 @@ def create_multiband_markup(
         markup_point_property.add_entry(value=float(lp), band=band_num)
         markup_property.add_entry(value=float(slope), band=band_num)
     return markup_point_property, markup_property
+
+
+def ensure_zone_consolidation(context: PluginContext) -> None:
+    """Consolidate all per-LoadZone PLEXOSZones into one canonical zone per ISO/RTO.
+
+    After ``apply_rules_to_context`` each source ``LoadZone`` has been translated
+    into its own ``PLEXOSZone`` (e.g. "p1", "p2", …).  This step merges them:
+
+    * Zones whose ``category`` was resolved to an ISO/RTO name (e.g. ``'ercot'``)
+      are grouped together; one new canonical ``PLEXOSZone`` is created with
+      ``name == category`` (e.g. ``PLEXOSZone(name='ercot', category='ercot')``).
+    * Zones that fell back to the ``'zones'`` category (no geographic data) are
+      folded into the dominant ISO/RTO group for the system.
+    * All ``PLEXOSNode → Zone`` memberships that reference the old per-LoadZone
+      zones are replaced with memberships to the canonical zone.
+    * The individual per-LoadZone zones are removed from the target system.
+    """
+    target_sys = _target_system(context)
+    all_zones = list(target_sys.get_components(PLEXOSZone))
+    if not all_zones:
+        return
+
+    # Partition zones by category (ISO/RTO name vs generic 'zones' fallback)
+    iso_groups: dict[str, list[PLEXOSZone]] = defaultdict(list)
+    fallback: list[PLEXOSZone] = []
+    for zone in all_zones:
+        cat = getattr(zone, "category", None) or "zones"
+        if cat == "zones":
+            fallback.append(zone)
+        else:
+            iso_groups[cat].append(zone)
+
+    if not iso_groups:
+        logger.warning("Zone consolidation: no ISO/RTO zones detected; skipping.")
+        return
+
+    # Fold fallback ('zones') entries into the dominant ISO/RTO group
+    dominant_iso = max(iso_groups, key=lambda k: len(iso_groups[k]))
+    if fallback:
+        logger.info(
+            "Zone consolidation: mapping {} 'zones' fallback zone(s) to dominant ISO/RTO '{}'.",
+            len(fallback),
+            dominant_iso,
+        )
+        iso_groups[dominant_iso].extend(fallback)
+
+    def _zone_uuid(obj: Any) -> str:
+        return str(getattr(obj, "uuid", id(obj)))
+
+    for iso_name, zones in iso_groups.items():
+        # Build UUID set for fast membership lookup
+        zone_uuids_to_replace: set[str] = {_zone_uuid(z) for z in zones}
+
+        # Create the single canonical zone named after the ISO/RTO
+        canonical = PLEXOSZone(name=iso_name, category=iso_name, units=1)
+        try:
+            target_sys.add_component(canonical)
+        except Exception:
+            # A zone named iso_name may already be in the system (e.g. a LoadZone
+            # happened to be named the same as the ISO/RTO).
+            existing = next(
+                (z for z in target_sys.get_components(PLEXOSZone) if getattr(z, "name", "") == iso_name),
+                None,
+            )
+            if existing is not None and _zone_uuid(existing) not in zone_uuids_to_replace:
+                canonical = existing
+            else:
+                # Last resort: keep the first zone in the group as-is
+                canonical = zones[0]
+                zone_uuids_to_replace.discard(_zone_uuid(canonical))
+
+        canonical_uuid = _zone_uuid(canonical)
+
+        # Remap PLEXOSNode→Zone memberships that reference any old zone.
+        # Use remove_supplemental_attribute (removes from ALL attached endpoints) so both
+        # the node-side and zone-side registrations are cleaned up before we remove the zone.
+        for node in list(target_sys.get_components(PLEXOSNode)):
+            memberships = list(target_sys.get_supplemental_attributes_with_component(node, PLEXOSMembership))
+            for membership in memberships:
+                if membership.collection != CollectionEnum.Zone:
+                    continue
+                child = membership.child_object
+                if _zone_uuid(child) not in zone_uuids_to_replace:
+                    continue
+                # Remove from both endpoints at once, then add canonical membership
+                with contextlib.suppress(Exception):
+                    target_sys.remove_supplemental_attribute(membership)
+                _ensure_membership(context, node, canonical, CollectionEnum.Zone)
+
+        # Remove the individual per-LoadZone zones from the target system.
+        # All their memberships have already been cleaned up above.
+        for zone in zones:
+            if _zone_uuid(zone) == canonical_uuid:
+                continue  # don't remove the zone we just designated as canonical
+            # Purge any remaining supplemental attributes (e.g. zone-side membership
+            # registrations not reached in the node loop above) before removal.
+            try:
+                remaining_sas = list(target_sys.get_supplemental_attributes_with_component(zone))
+                for sa in remaining_sas:
+                    with contextlib.suppress(Exception):
+                        target_sys.remove_supplemental_attribute(sa)
+            except Exception:
+                pass
+            try:
+                target_sys.remove_component(zone, cascade_down=True, force=True)
+            except Exception as exc:
+                logger.warning(
+                    "Zone consolidation: could not remove zone '{}': {}",
+                    getattr(zone, "name", "?"),
+                    exc,
+                )
+
+    logger.info(
+        "Zone consolidation complete: {} canonical zone(s) created: {}.",
+        len(iso_groups),
+        list(iso_groups),
+    )
