@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-sienna-v0.1.0...r2x-reeds-to-sienna-v0.2.0) (2026-06-22)
+
+
+### Features
+
+* add new types of loads for reeds to plexos translations ([#256](https://github.com/NatLabRockies/R2X/issues/256)) ([cba09db](https://github.com/NatLabRockies/R2X/commit/cba09db148e7c2b6211d8f0e13840ab7d84d2a7c))
+* update codebase for all translation to handle EI system and recent cross changes ([#277](https://github.com/NatLabRockies/R2X/issues/277)) ([863cbea](https://github.com/NatLabRockies/R2X/commit/863cbea973d749c3ac4857a8c9d776062040bd06))
+
+
+### Bug Fixes
+
+* resolve reeds translation issues and update to latest code base ([#266](https://github.com/NatLabRockies/R2X/issues/266)) ([28addb2](https://github.com/NatLabRockies/R2X/commit/28addb2aec553303a0bb62f3872f2af01c00c387))
+* resolve reserve association issues and handle code base with recent r2x-reeds and r2x-sienna updates. ([#274](https://github.com/NatLabRockies/R2X/issues/274)) ([6d30202](https://github.com/NatLabRockies/R2X/commit/6d3020279356ec343ca089df75cc05d91362d7ef))
+
 ## 0.1.0 (2026-04-08)
 
 
