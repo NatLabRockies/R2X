@@ -1155,7 +1155,7 @@ wheels = [
 
 [[package]]
 name = "r2x"
-version = "2.0.0"
+version = "2.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "r2x-core" },

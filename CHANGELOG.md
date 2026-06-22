@@ -1,5 +1,42 @@
 # Changelog
 
+## [2.1.0](https://github.com/NatLabRockies/R2X/compare/r2x-v2.0.0...r2x-v2.1.0) (2026-06-22)
+
+
+### Features
+
+* add new types of loads for reeds to plexos translations ([#256](https://github.com/NatLabRockies/R2X/issues/256)) ([cba09db](https://github.com/NatLabRockies/R2X/commit/cba09db148e7c2b6211d8f0e13840ab7d84d2a7c))
+* update codebase for all translation to handle EI system and recent cross changes ([#277](https://github.com/NatLabRockies/R2X/issues/277)) ([863cbea](https://github.com/NatLabRockies/R2X/commit/863cbea973d749c3ac4857a8c9d776062040bd06))
+* update logic for general EI translation approach ([#255](https://github.com/NatLabRockies/R2X/issues/255)) ([649eba0](https://github.com/NatLabRockies/R2X/commit/649eba01b9051e175260a124f52a3e9788f4830d))
+
+
+### Bug Fixes
+
+* add release skipping for existing version ([d9caa29](https://github.com/NatLabRockies/R2X/commit/d9caa2983178792cd63d162ba2d34e4f6555e1e5))
+* resolve reeds translation issues and update to latest code base ([#266](https://github.com/NatLabRockies/R2X/issues/266)) ([28addb2](https://github.com/NatLabRockies/R2X/commit/28addb2aec553303a0bb62f3872f2af01c00c387))
+* resolve reserve association issues and handle code base with recent r2x-reeds and r2x-sienna updates. ([#274](https://github.com/NatLabRockies/R2X/issues/274)) ([6d30202](https://github.com/NatLabRockies/R2X/commit/6d3020279356ec343ca089df75cc05d91362d7ef))
+
+
+### Documentation
+
+* add documentation for workflow and data conversion ([#268](https://github.com/NatLabRockies/R2X/issues/268)) ([7929d05](https://github.com/NatLabRockies/R2X/commit/7929d05e3b59ca962d83b2ae51dd421ec4324ede))
+
+
+### Build
+
+* **deps-dev:** bump furo from 2025.9.25 to 2025.12.19 ([#264](https://github.com/NatLabRockies/R2X/issues/264)) ([713265c](https://github.com/NatLabRockies/R2X/commit/713265cd956f4dc661769ccc98762f285d260dbc))
+* **deps-dev:** bump prek from 0.3.13 to 0.4.3 ([#269](https://github.com/NatLabRockies/R2X/issues/269)) ([9dedc99](https://github.com/NatLabRockies/R2X/commit/9dedc99fc412e926709da04ebdb9d1894d57506c))
+* **deps-dev:** bump prek from 0.3.8 to 0.3.13 ([#259](https://github.com/NatLabRockies/R2X/issues/259)) ([40d52ff](https://github.com/NatLabRockies/R2X/commit/40d52ff8105ca6c8b7eb71757b9377a09cf7e318))
+* **deps-dev:** bump pytest-cov from 5.0.0 to 7.1.0 ([#258](https://github.com/NatLabRockies/R2X/issues/258)) ([052fa2f](https://github.com/NatLabRockies/R2X/commit/052fa2f0d7e1648362748de5c37ea7e5973cc99b))
+* **deps:** bump actions/checkout from 6.0.2 to 6.0.3 ([#270](https://github.com/NatLabRockies/R2X/issues/270)) ([a533401](https://github.com/NatLabRockies/R2X/commit/a533401a21e6b1d0e46b5e93961bbef6e838d69e))
+* **deps:** bump actions/labeler from 6.0.1 to 6.1.0 ([#257](https://github.com/NatLabRockies/R2X/issues/257)) ([77f1e15](https://github.com/NatLabRockies/R2X/commit/77f1e15f26f6aa32c5bb846603373c52325d18dc))
+* **deps:** bump actions/upload-artifact from 7.0.0 to 7.0.1 ([#252](https://github.com/NatLabRockies/R2X/issues/252)) ([c0e59ad](https://github.com/NatLabRockies/R2X/commit/c0e59ad5b86800566a16015ee75b39a59236fb1f))
+* **deps:** bump astral-sh/setup-uv from 8.0.0 to 8.1.0 ([#253](https://github.com/NatLabRockies/R2X/issues/253)) ([f9e8423](https://github.com/NatLabRockies/R2X/commit/f9e842342f51f5a58b3a607cd7147c42862e51f2))
+* **deps:** bump astral-sh/setup-uv from 8.1.0 to 8.2.0 ([#275](https://github.com/NatLabRockies/R2X/issues/275)) ([1000aca](https://github.com/NatLabRockies/R2X/commit/1000aca7e305436b987dbbfd50a7b996b731d827))
+* **deps:** bump codecov/codecov-action from 6.0.0 to 7.0.0 ([#276](https://github.com/NatLabRockies/R2X/issues/276)) ([211f8d6](https://github.com/NatLabRockies/R2X/commit/211f8d62567f80a7f26dd2191bc663d6aec2db63))
+* **deps:** bump googleapis/release-please-action from 4.4.0 to 5.0.0 ([#254](https://github.com/NatLabRockies/R2X/issues/254)) ([f8230da](https://github.com/NatLabRockies/R2X/commit/f8230da1a006e3084d2fc679becf70f3ba238a02))
+* **deps:** bump peaceiris/actions-gh-pages from 4.0.0 to 4.1.0 ([#263](https://github.com/NatLabRockies/R2X/issues/263)) ([5e34e9b](https://github.com/NatLabRockies/R2X/commit/5e34e9b05796002c0f8439db41fa56e095726259))
+
 ## [2.0.0](https://github.com/NatLabRockies/R2X/compare/r2x-v1.2.0...r2x-v2.0.0) (2026-04-08)
 
 
