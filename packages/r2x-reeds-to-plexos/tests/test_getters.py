@@ -239,6 +239,36 @@ def test_basic_getters_return_values(tmp_path):
     )
 
 
+def test_get_load_participation_factor(tmp_path):
+    """get_load_participation_factor always returns 1.0.
+
+    Each ReEDSRegion maps 1:1 to a PLEXOSNode, so the node receives 100 % of
+    the region load (participation factor = 1.0).  The value must be
+    unconditional: it should not change based on the region's load attribute,
+    whether the region has an associated node in the target system, or any
+    other property.
+    """
+    context = make_context(tmp_path)
+    objs = setup_systems(context)
+
+    # Standard region with a matching node already in the target system.
+    assert getters.get_load_participation_factor(objs["region"], context).unwrap() == 1.0
+
+    # A second region - same expectation.
+    assert getters.get_load_participation_factor(objs["region2"], context).unwrap() == 1.0
+
+    # A minimal region with no load data: factor must still be 1.0.
+    bare_region = ReEDSRegion(name="BARE")
+    assert getters.get_load_participation_factor(bare_region, context).unwrap() == 1.0
+
+    # A plain object that has nothing in common with ReEDSRegion: the getter
+    # is unconditional so even unknown objects return 1.0.
+    class _Dummy:
+        pass
+
+    assert getters.get_load_participation_factor(_Dummy(), context).unwrap() == 1.0
+
+
 def test_line_max_flow_and_min_flow_edge_cases(tmp_path):
     from r2x_reeds_to_plexos import getters
 
