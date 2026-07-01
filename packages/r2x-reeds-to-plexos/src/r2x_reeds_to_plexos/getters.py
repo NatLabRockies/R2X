@@ -135,7 +135,7 @@ def region_load(component: ReEDSRegion, context: PluginContext) -> Result[float 
 def get_load_participation_factor(
     component: ReEDSRegion, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Return 1, since ReEDS Region = Sienna Node and load is fully participating."""
+    """Return 1.0 because each ReEDSRegion is translated 1:1 to a PLEXOSNode and should take 100% of its region load."""
     return Ok(1.0)
 
 
