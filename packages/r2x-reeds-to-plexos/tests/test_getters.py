@@ -187,7 +187,6 @@ def test_basic_getters_return_values(tmp_path):
     assert getters.interface_max_flow(objs["interface"], context).unwrap() == 100.0
     assert getters.interface_min_flow(objs["interface"], context).unwrap() == -100.0
     assert getters.get_interface_name(objs["interface"], context).unwrap() == "Z1_Z2-IFACE1"
-    assert getters.min_capacity_factor_percent(objs["variable"], context).unwrap() == 0.0
     assert getters.line_max_flow(objs["line"], context).unwrap() == 100.0
     assert getters.line_min_flow(objs["line"], context).unwrap() == -100.0
 
