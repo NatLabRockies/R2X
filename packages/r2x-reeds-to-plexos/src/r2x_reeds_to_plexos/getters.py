@@ -505,39 +505,6 @@ def get_interface_name(component: ReEDSInterface, context: PluginContext) -> Res
 
 
 @getter
-def min_capacity_factor_percent(
-    component: ReEDSGenerator, context: PluginContext
-) -> Result[float, ValueError]:
-    """Convert minimum capacity factor (0-1) to percent.
-
-    Reads from `capacity_factor_range.min` (ThermalGenerator) or `min_capacity_factor`.
-    """
-    factor = getattr(component, "min_capacity_factor", None)
-    if factor is None:
-        cfr = getattr(component, "capacity_factor_range", None)
-        if cfr is not None:
-            factor = getattr(cfr, "min", None)
-    return Ok(_float_or_zero(factor) * 100.0)
-
-
-@getter
-def max_capacity_factor_percent(
-    component: ReEDSGenerator, context: PluginContext
-) -> Result[float, ValueError]:
-    """Convert maximum capacity factor (0-1) to percent.
-
-    Reads from `max_capacity_factor` (VariableGenerator) or `capacity_factor_range.max`
-    (ThermalGenerator). Returns 0 if neither is set.
-    """
-    factor = getattr(component, "max_capacity_factor", None)
-    if factor is None:
-        cfr = getattr(component, "capacity_factor_range", None)
-        if cfr is not None:
-            factor = getattr(cfr, "max", None)
-    return Ok(_float_or_zero(factor) * 100.0)
-
-
-@getter
 def line_max_flow(component: ReEDSTransmissionLine, context: PluginContext) -> Result[float, ValueError]:
     """Return the to_from flow limit as max flow."""
     limits = getattr(component, "max_active_power", None)
