@@ -75,8 +75,6 @@ def make_context(tmp_path) -> PluginContext:
     return ctx
 
 
-
-
 def _make_thermal_generator_for_category_tests(
     name: str,
     fuel: ThermalFuels | str,
@@ -482,7 +480,6 @@ def test_get_hydro_generator_units_always_online(context):
 
 
 def _make_hydro_turbine_for_units_tests(bus: ACBus, name: str, rating: float) -> HydroTurbine:
-
     return HydroTurbine(
         name=name,
         available=True,
@@ -804,6 +801,7 @@ def test__get_load_mw_plain_float_max_active_power():
         max_active_power = 0.5
 
     assert getters._get_load_mw(Dummy()) == pytest.approx(50.0)
+
 
 def test__get_load_mw_constant_active_power_fallback():
     """Falls through to constant_active_power attribute when max_active_power is None (lines 960-965)."""

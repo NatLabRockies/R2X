@@ -418,7 +418,6 @@ def test_membership_head_tail_storage_generator(context, monkeypatch):
     assert getters.membership_tail_storage_generator(ht, context).unwrap().name == "hydro1_Reservoir_tail"
 
 
-
 def test_membership_collection_nodes(context):
     dummy = object()
     assert getters.membership_collection_nodes(dummy, context).unwrap().name == "Nodes"
@@ -714,5 +713,3 @@ def test_membership_interface_child_line_err(context):
     )
     result = getters.membership_interface_child_line(interface, context)
     assert result.is_err()
-
-

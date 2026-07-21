@@ -289,7 +289,6 @@ def test_get_susceptance_plain_float(context):
 
 
 def test_get_line_min_max_flow_and_charging_susceptance_none(context):
-
     bus1 = ACBus(name="N1", base_voltage=115.0, number=1)
     bus2 = ACBus(name="N2", base_voltage=115.0, number=2)
     context.source_system.add_component(bus1)
@@ -318,7 +317,6 @@ def test_get_power_or_standard_load_no_loads(context):
 
 
 def test_get_storage_max_volume_natural_inflow_none(context):
-
     hr = HydroReservoir(
         name="hydro1",
         available=True,
@@ -533,3 +531,31 @@ def test_get_interface_max_flow_not_none(context):
     )
     assert getters.get_interface_max_flow(ti, context).unwrap() == 99999.0
 
+
+def test_attach_generator_time_series_skips_hydro_reservoir(context):
+    """_attach_generator_time_series returns early when source gen is a HydroReservoir."""
+    from infrasys.value_curves import LinearCurve
+    from r2x_plexos.models import PLEXOSGenerator
+    from r2x_sienna.models import HydroReservoir
+    from r2x_sienna.models.costs import HydroReservoirCost
+    from r2x_sienna.models.enums import ReservoirDataType, ReservoirLocation
+
+    reservoir = HydroReservoir(
+        name="res-skip",
+        available=True,
+        initial_level=500.0,
+        storage_level_limits={"min": 0.0, "max": 1000.0},
+        spillage_limits=None,
+        inflow=0.0,
+        outflow=0.0,
+        level_targets=1000.0,
+        level_data_type=ReservoirDataType.USABLE_VOLUME,
+        intake_elevation=0.0,
+        operation_cost=HydroReservoirCost.example(),
+        reservoir_location=ReservoirLocation.HEAD,
+        head_to_volume_factor=LinearCurve(1.0),
+    )
+    context.source_system.add_component(reservoir)
+    target_gen = PLEXOSGenerator(name="res-skip")
+    # Should return without error (early-exit for HydroReservoir source)
+    getters._attach_generator_time_series(context, "res-skip", target_gen)

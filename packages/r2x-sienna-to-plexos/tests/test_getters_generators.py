@@ -496,3 +496,34 @@ def test_thermal_standard_all_getters(context):
     assert getters.get_fuel_price(gen, context).unwrap() == 0.0
 
 
+def test_sanitize_generator_name_empty_input():
+    assert getters._sanitize_generator_name("") == ""
+    assert getters._sanitize_generator_name(None) == ""
+    assert getters._sanitize_generator_name("   ") == ""
+
+
+def test_sanitize_generator_name_plain_string():
+    assert getters._sanitize_generator_name("PlantA") == "PlantA"
+
+
+def test_sanitize_generator_name_plant_name_prefix():
+    assert getters._sanitize_generator_name("Plant name: Saint-Phil\u00e9mon") == "Saint-Phil\u00e9mon"
+
+
+def test_sanitize_generator_name_unit_name_suffix_stripped():
+    assert (
+        getters._sanitize_generator_name("Saint-Phil\u00e9mon, Unit name: nothing") == "Saint-Phil\u00e9mon"
+    )
+
+
+def test_sanitize_generator_name_multiline_first_nonempty_line():
+    assert (
+        getters._sanitize_generator_name("Saint-Phil\u00e9mon\r\n\r\n\r\nSaint-Phil\u00e9mon")
+        == "Saint-Phil\u00e9mon"
+    )
+    assert getters._sanitize_generator_name("\n\nActualName\nExtra") == "ActualName"
+
+
+def test_sanitize_generator_name_full_plant_unit_blob():
+    blob = "Plant name: Saint-Philemon\r\n\r\n\r\nSaint-Philemon, Unit name: nothing"
+    assert getters._sanitize_generator_name(blob) == "Saint-Philemon"
