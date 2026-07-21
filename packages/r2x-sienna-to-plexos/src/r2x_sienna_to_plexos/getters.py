@@ -2235,7 +2235,6 @@ def get_turbine_pump_efficiency(
             value = default
         return Ok(round(value, 2))
     else:
-        # Generic fallback: use scalar efficiency if available, honouring 0-1 vs 0-100 scale.
         if (
             ht_pump_efficiency is not None
             and isinstance(ht_pump_efficiency, int | float)
