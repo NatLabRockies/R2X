@@ -1128,7 +1128,7 @@ def get_region_ext(source_component: Area, context: PluginContext) -> Result[dic
 
     result: dict[str, Any] = {"sienna_type": sienna_type}
     if iso_rto:
-        result["description"] = iso_rto
+        result["description"] = f"ISO/RTOs where region belongs to: {iso_rto}"
     return Ok(result)
 
 

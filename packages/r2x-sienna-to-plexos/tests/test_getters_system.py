@@ -987,4 +987,4 @@ def test_get_region_ext_arname_ext_and_iso_description(context, monkeypatch):
     result = getters.get_region_ext(area, context)
     assert result.is_ok()
     val = result.unwrap()
-    assert val.get("description") == "ercot"
+    assert val.get("description") == "ISO/RTOs where region belongs to: ercot"

@@ -381,17 +381,17 @@ def _resolve_iso_rto_for_buses(buses: list[Any], context: PluginContext) -> str 
 
 
 def _resolve_iso_rto_description_for_buses(buses: list[Any], context: PluginContext) -> str | None:
-    """Return a description string listing every ISO/RTO that contains at least one bus.
+    """Return a comma-separated string listing every ISO/RTO that contains at least one bus.
 
     When a region's buses span multiple ISO/RTOs the names are sorted
-    alphabetically and joined with ``'-'`` (e.g. ``'ercot-miso'``).
+    alphabetically and joined with ``', '`` (e.g. ``'ercot, miso'``).
     Returns ``None`` when no bus falls inside any ISO/RTO boundary
     (e.g. Canadian utilities whose coordinates are outside all boundaries).
     """
     iso_counts = _count_iso_rto_for_buses(buses, context)
     if not iso_counts:
         return None
-    return "-".join(sorted(iso_counts))
+    return ", ".join(sorted(iso_counts))
 
 
 def _attach_reservoir_time_series_to_storage(

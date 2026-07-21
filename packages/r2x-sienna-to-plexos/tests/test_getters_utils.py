@@ -1699,7 +1699,7 @@ def test_resolve_iso_rto_description_sorted_join(context, monkeypatch):
         lambda buses, ctx: {"miso": 1, "ercot": 2},
     )
     result = getters_utils._resolve_iso_rto_description_for_buses([object()], context)
-    assert result == "ercot-miso"
+    assert result == "ercot, miso"
 
 
 def test_resolve_iso_rto_description_empty_returns_none(context, monkeypatch):
