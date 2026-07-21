@@ -1111,15 +1111,17 @@ def get_region_ext(source_component: Area, context: PluginContext) -> Result[dic
 
 @getter
 def get_availability(source_component: object, context: PluginContext) -> Result[int, ValueError]:
-    """Populate available field with units count from Sienna objects.
+    """Populate available field from Sienna objects.
 
-    Extracts the available attribute from a Sienna object and converts to int.
-    Returns 1 if available attribute is not present.
+    Priority:
+    1. ``available`` attribute, when present
+    2. Default to 1
     """
-    units = getattr(source_component, "available", None)
-    if units is None:
-        return Ok(1)
-    return Ok(int(units))
+    available = getattr(source_component, "available", None)
+    if available is not None:
+        return Ok(int(available))
+
+    return Ok(1)
 
 
 @getter

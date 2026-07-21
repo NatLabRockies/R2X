@@ -2862,7 +2862,7 @@ def test_get_availability_returns_result_int_type():
     from r2x_sienna_to_plexos.getters import get_availability
 
     class MockComponent:
-        units = 5
+        available = 5
 
     result = get_availability(MockComponent(), None)
     assert result.is_ok()
