@@ -9,7 +9,7 @@ from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
 
-from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin  # type: ignore
+from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
 from r2x_reeds_to_sienna.getter_utils import add_generator_emissions
 from r2x_reeds_to_sienna.plugin_config import ReEDSToSiennaConfig
 

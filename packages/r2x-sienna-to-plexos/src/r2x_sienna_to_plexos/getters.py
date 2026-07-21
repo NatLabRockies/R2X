@@ -1110,13 +1110,13 @@ def get_region_ext(source_component: Area, context: PluginContext) -> Result[dic
 
 
 @getter
-def get_availability(source_component: ACBus, context: PluginContext) -> Result[int, ValueError]:
-    """Populate available field with units count from ACBus.
+def get_availability(source_component: object, context: PluginContext) -> Result[int, ValueError]:
+    """Populate available field with units count from Sienna objects.
 
-    Extracts the units attribute from ACBus and converts to int.
-    Returns 1 if units attribute is not present.
+    Extracts the available attribute from a Sienna object and converts to int.
+    Returns 1 if available attribute is not present.
     """
-    units = getattr(source_component, "units", None)
+    units = getattr(source_component, "available", None)
     if units is None:
         return Ok(1)
     return Ok(int(units))
