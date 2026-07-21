@@ -129,7 +129,7 @@
   {
     "defaults": {
       "category": "two-terminal-generic-hvdc-line",
-      "unist": 1,
+      "units": 1,
       "reactance": 0.0,
       "resistance": 0.0
     },
