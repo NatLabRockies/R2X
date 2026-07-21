@@ -2912,6 +2912,62 @@ def test_get_availability_returns_result():
     assert result.is_ok()
 
 
+def test_get_generator_name_sanitizes_embedded_plant_unit_blob(context):
+    """Covers get_generator_name when the name contains embedded plant/unit information with repeated CRLFs."""
+    bus = ACBus(name="N-PLANT", base_voltage=115.0, number=401)
+    context.source_system.add_component(bus)
+
+    malformed_name = "Plant name: Saint-Philemon\r\n\r\n\r\nSaint-Philemon, Unit name: nothing"
+    gen = ThermalStandard(
+        name=malformed_name,
+        must_run=False,
+        bus=bus,
+        status=True,
+        base_power=100.0,
+        rating=200.0,
+        active_power=0.0,
+        reactive_power=0.0,
+        active_power_limits=MinMax(min=0.0, max=1.0),
+        prime_mover_type=PrimeMoversType.CC,
+        fuel=ThermalFuels.NATURAL_GAS,
+        operation_cost=ThermalGenerationCost.example(),
+        time_at_status=1.0,
+    )
+    context.source_system.add_component(gen)
+
+    result = getters.get_generator_name(gen, context)
+    assert result.is_ok()
+    assert result.unwrap() == "Saint-Philemon"
+
+
+def test_get_generator_name_sanitizes_repeated_crlf_accented_name(context):
+    """Covers get_generator_name when the name contains repeated CRLFs and accented characters."""
+    bus = ACBus(name="N-PLANT-ACCENT", base_voltage=115.0, number=402)
+    context.source_system.add_component(bus)
+
+    malformed_name = "Saint-Philémon\r\n\r\n\r\nSaint-Philémon"
+    gen = ThermalStandard(
+        name=malformed_name,
+        must_run=False,
+        bus=bus,
+        status=True,
+        base_power=100.0,
+        rating=200.0,
+        active_power=0.0,
+        reactive_power=0.0,
+        active_power_limits=MinMax(min=0.0, max=1.0),
+        prime_mover_type=PrimeMoversType.CC,
+        fuel=ThermalFuels.NATURAL_GAS,
+        operation_cost=ThermalGenerationCost.example(),
+        time_at_status=1.0,
+    )
+    context.source_system.add_component(gen)
+
+    result = getters.get_generator_name(gen, context)
+    assert result.is_ok()
+    assert result.unwrap() == "Saint-Philémon"
+
+
 def test_get_max_capacity_scales_limits(context_with_thermal_generators):
     from r2x_sienna.models import ThermalStandard
     from r2x_sienna_to_plexos.getters import get_max_capacity

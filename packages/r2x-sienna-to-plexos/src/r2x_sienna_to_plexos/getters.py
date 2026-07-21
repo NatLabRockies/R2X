@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import timedelta
@@ -395,6 +396,28 @@ def _lookup_source_generator(context: PluginContext, gen_name: str) -> Any | Non
     return index.get(gen_name)
 
 
+def _sanitize_generator_name(name: Any) -> str:
+    """Normalize generator names that may include embedded metadata text."""
+    text = str(name or "")
+    text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return ""
+
+    plant_match = re.search(r"Plant name:\s*([^\n,]+)", text, flags=re.IGNORECASE)
+    if plant_match:
+        return plant_match.group(1).strip()
+
+    text = re.sub(r",\s*Unit name:.*$", "", text, flags=re.IGNORECASE).strip()
+
+    if "\n" in text:
+        for line in text.split("\n"):
+            line = line.strip()
+            if line:
+                return line
+
+    return text
+
+
 def _build_generator_display_name_index(context: PluginContext) -> dict[str, str]:
     """Map each source generator's original name -> final display name.
 
@@ -427,12 +450,12 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
             ext = getattr(gen, "ext", None)
             ext_dict = ext if isinstance(ext, dict) else {}
 
-            unit_name = ext_dict.get("unit_name")
-            if unit_name:
-                result[orig] = str(unit_name)
+            unit_name = _sanitize_generator_name(ext_dict.get("unit_name"))
+            if unit_name and unit_name.casefold() not in {"none", "nothing", "null", "nan"}:
+                result[orig] = unit_name
             else:
-                plant_name = ext_dict.get("plant_name")
-                display = str(plant_name) if plant_name else orig
+                plant_name = _sanitize_generator_name(ext_dict.get("plant_name"))
+                display = plant_name if plant_name else _sanitize_generator_name(orig)
                 needs_dedup.append((orig, display))
 
     groups: dict[str, list[str]] = defaultdict(list)
