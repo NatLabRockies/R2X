@@ -381,10 +381,8 @@ def test_get_turbine_pump_efficiency_hydropumpturbine_squares_sienna_sqrt_value(
 
     monkeypatch.setattr(getters, "HydroPumpTurbine", DummyHydroPumpTurbine)
 
-    # Sienna stores pump efficiency as sqrt(actual_efficiency) in p.u.
-    component = DummyHydroPumpTurbine(pump_efficiency=0.85**0.5)
-
-    assert getters.get_turbine_pump_efficiency(component, context).unwrap() == pytest.approx(85.0)
+    component = DummyHydroPumpTurbine(pump_efficiency=0.8660254037844386)
+    assert getters.get_turbine_pump_efficiency(component, context).unwrap() == pytest.approx(75.0)
 
 
 def test_get_pumped_hydro_category_demotes_zero_pump_load(context):
