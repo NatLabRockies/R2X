@@ -2230,7 +2230,13 @@ def get_turbine_pump_efficiency(
         pump = getattr(ht_pump_efficiency, "pump", None) if ht_pump_efficiency is not None else None
         default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
         if pump is not None and pump != 0.0:
-            value = float(pump) * 100.0 if float(pump) <= 1.0 else float(pump)
+            pump_value = float(pump)
+            # Sienna stores HydroPumpTurbine pump efficiency as sqrt(efficiency) in p.u.
+            # Recover actual p.u. efficiency before converting to percent.
+            actual_pump_efficiency = pump_value * pump_value if pump_value <= 1.0 else pump_value
+            value = (
+                actual_pump_efficiency * 100.0 if actual_pump_efficiency <= 1.0 else actual_pump_efficiency
+            )
         else:
             value = default
         return Ok(round(value, 2))
