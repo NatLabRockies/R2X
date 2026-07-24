@@ -374,6 +374,19 @@ def test_get_turbine_pump_load_and_efficiency(context):
     assert getters.get_turbine_pump_efficiency(ht, context).unwrap() == 92.0
 
 
+def test_get_turbine_pump_efficiency_hydropumpturbine_squares_sienna_sqrt_value(monkeypatch, context):
+    class DummyHydroPumpTurbine:
+        def __init__(self, pump_efficiency: float):
+            self.efficiency = types.SimpleNamespace(pump=pump_efficiency)
+
+    monkeypatch.setattr(getters, "HydroPumpTurbine", DummyHydroPumpTurbine)
+
+    # Sienna stores pump efficiency as sqrt(actual_efficiency) in p.u.
+    component = DummyHydroPumpTurbine(pump_efficiency=0.85**0.5)
+
+    assert getters.get_turbine_pump_efficiency(component, context).unwrap() == pytest.approx(85.0)
+
+
 def test_get_pumped_hydro_category_demotes_zero_pump_load(context):
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     context.source_system.add_component(bus1)

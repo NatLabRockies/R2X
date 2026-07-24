@@ -5,10 +5,6 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-# ---------------------------------------------------------------------------
-# apply_chunking_patch
-# ---------------------------------------------------------------------------
-
 
 def test_apply_chunking_patch_replaces_function():
     """apply_chunking_patch swaps in the chunked implementation."""
