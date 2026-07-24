@@ -414,7 +414,7 @@ def test_getters_none_and_defaults(context):
     assert getters.get_generator_rating(d, context).unwrap() == 0.0
     assert getters.get_generator_vom_cost(Dummy(), context).unwrap() == 0.0
     assert getters.get_turbine_pump_load(d, context).unwrap() == 0.0
-    assert getters.get_turbine_pump_efficiency(d, context).unwrap() == 89.0
+    assert getters.get_turbine_pump_efficiency(d, context).unwrap() == 80.0
     assert getters.get_generator_forced_outage_rate(d, context).unwrap() >= 0.0
     assert getters.get_generator_maintenance_rate(d, context).unwrap() >= 0.0
     assert getters.get_generator_mean_time_to_repair(d, context).unwrap() >= 0.0
