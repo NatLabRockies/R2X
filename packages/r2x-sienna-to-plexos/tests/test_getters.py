@@ -14,6 +14,7 @@ from r2x_plexos.models import (
 from r2x_sienna.models import (
     ACBus,
     Arc,
+    Area,
     EnergyReservoirStorage,
     HydroReservoir,
     HydroTurbine,
@@ -189,6 +190,140 @@ def test_get_load_participation_factor(tmp_path):
     )
     context.source_system.add_component(sload)
     assert getters.get_load_participation_factor(acbus, context).unwrap() == 0.0
+
+
+def test_get_load_participation_factor_live_computation_with_aggregated_area(tmp_path):
+    """Live node_load/area_total computation gives correct LPFs after area aggregation.
+
+    Two buses in the same aggregated area "PJM_E" carry 100 MW and 300 MW of load.
+    The getter must return 0.25 and 0.75 (summing to 1.0 within the area), which is
+    what the live topology computation produces regardless of any stored ext LPFs.
+    """
+    context = make_context(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+
+    area = Area(name="PJM_E")
+    context.source_system.add_component(area)
+
+    bus_a = ACBus(name="BusA", base_voltage=115.0, number=10, area=area)
+    bus_b = ACBus(name="BusB", base_voltage=115.0, number=11, area=area)
+    context.source_system.add_component(bus_a)
+    context.source_system.add_component(bus_b)
+
+    load_a = PowerLoad(name="load-a", bus=bus_a, max_active_power=100.0)
+    load_b = PowerLoad(name="load-b", bus=bus_b, max_active_power=300.0)
+    context.source_system.add_component(load_a)
+    context.source_system.add_component(load_b)
+
+    lpf_a = getters.get_load_participation_factor(bus_a, context).unwrap()
+    lpf_b = getters.get_load_participation_factor(bus_b, context).unwrap()
+
+    assert abs(lpf_a - 0.25) < 1e-6, f"Expected 0.25, got {lpf_a}"
+    assert abs(lpf_b - 0.75) < 1e-6, f"Expected 0.75, got {lpf_b}"
+    assert abs(lpf_a + lpf_b - 1.0) < 1e-6, "LPFs within an area must sum to 1.0"
+
+
+def test_get_load_participation_factor_live_overrides_stale_mmwg_lpf(tmp_path):
+    """Regression: live topology computation takes priority over stale MMWG_LPF in load ext.
+
+    After process_aggregated_areas! runs in Julia, buses move from ~100 original MMWG
+    areas to ~20 new planning regions.  The MMWG_LPF stored in load.ext is relative to
+    the OLD area grouping and is therefore stale — e.g. bus_a may carry 0.6 of its old
+    MMWG area but only 0.25 of the new aggregated region.
+
+    With the old code Priority 1 read MMWG_LPF from ext → returned 0.6 (wrong).
+    With the new code Priority 1 is the live computation → returns 0.25 (correct).
+    """
+    from r2x_sienna.models import PowerLoad, StandardLoad
+
+    context = make_context(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+
+    area = Area(name="PJM_E")
+    context.source_system.add_component(area)
+
+    bus_a = ACBus(name="BusA2", base_voltage=115.0, number=20, area=area)
+    bus_b = ACBus(name="BusB2", base_voltage=115.0, number=21, area=area)
+    context.source_system.add_component(bus_a)
+    context.source_system.add_component(bus_b)
+
+    # Fake StandardLoad objects with stale MMWG_LPF from before area aggregation.
+    # MMWG_LPF=0.6/0.8 were correct within the old granular areas but are wrong
+    # now that both buses share the aggregated "PJM_E" area (correct: 0.25 / 0.75).
+    fake_sl_a = types.SimpleNamespace(
+        bus=bus_a,
+        max_active_power=100.0,
+        ext={"MMWG_LPF": 0.6, "ReEDS_LPF": 0.25},
+    )
+    fake_sl_b = types.SimpleNamespace(
+        bus=bus_b,
+        max_active_power=300.0,
+        ext={"MMWG_LPF": 0.8, "ReEDS_LPF": 0.75},
+    )
+
+    original_get = context.source_system.get_components
+
+    def mock_get_components(cls, filter_func=None):
+        if cls is StandardLoad:
+            return iter([fake_sl_a, fake_sl_b])
+        if cls is PowerLoad:
+            return iter([])
+        return original_get(cls)
+
+    context.source_system.get_components = mock_get_components
+
+    lpf_a = getters.get_load_participation_factor(bus_a, context).unwrap()
+    lpf_b = getters.get_load_participation_factor(bus_b, context).unwrap()
+
+    # Live computation: 100/(100+300)=0.25 and 300/(100+300)=0.75
+    assert abs(lpf_a - 0.25) < 1e-6, f"Expected live LPF 0.25, got {lpf_a} (stale MMWG_LPF=0.6 must not win)"
+    assert abs(lpf_b - 0.75) < 1e-6, f"Expected live LPF 0.75, got {lpf_b} (stale MMWG_LPF=0.8 must not win)"
+    assert abs(lpf_a + lpf_b - 1.0) < 1e-6, "LPFs within the aggregated area must sum to 1.0"
+
+
+def test_get_load_participation_factor_ext_fallback_prefers_reeds_over_mmwg(tmp_path):
+    """When live computation is unavailable, ReEDS_LPF is preferred over MMWG_LPF.
+
+    ReEDS_LPF is pre-computed at the ~19-region scale (aligned with the aggregated MMWG
+    planning regions), so it is the more appropriate fallback.  MMWG_LPF is at the
+    original ~100+ area scale and should only be used as a last resort.
+
+    This fallback fires when the bus has no area or its area carries zero total load,
+    meaning the live computation cannot produce a result.
+    """
+    from r2x_sienna.models import PowerLoad, StandardLoad
+
+    context = make_context(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+
+    # Bus with no area → live computation will find region_load=0 and fall through.
+    bus = ACBus(name="BusNoArea", base_voltage=115.0, number=30)
+    context.source_system.add_component(bus)
+
+    # Fake StandardLoad with both LPF keys; ReEDS_LPF should win in the fallback.
+    fake_sl = types.SimpleNamespace(
+        bus=bus,
+        max_active_power=0.0,  # zero so live computation also gives 0 if area existed
+        ext={"MMWG_LPF": 0.3, "ReEDS_LPF": 0.7},
+    )
+
+    original_get = context.source_system.get_components
+
+    def mock_get_components(cls, filter_func=None):
+        if cls is StandardLoad:
+            return iter([fake_sl])
+        if cls is PowerLoad:
+            return iter([])
+        return original_get(cls)
+
+    context.source_system.get_components = mock_get_components
+
+    lpf = getters.get_load_participation_factor(bus, context).unwrap()
+
+    assert abs(lpf - 0.7) < 1e-6, f"Expected ReEDS_LPF=0.7, got {lpf} (MMWG_LPF=0.3 must not win)"
 
 
 def test_get_load_mw_handles_volt_ampere_quantity_without_base_scaling():

@@ -1175,11 +1175,22 @@ def get_load_participation_factor(
     """Extract load participation factor from StandardLoads connected to the bus.
 
     Priority:
-    1. ext["MMWG_LPF"] or ext["ReEDS_LPF"] on connected StandardLoads
-    2. Computed as node_load_MW / total_system_load_MW
+    1. Computed as node_load_MW / area_total_load_MW using the live area topology.
+       This is correct for both the non-aggregated system (~100 original MMWG areas)
+       and an aggregated system (~20 planning regions), because it always reflects the
+       current bus-to-area assignment regardless of stale values in load ext dicts.
+    2. ext["ReEDS_LPF"] on connected StandardLoads (pre-computed at ~19 ReEDS regions,
+       structurally aligned with the aggregated MMWG planning regions).
+    3. ext["MMWG_LPF"] on connected StandardLoads (pre-computed at the original ~100+
+       MMWG area granularity; only valid when the system has not been area-aggregated).
+
+    Note: MMWG_LPF stored in load.ext is relative to the original PSS/E MMWG areas
+    (~100+ areas).  After process_aggregated_areas! collapses those into ~20 planning
+    regions, each bus.area changes but the stored MMWG_LPF is not updated, making it
+    stale and incorrect for the aggregated topology. The live computation (Priority 1)
+    avoids this by deriving the factor directly from the current area assignments.
     """
 
-    # format LPF with scientific notation if very small, otherwise round to 4 decimals
     def format_lpf(val: float) -> float:
         """Format the LPF value with scientific notation if it's very small, otherwise round to 4 decimal places."""
         if abs(val) < 1e-4 and val != 0.0:
@@ -1187,18 +1198,10 @@ def get_load_participation_factor(
         return round(val, 4)
 
     bus_uuid_str = str(source_component.uuid)
-    index = _build_bus_to_standard_loads_index(context)
-    node_lpf_total = 0.0
-    for load in index.get(bus_uuid_str, []):
-        if hasattr(load, "ext") and isinstance(load.ext, dict):
-            lpf = load.ext.get("MMWG_LPF") or load.ext.get("ReEDS_LPF", 0)
-            if isinstance(lpf, int | float):
-                node_lpf_total += float(lpf)
 
-    if node_lpf_total > 0.0:
-        return Ok(format_lpf(node_lpf_total))
-
-    # compute LPF as node_load_MW / region_total_load_MW (nodes in each region must sum to 1.0)
+    # Priority 1: live computation from current area topology.
+    # Correct for both nodal (~100 areas) and aggregated (~20 region) systems because
+    # it uses bus.area.name, which reflects the topology after any area aggregation.
     area = getattr(source_component, "area", None)
     area_key: str | None = None
     if area is not None:
@@ -1212,6 +1215,20 @@ def get_load_participation_factor(
     region_load = area_total_load_index.get(area_key, 0.0) if area_key else 0.0
     if region_load > 0.0:
         return Ok(format_lpf(node_load / region_load))
+
+    # Priority 2: fall back to pre-computed ext LPFs.
+    # Prefer ReEDS_LPF (~19 regions, aligned with aggregated MMWG planning regions)
+    # over MMWG_LPF (~100+ original areas, stale after process_aggregated_areas!).
+    index = _build_bus_to_standard_loads_index(context)
+    node_lpf_total = 0.0
+    for load in index.get(bus_uuid_str, []):
+        if hasattr(load, "ext") and isinstance(load.ext, dict):
+            lpf = load.ext.get("ReEDS_LPF") or load.ext.get("MMWG_LPF", 0)
+            if isinstance(lpf, int | float):
+                node_lpf_total += float(lpf)
+
+    if node_lpf_total > 0.0:
+        return Ok(format_lpf(node_lpf_total))
 
     return Ok(0.0)
 
