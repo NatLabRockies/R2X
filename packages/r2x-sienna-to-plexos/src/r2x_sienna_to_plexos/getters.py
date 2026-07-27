@@ -1181,17 +1181,21 @@ def get_load_participation_factor(
     source_component: ACBus,
     context: PluginContext,
 ) -> Result[float, ValueError]:
-    """Extract load participation factor from StandardLoads connected to the bus.
+    """Extract load participation factor from loads connected to the bus.
 
     Priority:
     1. Computed as node_load_MW / area_total_load_MW using the live area topology.
+       Aggregates all load types on the bus (StandardLoad, InterruptibleStandardLoad,
+       InterruptiblePowerLoad, and PowerLoad) via _build_bus_to_loads_index.
        This is correct for both the non-aggregated system (~100 original MMWG areas)
        and an aggregated system (~20 planning regions), because it always reflects the
        current bus-to-area assignment regardless of stale values in load ext dicts.
-    2. ext["ReEDS_LPF"] on connected StandardLoads (pre-computed at ~19 ReEDS regions,
-       structurally aligned with the aggregated MMWG planning regions).
-    3. ext["MMWG_LPF"] on connected StandardLoads (pre-computed at the original ~100+
-       MMWG area granularity; only valid when the system has not been area-aggregated).
+    2. ext["ReEDS_LPF"] on connected StandardLoad / interruptible load types
+       (pre-computed at ~19 ReEDS regions, structurally aligned with the aggregated
+       MMWG planning regions).
+    3. ext["MMWG_LPF"] on connected StandardLoad / interruptible load types
+       (pre-computed at the original ~100+ MMWG area granularity; only valid when the
+       system has not been area-aggregated).
 
     Note: MMWG_LPF stored in load.ext is relative to the original PSS/E MMWG areas
     (~100+ areas).  After process_aggregated_areas! collapses those into ~20 planning
