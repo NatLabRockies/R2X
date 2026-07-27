@@ -18,6 +18,8 @@ from r2x_sienna.models import (
     EnergyReservoirStorage,
     HydroReservoir,
     HydroTurbine,
+    InterruptiblePowerLoad,
+    InterruptibleStandardLoad,
     Line,
     MinMax,
     PhaseShiftingTransformer,
@@ -324,6 +326,102 @@ def test_get_load_participation_factor_ext_fallback_prefers_reeds_over_mmwg(tmp_
     lpf = getters.get_load_participation_factor(bus, context).unwrap()
 
     assert abs(lpf - 0.7) < 1e-6, f"Expected ReEDS_LPF=0.7, got {lpf} (MMWG_LPF=0.3 must not win)"
+
+
+def test_get_load_participation_factor_interruptible_standard_load(tmp_path):
+    """InterruptibleStandardLoad is included in both the live computation and the ext fallback.
+
+    InterruptibleStandardLoad is a distinct class (not a subclass of StandardLoad or
+    PowerLoad) that carries the same bus, ext, and max_constant_active_power fields.
+    Both index builders must query it so that:
+    - Live path: its MW contribution counts toward node_load and area_total_load.
+    - Ext fallback: its ReEDS_LPF / MMWG_LPF is found when live computation cannot fire.
+    """
+    context = make_context(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+
+    area = Area(name="MISO_N")
+    context.source_system.add_component(area)
+
+    bus_a = ACBus(name="BusISL_A", base_voltage=115.0, number=40, area=area)
+    bus_b = ACBus(name="BusISL_B", base_voltage=115.0, number=41, area=area)
+    context.source_system.add_component(bus_a)
+    context.source_system.add_component(bus_b)
+
+    # bus_a: InterruptibleStandardLoad carrying 100 MW
+    isl_a = InterruptibleStandardLoad(
+        name="isl-a",
+        bus=bus_a,
+        base_power=100.0,
+        max_constant_active_power=100.0,
+        ext={"MMWG_LPF": 0.6, "ReEDS_LPF": 0.25},
+    )
+    # bus_b: InterruptibleStandardLoad carrying 300 MW
+    isl_b = InterruptibleStandardLoad(
+        name="isl-b",
+        bus=bus_b,
+        base_power=100.0,
+        max_constant_active_power=300.0,
+        ext={"MMWG_LPF": 0.8, "ReEDS_LPF": 0.75},
+    )
+    context.source_system.add_component(isl_a)
+    context.source_system.add_component(isl_b)
+
+    lpf_a = getters.get_load_participation_factor(bus_a, context).unwrap()
+    lpf_b = getters.get_load_participation_factor(bus_b, context).unwrap()
+
+    # Live computation: 100/(100+300)=0.25, 300/(100+300)=0.75
+    assert abs(lpf_a - 0.25) < 1e-6, f"Expected 0.25, got {lpf_a}"
+    assert abs(lpf_b - 0.75) < 1e-6, f"Expected 0.75, got {lpf_b}"
+    assert abs(lpf_a + lpf_b - 1.0) < 1e-6, "LPFs within the area must sum to 1.0"
+
+
+def test_get_load_participation_factor_interruptible_power_load(tmp_path):
+    """InterruptiblePowerLoad is included in both the live computation and the ext fallback.
+
+    InterruptiblePowerLoad is a distinct class (not a subclass of PowerLoad or any
+    standard-load type) that carries max_active_power (like PowerLoad) and ext (which
+    may contain ReEDS_LPF / MMWG_LPF).  Both index builders must cover it so that:
+    - Live path: its MW contribution counts toward node_load and area_total_load.
+    - Ext fallback: its ReEDS_LPF / MMWG_LPF is found when live computation cannot fire.
+    """
+    context = make_context(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+
+    area = Area(name="FRCC")
+    context.source_system.add_component(area)
+
+    bus_a = ACBus(name="BusIPL_A", base_voltage=115.0, number=50, area=area)
+    bus_b = ACBus(name="BusIPL_B", base_voltage=115.0, number=51, area=area)
+    context.source_system.add_component(bus_a)
+    context.source_system.add_component(bus_b)
+
+    # bus_a: InterruptiblePowerLoad carrying 100 MW
+    ipl_a = InterruptiblePowerLoad(
+        name="ipl-a",
+        bus=bus_a,
+        max_active_power=100.0,
+        ext={"MMWG_LPF": 0.6, "ReEDS_LPF": 0.25},
+    )
+    # bus_b: InterruptiblePowerLoad carrying 300 MW
+    ipl_b = InterruptiblePowerLoad(
+        name="ipl-b",
+        bus=bus_b,
+        max_active_power=300.0,
+        ext={"MMWG_LPF": 0.8, "ReEDS_LPF": 0.75},
+    )
+    context.source_system.add_component(ipl_a)
+    context.source_system.add_component(ipl_b)
+
+    lpf_a = getters.get_load_participation_factor(bus_a, context).unwrap()
+    lpf_b = getters.get_load_participation_factor(bus_b, context).unwrap()
+
+    # Live computation: 100/(100+300)=0.25, 300/(100+300)=0.75
+    assert abs(lpf_a - 0.25) < 1e-6, f"Expected 0.25, got {lpf_a}"
+    assert abs(lpf_b - 0.75) < 1e-6, f"Expected 0.75, got {lpf_b}"
+    assert abs(lpf_a + lpf_b - 1.0) < 1e-6, "LPFs within the area must sum to 1.0"
 
 
 def test_get_load_mw_handles_volt_ampere_quantity_without_base_scaling():

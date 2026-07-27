@@ -36,6 +36,8 @@ from r2x_sienna.models import (
     HydroPumpTurbine,
     HydroReservoir,
     HydroTurbine,
+    InterruptiblePowerLoad,
+    InterruptibleStandardLoad,
     Line,
     LoadZone,
     MonitoredLine,
@@ -866,21 +868,21 @@ def _attach_region_node_load_time_series(
 
 
 def _build_bus_to_loads_index(context: PluginContext) -> dict[str, list[Any]]:
-    """Build bus_uuid to list of all Load components (StandardLoad and PowerLoad) connected to that bus, cached."""
+    """Build bus_uuid to list of all Load components connected to that bus, cached.
+
+    Covers StandardLoad, InterruptibleStandardLoad, InterruptiblePowerLoad and PowerLoad.
+    """
     cached = context._cache.get("bus_to_loads")
     if cached is not None:
         return cached
 
     source_system = cast(Any, context.source_system)
     index: dict[str, list[Any]] = defaultdict(list)
-    for load in source_system.get_components(StandardLoad):
-        bus = getattr(load, "bus", None)
-        if bus is not None:
-            index[str(bus.uuid)].append(load)
-    for load in source_system.get_components(PowerLoad):
-        bus = getattr(load, "bus", None)
-        if bus is not None:
-            index[str(bus.uuid)].append(load)
+    for load_type in (StandardLoad, InterruptibleStandardLoad, InterruptiblePowerLoad, PowerLoad):
+        for load in source_system.get_components(load_type):
+            bus = getattr(load, "bus", None)
+            if bus is not None:
+                index[str(bus.uuid)].append(load)
 
     result = dict(index)
     context._cache["bus_to_loads"] = result
@@ -888,17 +890,24 @@ def _build_bus_to_loads_index(context: PluginContext) -> dict[str, list[Any]]:
 
 
 def _build_bus_to_standard_loads_index(context: PluginContext) -> dict[str, list[Any]]:
-    """Build bus_uuid to list of StandardLoad components connected to that bus, cached."""
+    """Build bus_uuid to list of all load types that carry ext LPF keys, cached.
+
+    Covers StandardLoad, InterruptibleStandardLoad, and InterruptiblePowerLoad —
+    every load type whose ext dict may contain ReEDS_LPF / MMWG_LPF and is used
+    by the ext-fallback path of get_load_participation_factor.
+    PowerLoad is intentionally excluded because it does not carry ext LPF metadata.
+    """
     cached = context._cache.get("bus_to_standard_loads")
     if cached is not None:
         return cached
 
     source_system = cast(Any, context.source_system)
     index: dict[str, list[Any]] = defaultdict(list)
-    for load in source_system.get_components(StandardLoad):
-        bus = getattr(load, "bus", None)
-        if bus is not None:
-            index[str(bus.uuid)].append(load)
+    for load_type in (StandardLoad, InterruptibleStandardLoad, InterruptiblePowerLoad):
+        for load in source_system.get_components(load_type):
+            bus = getattr(load, "bus", None)
+            if bus is not None:
+                index[str(bus.uuid)].append(load)
 
     result = dict(index)
     context._cache["bus_to_standard_loads"] = result
