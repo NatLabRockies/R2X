@@ -839,6 +839,65 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
     logger.info("Total {} TailStorage-Generator memberships created (including fallback).", total_memberships)
 
 
+def ensure_deduplicate_lines(context: PluginContext) -> None:
+    """Remove duplicate PLEXOSLine objects that share the same name.
+
+    When the source Sienna system contains both a MonitoredLine (or Line) and a
+    DiscreteControlledACBranch with the same name, ``apply_rules_to_context``
+    creates two PLEXOSLine objects with that name but different UUIDs.  PLEXOS
+    resolves objects by name, so both property sets are written under the same
+    line, producing WARNING 3015 ("defined multiple times") and ERROR 3064.
+
+    Resolution priority: Line / MonitoredLine > DiscreteControlledACBranch.
+    When a duplicate is detected, the DiscreteControlledACBranch-derived
+    PLEXOSLine is removed.  If all duplicates originate from
+    DiscreteControlledACBranch (no higher-priority counterpart), all but the
+    first are removed.
+    """
+    from r2x_sienna.models import DiscreteControlledACBranch
+
+    by_name: dict[str, list[PLEXOSLine]] = defaultdict(list)
+    for line in _target_system(context).get_components(PLEXOSLine):
+        by_name[line.name].append(line)
+
+    removed = 0
+    for name, lines in by_name.items():
+        if len(lines) <= 1:
+            continue
+
+        to_remove: list[PLEXOSLine] = []
+        for line in lines:
+            line_uuid = getattr(line, "uuid", None)
+            if line_uuid is None:
+                continue
+            try:
+                source_comp = _source_system(context).get_component_by_uuid(line_uuid)
+            except Exception:
+                source_comp = None
+            if isinstance(source_comp, DiscreteControlledACBranch):
+                to_remove.append(line)
+
+        if to_remove and len(to_remove) < len(lines):
+            # At least one non-DiscreteControlledACBranch PLEXOSLine remains.
+            for line in to_remove:
+                _target_system(context).remove_component(line)
+                removed += 1
+                logger.debug(
+                    "Removed duplicate PLEXOSLine '{}' derived from DiscreteControlledACBranch.", name
+                )
+        elif len(to_remove) == len(lines):
+            # All duplicates are from DiscreteControlledACBranch — keep the first.
+            for line in lines[1:]:
+                _target_system(context).remove_component(line)
+                removed += 1
+                logger.debug(
+                    "Removed duplicate PLEXOSLine '{}' (kept first DiscreteControlledACBranch copy).", name
+                )
+
+    if removed:
+        logger.info("Removed {} duplicate PLEXOSLine object(s) by name deduplication.", removed)
+
+
 def ensure_source_conflicts_resolved(context: PluginContext) -> None:
     """Remove PLEXOSGenerators for available=False source generators that are replaced by Source components.
 
