@@ -1,6 +1,9 @@
 import types
+from calendar import monthrange
+from datetime import datetime, timedelta
 
 import pytest
+from infrasys import SingleTimeSeries
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
     PLEXOSGenerator,
@@ -13,6 +16,7 @@ from r2x_plexos.models import (
 )
 from r2x_reeds.models import FromTo_ToFrom, ReEDSInterface, ReEDSRegion, ReEDSTransmissionLine
 from r2x_reeds_to_plexos import getters_utils
+from r2x_reeds_to_plexos.plugin_config import ReedsToPlexosConfig
 
 from r2x_core import PluginContext, System
 
@@ -36,6 +40,102 @@ def test_attach_reserve_time_series(context):
 
 def test_attach_time_series_to_generators(context):
     getters_utils.attach_time_series_to_generators(context)
+
+
+def _hourly_hydro_budget(year: int = 2050, *, timestamp_year: int | None = None) -> SingleTimeSeries:
+    values: list[float] = []
+    for month in range(1, 13):
+        values.extend([float(month)] * monthrange(year, month)[1] * 24)
+    return SingleTimeSeries.from_array(
+        data=values,
+        name="hydro_budget",
+        initial_timestamp=datetime(timestamp_year or year, 1, 1),
+        resolution=timedelta(hours=1),
+    )
+
+
+@pytest.mark.parametrize(
+    ("resolution", "expected_length", "expected_resolution"),
+    [
+        ("hourly", 8760, timedelta(hours=1)),
+        ("daily", 365, timedelta(days=1)),
+        ("weekly", 52, timedelta(days=7)),
+        ("monthly", 12, timedelta(days=30)),
+    ],
+)
+def test_convert_hydro_budget_time_series_resolution(resolution, expected_length, expected_resolution):
+    source_ts = _hourly_hydro_budget()
+
+    converted = getters_utils._convert_hydro_budget_time_series(source_ts, resolution)
+
+    assert len(converted.data) == expected_length
+    assert converted.resolution == expected_resolution
+
+
+def test_convert_hydro_budget_time_series_converts_mwh_to_gwh():
+    source_ts = _hourly_hydro_budget()
+    expected_total_gwh = sum(float(month) * monthrange(2050, month)[1] for month in range(1, 13)) / 1000.0
+
+    daily = getters_utils._convert_hydro_budget_time_series(source_ts, "daily")
+    weekly = getters_utils._convert_hydro_budget_time_series(source_ts, "weekly")
+    monthly = getters_utils._convert_hydro_budget_time_series(source_ts, "monthly")
+
+    assert list(monthly.data) == [
+        float(month) * monthrange(2050, month)[1] / 1000.0 for month in range(1, 13)
+    ]
+    assert sum(daily.data) == pytest.approx(expected_total_gwh)
+    assert sum(weekly.data) == pytest.approx(expected_total_gwh)
+    assert sum(monthly.data) == pytest.approx(expected_total_gwh)
+
+
+def test_convert_monthly_hydro_budget_uses_solve_year_calendar():
+    source_ts = _hourly_hydro_budget(2050, timestamp_year=2012)
+
+    converted = getters_utils._convert_hydro_budget_time_series(
+        source_ts,
+        "monthly",
+        budget_year=2050,
+    )
+
+    assert list(converted.data) == [
+        float(month) * monthrange(2050, month)[1] / 1000.0 for month in range(1, 13)
+    ]
+
+
+def test_reeds_to_plexos_config_validates_hydro_budget_resolution():
+    for resolution in ("hourly", "daily", "weekly", "monthly"):
+        assert ReedsToPlexosConfig(hydro_budget_ts=resolution).hydro_budget_ts == resolution
+
+    with pytest.raises(ValueError):
+        ReedsToPlexosConfig(hydro_budget_ts="montly")
+
+
+def test_attach_time_series_to_generators_applies_hydro_budget_resolution(context):
+    from r2x_reeds.models.components import ReEDSHydroGenerator
+
+    region = ReEDSRegion(name="R1", transmission_region="Z1")
+    hydro = ReEDSHydroGenerator(
+        name="HYDRO1",
+        region=region,
+        technology="hydro",
+        capacity=5.0,
+        is_dispatchable=True,
+    )
+    target = PLEXOSGenerator(name="HYDRO1")
+    context.source_system.add_component(region)
+    context.source_system.add_component(hydro)
+    source_ts = _hourly_hydro_budget()
+    context.source_system.add_time_series(source_ts, hydro, solve_year=2050)
+    context.target_system.add_component(target)
+    context.target_system.add_time_series(source_ts.model_copy(deep=True), target, solve_year=2050)
+    context.config = ReedsToPlexosConfig(hydro_budget_ts="monthly")
+
+    getters_utils.attach_time_series_to_generators(context)
+
+    attached = context.target_system.list_time_series(target, name="hydro_budget", solve_year=2050)
+    assert len(attached) == 1
+    assert len(attached[0].data) == 12
+    assert attached[0].resolution == timedelta(days=30)
 
 
 def test_attach_time_series_to_purchasers(context, monkeypatch):

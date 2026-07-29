@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import timedelta
@@ -35,6 +36,8 @@ from r2x_sienna.models import (
     HydroPumpTurbine,
     HydroReservoir,
     HydroTurbine,
+    InterruptiblePowerLoad,
+    InterruptibleStandardLoad,
     Line,
     LoadZone,
     MonitoredLine,
@@ -395,6 +398,28 @@ def _lookup_source_generator(context: PluginContext, gen_name: str) -> Any | Non
     return index.get(gen_name)
 
 
+def _sanitize_generator_name(name: Any) -> str:
+    """Normalize generator names that may include embedded metadata text."""
+    text = str(name or "")
+    text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return ""
+
+    plant_match = re.search(r"Plant name:\s*([^\n,]+)", text, flags=re.IGNORECASE)
+    if plant_match:
+        return plant_match.group(1).strip()
+
+    text = re.sub(r",\s*Unit name:.*$", "", text, flags=re.IGNORECASE).strip()
+
+    if "\n" in text:
+        for line in text.split("\n"):
+            line = line.strip()
+            if line:
+                return line
+
+    return text
+
+
 def _build_generator_display_name_index(context: PluginContext) -> dict[str, str]:
     """Map each source generator's original name -> final display name.
 
@@ -427,12 +452,12 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
             ext = getattr(gen, "ext", None)
             ext_dict = ext if isinstance(ext, dict) else {}
 
-            unit_name = ext_dict.get("unit_name")
-            if unit_name:
-                result[orig] = str(unit_name)
+            unit_name = _sanitize_generator_name(ext_dict.get("unit_name"))
+            if unit_name and unit_name.casefold() not in {"none", "nothing", "null", "nan"}:
+                result[orig] = unit_name
             else:
-                plant_name = ext_dict.get("plant_name")
-                display = str(plant_name) if plant_name else orig
+                plant_name = _sanitize_generator_name(ext_dict.get("plant_name"))
+                display = plant_name if plant_name else _sanitize_generator_name(orig)
                 needs_dedup.append((orig, display))
 
     groups: dict[str, list[str]] = defaultdict(list)
@@ -843,21 +868,21 @@ def _attach_region_node_load_time_series(
 
 
 def _build_bus_to_loads_index(context: PluginContext) -> dict[str, list[Any]]:
-    """Build bus_uuid to list of all Load components (StandardLoad and PowerLoad) connected to that bus, cached."""
+    """Build bus_uuid to list of all Load components connected to that bus, cached.
+
+    Covers StandardLoad, InterruptibleStandardLoad, InterruptiblePowerLoad and PowerLoad.
+    """
     cached = context._cache.get("bus_to_loads")
     if cached is not None:
         return cached
 
     source_system = cast(Any, context.source_system)
     index: dict[str, list[Any]] = defaultdict(list)
-    for load in source_system.get_components(StandardLoad):
-        bus = getattr(load, "bus", None)
-        if bus is not None:
-            index[str(bus.uuid)].append(load)
-    for load in source_system.get_components(PowerLoad):
-        bus = getattr(load, "bus", None)
-        if bus is not None:
-            index[str(bus.uuid)].append(load)
+    for load_type in (StandardLoad, InterruptibleStandardLoad, InterruptiblePowerLoad, PowerLoad):
+        for load in source_system.get_components(load_type):
+            bus = getattr(load, "bus", None)
+            if bus is not None:
+                index[str(bus.uuid)].append(load)
 
     result = dict(index)
     context._cache["bus_to_loads"] = result
@@ -865,17 +890,24 @@ def _build_bus_to_loads_index(context: PluginContext) -> dict[str, list[Any]]:
 
 
 def _build_bus_to_standard_loads_index(context: PluginContext) -> dict[str, list[Any]]:
-    """Build bus_uuid to list of StandardLoad components connected to that bus, cached."""
+    """Build bus_uuid to list of all load types that carry ext LPF keys, cached.
+
+    Covers StandardLoad, InterruptibleStandardLoad, and InterruptiblePowerLoad —
+    every load type whose ext dict may contain ReEDS_LPF / MMWG_LPF and is used
+    by the ext-fallback path of get_load_participation_factor.
+    PowerLoad is intentionally excluded because it does not carry ext LPF metadata.
+    """
     cached = context._cache.get("bus_to_standard_loads")
     if cached is not None:
         return cached
 
     source_system = cast(Any, context.source_system)
     index: dict[str, list[Any]] = defaultdict(list)
-    for load in source_system.get_components(StandardLoad):
-        bus = getattr(load, "bus", None)
-        if bus is not None:
-            index[str(bus.uuid)].append(load)
+    for load_type in (StandardLoad, InterruptibleStandardLoad, InterruptiblePowerLoad):
+        for load in source_system.get_components(load_type):
+            bus = getattr(load, "bus", None)
+            if bus is not None:
+                index[str(bus.uuid)].append(load)
 
     result = dict(index)
     context._cache["bus_to_standard_loads"] = result
@@ -1105,21 +1137,23 @@ def get_region_ext(source_component: Area, context: PluginContext) -> Result[dic
 
     result: dict[str, Any] = {"sienna_type": sienna_type}
     if iso_rto:
-        result["description"] = iso_rto
+        result["description"] = f"ISO/RTOs where region belongs to: {iso_rto}"
     return Ok(result)
 
 
 @getter
-def get_availability(source_component: ACBus, context: PluginContext) -> Result[int, ValueError]:
-    """Populate available field with units count from ACBus.
+def get_availability(source_component: object, context: PluginContext) -> Result[int, ValueError]:
+    """Populate available field from Sienna objects.
 
-    Extracts the units attribute from ACBus and converts to int.
-    Returns 1 if units attribute is not present.
+    Priority:
+    1. ``available`` attribute, when present
+    2. Default to 1
     """
-    units = getattr(source_component, "units", None)
-    if units is None:
-        return Ok(1)
-    return Ok(int(units))
+    available = getattr(source_component, "available", None)
+    if available is not None:
+        return Ok(int(available))
+
+    return Ok(1)
 
 
 @getter
@@ -1147,14 +1181,29 @@ def get_load_participation_factor(
     source_component: ACBus,
     context: PluginContext,
 ) -> Result[float, ValueError]:
-    """Extract load participation factor from StandardLoads connected to the bus.
+    """Extract load participation factor from loads connected to the bus.
 
     Priority:
-    1. ext["MMWG_LPF"] or ext["ReEDS_LPF"] on connected StandardLoads
-    2. Computed as node_load_MW / total_system_load_MW
+    1. Computed as node_load_MW / area_total_load_MW using the live area topology.
+       Aggregates all load types on the bus (StandardLoad, InterruptibleStandardLoad,
+       InterruptiblePowerLoad, and PowerLoad) via _build_bus_to_loads_index.
+       This is correct for both the non-aggregated system (~100 original MMWG areas)
+       and an aggregated system (~20 planning regions), because it always reflects the
+       current bus-to-area assignment regardless of stale values in load ext dicts.
+    2. ext["ReEDS_LPF"] on connected StandardLoad / interruptible load types
+       (pre-computed at ~19 ReEDS regions, structurally aligned with the aggregated
+       MMWG planning regions).
+    3. ext["MMWG_LPF"] on connected StandardLoad / interruptible load types
+       (pre-computed at the original ~100+ MMWG area granularity; only valid when the
+       system has not been area-aggregated).
+
+    Note: MMWG_LPF stored in load.ext is relative to the original PSS/E MMWG areas
+    (~100+ areas).  After process_aggregated_areas! collapses those into ~20 planning
+    regions, each bus.area changes but the stored MMWG_LPF is not updated, making it
+    stale and incorrect for the aggregated topology. The live computation (Priority 1)
+    avoids this by deriving the factor directly from the current area assignments.
     """
 
-    # format LPF with scientific notation if very small, otherwise round to 4 decimals
     def format_lpf(val: float) -> float:
         """Format the LPF value with scientific notation if it's very small, otherwise round to 4 decimal places."""
         if abs(val) < 1e-4 and val != 0.0:
@@ -1162,18 +1211,10 @@ def get_load_participation_factor(
         return round(val, 4)
 
     bus_uuid_str = str(source_component.uuid)
-    index = _build_bus_to_standard_loads_index(context)
-    node_lpf_total = 0.0
-    for load in index.get(bus_uuid_str, []):
-        if hasattr(load, "ext") and isinstance(load.ext, dict):
-            lpf = load.ext.get("MMWG_LPF") or load.ext.get("ReEDS_LPF", 0)
-            if isinstance(lpf, int | float):
-                node_lpf_total += float(lpf)
 
-    if node_lpf_total > 0.0:
-        return Ok(format_lpf(node_lpf_total))
-
-    # compute LPF as node_load_MW / region_total_load_MW (nodes in each region must sum to 1.0)
+    # Priority 1: live computation from current area topology.
+    # Correct for both nodal (~100 areas) and aggregated (~20 region) systems because
+    # it uses bus.area.name, which reflects the topology after any area aggregation.
     area = getattr(source_component, "area", None)
     area_key: str | None = None
     if area is not None:
@@ -1187,6 +1228,20 @@ def get_load_participation_factor(
     region_load = area_total_load_index.get(area_key, 0.0) if area_key else 0.0
     if region_load > 0.0:
         return Ok(format_lpf(node_load / region_load))
+
+    # Priority 2: fall back to pre-computed ext LPFs.
+    # Prefer ReEDS_LPF (~19 regions, aligned with aggregated MMWG planning regions)
+    # over MMWG_LPF (~100+ original areas, stale after process_aggregated_areas!).
+    index = _build_bus_to_standard_loads_index(context)
+    node_lpf_total = 0.0
+    for load in index.get(bus_uuid_str, []):
+        if hasattr(load, "ext") and isinstance(load.ext, dict):
+            lpf = load.ext.get("ReEDS_LPF") or load.ext.get("MMWG_LPF", 0)
+            if isinstance(lpf, int | float):
+                node_lpf_total += float(lpf)
+
+    if node_lpf_total > 0.0:
+        return Ok(format_lpf(node_lpf_total))
 
     return Ok(0.0)
 
@@ -2205,12 +2260,12 @@ def get_turbine_pump_efficiency(
         pump = getattr(ht_pump_efficiency, "pump", None) if ht_pump_efficiency is not None else None
         default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
         if pump is not None and pump != 0.0:
-            value = float(pump) * 100.0 if float(pump) <= 1.0 else float(pump)
+            pump_value = float(pump)
+            value = pump_value * pump_value * 100.0
         else:
             value = default
         return Ok(round(value, 2))
     else:
-        # Generic fallback: use scalar efficiency if available, honouring 0-1 vs 0-100 scale.
         if (
             ht_pump_efficiency is not None
             and isinstance(ht_pump_efficiency, int | float)
@@ -2224,7 +2279,7 @@ def get_turbine_pump_efficiency(
                     2,
                 )
             )
-        return Ok(89.0)
+        return Ok(80.0)
 
 
 @getter
