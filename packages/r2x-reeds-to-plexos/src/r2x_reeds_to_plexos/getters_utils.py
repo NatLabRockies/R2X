@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from calendar import monthrange
 from copy import deepcopy
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -102,6 +104,61 @@ def attach_reserve_time_series(context: PluginContext) -> None:
                 context.target_system.add_time_series(deepcopy(ts), reserve)
 
 
+def _convert_hydro_budget_time_series(ts: Any, cadence: str, *, budget_year: int | None = None) -> Any:
+    """Convert ReEDS hourly MWh budgets to a PLEXOS resolution in GWh."""
+    if cadence == "hourly":
+        return deepcopy(ts)
+
+    from infrasys import SingleTimeSeries
+
+    if not isinstance(ts, SingleTimeSeries) or ts.resolution != timedelta(hours=1):
+        logger.warning(
+            "Cannot convert hydro_budget with type {} and resolution {}; leaving it unchanged.",
+            type(ts).__name__,
+            getattr(ts, "resolution", None),
+        )
+        return deepcopy(ts)
+
+    hourly_values = list(ts.data)
+    daily_values = [float(hourly_values[index]) for index in range(0, len(hourly_values), 24)]
+
+    if cadence == "daily":
+        values = daily_values
+        output_resolution = timedelta(days=1)
+    elif cadence == "weekly":
+        if len(daily_values) > 364:
+            values = [sum(daily_values[index : index + 7]) for index in range(0, 51 * 7, 7)]
+            values.append(sum(daily_values[51 * 7 :]))
+        else:
+            values = [sum(daily_values[index : index + 7]) for index in range(0, len(daily_values), 7)]
+        output_resolution = timedelta(days=7)
+    elif cadence == "monthly":
+        values = []
+        year = budget_year if budget_year is not None else ts.initial_timestamp.year
+        day_index = 0
+        while day_index < len(daily_values):
+            for month in range(1, 13):
+                days = monthrange(year, month)[1]
+                month_values = daily_values[day_index : day_index + days]
+                if not month_values:
+                    break
+                values.append(sum(month_values))
+                day_index += len(month_values)
+            year += 1
+        output_resolution = timedelta(days=30)
+    else:
+        raise ValueError(f"Unsupported hydro budget resolution: {cadence}")
+
+    values = [value / 1000.0 for value in values]
+
+    return SingleTimeSeries.from_array(
+        data=values,
+        name=ts.name,
+        initial_timestamp=ts.initial_timestamp,
+        resolution=output_resolution,
+    )
+
+
 def attach_time_series_to_generators(context: PluginContext) -> None:
     """Transfer time series from ReEDS generators to translated PLEXOS generators (with duplicate check)."""
     from r2x_reeds.models.components import ReEDSGenerator, ReEDSHydroGenerator, ReEDSVariableGenerator
@@ -122,11 +179,50 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
             continue
 
         if name in hydro_generators:
-            for ts in context.source_system.list_time_series(source_gen):
-                if ts.name == "hydro_budget" and not context.target_system.has_time_series(
-                    target_gen, name=ts.name, time_series_type=type(ts)
+            cadence = getattr(context.config, "hydro_budget_ts", "hourly")
+            source_keys = context.source_system.list_time_series_keys(source_gen)
+            for ts_key in source_keys:
+                if ts_key.name != "hydro_budget":
+                    continue
+                for ts in context.source_system.list_time_series(
+                    source_gen,
+                    name=ts_key.name,
+                    time_series_type=ts_key.time_series_type,
+                    **ts_key.features,
                 ):
-                    context.target_system.add_time_series(deepcopy(ts), target_gen)
+                    if cadence == "hourly" and context.target_system.has_time_series(
+                        target_gen,
+                        name=ts.name,
+                        time_series_type=type(ts),
+                        **ts_key.features,
+                    ):
+                        continue
+
+                    if context.target_system.has_time_series(
+                        target_gen,
+                        name=ts.name,
+                        time_series_type=type(ts),
+                        **ts_key.features,
+                    ):
+                        context.target_system.remove_time_series(
+                            target_gen,
+                            name=ts.name,
+                            time_series_type=type(ts),
+                            **ts_key.features,
+                        )
+
+                    solve_year = ts_key.features.get("solve_year")
+                    budget_year = int(solve_year) if solve_year is not None else None
+                    converted_ts = _convert_hydro_budget_time_series(
+                        ts,
+                        cadence,
+                        budget_year=budget_year,
+                    )
+                    context.target_system.add_time_series(
+                        converted_ts,
+                        target_gen,
+                        **ts_key.features,
+                    )
             continue
 
         if name in variable_generators:

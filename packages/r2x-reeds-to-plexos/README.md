@@ -45,3 +45,20 @@ translation.run(run_upgrader=True)
 ## Translation Rules
 
 Translation rules are defined in `config/rules.json`. These rules specify how ReEDS components are mapped to PLEXOS components, including field mappings, getters, and filters.
+
+## Hydro Budget Resolution
+
+Set `hydro_budget_ts` on the translation plugin to control the PLEXOS hydro
+energy constraint resolution. Supported values are `hourly`, `daily`, `weekly`,
+and `monthly`; the default is `hourly`, which preserves the ReEDS series.
+
+```yaml
+config:
+    r2x-reeds-to-plexos.reeds-to-plexos:
+        solve_year: ${solve_year}
+        hydro_budget_ts: monthly
+```
+
+The `daily`, `weekly`, and `monthly` modes convert the ReEDS hourly series of
+repeated daily-energy budgets into energy totals for the selected PLEXOS
+constraint period.
