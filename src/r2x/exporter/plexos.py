@@ -532,7 +532,7 @@ class PlexosExporter(BaseExporter):
                     child_class=ClassEnum.Region,
                     collection=CollectionEnum.Region,
                 )
-            except (sqlite3.IntegrityError, KeyError):
+            except sqlite3.IntegrityError:
                 pass
             if bus_load_zone is None:
                 continue
@@ -544,7 +544,7 @@ class PlexosExporter(BaseExporter):
                     child_class=ClassEnum.Zone,
                     collection=CollectionEnum.Zone,
                 )
-            except (sqlite3.IntegrityError, KeyError):
+            except sqlite3.IntegrityError:
                 pass
 
         # Adding load time series
@@ -619,7 +619,7 @@ class PlexosExporter(BaseExporter):
                     child_class=ClassEnum.Node,
                     collection=CollectionEnum.NodeFrom,
                 )
-            except (sqlite3.IntegrityError, KeyError):
+            except sqlite3.IntegrityError:
                 pass
 
             try:
@@ -630,7 +630,7 @@ class PlexosExporter(BaseExporter):
                     child_class=ClassEnum.Node,
                     collection=CollectionEnum.NodeTo,
                 )
-            except (sqlite3.IntegrityError, KeyError):
+            except sqlite3.IntegrityError:
                 pass
         return
 
@@ -655,7 +655,7 @@ class PlexosExporter(BaseExporter):
                     child_class=ClassEnum.Node,
                     collection=CollectionEnum.NodeFrom,
                 )
-            except (sqlite3.IntegrityError, KeyError):
+            except sqlite3.IntegrityError:
                 pass
 
             try:
@@ -666,7 +666,7 @@ class PlexosExporter(BaseExporter):
                     child_class=ClassEnum.Node,
                     collection=CollectionEnum.NodeTo,
                 )
-            except (sqlite3.IntegrityError, KeyError):
+            except sqlite3.IntegrityError:
                 pass
         return
 
@@ -756,7 +756,7 @@ class PlexosExporter(BaseExporter):
                         child_class=ClassEnum.Constraint,
                         collection=CollectionEnum.Constraints,
                     )
-                except (sqlite3.IntegrityError, KeyError):
+                except sqlite3.IntegrityError:
                     pass
 
                 properties = get_export_properties(
@@ -859,7 +859,7 @@ class PlexosExporter(BaseExporter):
                         child_class=ClassEnum.Region,
                         collection=CollectionEnum.Regions,
                     )
-                except (sqlite3.IntegrityError, KeyError):
+                except sqlite3.IntegrityError:
                     pass
 
                 properties = get_export_properties(
@@ -919,7 +919,7 @@ class PlexosExporter(BaseExporter):
                     child_class=ClassEnum.Node,
                     collection=CollectionEnum.Nodes,
                 )
-            except (sqlite3.IntegrityError, KeyError):
+            except sqlite3.IntegrityError:
                 pass
 
             properties = self._get_time_series_properties(generator)
@@ -947,7 +947,7 @@ class PlexosExporter(BaseExporter):
                                     child_class=ClassEnum.Generator,
                                     collection=CollectionEnum.Generators,
                                 )
-                            except (sqlite3.IntegrityError, KeyError):
+                            except sqlite3.IntegrityError:
                                 pass
                         case _:
                             raise NotImplementedError(f"{service} not yet implemented for generator.")
@@ -1002,7 +1002,7 @@ class PlexosExporter(BaseExporter):
                     child_class=ClassEnum.Node,
                     collection=CollectionEnum.Nodes,
                 )
-            except (sqlite3.IntegrityError, KeyError):
+            except sqlite3.IntegrityError:
                 pass
 
             if battery.services:
@@ -1017,7 +1017,7 @@ class PlexosExporter(BaseExporter):
                                     child_class=ClassEnum.Battery,
                                     collection=CollectionEnum.Batteries,
                                 )
-                            except (sqlite3.IntegrityError, KeyError):
+                            except sqlite3.IntegrityError:
                                 pass
                         case _:
                             raise NotImplementedError(f"{service} not yet implemented for generator.")
@@ -1097,7 +1097,7 @@ class PlexosExporter(BaseExporter):
                     child_class=ClassEnum.Storage,
                     collection=CollectionEnum.HeadStorage,
                 )
-            except (sqlite3.IntegrityError, KeyError):
+            except sqlite3.IntegrityError:
                 pass
 
             try:
@@ -1108,7 +1108,7 @@ class PlexosExporter(BaseExporter):
                     child_class=ClassEnum.Storage,
                     collection=CollectionEnum.TailStorage,
                 )
-            except (sqlite3.IntegrityError, KeyError):
+            except sqlite3.IntegrityError:
                 pass
         return
 
@@ -1185,7 +1185,7 @@ class PlexosExporter(BaseExporter):
                             child_class=child_class,
                             collection=collection_enum,
                         )
-                    except (sqlite3.IntegrityError, KeyError):
+                    except sqlite3.IntegrityError:
                         pass
 
                 try:
@@ -1196,7 +1196,7 @@ class PlexosExporter(BaseExporter):
                         child_class=ClassEnum.Scenario,
                         collection=CollectionEnum.Scenarios,
                     )
-                except (sqlite3.IntegrityError, KeyError):
+                except sqlite3.IntegrityError:
                     pass
         return
 
