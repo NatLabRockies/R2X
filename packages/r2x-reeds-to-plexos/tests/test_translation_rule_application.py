@@ -303,6 +303,58 @@ def test_electrolyzer_demand_translates_to_purchaser_and_node_membership(tmp_pat
     assert any(m.collection == CollectionEnum.Nodes for m in memberships)
 
 
+def test_smr_demand_translates_to_purchaser_not_generator(tmp_path) -> None:
+    from plexosdb import CollectionEnum
+    from r2x_plexos.models import PLEXOSGenerator, PLEXOSMembership, PLEXOSPurchaser
+    from r2x_reeds.models import ReEDSRegion, ReEDSSteamMethaneReformingDemand
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", transmission_region="Z1")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSSteamMethaneReformingDemand(
+            name="p1_smr_demand",
+            region=region,
+            technology="smr",
+            capacity=15.0,
+            electricity_efficiency=1.0,
+        )
+    )
+    context.source_system.add_component(
+        ReEDSSteamMethaneReformingDemand(
+            name="p1_smr_ccs_demand",
+            region=region,
+            technology="smr_ccs",
+            capacity=20.0,
+            electricity_efficiency=1.0,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    result = apply_rules_to_context(context)
+    assert result.total_rules > 0
+
+    purchasers = {
+        purchaser.name: purchaser for purchaser in context.target_system.get_components(PLEXOSPurchaser)
+    }
+    assert set(purchasers) == {"p1_smr_demand", "p1_smr_ccs_demand"}
+    assert purchasers["p1_smr_demand"].category == "smr"
+    assert purchasers["p1_smr_demand"].max_load == 15.0
+    assert purchasers["p1_smr_ccs_demand"].category == "smr_ccs"
+    assert purchasers["p1_smr_ccs_demand"].max_load == 20.0
+
+    generators = list(context.target_system.get_components(PLEXOSGenerator))
+    assert all(generator.name not in purchasers for generator in generators)
+
+    for purchaser in purchasers.values():
+        memberships = context.target_system.get_supplemental_attributes_with_component(
+            purchaser, PLEXOSMembership
+        )
+        assert any(membership.collection == CollectionEnum.Nodes for membership in memberships)
+
+
 def test_data_center_demand_translates_to_purchaser_not_generator(tmp_path) -> None:
     from r2x_plexos.models import PLEXOSGenerator, PLEXOSPurchaser
     from r2x_reeds.models import ReEDSDataCenterDemand, ReEDSRegion

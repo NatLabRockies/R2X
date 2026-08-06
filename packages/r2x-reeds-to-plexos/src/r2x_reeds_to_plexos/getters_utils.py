@@ -28,7 +28,12 @@ def _get_reeds_purchaser_source_types() -> tuple[type[Any], ...]:
     """Return consuming-demand source model types available in the installed ReEDS package."""
     from r2x_reeds import models as reeds_models
 
-    type_names = ("ReEDSElectrolyzerDemand", "ReEDSDataCenterDemand", "ReEDSConsumingTechnology")
+    type_names = (
+        "ReEDSElectrolyzerDemand",
+        "ReEDSSteamMethaneReformingDemand",
+        "ReEDSDataCenterDemand",
+        "ReEDSConsumingTechnology",
+    )
     resolved_types: list[type[Any]] = []
     for type_name in type_names:
         model_type = getattr(reeds_models, type_name, None)
@@ -234,7 +239,7 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
 
 
 def attach_time_series_to_purchasers(context: PluginContext) -> None:
-    """Transfer electrolyzer and data center demand time series to translated PLEXOS purchasers."""
+    """Transfer consuming-demand time series to translated PLEXOS purchasers."""
     if context.source_system is None or context.target_system is None:
         return
 

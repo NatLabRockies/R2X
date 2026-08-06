@@ -150,7 +150,7 @@
       "casefold": true,
       "field": "technology",
       "op": "not_in",
-      "values": ["electrolyzer", "data-center"]
+      "values": ["electrolyzer", "data-center", "smr", "smr_ccs"]
     },
     "source_type": "ReEDSConsumingTechnology",
     "target_type": "PLEXOSGenerator",
@@ -171,6 +171,24 @@
       "units": "get_component_units"
     },
     "source_type": "ReEDSElectrolyzerDemand",
+    "target_type": "PLEXOSPurchaser",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "smr",
+      "max_load": 0.0
+    },
+    "field_map": {
+      "category": "technology",
+      "name": "name",
+      "max_load": "capacity",
+      "ext": "ext"
+    },
+    "getters": {
+      "units": "get_component_units"
+    },
+    "source_type": "ReEDSSteamMethaneReformingDemand",
     "target_type": "PLEXOSPurchaser",
     "version": 1
   },

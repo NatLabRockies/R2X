@@ -175,6 +175,42 @@ def test_attach_time_series_to_purchasers(context, monkeypatch):
     assert len(added) == 1
 
 
+def test_attach_smr_time_series_to_purchaser(context, monkeypatch):
+    from r2x_reeds.models import ReEDSRegion, ReEDSSteamMethaneReformingDemand
+
+    region = ReEDSRegion(name="R1", transmission_region="Z1")
+    demand = ReEDSSteamMethaneReformingDemand(
+        name="R1_smr_demand",
+        region=region,
+        technology="smr",
+        capacity=30.0,
+        electricity_efficiency=1.0,
+    )
+    purchaser = PLEXOSPurchaser(name="R1_smr_demand")
+
+    context.source_system.add_component(region)
+    context.source_system.add_component(demand)
+    context.target_system.add_component(purchaser)
+
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _x: [types.SimpleNamespace(name="max_active_power", features={})],
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, **_kwargs: [types.SimpleNamespace(name="max_active_power")],
+    )
+
+    added = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    context.target_system.add_time_series = lambda *args, **kwargs: added.append((args, kwargs))
+
+    getters_utils.attach_time_series_to_purchasers(context)
+    assert len(added) == 1
+
+
 def test_ensure_region_node_memberships(context):
     # Add region and node with same name
     region = PLEXOSRegion(name="R1")
