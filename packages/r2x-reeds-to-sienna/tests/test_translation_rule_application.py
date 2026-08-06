@@ -637,7 +637,7 @@ def test_reeds_datacenter_demand_translates_to_interruptible_load(tmp_path) -> N
         ReEDSDataCenterDemand(
             name="DC1",
             region=region,
-            technology="datacenter",
+            technology="data-center",
             capacity=200.0,
             electricity_efficiency=1.0,
         )
@@ -652,7 +652,7 @@ def test_reeds_datacenter_demand_translates_to_interruptible_load(tmp_path) -> N
 
     load = loads[0]
     assert load.name == "DC1"
-    assert load.category == "datacenter"
+    assert load.category == "data-center"
     # No explicit max_active_power — falls back to capacity
     assert load.max_active_power.magnitude == pytest.approx(200.0)
     assert load.base_power.magnitude == pytest.approx(200.0)

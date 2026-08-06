@@ -557,7 +557,7 @@ def test_consuming_tech_getters(tmp_path) -> None:
     datacenter = ReEDSDataCenterDemand(
         name="DC1",
         region=region,
-        technology="datacenter",
+        technology="data-center",
         capacity=30.0,
         electricity_efficiency=1.0,
         # max_active_power not set — should fall back to capacity
