@@ -656,3 +656,46 @@ def test_reeds_datacenter_demand_translates_to_interruptible_load(tmp_path) -> N
     # No explicit max_active_power — falls back to capacity
     assert load.max_active_power.magnitude == pytest.approx(200.0)
     assert load.base_power.magnitude == pytest.approx(200.0)
+
+
+def test_reeds_smr_demand_translates_to_interruptible_load(tmp_path) -> None:
+    """SMR electricity demand must translate to InterruptiblePowerLoad."""
+    from r2x_reeds.models import ReEDSRegion, ReEDSSteamMethaneReformingDemand
+    from r2x_sienna.models import InterruptiblePowerLoad
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", category="region")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSSteamMethaneReformingDemand(
+            name="SMR1",
+            region=region,
+            technology="smr",
+            capacity=50.0,
+            electricity_efficiency=1.0,
+            max_active_power=40.0,
+        )
+    )
+    context.source_system.add_component(
+        ReEDSSteamMethaneReformingDemand(
+            name="SMR_CCS1",
+            region=region,
+            technology="smr_ccs",
+            capacity=30.0,
+            electricity_efficiency=1.0,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    apply_rules_to_context(context)
+
+    loads = {load.name: load for load in context.target_system.get_components(InterruptiblePowerLoad)}
+    assert set(loads) == {"SMR1", "SMR_CCS1"}
+    assert loads["SMR1"].category == "smr"
+    assert loads["SMR1"].max_active_power.magnitude == pytest.approx(40.0)
+    assert loads["SMR1"].base_power.magnitude == pytest.approx(50.0)
+    assert loads["SMR_CCS1"].category == "smr_ccs"
+    assert loads["SMR_CCS1"].max_active_power.magnitude == pytest.approx(30.0)
+    assert loads["SMR_CCS1"].base_power.magnitude == pytest.approx(30.0)

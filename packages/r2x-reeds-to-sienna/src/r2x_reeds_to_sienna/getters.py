@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         ReEDSInterface,
         ReEDSRegion,
         ReEDSReserve,
+        ReEDSSteamMethaneReformingDemand,
         ReEDSStorage,
         ReEDSThermalGenerator,
         ReEDSTransmissionLine,
@@ -411,7 +412,8 @@ def get_load_base_power(component: ReEDSDemand, context: PluginContext) -> Resul
 
 @getter
 def get_consuming_tech_max_active_power(
-    component: ReEDSElectrolyzerDemand | ReEDSDataCenterDemand, context: PluginContext
+    component: ReEDSElectrolyzerDemand | ReEDSDataCenterDemand | ReEDSSteamMethaneReformingDemand,
+    context: PluginContext,
 ) -> Result[float | int, ValueError]:
     """Return max_active_power for consuming technologies.
 
@@ -429,7 +431,8 @@ def get_consuming_tech_max_active_power(
 
 @getter
 def get_consuming_tech_base_power(
-    component: ReEDSElectrolyzerDemand | ReEDSDataCenterDemand, context: PluginContext
+    component: ReEDSElectrolyzerDemand | ReEDSDataCenterDemand | ReEDSSteamMethaneReformingDemand,
+    context: PluginContext,
 ) -> Result[float | int, ValueError]:
     """Return capacity as base_power for consuming technologies.
 

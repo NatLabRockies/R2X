@@ -216,6 +216,12 @@ def test_has_consuming_technology_rules() -> None:
         for rule in rules_data
     ), "Missing ReEDSDataCenterDemand -> InterruptiblePowerLoad rule"
 
+    assert any(
+        rule.get("source_type") == "ReEDSSteamMethaneReformingDemand"
+        and rule.get("target_type") == "InterruptiblePowerLoad"
+        for rule in rules_data
+    ), "Missing ReEDSSteamMethaneReformingDemand -> InterruptiblePowerLoad rule"
+
 
 def test_hydro_rule_uses_hydro_prime_mover() -> None:
     """hydro_gen rule must use get_hydro_prime_mover, not get_prime_mover."""
