@@ -80,10 +80,10 @@ purchaser_load_config = PurchaserLoadConfig(
     models=("r2x_reeds.models", "r2x_plexos.models"),
     solve_year=solve_year,
     weather_year=weather_year,
-    electrolyzer_capacity_fpath=ouputs_case_path / "cap.csv",
+    hydrogen_production_capacity_fpath=ouputs_case_path / "cap.csv",
     consume_characteristics_fpath=inputs_case_path / "consume_char.csv",
-    electrolyzer_prod_load_fpath=ouputs_case_path / "prod_load.csv",
-    electrolyzer_prod_load_ann_fpath=ouputs_case_path / "prod_load_ann.csv",
+    hydrogen_production_load_fpath=ouputs_case_path / "prod_load.csv",
+    hydrogen_production_annual_load_fpath=ouputs_case_path / "prod_load_ann.csv",
     loadsite_op_fpath=ouputs_case_path / "loadsite_op.csv",
     hour_map_myr_fpath=inputs_case_path / "rep" / "hmap_myr.csv",
 )
@@ -182,3 +182,9 @@ exporter.weather_year = weather_year
 
 exporter.on_export()
 ```
+
+The purchaser-load modifier reads hydrogen-production technologies from `cap.csv`. Positive
+`electrolyzer`, `smr`, and `smr_ccs` rows for the configured solve year create
+`ReEDSElectrolyzerDemand` or `ReEDSSteamMethaneReformingDemand` components. Their hourly profiles
+come from `prod_load.csv`, with annual totals from `prod_load_ann.csv`, and are translated to PLEXOS
+purchasers by the ReEDS-to-PLEXOS rules.
