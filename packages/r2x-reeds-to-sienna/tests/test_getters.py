@@ -131,6 +131,15 @@ def test_basic_getters_return_values(tmp_path) -> None:
     )
     context.source_system.add_component(line)
 
+    hvdc_line = ReEDSTransmissionLine(
+        name="p1_p2_vsc",
+        interface=interface,
+        max_active_power={"from_to": 80.0, "to_from": 100.0},
+        losses=0.03,
+        line_type="vsc",
+    )
+    context.source_system.add_component(hvdc_line)
+
     # Test thermal generator getters
     assert getters.unique_component_name(thermal, context).unwrap() == "p1_THERM"
     assert getters.get_capacity_as_rating(thermal, context).unwrap() == 10.0
@@ -171,6 +180,17 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.get_monitored_line_rating(line, context).unwrap() == 100.0
     assert getters.get_line_flow_limits(line, context).unwrap().from_to == 100.0
     assert getters.get_line_flow_limits(line, context).unwrap().to_from == 100.0
+
+    hvdc_limits_from = getters.get_hvdc_active_power_limits_from(hvdc_line, context).unwrap()
+    assert hvdc_limits_from.min == -80.0
+    assert hvdc_limits_from.max == 100.0
+    hvdc_limits_to = getters.get_hvdc_active_power_limits_to(hvdc_line, context).unwrap()
+    assert hvdc_limits_to.min == -100.0
+    assert hvdc_limits_to.max == 80.0
+    reactive_limits = getters.get_hvdc_reactive_power_limits(hvdc_line, context).unwrap()
+    assert reactive_limits.min == 0.0
+    assert reactive_limits.max == 0.0
+    assert getters.get_hvdc_loss(hvdc_line, context).unwrap().function_data.proportional_term == 0.03
 
     # Test hydro getters
     assert getters.hydro_rating(hydro, context).unwrap() == 8.0

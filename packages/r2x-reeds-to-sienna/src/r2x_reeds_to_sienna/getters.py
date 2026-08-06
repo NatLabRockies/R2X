@@ -214,6 +214,46 @@ def get_line_flow_limits(
 
 
 @getter
+def get_hvdc_active_power_limits_from(
+    component: ReEDSTransmissionLine, context: PluginContext
+) -> Result[MinMax, ValueError]:
+    """Map directional ReEDS capacities to the HVDC from-terminal limits."""
+    try:
+        forward = component.max_active_power.to_from
+        backward = component.max_active_power.from_to
+        return Ok(MinMax(min=-backward, max=forward))
+    except Exception as e:
+        return Err(ValueError(f"Could not get HVDC from-terminal limits: {e}"))
+
+
+@getter
+def get_hvdc_active_power_limits_to(
+    component: ReEDSTransmissionLine, context: PluginContext
+) -> Result[MinMax, ValueError]:
+    """Map directional ReEDS capacities to the HVDC to-terminal limits."""
+    try:
+        forward = component.max_active_power.to_from
+        backward = component.max_active_power.from_to
+        return Ok(MinMax(min=-forward, max=backward))
+    except Exception as e:
+        return Err(ValueError(f"Could not get HVDC to-terminal limits: {e}"))
+
+
+@getter
+def get_hvdc_reactive_power_limits(
+    component: ReEDSTransmissionLine, context: PluginContext
+) -> Result[MinMax, ValueError]:
+    """Use zero reactive power limits because ReEDS does not provide them."""
+    return Ok(MinMax(min=0.0, max=0.0))
+
+
+@getter
+def get_hvdc_loss(component: ReEDSTransmissionLine, context: PluginContext):
+    """Represent the ReEDS transmission loss fraction as a linear loss curve."""
+    return Ok(LinearCurve(float(component.losses or 0.0)))
+
+
+@getter
 def get_line_active_power_flow(component: ReEDSTransmissionLine, context: PluginContext):
     """Use max_active_power.from_to as the active power flow."""
     try:

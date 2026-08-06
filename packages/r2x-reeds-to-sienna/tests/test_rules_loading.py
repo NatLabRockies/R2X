@@ -127,6 +127,14 @@ def test_has_transmission_line_rule() -> None:
         for rule in rules_data
     ), "Missing AC ReEDSTransmissionLine -> MonitoredLine rule"
 
+    assert any(
+        rule.get("source_type") == "ReEDSTransmissionLine"
+        and rule.get("target_type") == "TwoTerminalGenericHVDCLine"
+        and rule.get("filter", {}).get("field") == "line_type"
+        and rule.get("filter", {}).get("values") == ["vsc"]
+        for rule in rules_data
+    ), "Missing VSC ReEDSTransmissionLine -> TwoTerminalGenericHVDCLine rule"
+
 
 def test_rules_have_required_fields() -> None:
     """Verify all rules have essential structure."""
