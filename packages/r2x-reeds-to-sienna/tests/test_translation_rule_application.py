@@ -336,9 +336,9 @@ def test_reeds_reserve_translates_to_variable_reserve(tmp_path) -> None:
     assert reserve.deployed_fraction == 1.0
 
 
-def test_reeds_transmission_line_translates_to_line(tmp_path) -> None:
+def test_reeds_ac_transmission_line_translates_to_monitored_line(tmp_path) -> None:
     from r2x_reeds.models import ReEDSInterface, ReEDSRegion, ReEDSTransmissionLine
-    from r2x_sienna.models import Line
+    from r2x_sienna.models import MonitoredLine
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
@@ -350,7 +350,10 @@ def test_reeds_transmission_line_translates_to_line(tmp_path) -> None:
     context.source_system.add_component(interface)
     context.source_system.add_component(
         ReEDSTransmissionLine(
-            name="LINE_1_2", interface=interface, max_active_power={"from_to": 150.0, "to_from": 150.0}
+            name="LINE_1_2",
+            interface=interface,
+            line_type="ac",
+            max_active_power={"from_to": 125.0, "to_from": 150.0},
         )
     )
     context.target_system = System(name="target", auto_add_composed_components=True)
@@ -359,12 +362,17 @@ def test_reeds_transmission_line_translates_to_line(tmp_path) -> None:
     result = apply_rules_to_context(context)
     assert result.total_rules > 0
 
-    lines = list(context.target_system.get_components(Line))
+    lines = list(context.target_system.get_components(MonitoredLine))
     assert len(lines) == 1
 
     line = lines[0]
     assert line.name == "LINE_1_2"
     assert line.rating == 150.0
+    assert line.flow_limits.from_to == 150.0
+    assert line.flow_limits.to_from == 125.0
+    assert line.active_power_flow == 0.0
+    assert line.rating_b is None
+    assert line.rating_c is None
     assert line.r == 0.0
     assert line.x == 0.0
     assert line.angle_limits.min == -90.0

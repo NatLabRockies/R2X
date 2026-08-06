@@ -326,6 +326,38 @@
     "version": 1
   },
   {
+    "name": "region_monitored_line",
+    "defaults": {
+      "category": "monitored-line"
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "line_type",
+      "op": "eq",
+      "values": ["ac"]
+    },
+    "getters": {
+      "rating": "get_monitored_line_rating",
+      "active_power_flow": "get_zero_active_power",
+      "reactive_power_flow": "get_line_reactive_power_flow",
+      "flow_limits": "get_line_flow_limits",
+      "angle_limits": "get_line_angle_limits",
+      "r": "get_line_resistance",
+      "x": "get_line_reactance",
+      "b": "get_line_susceptance",
+      "g": "get_line_conductance",
+      "arc": "get_arc_for_line"
+    },
+    "source_type": "ReEDSTransmissionLine",
+    "target_type": "MonitoredLine",
+    "version": 1
+  },
+  {
     "name": "region_line",
     "defaults": {
       "category": "line"
@@ -334,6 +366,13 @@
       "name": "name",
       "uuid": "uuid",
       "category": "category"
+    },
+    "filter": {
+      "casefold": true,
+      "field": "line_type",
+      "op": "neq",
+      "values": ["ac"],
+      "on_missing": "include"
     },
     "getters": {
       "rating": "get_line_rating",

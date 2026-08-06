@@ -167,6 +167,11 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.demand_max_reactive_power(demand, context).unwrap() == 0.0
     assert getters.get_load_base_power(demand, context).unwrap() == 100.0
 
+    # Test transmission line getters
+    assert getters.get_monitored_line_rating(line, context).unwrap() == 100.0
+    assert getters.get_line_flow_limits(line, context).unwrap().from_to == 100.0
+    assert getters.get_line_flow_limits(line, context).unwrap().to_from == 100.0
+
     # Test hydro getters
     assert getters.hydro_rating(hydro, context).unwrap() == 8.0
     assert getters.hydro_operation_cost(hydro, context).unwrap() is not None

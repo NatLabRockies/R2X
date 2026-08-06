@@ -184,6 +184,36 @@ def get_line_rating(component: ReEDSTransmissionLine, context: PluginContext):
 
 
 @getter
+def get_monitored_line_rating(component: ReEDSTransmissionLine, context: PluginContext):
+    """Use the larger directional limit as the line rating."""
+    try:
+        return Ok(max(component.max_active_power.from_to, component.max_active_power.to_from))
+    except Exception as e:
+        return Err(ValueError(f"Could not get line rating: {e}"))
+
+
+@getter
+def get_line_flow_limits(
+    component: ReEDSTransmissionLine, context: PluginContext
+) -> Result[FromTo_ToFrom, ValueError]:
+    """Map ReEDS directional capacities to Sienna flow limits.
+
+    ReEDS transmission parsing stores the source ``r -> rr`` capacity in
+    ``max_active_power.to_from`` and the reverse capacity in
+    ``max_active_power.from_to``.
+    """
+    try:
+        return Ok(
+            FromTo_ToFrom(
+                from_to=component.max_active_power.to_from,
+                to_from=component.max_active_power.from_to,
+            )
+        )
+    except Exception as e:
+        return Err(ValueError(f"Could not get line flow limits: {e}"))
+
+
+@getter
 def get_line_active_power_flow(component: ReEDSTransmissionLine, context: PluginContext):
     """Use max_active_power.from_to as the active power flow."""
     try:
