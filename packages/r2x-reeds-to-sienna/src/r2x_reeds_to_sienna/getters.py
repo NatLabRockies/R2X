@@ -92,7 +92,10 @@ def _lookup_area(context: PluginContext, name: str | None) -> Area | None:
 
 @getter
 def get_component_ext(component: object, context: PluginContext) -> Result[dict, ValueError]:
-    """Return source metadata that must survive in the target component's ext dict."""
+    """
+    Get the component's ext dict, storing the technology name under the 'technology' key
+    and the ReEDS line type under the 'reeds_line_type' key.
+    """
     ext = getattr(component, "ext", None)
     if ext is None:
         ext = {}
