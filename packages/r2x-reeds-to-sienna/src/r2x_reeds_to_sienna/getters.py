@@ -92,19 +92,21 @@ def _lookup_area(context: PluginContext, name: str | None) -> Area | None:
 
 @getter
 def get_component_ext(component: object, context: PluginContext) -> Result[dict, ValueError]:
-    """
-    Get the component's ext dict, storing the technology name under the 'technology' key.
-    """
+    """Return source metadata that must survive in the target component's ext dict."""
     ext = getattr(component, "ext", None)
     if ext is None:
         ext = {}
     elif not isinstance(ext, dict):
         return Err(ValueError("Component ext attribute is not a dict"))
 
+    ext = dict(ext)
     technology = getattr(component, "technology", None)
     if technology is not None:
-        ext = dict(ext)
         ext["technology"] = technology
+
+    line_type = getattr(component, "line_type", None)
+    if line_type is not None:
+        ext["reeds_line_type"] = line_type
 
     return Ok(ext)
 

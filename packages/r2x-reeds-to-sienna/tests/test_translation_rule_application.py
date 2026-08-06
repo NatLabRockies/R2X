@@ -378,9 +378,10 @@ def test_reeds_ac_transmission_line_translates_to_monitored_line(tmp_path) -> No
     assert line.angle_limits.min == -90.0
     assert line.angle_limits.max == 90.0
     assert line.arc is not None
+    assert line.ext == {"reeds_line_type": "ac"}
 
 
-def test_reeds_vsc_transmission_line_translates_to_generic_hvdc_line(tmp_path) -> None:
+def test_reeds_vsc_lcc_b2b_transmission_types_translate_to_generic_hvdc_lines(tmp_path) -> None:
     from r2x_reeds.models import ReEDSInterface, ReEDSRegion, ReEDSTransmissionLine
     from r2x_sienna.models import Line, TwoTerminalGenericHVDCLine
 
@@ -392,15 +393,20 @@ def test_reeds_vsc_transmission_line_translates_to_generic_hvdc_line(tmp_path) -
     context.source_system.add_component(region2)
     interface = ReEDSInterface(name="IFACE", from_region=region1, to_region=region2)
     context.source_system.add_component(interface)
-    context.source_system.add_component(
-        ReEDSTransmissionLine(
-            name="VSC_1_2",
-            interface=interface,
-            line_type="vsc",
-            losses=0.025,
-            max_active_power={"from_to": 125.0, "to_from": 150.0},
+    source_lines = {
+        "VSC_1_2": {"line_type": "vsc", "losses": 0.025},
+        "LCC_1_2": {"line_type": "lcc", "losses": 0.015},
+        "B2B_1_2": {"line_type": "b2b", "losses": 0.010},
+    }
+    for name, attributes in source_lines.items():
+        context.source_system.add_component(
+            ReEDSTransmissionLine(
+                name=name,
+                interface=interface,
+                max_active_power={"from_to": 125.0, "to_from": 150.0},
+                **attributes,
+            )
         )
-    )
     context.target_system = System(name="target", auto_add_composed_components=True)
     context.rules = rules
 
@@ -408,23 +414,26 @@ def test_reeds_vsc_transmission_line_translates_to_generic_hvdc_line(tmp_path) -
     assert result.total_rules > 0
 
     lines = list(context.target_system.get_components(TwoTerminalGenericHVDCLine))
-    assert len(lines) == 1
+    assert len(lines) == 3
     assert list(context.target_system.get_components(Line)) == []
 
-    line = lines[0]
-    assert line.name == "VSC_1_2"
-    assert line.active_power_flow == 0.0
-    assert line.active_power_limits_from.min == -125.0
-    assert line.active_power_limits_from.max == 150.0
-    assert line.active_power_limits_to.min == -150.0
-    assert line.active_power_limits_to.max == 125.0
-    assert line.reactive_power_limits_from.min == 0.0
-    assert line.reactive_power_limits_from.max == 0.0
-    assert line.reactive_power_limits_to.min == 0.0
-    assert line.reactive_power_limits_to.max == 0.0
-    assert line.loss.function_data.proportional_term == 0.025
-    assert line.loss.function_data.constant_term == 0.0
-    assert line.arc is not None
+    lines_by_name = {line.name: line for line in lines}
+    assert lines_by_name.keys() == source_lines.keys()
+    for name, attributes in source_lines.items():
+        line = lines_by_name[name]
+        assert line.active_power_flow == 0.0
+        assert line.active_power_limits_from.min == -125.0
+        assert line.active_power_limits_from.max == 150.0
+        assert line.active_power_limits_to.min == -150.0
+        assert line.active_power_limits_to.max == 125.0
+        assert line.reactive_power_limits_from.min == 0.0
+        assert line.reactive_power_limits_from.max == 0.0
+        assert line.reactive_power_limits_to.min == 0.0
+        assert line.reactive_power_limits_to.max == 0.0
+        assert line.loss.function_data.proportional_term == attributes["losses"]
+        assert line.loss.function_data.constant_term == 0.0
+        assert line.arc is not None
+        assert line.ext == {"reeds_line_type": attributes["line_type"]}
 
 
 def test_multiple_regions_create_multiple_buses_and_areas(tmp_path) -> None:
