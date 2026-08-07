@@ -10,9 +10,14 @@ from typing import TYPE_CHECKING, Any, cast
 from infrasys.cost_curves import CostCurve, FuelCurve, LinearCurve
 from infrasys.cost_curves import UnitSystem as InfraUnitSystem
 from r2x_sienna.models import ACBus, Arc
-from r2x_sienna.models.costs import HydroGenerationCost, RenewableGenerationCost, ThermalGenerationCost
+from r2x_sienna.models.costs import (
+    HydroGenerationCost,
+    HydroReservoirCost,
+    RenewableGenerationCost,
+    ThermalGenerationCost,
+)
 from r2x_sienna.models.enums import ACBusTypes, PrimeMoversType, StorageTechs, ThermalFuels
-from r2x_sienna.models.named_tuples import FromTo_ToFrom, InputOutput, MinMax, UpDown
+from r2x_sienna.models.named_tuples import FromTo_ToFrom, InputOutput, MinMax, TurbinePump, UpDown
 from r2x_sienna.units import ureg
 
 from r2x_core import Err, Ok, Result
@@ -1050,6 +1055,69 @@ def storage_conversion_factor(
 ) -> Result[float | int, ValueError]:
     """Default conversion factor."""
     return _ok_num(1.0)
+
+
+@getter
+def pumped_hydro_head_name(component: ReEDSStorage, context: PluginContext) -> Result[str, ValueError]:
+    """Append the head-reservoir suffix to a pumped-hydro component name."""
+    return Ok(f"{component.name}_head")
+
+
+@getter
+def pumped_hydro_tail_name(component: ReEDSStorage, context: PluginContext) -> Result[str, ValueError]:
+    """Append the tail-reservoir suffix to a pumped-hydro component name."""
+    return Ok(f"{component.name}_tail")
+
+
+@getter
+def pumped_hydro_storage_level_limits(
+    component: ReEDSStorage, context: PluginContext
+) -> Result[MinMax, ValueError]:
+    """Return pumped-hydro reservoir limits in MWh."""
+    return storage_capacity_mwh(component, context).map(lambda capacity: MinMax(min=0.0, max=float(capacity)))
+
+
+@getter
+def pumped_hydro_efficiency(
+    component: ReEDSStorage, context: PluginContext
+) -> Result[TurbinePump, ValueError]:
+    """Apply the ReEDS storage efficiency to pumping only."""
+    efficiency = float(getattr(component, "round_trip_efficiency", 1.0) or 1.0)
+    return Ok(TurbinePump(turbine=1.0, pump=efficiency))
+
+
+@getter
+def pumped_hydro_operation_cost(
+    component: ReEDSStorage, context: PluginContext
+) -> Result[HydroGenerationCost, ValueError]:
+    """Return a neutral operating cost for a pumped-hydro turbine."""
+    return Ok(HydroGenerationCost())
+
+
+@getter
+def hydro_reservoir_operation_cost(
+    component: ReEDSStorage, context: PluginContext
+) -> Result[HydroReservoirCost, ValueError]:
+    """Return a zeroed operating cost for a pumped-hydro reservoir."""
+    return Ok(HydroReservoirCost())
+
+
+@getter
+def get_pumped_hydro_turbine(component: ReEDSStorage, context: PluginContext) -> Result[list, ValueError]:
+    """Return the translated pumped-hydro turbine for reservoir linkage."""
+    from r2x_sienna.models import HydroPumpTurbine
+
+    turbine = next(
+        (
+            candidate
+            for candidate in _target_system(context).get_components(HydroPumpTurbine)
+            if candidate.name == component.name
+        ),
+        None,
+    )
+    if turbine is None:
+        return Err(ValueError(f"Could not find HydroPumpTurbine for {component.name}"))
+    return Ok([turbine])
 
 
 @getter

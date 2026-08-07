@@ -81,15 +81,42 @@ def test_has_generator_rules() -> None:
     ), "Missing ReEDSHydroGenerator -> HydroDispatch rule"
 
 
-def test_has_storage_rule() -> None:
-    """Verify ReEDSStorage maps to EnergyReservoirStorage."""
+def test_has_storage_rules() -> None:
+    """Verify battery and pumped-hydro storage rules."""
     rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
-        rule.get("source_type") == "ReEDSStorage" and rule.get("target_type") == "EnergyReservoirStorage"
+        rule.get("source_type") == "ReEDSStorage"
+        and rule.get("target_type") == "EnergyReservoirStorage"
+        and rule.get("filter", {}).get("op") == "not_in"
+        and "pumped-hydro" in rule.get("filter", {}).get("values", [])
         for rule in rules_data
     ), "Missing ReEDSStorage -> EnergyReservoirStorage rule"
+
+    assert any(
+        rule.get("name") == "pumped_hydro_turbine"
+        and rule.get("source_type") == "ReEDSStorage"
+        and rule.get("target_type") == "HydroPumpTurbine"
+        and "pumped-hydro" in rule.get("filter", {}).get("values", [])
+        for rule in rules_data
+    ), "Missing pumped-hydro ReEDSStorage -> HydroPumpTurbine rule"
+
+    assert any(
+        rule.get("name") == "pumped_hydro_head_reservoir"
+        and rule.get("source_type") == "ReEDSStorage"
+        and rule.get("target_type") == "HydroReservoir"
+        and "pumped-hydro" in rule.get("filter", {}).get("values", [])
+        for rule in rules_data
+    ), "Missing pumped-hydro head HydroReservoir rule"
+
+    assert any(
+        rule.get("name") == "pumped_hydro_tail_reservoir"
+        and rule.get("source_type") == "ReEDSStorage"
+        and rule.get("target_type") == "HydroReservoir"
+        and "pumped-hydro" in rule.get("filter", {}).get("values", [])
+        for rule in rules_data
+    ), "Missing pumped-hydro tail HydroReservoir rule"
 
 
 def test_has_interface_rule() -> None:

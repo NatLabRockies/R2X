@@ -251,6 +251,71 @@ def test_reeds_storage_translates_to_energy_reservoir(tmp_path) -> None:
     assert storage.efficiency.output == pytest.approx(1.0)
 
 
+def test_reeds_pumped_hydro_translates_to_turbine_and_reservoirs(tmp_path) -> None:
+    from r2x_reeds.models import ReEDSRegion, ReEDSStorage
+    from r2x_sienna.models import (
+        EnergyReservoirStorage,
+        HydroPumpTurbine,
+        HydroReservoir,
+        ReservoirDataType,
+        ReservoirLocation,
+    )
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", category="region")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSStorage(
+            name="PSH1",
+            region=region,
+            technology="pumped-hydro",
+            capacity=50.0,
+            storage_duration=4.0,
+            round_trip_efficiency=0.8,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    result = apply_rules_to_context(context)
+    assert result.total_rules > 0
+
+    assert list(context.target_system.get_components(EnergyReservoirStorage)) == []
+
+    turbines = list(context.target_system.get_components(HydroPumpTurbine))
+    reservoirs = list(context.target_system.get_components(HydroReservoir))
+
+    assert len(turbines) == 1
+    assert len(reservoirs) == 2
+
+    turbine = turbines[0]
+    reservoirs_by_name = {reservoir.name: reservoir for reservoir in reservoirs}
+    head = reservoirs_by_name["PSH1_head"]
+    tail = reservoirs_by_name["PSH1_tail"]
+
+    assert turbine.name == "PSH1"
+    assert turbine.rating == 50.0
+    assert turbine.base_power == 50.0
+    assert turbine.active_power_limits.max == 50.0
+    assert turbine.active_power_limits_pump.max == 50.0
+    assert turbine.efficiency.turbine == 1.0
+    assert turbine.efficiency.pump == 0.8
+    assert turbine.operation_cost.fixed == 0.0
+    assert turbine.operation_cost.variable is None
+
+    assert head.storage_level_limits.max == 200.0
+    assert tail.storage_level_limits.max == 200.0
+    assert head.initial_level == 0.5
+    assert tail.initial_level == 0.5
+    assert head.level_data_type == ReservoirDataType.ENERGY
+    assert tail.level_data_type == ReservoirDataType.ENERGY
+    assert head.reservoir_location == ReservoirLocation.HEAD
+    assert tail.reservoir_location == ReservoirLocation.TAIL
+    assert head.downstream_turbines == [turbine]
+    assert tail.upstream_turbines == [turbine]
+
+
 def test_reeds_demand_translates_to_power_load(tmp_path) -> None:
     from r2x_reeds.models import ReEDSDemand, ReEDSRegion
     from r2x_sienna.models import PowerLoad
