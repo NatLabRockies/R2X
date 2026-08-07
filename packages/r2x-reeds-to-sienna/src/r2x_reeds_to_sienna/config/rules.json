@@ -466,6 +466,27 @@
     "version": 1
   },
   {
+    "name": "smr_load",
+    "defaults": {
+      "category": "smr"
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "technology"
+    },
+    "getters": {
+      "bus": "get_bus_for_region",
+      "max_active_power": "get_consuming_tech_max_active_power",
+      "base_power": "get_consuming_tech_base_power",
+      "ext": "get_component_ext"
+    },
+    "depends_on": ["region_bus"],
+    "source_type": "ReEDSSteamMethaneReformingDemand",
+    "target_type": "InterruptiblePowerLoad",
+    "version": 1
+  },
+  {
     "name": "consuming_tech_load",
     "defaults": {
       "category": "consuming-tech",
@@ -481,7 +502,7 @@
       "casefold": true,
       "field": "technology",
       "op": "not_in",
-      "values": ["electrolyzer", "data-center"]
+      "values": ["electrolyzer", "data-center", "smr", "smr_ccs"]
     },
     "getters": {
       "bus": "get_bus_for_region",

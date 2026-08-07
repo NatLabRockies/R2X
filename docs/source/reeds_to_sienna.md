@@ -32,7 +32,7 @@ from r2x_core.logger import setup_logging  # type: ignore
 setup_logging(verbosity=2)
 
 case_name = "reeds_run_folder_name"
-base_path = "/Users/mvelasqu/Documents/marck/GDO/test-r2x-translations/reeds-to-sienna"
+base_path = "/path/to/reeds/runs"
 run_path = Path(base_path) / case_name
 
 # =====================================

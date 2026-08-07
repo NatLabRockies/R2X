@@ -98,6 +98,18 @@ def test_has_electrolyzer_purchaser_rule() -> None:
     ), "Missing ReEDSElectrolyzerDemand -> PLEXOSPurchaser rule"
 
 
+def test_has_smr_purchaser_rule() -> None:
+    """Verify ReEDSSteamMethaneReformingDemand maps to PLEXOSPurchaser."""
+    rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
+    rules_data = json.loads(rules_path.read_text())
+
+    assert any(
+        rule.get("source_type") == "ReEDSSteamMethaneReformingDemand"
+        and rule.get("target_type") == "PLEXOSPurchaser"
+        for rule in rules_data
+    ), "Missing ReEDSSteamMethaneReformingDemand -> PLEXOSPurchaser rule"
+
+
 def test_has_data_center_purchaser_rule() -> None:
     """Verify ReEDSDataCenterDemand maps to PLEXOSPurchaser."""
     rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
