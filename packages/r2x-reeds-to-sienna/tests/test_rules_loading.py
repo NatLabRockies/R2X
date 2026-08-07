@@ -115,14 +115,26 @@ def test_has_demand_rule() -> None:
 
 
 def test_has_transmission_line_rule() -> None:
-    """Verify ReEDSTransmissionLine maps to Line."""
+    """Verify ReEDS transmission types map to the corresponding Sienna types."""
     rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
-        rule.get("source_type") == "ReEDSTransmissionLine" and rule.get("target_type") == "Line"
+        rule.get("source_type") == "ReEDSTransmissionLine"
+        and rule.get("target_type") == "MonitoredLine"
+        and rule.get("filter", {}).get("field") == "line_type"
+        and rule.get("filter", {}).get("values") == ["ac"]
         for rule in rules_data
-    ), "Missing ReEDSTransmissionLine -> Line rule"
+    ), "Missing AC ReEDSTransmissionLine -> MonitoredLine rule"
+
+    assert any(
+        rule.get("source_type") == "ReEDSTransmissionLine"
+        and rule.get("target_type") == "TwoTerminalGenericHVDCLine"
+        and rule.get("filter", {}).get("field") == "line_type"
+        and rule.get("filter", {}).get("op") == "in"
+        and rule.get("filter", {}).get("values") == ["vsc", "lcc", "b2b"]
+        for rule in rules_data
+    ), "Missing ReEDS VSC/LCC/B2B transmission -> TwoTerminalGenericHVDCLine rule"
 
 
 def test_rules_have_required_fields() -> None:

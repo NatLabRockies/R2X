@@ -338,9 +338,9 @@ def charge_efficiency_percent(
 ) -> Result[float, ValueError]:
     """Convert charge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
-    efficiency = getattr(component, "charge_efficiency", None)
+    efficiency = getattr(component, "round_trip_efficiency", None)
 
-    if efficiency is not None:
+    if efficiency is not None and efficiency != 0.0:
         return Ok(_float_or_zero(efficiency) * 100.0)
 
     default_efficiency = _get_defaults(gen_technology, "charge_efficiency")
@@ -351,15 +351,8 @@ def charge_efficiency_percent(
 def discharge_efficiency_percent(
     component: ReEDSGenerator | ReEDSStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert discharge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
-    gen_technology = getattr(component, "technology", "")
-    efficiency = getattr(component, "round_trip_efficiency", None)
-
-    if efficiency is not None and efficiency != 0.0:
-        return Ok(_float_or_zero(efficiency) * 100.0)
-
-    default_efficiency = _get_defaults(gen_technology, "discharge_efficiency")
-    return Ok(float(default_efficiency) * 100.0)
+    """Use lossless discharging to match the ReEDS storage-level equation."""
+    return Ok(100.0)
 
 
 @getter
@@ -442,7 +435,7 @@ def get_battery_capacity(
 
 @getter
 def interface_max_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
-    """Return the maximum flow for an interface (sum of all lines' max flows)."""
+    """Return the interface forward limit as the sum of member-line forward limits."""
     from r2x_reeds.models import ReEDSTransmissionLine
 
     if context.source_system is None:
@@ -459,15 +452,14 @@ def interface_max_flow(component: ReEDSInterface, context: PluginContext) -> Res
         if line_interface_name == interface_name:
             limits = getattr(line, "max_active_power", None)
             if limits is not None:
-                max_flow = max(limits.from_to, limits.to_from)
-                total_max_flow += float(max_flow)
+                total_max_flow += float(limits.to_from)
 
     return Ok(round(total_max_flow, 1))
 
 
 @getter
 def interface_min_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
-    """Return the minimum flow for an interface (negative sum of all lines' max flows)."""
+    """Return the interface reverse limit as the negative sum of member-line reverse limits."""
     from r2x_reeds.models import ReEDSTransmissionLine
 
     if context.source_system is None:
@@ -484,8 +476,7 @@ def interface_min_flow(component: ReEDSInterface, context: PluginContext) -> Res
         if line_interface_name == interface_name:
             limits = getattr(line, "max_active_power", None)
             if limits is not None:
-                min_flow = max(abs(limits.from_to), abs(limits.to_from))
-                total_min_flow += float(min_flow)
+                total_min_flow += float(limits.from_to)
 
     return Ok(-round(total_min_flow, 1))
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 from infrasys.cost_curves import FuelCurve, LinearCurve
 from r2x_reeds.models import (
@@ -131,6 +129,15 @@ def test_basic_getters_return_values(tmp_path) -> None:
     )
     context.source_system.add_component(line)
 
+    hvdc_line = ReEDSTransmissionLine(
+        name="p1_p2_vsc",
+        interface=interface,
+        max_active_power={"from_to": 80.0, "to_from": 100.0},
+        losses=0.03,
+        line_type="vsc",
+    )
+    context.source_system.add_component(hvdc_line)
+
     # Test thermal generator getters
     assert getters.unique_component_name(thermal, context).unwrap() == "p1_THERM"
     assert getters.get_capacity_as_rating(thermal, context).unwrap() == 10.0
@@ -167,6 +174,22 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.demand_max_reactive_power(demand, context).unwrap() == 0.0
     assert getters.get_load_base_power(demand, context).unwrap() == 100.0
 
+    # Test transmission line getters
+    assert getters.get_monitored_line_rating(line, context).unwrap() == 100.0
+    assert getters.get_line_flow_limits(line, context).unwrap().from_to == 100.0
+    assert getters.get_line_flow_limits(line, context).unwrap().to_from == 100.0
+
+    hvdc_limits_from = getters.get_hvdc_active_power_limits_from(hvdc_line, context).unwrap()
+    assert hvdc_limits_from.min == -80.0
+    assert hvdc_limits_from.max == 100.0
+    hvdc_limits_to = getters.get_hvdc_active_power_limits_to(hvdc_line, context).unwrap()
+    assert hvdc_limits_to.min == -100.0
+    assert hvdc_limits_to.max == 80.0
+    reactive_limits = getters.get_hvdc_reactive_power_limits(hvdc_line, context).unwrap()
+    assert reactive_limits.min == 0.0
+    assert reactive_limits.max == 0.0
+    assert getters.get_hvdc_loss(hvdc_line, context).unwrap().function_data.proportional_term == 0.03
+
     # Test hydro getters
     assert getters.hydro_rating(hydro, context).unwrap() == 8.0
     assert getters.hydro_operation_cost(hydro, context).unwrap() is not None
@@ -189,8 +212,13 @@ def test_basic_getters_return_values(tmp_path) -> None:
     power_limits = getters.storage_power_limits(storage, context).unwrap()
     assert power_limits.max == 4.0
     efficiency = getters.storage_efficiency(storage, context).unwrap()
-    assert efficiency.output == pytest.approx(math.sqrt(0.9))  # sqrt(rte)
-    assert efficiency.input == pytest.approx(math.sqrt(0.9))  # symmetric
+    assert efficiency.input == pytest.approx(0.9)
+    assert efficiency.output == pytest.approx(1.0)
+    default_efficiency = getters.storage_efficiency(
+        storage.model_copy(update={"round_trip_efficiency": 0.0}), context
+    ).unwrap()
+    assert default_efficiency.input == pytest.approx(0.95)
+    assert default_efficiency.output == pytest.approx(1.0)
     assert getters.storage_tech(storage, context).unwrap() == StorageTechs.LIB
     assert getters.storage_prime_mover(storage, context).unwrap() == PrimeMoversType.ES
     assert getters.storage_initial_level(storage, context).unwrap() == 0.0
@@ -557,7 +585,7 @@ def test_consuming_tech_getters(tmp_path) -> None:
     datacenter = ReEDSDataCenterDemand(
         name="DC1",
         region=region,
-        technology="datacenter",
+        technology="data-center",
         capacity=30.0,
         electricity_efficiency=1.0,
         # max_active_power not set — should fall back to capacity
