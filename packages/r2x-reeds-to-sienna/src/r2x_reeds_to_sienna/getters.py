@@ -872,7 +872,8 @@ def storage_power_limits(component: ReEDSStorage, context: PluginContext) -> Res
 @getter
 def storage_efficiency(component: ReEDSStorage, context: PluginContext) -> Result[InputOutput, ValueError]:
     """Apply ReEDS storage losses to charging and use lossless discharging."""
-    default_eff = 0.95
+    technology = getattr(component, "technology", "")
+    default_eff = _get_defaults(technology, "charge_efficiency")
     rte = float(getattr(component, "round_trip_efficiency", default_eff) or default_eff)
     return Ok(InputOutput(input=rte, output=1.0))
 

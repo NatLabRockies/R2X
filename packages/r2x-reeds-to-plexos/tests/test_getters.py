@@ -177,7 +177,7 @@ def test_basic_getters_return_values(tmp_path):
     assert getters.forced_outage_rate_percent(objs["thermal"], context).unwrap() == 2.0
     assert getters.maintenance_rate_percent(objs["thermal"], context).unwrap() == 0.0
     assert getters.charge_efficiency_percent(objs["storage"], context).unwrap() == 95.0
-    assert getters.discharge_efficiency_percent(objs["storage"], context).unwrap() == 95.0
+    assert getters.discharge_efficiency_percent(objs["storage"], context).unwrap() == 100.0
     assert getters.mean_time_to_repair_hours(objs["thermal"], context).unwrap() == 0.0
     assert getters.get_battery_max_soc(objs["storage"], context).unwrap() == 100.0
     assert getters.get_battery_initial_soc(objs["storage"], context).unwrap() == 50.0

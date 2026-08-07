@@ -336,13 +336,15 @@ def maintenance_rate_percent(component: object, context: PluginContext) -> Resul
 def charge_efficiency_percent(
     component: ReEDSGenerator | ReEDSStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Apply ReEDS round-trip efficiency to charging as a PLEXOS percentage."""
+    """Convert charge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
+    gen_technology = getattr(component, "technology", "")
     efficiency = getattr(component, "round_trip_efficiency", None)
-    if efficiency is not None and efficiency != 0.0:
-        return Ok(float(efficiency) * 100.0)
 
-    technology = getattr(component, "technology", "")
-    return Ok(_get_defaults(technology, "charge_efficiency") * 100.0)
+    if efficiency is not None and efficiency != 0.0:
+        return Ok(_float_or_zero(efficiency) * 100.0)
+
+    default_efficiency = _get_defaults(gen_technology, "charge_efficiency")
+    return Ok(float(default_efficiency) * 100.0)
 
 
 @getter
@@ -350,12 +352,7 @@ def discharge_efficiency_percent(
     component: ReEDSGenerator | ReEDSStorage, context: PluginContext
 ) -> Result[float, ValueError]:
     """Use lossless discharging to match the ReEDS storage-level equation."""
-    efficiency = getattr(component, "round_trip_efficiency", None)
-    if efficiency is not None and efficiency != 0.0:
-        return Ok(100.0)
-
-    technology = getattr(component, "technology", "")
-    return Ok(_get_defaults(technology, "discharge_efficiency") * 100.0)
+    return Ok(100.0)
 
 
 @getter

@@ -189,6 +189,11 @@ def test_basic_getters_return_values(tmp_path) -> None:
     efficiency = getters.storage_efficiency(storage, context).unwrap()
     assert efficiency.input == pytest.approx(0.9)
     assert efficiency.output == pytest.approx(1.0)
+    default_efficiency = getters.storage_efficiency(
+        storage.model_copy(update={"round_trip_efficiency": 0.0}), context
+    ).unwrap()
+    assert default_efficiency.input == pytest.approx(0.95)
+    assert default_efficiency.output == pytest.approx(1.0)
     assert getters.storage_tech(storage, context).unwrap() == StorageTechs.LIB
     assert getters.storage_prime_mover(storage, context).unwrap() == PrimeMoversType.ES
     assert getters.storage_initial_level(storage, context).unwrap() == 0.0
