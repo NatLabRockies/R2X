@@ -410,7 +410,7 @@
       "casefold": true,
       "field": "technology",
       "op": "not_in",
-      "values": ["electrolyzer", "datacenter"]
+      "values": ["electrolyzer", "data-center"]
     },
     "getters": {
       "bus": "get_bus_for_region",
