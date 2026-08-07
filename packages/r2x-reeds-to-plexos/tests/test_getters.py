@@ -125,7 +125,7 @@ def setup_systems(context):
     interface = ReEDSInterface(name="IFACE1", from_region=region, to_region=region2)
     context.source_system.add_component(interface)
     line = ReEDSTransmissionLine(
-        name="LINE1", interface=interface, max_active_power=FromTo_ToFrom(from_to=100.0, to_from=100.0)
+        name="LINE1", interface=interface, max_active_power=FromTo_ToFrom(from_to=150.0, to_from=100.0)
     )
     context.source_system.add_component(line)
     plexos_line = PLEXOSLine(name="LINE1")
@@ -185,10 +185,10 @@ def test_basic_getters_return_values(tmp_path):
 
     # Interface and line getters
     assert getters.interface_max_flow(objs["interface"], context).unwrap() == 100.0
-    assert getters.interface_min_flow(objs["interface"], context).unwrap() == -100.0
+    assert getters.interface_min_flow(objs["interface"], context).unwrap() == -150.0
     assert getters.get_interface_name(objs["interface"], context).unwrap() == "Z1_Z2-IFACE1"
     assert getters.line_max_flow(objs["line"], context).unwrap() == 100.0
-    assert getters.line_min_flow(objs["line"], context).unwrap() == -100.0
+    assert getters.line_min_flow(objs["line"], context).unwrap() == -150.0
 
     # Storage cost getters
     assert getters.storage_fom_cost_energy(objs["storage"], context).unwrap() == 2.0

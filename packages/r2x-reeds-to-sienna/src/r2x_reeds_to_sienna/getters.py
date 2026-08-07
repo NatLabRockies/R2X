@@ -93,7 +93,8 @@ def _lookup_area(context: PluginContext, name: str | None) -> Area | None:
 @getter
 def get_component_ext(component: object, context: PluginContext) -> Result[dict, ValueError]:
     """
-    Get the component's ext dict, storing the technology name under the 'technology' key.
+    Get the component's ext dict, storing the technology name under the 'technology' key
+    and the ReEDS line type under the 'reeds_line_type' key.
     """
     ext = getattr(component, "ext", None)
     if ext is None:
@@ -101,10 +102,14 @@ def get_component_ext(component: object, context: PluginContext) -> Result[dict,
     elif not isinstance(ext, dict):
         return Err(ValueError("Component ext attribute is not a dict"))
 
+    ext = dict(ext)
     technology = getattr(component, "technology", None)
     if technology is not None:
-        ext = dict(ext)
         ext["technology"] = technology
+
+    line_type = getattr(component, "line_type", None)
+    if line_type is not None:
+        ext["reeds_line_type"] = line_type
 
     return Ok(ext)
 
@@ -181,6 +186,76 @@ def get_line_rating(component: ReEDSTransmissionLine, context: PluginContext):
         return Ok(component.max_active_power.from_to)
     except Exception as e:
         return Err(ValueError(f"Could not get line rating: {e}"))
+
+
+@getter
+def get_monitored_line_rating(component: ReEDSTransmissionLine, context: PluginContext):
+    """Use the larger directional limit as the line rating."""
+    try:
+        return Ok(max(component.max_active_power.from_to, component.max_active_power.to_from))
+    except Exception as e:
+        return Err(ValueError(f"Could not get line rating: {e}"))
+
+
+@getter
+def get_line_flow_limits(
+    component: ReEDSTransmissionLine, context: PluginContext
+) -> Result[FromTo_ToFrom, ValueError]:
+    """Map ReEDS directional capacities to Sienna flow limits.
+
+    ReEDS transmission parsing stores the source ``r -> rr`` capacity in
+    ``max_active_power.to_from`` and the reverse capacity in
+    ``max_active_power.from_to``.
+    """
+    try:
+        return Ok(
+            FromTo_ToFrom(
+                from_to=component.max_active_power.to_from,
+                to_from=component.max_active_power.from_to,
+            )
+        )
+    except Exception as e:
+        return Err(ValueError(f"Could not get line flow limits: {e}"))
+
+
+@getter
+def get_hvdc_active_power_limits_from(
+    component: ReEDSTransmissionLine, context: PluginContext
+) -> Result[MinMax, ValueError]:
+    """Map directional ReEDS capacities to the HVDC from-terminal limits."""
+    try:
+        forward = component.max_active_power.to_from
+        backward = component.max_active_power.from_to
+        return Ok(MinMax(min=-backward, max=forward))
+    except Exception as e:
+        return Err(ValueError(f"Could not get HVDC from-terminal limits: {e}"))
+
+
+@getter
+def get_hvdc_active_power_limits_to(
+    component: ReEDSTransmissionLine, context: PluginContext
+) -> Result[MinMax, ValueError]:
+    """Map directional ReEDS capacities to the HVDC to-terminal limits."""
+    try:
+        forward = component.max_active_power.to_from
+        backward = component.max_active_power.from_to
+        return Ok(MinMax(min=-forward, max=backward))
+    except Exception as e:
+        return Err(ValueError(f"Could not get HVDC to-terminal limits: {e}"))
+
+
+@getter
+def get_hvdc_reactive_power_limits(
+    component: ReEDSTransmissionLine, context: PluginContext
+) -> Result[MinMax, ValueError]:
+    """Use zero reactive power limits because ReEDS does not provide them."""
+    return Ok(MinMax(min=0.0, max=0.0))
+
+
+@getter
+def get_hvdc_loss(component: ReEDSTransmissionLine, context: PluginContext):
+    """Represent the ReEDS transmission loss fraction as a linear loss curve."""
+    return Ok(LinearCurve(float(component.losses or 0.0)))
 
 
 @getter

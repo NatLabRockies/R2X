@@ -160,7 +160,7 @@ def test_reeds_storage_translates_to_plexos_storage(tmp_path) -> None:
 
 def test_reeds_interface_translates_to_plexos_interface(tmp_path) -> None:
     from r2x_plexos.models import PLEXOSInterface
-    from r2x_reeds.models import ReEDSInterface, ReEDSRegion
+    from r2x_reeds.models import FromTo_ToFrom, ReEDSInterface, ReEDSRegion, ReEDSTransmissionLine
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
@@ -168,8 +168,14 @@ def test_reeds_interface_translates_to_plexos_interface(tmp_path) -> None:
     region2 = ReEDSRegion(name="p2", transmission_region="Z2")
     context.source_system.add_component(region1)
     context.source_system.add_component(region2)
+    interface = ReEDSInterface(name="IFACE_1_2", from_region=region1, to_region=region2)
+    context.source_system.add_component(interface)
     context.source_system.add_component(
-        ReEDSInterface(name="IFACE_1_2", from_region=region1, to_region=region2)
+        ReEDSTransmissionLine(
+            name="LINE_1_2",
+            interface=interface,
+            max_active_power=FromTo_ToFrom(from_to=150.0, to_from=100.0),
+        )
     )
     context.target_system = System(name="target", auto_add_composed_components=True)
     context.rules = rules
@@ -182,6 +188,8 @@ def test_reeds_interface_translates_to_plexos_interface(tmp_path) -> None:
     iface = interfaces[0]
     assert iface.name == "Z1_Z2-IFACE_1_2"
     assert iface.category == "reeds-interface"
+    assert iface.max_flow == 100.0
+    assert iface.min_flow == -150.0
 
 
 def test_reeds_reserve_translates_to_plexos_reserve(tmp_path) -> None:
