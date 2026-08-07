@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 from importlib.resources import files
 
 import pytest
@@ -241,7 +240,8 @@ def test_reeds_storage_translates_to_energy_reservoir(tmp_path) -> None:
     assert storage.category == "battery_4"
     assert storage.rating == 50.0
     assert storage.storage_capacity == 200.0  # 50 * 4
-    assert storage.efficiency.output == pytest.approx(math.sqrt(0.85))  # sqrt(rte)
+    assert storage.efficiency.input == pytest.approx(0.85)
+    assert storage.efficiency.output == pytest.approx(1.0)
 
 
 def test_reeds_demand_translates_to_power_load(tmp_path) -> None:

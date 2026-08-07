@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 from infrasys.cost_curves import FuelCurve, LinearCurve
 from r2x_reeds.models import (
@@ -189,8 +187,8 @@ def test_basic_getters_return_values(tmp_path) -> None:
     power_limits = getters.storage_power_limits(storage, context).unwrap()
     assert power_limits.max == 4.0
     efficiency = getters.storage_efficiency(storage, context).unwrap()
-    assert efficiency.output == pytest.approx(math.sqrt(0.9))  # sqrt(rte)
-    assert efficiency.input == pytest.approx(math.sqrt(0.9))  # symmetric
+    assert efficiency.input == pytest.approx(0.9)
+    assert efficiency.output == pytest.approx(1.0)
     assert getters.storage_tech(storage, context).unwrap() == StorageTechs.LIB
     assert getters.storage_prime_mover(storage, context).unwrap() == PrimeMoversType.ES
     assert getters.storage_initial_level(storage, context).unwrap() == 0.0

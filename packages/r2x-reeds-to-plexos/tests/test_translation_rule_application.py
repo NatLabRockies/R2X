@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from importlib.resources import files
 
 from r2x_core import DataStore, PluginConfig, PluginContext, Rule, System, apply_rules_to_context
@@ -143,8 +144,18 @@ def test_reeds_storage_translates_to_plexos_storage(tmp_path) -> None:
     ):
         if cls is not None:
             storages.extend(list(context.target_system.get_components(cls)))
-    storage = [s for s in storages if s.name in ("BATT1", "BATT1_head", "BATT1_tail")]
-    assert storage
+    translated_storage = [
+        component for component in storages if component.name in ("BATT1", "BATT1_head", "BATT1_tail")
+    ]
+    assert translated_storage
+
+    battery = next(context.target_system.get_components(PLEXOSBattery))
+    assert battery.charge_efficiency == storage.round_trip_efficiency * 100.0
+    assert battery.discharge_efficiency == 100.0
+    assert math.isclose(
+        battery.charge_efficiency * battery.discharge_efficiency / 10_000.0,
+        storage.round_trip_efficiency,
+    )
 
 
 def test_reeds_interface_translates_to_plexos_interface(tmp_path) -> None:

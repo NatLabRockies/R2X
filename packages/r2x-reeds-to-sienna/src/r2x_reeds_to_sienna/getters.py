@@ -871,17 +871,10 @@ def storage_power_limits(component: ReEDSStorage, context: PluginContext) -> Res
 
 @getter
 def storage_efficiency(component: ReEDSStorage, context: PluginContext) -> Result[InputOutput, ValueError]:
-    """Map round-trip efficiency to symmetric input/output pair.
-
-    Splits the round-trip efficiency as sqrt(rte) for both charge and discharge,
-    so input * output = rte.
-    """
-    import math
-
+    """Apply ReEDS storage losses to charging and use lossless discharging."""
     default_eff = 0.95
     rte = float(getattr(component, "round_trip_efficiency", default_eff) or default_eff)
-    one_side = math.sqrt(max(rte, 0.0))
-    return Ok(InputOutput(input=one_side, output=one_side))
+    return Ok(InputOutput(input=rte, output=1.0))
 
 
 @getter
