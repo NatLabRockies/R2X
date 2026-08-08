@@ -1001,7 +1001,7 @@ def storage_base_power(component: ReEDSStorage, context: PluginContext) -> Resul
 
 
 def _storage_capacity_mwh(component: ReEDSStorage) -> float:
-    """Return storage energy capacity in MWh."""
+    """Energy capacity from explicit value or duration * power."""
     energy = getattr(component, "energy_capacity", None)
     if energy is not None:
         return float(energy)

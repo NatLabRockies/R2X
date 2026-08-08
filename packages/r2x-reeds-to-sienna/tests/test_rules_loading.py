@@ -82,7 +82,7 @@ def test_has_generator_rules() -> None:
 
 
 def test_has_storage_rules() -> None:
-    """Verify battery and pumped-hydro storage rules."""
+    """Verify ReEDSStorage maps to EnergyReservoirStorage and pumped-hydro types."""
     rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
