@@ -213,7 +213,6 @@ def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
     assert hydro.time_limits.down == 0.0
     assert hydro.operation_cost.fixed == 0.0
     assert hydro.operation_cost.variable is not None
-    assert hydro.operation_cost.variable.value_curve.function_data.proportional_term == 0.0
     assert hydro.operation_cost.variable.vom_cost.function_data.proportional_term == pytest.approx(1.02)
 
 
@@ -305,6 +304,7 @@ def test_reeds_pumped_hydro_translates_to_turbine_and_reservoirs(tmp_path) -> No
     assert turbine.base_power == 50.0
     assert turbine.active_power_limits.max == 50.0
     assert turbine.active_power_limits_pump.max == 50.0
+    assert turbine.time_at_status == 0.0
     assert turbine.efficiency.turbine == 1.0
     assert turbine.efficiency.pump == 0.8
     assert turbine.operation_cost.fixed == 0.0

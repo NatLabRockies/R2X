@@ -295,6 +295,7 @@
       "category": "pumped-hydro",
       "active_power": 0.0,
       "reactive_power": 0.0,
+      "time_at_status": 0.0,
       "reactive_power_limits": null,
       "outflow_limits": null,
       "powerhouse_elevation": 0.0,
