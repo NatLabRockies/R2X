@@ -321,6 +321,7 @@
     },
     "getters": {
       "bus": "get_bus_for_region",
+      "services": "get_gen_services",
       "rating": "storage_rating",
       "base_power": "storage_rating",
       "active_power_limits": "storage_power_limits",
@@ -337,7 +338,7 @@
         "pumped-hydro"
       ]
     },
-    "depends_on": ["region_bus"],
+    "depends_on": ["region_bus", "variable_reserve"],
     "source_type": "ReEDSStorage",
     "target_type": "HydroPumpTurbine",
     "version": 1

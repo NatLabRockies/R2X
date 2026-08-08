@@ -991,6 +991,16 @@ def storage_base_power(component: ReEDSStorage, context: PluginContext) -> Resul
     return _ok_num(float(getattr(component, "capacity", 0.0) or 0.0))
 
 
+def _storage_capacity_mwh(component: ReEDSStorage) -> float:
+    """Return storage energy capacity in MWh."""
+    energy = getattr(component, "energy_capacity", None)
+    if energy is not None:
+        return float(energy)
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+    duration = float(getattr(component, "storage_duration", 0.0) or 0.0)
+    return capacity * duration
+
+
 @getter
 def storage_capacity_device_base(
     component: ReEDSStorage, context: PluginContext
@@ -1074,7 +1084,7 @@ def pumped_hydro_storage_level_limits(
     component: ReEDSStorage, context: PluginContext
 ) -> Result[MinMax, ValueError]:
     """Return pumped-hydro reservoir limits in MWh."""
-    return storage_capacity_mwh(component, context).map(lambda capacity: MinMax(min=0.0, max=float(capacity)))
+    return Ok(MinMax(min=0.0, max=_storage_capacity_mwh(component)))
 
 
 @getter
@@ -1090,8 +1100,18 @@ def pumped_hydro_efficiency(
 def pumped_hydro_operation_cost(
     component: ReEDSStorage, context: PluginContext
 ) -> Result[HydroGenerationCost, ValueError]:
-    """Return a neutral operating cost for a pumped-hydro turbine."""
-    return Ok(HydroGenerationCost())
+    """Map ReEDS variable O&M to a pumped-hydro generation cost."""
+    vom_cost = float(getattr(component, "vom_cost", 0.0) or 0.0)
+    return Ok(
+        HydroGenerationCost(
+            fixed=0.0,
+            variable=CostCurve(
+                value_curve=LinearCurve(0.0),
+                power_units=InfraUnitSystem.NATURAL_UNITS,
+                vom_cost=LinearCurve(vom_cost),
+            ),
+        )
+    )
 
 
 @getter
