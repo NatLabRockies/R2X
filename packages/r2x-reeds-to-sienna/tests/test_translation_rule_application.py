@@ -190,6 +190,7 @@ def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
             capacity=100.0,
             is_dispatchable=True,
             ramp_rate=10.0,
+            vom_cost=1.02,
         )
     )
     context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
@@ -210,6 +211,10 @@ def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
     assert hydro.ramp_limits.up == pytest.approx(10.0 / 60.0)
     assert hydro.time_limits.up == 0.0
     assert hydro.time_limits.down == 0.0
+    assert hydro.operation_cost.fixed == 0.0
+    assert hydro.operation_cost.variable is not None
+    assert hydro.operation_cost.variable.value_curve.function_data.proportional_term == 0.0
+    assert hydro.operation_cost.variable.vom_cost.function_data.proportional_term == pytest.approx(1.02)
 
 
 def test_reeds_storage_translates_to_energy_reservoir(tmp_path) -> None:
@@ -304,7 +309,8 @@ def test_reeds_pumped_hydro_translates_to_turbine_and_reservoirs(tmp_path) -> No
     assert turbine.efficiency.pump == 0.8
     assert turbine.operation_cost.fixed == 0.0
     assert turbine.operation_cost.variable is not None
-    assert turbine.operation_cost.variable.vom_cost.function_data.proportional_term == pytest.approx(0.38)
+    assert turbine.operation_cost.variable.vom_cost.function_data.proportional_term == 0.0
+    assert turbine.ext["reeds_vom_cost"] == pytest.approx(0.38)
 
     assert head.storage_level_limits.max == 200.0
     assert tail.storage_level_limits.max == 200.0

@@ -113,17 +113,13 @@ def _lookup_area(context: PluginContext, name: str | None) -> Area | None:
     return None
 
 
-@getter
-def get_component_ext(component: object, context: PluginContext) -> Result[dict, ValueError]:
-    """
-    Get the component's ext dict, storing the technology name under the 'technology' key
-    and the ReEDS line type under the 'reeds_line_type' key.
-    """
+def _component_ext(component: object) -> dict:
+    """Copy component metadata and include its technology name and ReEDS line type."""
     ext = getattr(component, "ext", None)
     if ext is None:
         ext = {}
     elif not isinstance(ext, dict):
-        return Err(ValueError("Component ext attribute is not a dict"))
+        raise ValueError("Component ext attribute is not a dict")
 
     ext = dict(ext)
     technology = getattr(component, "technology", None)
@@ -134,7 +130,19 @@ def get_component_ext(component: object, context: PluginContext) -> Result[dict,
     if line_type is not None:
         ext["reeds_line_type"] = line_type
 
-    return Ok(ext)
+    return ext
+
+
+@getter
+def get_component_ext(component: object, context: PluginContext) -> Result[dict, ValueError]:
+    """
+    Get the component's ext dict, storing the technology name under the 'technology' key
+    and the ReEDS line type under the 'reeds_line_type' key.
+    """
+    try:
+        return Ok(_component_ext(component))
+    except ValueError as e:
+        return Err(e)
 
 
 @getter
@@ -963,16 +971,17 @@ def hydro_time_limits(component: ReEDSHydroGenerator, context: PluginContext) ->
 def hydro_operation_cost(
     component: ReEDSHydroGenerator, context: PluginContext
 ) -> Result[HydroGenerationCost, ValueError]:
-    """Return zeroed hydro cost."""
+    """Map ReEDS variable O&M to a hydro generation cost."""
     from r2x_sienna.models.costs import HydroGenerationCost
 
+    vom_cost = float(getattr(component, "vom_cost", 0.0) or 0.0)
     return Ok(
         HydroGenerationCost(
             fixed=0.0,
             variable=CostCurve(
-                value_curve=LinearCurve(10),
+                value_curve=LinearCurve(0.0),
                 power_units=InfraUnitSystem.NATURAL_UNITS,
-                vom_cost=LinearCurve(5.0),
+                vom_cost=LinearCurve(vom_cost),
             ),
         )
     )
@@ -1100,18 +1109,32 @@ def pumped_hydro_efficiency(
 def pumped_hydro_operation_cost(
     component: ReEDSStorage, context: PluginContext
 ) -> Result[HydroGenerationCost, ValueError]:
-    """Map ReEDS variable O&M to a pumped-hydro generation cost."""
-    vom_cost = float(getattr(component, "vom_cost", 0.0) or 0.0)
+    """Return a zero operating cost for pumped hydro."""
+    # ReEDS applies pumped-hydro VOM only to generation, while HydroPowerSimulations applies
+    # this shared cost to both generation and pumping. We set it to zero to avoid
+    # charging the generation-only ReEDS VOM during pumping. The original value
+    # is preserved in the component metadata by pumped_hydro_ext.
     return Ok(
         HydroGenerationCost(
             fixed=0.0,
             variable=CostCurve(
                 value_curve=LinearCurve(0.0),
                 power_units=InfraUnitSystem.NATURAL_UNITS,
-                vom_cost=LinearCurve(vom_cost),
+                vom_cost=LinearCurve(0.0),
             ),
         )
     )
+
+
+@getter
+def pumped_hydro_ext(component: ReEDSStorage, context: PluginContext) -> Result[dict, ValueError]:
+    """Preserve the generation-only ReEDS VOM in pumped-hydro metadata."""
+    try:
+        ext = _component_ext(component)
+    except ValueError as e:
+        return Err(e)
+    ext["reeds_vom_cost"] = float(getattr(component, "vom_cost", 0.0) or 0.0)
+    return Ok(ext)
 
 
 @getter

@@ -328,7 +328,7 @@
       "active_power_limits_pump": "storage_power_limits",
       "efficiency": "pumped_hydro_efficiency",
       "operation_cost": "pumped_hydro_operation_cost",
-      "ext": "get_component_ext"
+      "ext": "pumped_hydro_ext"
     },
     "filter": {
       "casefold": true,
