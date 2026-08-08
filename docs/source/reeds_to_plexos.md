@@ -35,6 +35,7 @@ from r2x_reeds_to_plexos import (
     attach_time_series_to_generators,
 )
 from r2x_reeds_to_plexos.getters_utils import attach_time_series_to_purchasers
+from r2x_reeds_to_plexos.plugin_config import ReedsToPlexosConfig
 
 from r2x_core import DataStore, PluginContext, Rule, System, apply_rules_to_context  # type: ignore
 from r2x_core.logger import setup_logging  # type: ignore
@@ -145,6 +146,8 @@ ts_manager = TimeSeriesManager(
 # =====================================
 # ReEDS to PLEXOS (TRANSLATION) (r2x-reeds-to-plexos)
 # =====================================
+context.config = ReedsToPlexosConfig(hydro_budget_ts="monthly")
+
 plexos_sys = System(
     name="PLEXOS",
     auto_add_composed_components=True,
@@ -187,3 +190,7 @@ ReEDS consuming-demand components (for example `ReEDSElectrolyzerDemand`,
 `ReEDSSteamMethaneReformingDemand`, or `ReEDSConsumingTechnology`, depending on the installed
 `r2x-reeds` version). Their hourly profiles come from `prod_load.csv`, with annual totals from
 `prod_load_ann.csv`, and are translated to PLEXOS purchasers by the ReEDS-to-PLEXOS rules.
+
+To export hydro budgets as monthly profiles instead of hourly time series, set
+`context.config = ReedsToPlexosConfig(hydro_budget_ts="monthly")` before calling
+`attach_time_series_to_generators(context)`.

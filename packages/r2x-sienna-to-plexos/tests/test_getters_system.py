@@ -632,7 +632,7 @@ def test_attach_generator_time_series_scales_hydro_budget(tmp_path, monkeypatch)
     getters._attach_generator_time_series(context, "HYDRO_TS", PLEXOSGenerator(name="HYDRO_TS"))
 
     assert len(attached) == 1
-    assert attached[0].name == "hydro_budget"
+    assert attached[0].name == "max_energy_week"
     # raw 10.0 * 1.0 MW = 10.0, raw 20.0 * 1.0 MW = 20.0
     assert list(attached[0].data) == [10.0, 20.0]
 
@@ -673,7 +673,7 @@ def test_attach_generator_time_series_scales_hydro_budget_hourly(tmp_path, monke
 
     assert len(attached) == 1
     ts = attached[0]
-    assert ts.name == "hydro_budget"
+    assert ts.name == "max_energy_week"
     assert ts.resolution == timedelta(days=7)
     # Each weekly value = 168 * 1.0 (scaled) * 1.0 MW = 168.0 MWh
     assert all(abs(v - 168.0) < 1e-6 for v in ts.data)

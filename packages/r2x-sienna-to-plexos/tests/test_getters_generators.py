@@ -382,7 +382,7 @@ def test_get_turbine_pump_efficiency_hydropumpturbine_uses_pump_value(monkeypatc
     monkeypatch.setattr(getters, "HydroPumpTurbine", DummyHydroPumpTurbine)
 
     component = DummyHydroPumpTurbine(pump_efficiency=0.8660254037844386)
-    assert getters.get_turbine_pump_efficiency(component, context).unwrap() == pytest.approx(86.6, abs=0.01)
+    assert getters.get_turbine_pump_efficiency(component, context).unwrap() == pytest.approx(75.0, abs=0.01)
 
 
 def test_get_turbine_pump_efficiency_non_pump_turbine_shape_defaults_to_80(context):

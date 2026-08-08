@@ -43,6 +43,7 @@ from r2x_sienna.models.enums import (
 from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput
 from r2x_sienna.units import ActivePower
 from r2x_sienna_to_plexos import getters
+from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
 
 from r2x_core import DataStore, PluginConfig, PluginContext, System
 
@@ -162,6 +163,7 @@ def test__attach_generator_time_series_weekly_hydro_budget_aggregation(context, 
 
     assert len(captured) == 1
     attached = captured[0]
+    assert attached.name == "max_energy_week"
     assert attached.resolution == timedelta(days=7)
     assert list(attached.data) == [168.0, 168.0, 64.0]
 
@@ -198,9 +200,48 @@ def test__attach_generator_time_series_hydro_budget_keeps_hourly_when_single_buc
 
     assert len(captured) == 1
     attached = captured[0]
+    assert attached.name == "hydro_budget"
     assert attached.resolution == timedelta(hours=1)
     assert len(attached.data) == 100
     assert float(attached.data[0]) == 2.0
+
+
+def test__attach_generator_time_series_monthly_hydro_budget_aggregation(context, monkeypatch):
+    context.config = SiennaToPlexosConfig(hydro_budget_ts="monthly")
+    source_gen = types.SimpleNamespace(name="hydro_monthly", active_power_limits=None, rating=None)
+    metadata = types.SimpleNamespace(name="hydro_budget", features={})
+    source_ts = types.SimpleNamespace(
+        name="hydro_budget",
+        data=[1.0] * (59 * 24),
+        initial_timestamp=datetime(2025, 1, 1),
+        resolution=timedelta(hours=1),
+        features={},
+    )
+
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda *_args, **_kwargs: source_gen)
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: [metadata],
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, name=None, **_kwargs: [source_ts] if name == "hydro_budget" else [],
+    )
+
+    captured: list[object] = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: captured.append(ts)
+
+    getters._attach_generator_time_series(context, "hydro_monthly", PLEXOSGenerator(name="hydro_monthly"))
+
+    assert len(captured) == 1
+    attached = captured[0]
+    assert attached.name == "max_energy_month"
+    assert attached.resolution == timedelta(days=30)
+    assert list(attached.data) == [744.0, 672.0]
 
 
 def test__has_usable_generator_time_series_false_on_absent_series(context, monkeypatch):

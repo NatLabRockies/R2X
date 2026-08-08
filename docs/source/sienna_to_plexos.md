@@ -26,6 +26,7 @@ from r2x_plexos import PLEXOSConfig
 from r2x_plexos.exporter import PLEXOSExporter
 from r2x_sienna.parser import SiennaParser
 from r2x_sienna.plugin_config import SiennaConfig
+from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
 from r2x_sienna_to_plexos.getters_utils import (
     ensure_battery_node_memberships,
     ensure_generator_node_memberships,
@@ -98,6 +99,8 @@ context.rules = rules
 # =====================================
 # Sienna to PLEXOS (TRANSLATION)
 # =====================================
+context.config = SiennaToPlexosConfig(hydro_budget_ts="monthly")
+
 connection = create_in_memory_db()
 ts_manager = TimeSeriesManager(
     connection,
@@ -151,3 +154,7 @@ exporter.weather_year = weather_year
 exporter.on_export()
 
 ```
+
+To export hydro budgets as monthly profiles instead of the default weekly aggregation,
+set `context.config = SiennaToPlexosConfig(hydro_budget_ts="monthly")` before calling
+`ensure_generator_time_series(context)`.
