@@ -2250,13 +2250,10 @@ def get_turbine_pump_efficiency(
     else:
         value = efficiency
 
-    if value is None or value == 0.0:
+    efficiency_value = _coerce_scalar(value)
+    if efficiency_value is None or math.isclose(efficiency_value, 0.0, rel_tol=0.0, abs_tol=1e-9):
         return Ok(80.0)
 
-    if not isinstance(value, int | float):
-        return Ok(80.0)
-
-    efficiency_value = float(value)
     if efficiency_value <= 1.0:
         efficiency_value *= 100.0
 
