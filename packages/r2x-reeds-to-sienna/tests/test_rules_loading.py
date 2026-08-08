@@ -74,11 +74,20 @@ def test_has_generator_rules() -> None:
         for rule in rules_data
     ), "Missing ReEDSVariableGenerator -> RenewableNonDispatch (distpv) rule"
 
-    # Hydro generator
+    # Hydro generators
     assert any(
-        rule.get("source_type") == "ReEDSHydroGenerator" and rule.get("target_type") == "HydroDispatch"
+        rule.get("source_type") == "ReEDSHydroGenerator"
+        and rule.get("target_type") == "HydroDispatch"
+        and rule.get("filter", {}).get("values") == [True]
         for rule in rules_data
-    ), "Missing ReEDSHydroGenerator -> HydroDispatch rule"
+    ), "Missing dispatchable ReEDSHydroGenerator -> HydroDispatch rule"
+
+    assert any(
+        rule.get("source_type") == "ReEDSHydroGenerator"
+        and rule.get("target_type") == "RenewableNonDispatch"
+        and rule.get("filter", {}).get("values") == [False]
+        for rule in rules_data
+    ), "Missing nondispatchable ReEDSHydroGenerator -> RenewableNonDispatch rule"
 
 
 def test_has_storage_rules() -> None:

@@ -174,9 +174,9 @@ def test_reeds_generators_translate_to_sienna_types(tmp_path) -> None:
     assert pv.bus == buses[0]
 
 
-def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
+def test_reeds_hydro_translates_by_operating_mode(tmp_path) -> None:
     from r2x_reeds.models import ReEDSHydroGenerator, ReEDSRegion
-    from r2x_sienna.models import HydroDispatch
+    from r2x_sienna.models import HydroDispatch, PrimeMoversType, RenewableNonDispatch
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
@@ -184,13 +184,22 @@ def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
     context.source_system.add_component(region)
     context.source_system.add_component(
         ReEDSHydroGenerator(
-            name="HYDRO1",
+            name="HYDRO_DISPATCH",
             region=region,
             technology="hydro",
             capacity=100.0,
             is_dispatchable=True,
             ramp_rate=10.0,
             vom_cost=1.02,
+        )
+    )
+    context.source_system.add_component(
+        ReEDSHydroGenerator(
+            name="HYDRO_NONDISPATCH",
+            region=region,
+            technology="hydro",
+            capacity=50.0,
+            is_dispatchable=False,
         )
     )
     context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
@@ -203,7 +212,7 @@ def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
     assert len(hydros) == 1
 
     hydro = hydros[0]
-    assert hydro.name == "HYDRO1"
+    assert hydro.name == "HYDRO_DISPATCH"
     assert hydro.category == "hydro"
     assert hydro.rating == 1.0
     assert hydro.base_power == 100.0
@@ -214,6 +223,16 @@ def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
     assert hydro.operation_cost.fixed == 0.0
     assert hydro.operation_cost.variable is not None
     assert hydro.operation_cost.variable.vom_cost.function_data.proportional_term == pytest.approx(1.02)
+
+    nondispatchable_hydros = list(context.target_system.get_components(RenewableNonDispatch))
+    assert len(nondispatchable_hydros) == 1
+
+    nondispatchable_hydro = nondispatchable_hydros[0]
+    assert nondispatchable_hydro.name == "HYDRO_NONDISPATCH"
+    assert nondispatchable_hydro.category == "hydro"
+    assert nondispatchable_hydro.rating == 1.0
+    assert nondispatchable_hydro.base_power == 50.0
+    assert nondispatchable_hydro.prime_mover_type == PrimeMoversType.HY
 
 
 def test_reeds_storage_translates_to_energy_reservoir(tmp_path) -> None:
