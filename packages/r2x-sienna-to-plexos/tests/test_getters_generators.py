@@ -374,7 +374,7 @@ def test_get_turbine_pump_load_and_efficiency(context):
     assert getters.get_turbine_pump_efficiency(ht, context).unwrap() == 92.0
 
 
-def test_get_turbine_pump_efficiency_hydropumpturbine_squares_sienna_sqrt_value(monkeypatch, context):
+def test_get_turbine_pump_efficiency_hydropumpturbine_uses_pump_value(monkeypatch, context):
     class DummyHydroPumpTurbine:
         def __init__(self, pump_efficiency: float):
             self.efficiency = types.SimpleNamespace(pump=pump_efficiency)
@@ -382,7 +382,38 @@ def test_get_turbine_pump_efficiency_hydropumpturbine_squares_sienna_sqrt_value(
     monkeypatch.setattr(getters, "HydroPumpTurbine", DummyHydroPumpTurbine)
 
     component = DummyHydroPumpTurbine(pump_efficiency=0.8660254037844386)
-    assert getters.get_turbine_pump_efficiency(component, context).unwrap() == pytest.approx(75.0)
+    assert getters.get_turbine_pump_efficiency(component, context).unwrap() == pytest.approx(86.6, abs=0.01)
+
+
+def test_get_turbine_pump_efficiency_non_pump_turbine_shape_defaults_to_80(context):
+    class HydroPumpTurbineLike:
+        def __init__(self, pump_efficiency: float):
+            self.efficiency = types.SimpleNamespace(pump=pump_efficiency)
+
+    component = HydroPumpTurbineLike(pump_efficiency=0.8660254037844386)
+    assert getters.get_turbine_pump_efficiency(component, context).unwrap() == 80.0
+
+
+@pytest.mark.parametrize("efficiency", [None, 0.0])
+def test_get_turbine_pump_efficiency_hydroturbine_defaults_to_80(context, efficiency):
+    class DummyHydroTurbine:
+        def __init__(self, efficiency_value):
+            self.efficiency = efficiency_value
+
+    component = DummyHydroTurbine(efficiency)
+    assert getters.get_turbine_pump_efficiency(component, context).unwrap() == 80.0
+
+
+@pytest.mark.parametrize("pump_efficiency", [None, 0.0])
+def test_get_turbine_pump_efficiency_hydropumpturbine_defaults_to_80(monkeypatch, context, pump_efficiency):
+    class DummyHydroPumpTurbine:
+        def __init__(self, efficiency_value):
+            self.efficiency = types.SimpleNamespace(pump=efficiency_value)
+
+    monkeypatch.setattr(getters, "HydroPumpTurbine", DummyHydroPumpTurbine)
+
+    component = DummyHydroPumpTurbine(pump_efficiency)
+    assert getters.get_turbine_pump_efficiency(component, context).unwrap() == 80.0
 
 
 def test_get_pumped_hydro_category_demotes_zero_pump_load(context):

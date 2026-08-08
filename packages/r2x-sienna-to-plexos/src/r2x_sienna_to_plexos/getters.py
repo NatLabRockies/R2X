@@ -2243,43 +2243,24 @@ def get_turbine_pump_efficiency(
     source_component: HydroTurbine | HydroPumpTurbine, context: PluginContext
 ) -> Result[float, ValueError]:
     """Extract pump efficiency (%) from the HydroTurbine and HydroPumpTurbine."""
-    ht_pump_efficiency = getattr(source_component, "efficiency", None)
+    efficiency = getattr(source_component, "efficiency", None)
 
-    if isinstance(source_component, HydroTurbine):
-        default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
-        if ht_pump_efficiency is not None and ht_pump_efficiency != 0.0:
-            value = (
-                float(ht_pump_efficiency) * 100.0
-                if float(ht_pump_efficiency) <= 1.0
-                else float(ht_pump_efficiency)
-            )
-        else:
-            value = default
-        return Ok(round(value, 2))
-    elif isinstance(source_component, HydroPumpTurbine):
-        pump = getattr(ht_pump_efficiency, "pump", None) if ht_pump_efficiency is not None else None
-        default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
-        if pump is not None and pump != 0.0:
-            pump_value = float(pump)
-            value = pump_value * pump_value * 100.0
-        else:
-            value = default
-        return Ok(round(value, 2))
+    if isinstance(source_component, HydroPumpTurbine):
+        value = getattr(efficiency, "pump", None) if efficiency is not None else None
     else:
-        if (
-            ht_pump_efficiency is not None
-            and isinstance(ht_pump_efficiency, int | float)
-            and ht_pump_efficiency != 0.0
-        ):
-            return Ok(
-                round(
-                    float(ht_pump_efficiency) * 100.0
-                    if ht_pump_efficiency <= 1.0
-                    else float(ht_pump_efficiency),
-                    2,
-                )
-            )
+        value = efficiency
+
+    if value is None or value == 0.0:
         return Ok(80.0)
+
+    if not isinstance(value, int | float):
+        return Ok(80.0)
+
+    efficiency_value = float(value)
+    if efficiency_value <= 1.0:
+        efficiency_value *= 100.0
+
+    return Ok(round(efficiency_value, 2))
 
 
 @getter
