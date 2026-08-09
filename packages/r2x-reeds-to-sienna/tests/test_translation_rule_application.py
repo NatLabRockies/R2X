@@ -200,6 +200,7 @@ def test_reeds_hydro_translates_by_operating_mode(tmp_path) -> None:
             technology="hydro",
             capacity=50.0,
             is_dispatchable=False,
+            vom_cost=1.02,
         )
     )
     context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
@@ -233,6 +234,7 @@ def test_reeds_hydro_translates_by_operating_mode(tmp_path) -> None:
     assert nondispatchable_hydro.rating == 1.0
     assert nondispatchable_hydro.base_power == 50.0
     assert nondispatchable_hydro.prime_mover_type == PrimeMoversType.HY
+    assert nondispatchable_hydro.ext["reeds_vom_cost"] == pytest.approx(1.02)
 
 
 def test_reeds_storage_translates_to_energy_reservoir(tmp_path) -> None:

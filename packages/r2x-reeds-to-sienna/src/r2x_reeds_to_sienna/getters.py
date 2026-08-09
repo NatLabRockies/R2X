@@ -968,6 +968,19 @@ def hydro_time_limits(component: ReEDSHydroGenerator, context: PluginContext) ->
 
 
 @getter
+def nondispatchable_hydro_ext(
+    component: ReEDSHydroGenerator, context: PluginContext
+) -> Result[dict, ValueError]:
+    """Preserve ReEDS VOM that RenewableNonDispatch cannot represent."""
+    try:
+        ext = _component_ext(component)
+    except ValueError as e:
+        return Err(e)
+    ext["reeds_vom_cost"] = float(getattr(component, "vom_cost", 0.0) or 0.0)
+    return Ok(ext)
+
+
+@getter
 def hydro_operation_cost(
     component: ReEDSHydroGenerator, context: PluginContext
 ) -> Result[HydroGenerationCost, ValueError]:

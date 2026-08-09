@@ -275,7 +275,7 @@
       "rating": "hydro_rating",
       "base_power": "hydro_base_power",
       "prime_mover_type": "get_hydro_prime_mover",
-      "ext": "get_component_ext"
+      "ext": "nondispatchable_hydro_ext"
     },
     "depends_on": ["region_bus", "variable_reserve"],
     "source_type": "ReEDSHydroGenerator",
