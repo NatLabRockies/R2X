@@ -6,6 +6,9 @@ import logging
 from numbers import Real
 from typing import Any, cast
 
+import numpy as np
+from infrasys import SingleTimeSeries
+
 from r2x_core import PluginContext, replace_single_time_series
 
 logger = logging.getLogger(__name__)
@@ -95,6 +98,76 @@ def normalize_max_active_power_time_series(context: PluginContext) -> None:
         )
 
     logger.info("Normalized %s max_active_power time series for Sienna", normalized)
+
+
+def attach_pumped_hydro_inflow_time_series(context: PluginContext) -> None:
+    """Attach zero inflow profiles to translated pumped-hydro reservoirs."""
+    from r2x_reeds.models import ReEDSDemand
+    from r2x_sienna.models import HydroPumpTurbine, HydroReservoir
+
+    if context.source_system is None or context.target_system is None:
+        return
+
+    source_sys = cast(Any, context.source_system)
+    target_sys = cast(Any, context.target_system)
+    reservoirs = [
+        reservoir
+        for reservoir in target_sys.get_components(HydroReservoir)
+        if any(
+            isinstance(turbine, HydroPumpTurbine)
+            for turbine in (*reservoir.upstream_turbines, *reservoir.downstream_turbines)
+        )
+    ]
+    if not reservoirs:
+        return
+
+    timelines: dict[tuple[tuple[str, str], ...], tuple[SingleTimeSeries, dict[str, Any]]] = {}
+    for demand in source_sys.get_components(ReEDSDemand):
+        for metadata in source_sys.time_series.list_time_series_metadata(
+            demand,
+            name="max_active_power",
+        ):
+            features = dict(metadata.features)
+            key = tuple(sorted((str(name), repr(value)) for name, value in features.items()))
+            if key in timelines:
+                continue
+            time_series = source_sys.list_time_series(
+                demand,
+                name=metadata.name,
+                time_series_type=SingleTimeSeries,
+                **features,
+            )
+            if time_series:
+                timelines[key] = (time_series[0], features)
+
+    if not timelines:
+        logger.warning("No demand time series available for pumped-hydro reservoir inflow profiles.")
+        return
+
+    attached = 0
+    for reference, features in timelines.values():
+        owners = [
+            reservoir
+            for reservoir in reservoirs
+            if not target_sys.has_time_series(
+                reservoir,
+                name="inflow",
+                time_series_type=SingleTimeSeries,
+                **features,
+            )
+        ]
+        if not owners:
+            continue
+        inflow = SingleTimeSeries.from_array(
+            data=np.zeros(len(reference.data), dtype=float),
+            name="inflow",
+            initial_timestamp=reference.initial_timestamp,
+            resolution=reference.resolution,
+        )
+        target_sys.add_time_series(inflow, *owners, **features)
+        attached += len(owners)
+
+    logger.info("Attached zero inflow time series to %s pumped-hydro reservoirs.", attached)
 
 
 def add_generator_emissions(context: PluginContext) -> None:

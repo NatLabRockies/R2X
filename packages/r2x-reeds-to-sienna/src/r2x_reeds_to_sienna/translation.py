@@ -12,6 +12,7 @@ from infrasys.utils.sqlite import create_in_memory_db
 from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
 from r2x_reeds_to_sienna.getter_utils import (
     add_generator_emissions,
+    attach_pumped_hydro_inflow_time_series,
     normalize_max_active_power_time_series,
 )
 from r2x_reeds_to_sienna.plugin_config import ReEDSToSiennaConfig
@@ -56,6 +57,7 @@ def reeds_to_sienna(system: System, config: ReEDSToSiennaConfig) -> System:
     apply_rules_to_context(context)
 
     normalize_max_active_power_time_series(context)
+    attach_pumped_hydro_inflow_time_series(context)
     add_generator_emissions(context)
 
     return context.target_system
