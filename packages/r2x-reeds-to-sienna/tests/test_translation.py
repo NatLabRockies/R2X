@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 import pytest
+from infrasys import SingleTimeSeries
+from infrasys.normalization import NormalizationByValue
 from r2x_reeds.models import (
     EmissionType,
     FromTo_ToFrom,
@@ -151,6 +155,41 @@ def test_reeds_to_sienna_translates_wind_to_renewable_dispatch():
 
     renewables = list(result.get_components(RenewableDispatch))
     assert any(r.name == "wind-ons_p1" for r in renewables)
+
+
+def test_reeds_to_sienna_normalizes_max_active_power_time_series(monkeypatch):
+    source = _build_source_system()
+    source_wind = source.get_component(ReEDSVariableGenerator, "wind-ons_p1")
+    scaling_calls = []
+
+    def record_scaling_call(system, owner, name, function_name):
+        scaling_calls.append((system, owner, name, function_name))
+
+    monkeypatch.setattr(
+        "r2x_sienna.exporter.set_time_series_scaling_factor_multiplier",
+        record_scaling_call,
+    )
+    source_profile = SingleTimeSeries.from_array(
+        data=[0.0, 37.5, 75.0],
+        name="max_active_power",
+        initial_timestamp=datetime(2012, 1, 1),
+        resolution=timedelta(hours=1),
+    )
+    source.add_time_series(source_profile, source_wind)
+
+    result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
+
+    target_wind = result.get_component(RenewableDispatch, "wind-ons_p1")
+    target_profile = result.get_time_series(target_wind, name="max_active_power")
+    target_metadata = result.list_time_series_metadata(target_wind, name="max_active_power")[0]
+    preserved_source = source.get_time_series(source_wind, name="max_active_power")
+
+    assert isinstance(target_metadata.normalization, NormalizationByValue)
+    assert target_metadata.normalization.value == pytest.approx(75.0)
+    assert target_profile.data_array == pytest.approx([0.0, 0.5, 1.0])
+    assert preserved_source.data_array == pytest.approx([0.0, 37.5, 75.0])
+
+    assert scaling_calls == [(result, target_wind, "max_active_power", "get_max_active_power")]
 
 
 def test_reeds_to_sienna_translates_hydro():
