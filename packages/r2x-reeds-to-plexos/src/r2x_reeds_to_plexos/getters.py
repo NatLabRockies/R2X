@@ -67,6 +67,18 @@ def _get_defaults(technology: str, key: str) -> float:
         return 0.0
 
 
+def _get_general_default(key: str) -> float:
+    """Extract a general default value from defaults.json for the given key."""
+    defaults_path = files("r2x_reeds_to_plexos.config") / "defaults.json"
+    with defaults_path.open() as f:
+        defaults = json.load(f)
+    value = defaults.get("general_defaults", {}).get(key, 0.0)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _lookup_target_node(context: PluginContext, region_name: str) -> Result[Any, ValueError]:
     """Return the translated node for a given region name."""
     from r2x_plexos.models import PLEXOSNode
@@ -530,24 +542,24 @@ def lines_loss_incremental(
 def lines_wheeling_charge(line: Any, context: PluginContext) -> Result[float, ValueError]:
     """Return the wheeling charge for the forward direction (from_region to to_region).
 
-    Uses `hurdle_rate` from `ReEDSTransmissionLine`. Falls back to 0.0 if not set.
+    Uses `hurdle_rate` from `ReEDSTransmissionLine`. Falls back to the configured default if not set.
     """
     wc = getattr(line, "hurdle_rate", None)
     if wc == 0.0 or wc is None:
-        wc = 0.001
-    return Ok(wc)
+        return Ok(_get_general_default("wheeling_charge"))
+    return Ok(float(wc))
 
 
 @getter
 def lines_wheeling_charge_back(line: Any, context: PluginContext) -> Result[float, ValueError]:
     """Return the wheeling charge for the reverse direction (to_region to from_region).
 
-    Uses `hurdle_rate` from `ReEDSTransmissionLine` symmetrically. Falls back to 0.0 if not set.
+    Uses `hurdle_rate` from `ReEDSTransmissionLine` symmetrically. Falls back to the configured default if not set.
     """
     wc_back = getattr(line, "hurdle_rate", None)
     if wc_back == 0.0 or wc_back is None:
-        wc_back = 0.001
-    return Ok(wc_back)
+        return Ok(_get_general_default("wheeling_charge_back"))
+    return Ok(float(wc_back))
 
 
 @getter
