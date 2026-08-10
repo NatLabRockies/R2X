@@ -166,8 +166,11 @@ def region_ext(component: ReEDSRegion, context: PluginContext) -> Result[dict, V
 def hydro_max_energy_per_day(
     component: ReEDSHydroGenerator, context: PluginContext
 ) -> Result[float | int, ValueError]:
-    """Return the maximum energy per day for a hydro generator as a PLEXOSPropertyValue with units MW."""
-    value = _float_or_zero(getattr(component, "max_energy_per_day", 0.0))
+    """Return the maximum daily hydro energy or the PLEXOS default."""
+    value = getattr(component, "max_energy_per_day", None)
+    if value is None:
+        return Ok(1e30)
+    value = _float_or_zero(value)
     return Ok(value)
 
 

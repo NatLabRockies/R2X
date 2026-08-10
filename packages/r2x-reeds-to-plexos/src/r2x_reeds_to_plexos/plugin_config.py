@@ -22,6 +22,6 @@ class ReedsToPlexosConfig(PluginConfig):
         ),
     ]
     hydro_budget_ts: Literal["hourly", "daily", "weekly", "monthly"] = Field(
-        default="hourly",
+        default="daily",
         description="Output resolution for hydro budget time series.",
     )

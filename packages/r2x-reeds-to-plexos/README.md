@@ -50,7 +50,7 @@ Translation rules are defined in `config/rules.json`. These rules specify how Re
 
 Set `hydro_budget_ts` on the translation plugin to control the PLEXOS hydro
 energy constraint resolution. Supported values are `hourly`, `daily`, `weekly`,
-and `monthly`; the default is `hourly`, which preserves the ReEDS series.
+and `monthly`; the default is `daily`, which preserves ReEDS daily hydro flexibility.
 
 ```yaml
 config:
@@ -59,6 +59,5 @@ config:
         hydro_budget_ts: monthly
 ```
 
-The `daily`, `weekly`, and `monthly` modes convert the ReEDS hourly series of
-repeated daily-energy budgets into energy totals for the selected PLEXOS
-constraint period.
+The ReEDS capacity-factor series is combined with generator capacity to create
+energy totals for the selected PLEXOS constraint period.
