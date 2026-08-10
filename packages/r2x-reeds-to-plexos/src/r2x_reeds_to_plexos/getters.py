@@ -533,7 +533,9 @@ def lines_wheeling_charge(line: Any, context: PluginContext) -> Result[float, Va
     Uses `hurdle_rate` from `ReEDSTransmissionLine`. Falls back to 0.0 if not set.
     """
     wc = getattr(line, "hurdle_rate", None)
-    return Ok(_float_or_zero(wc))
+    if wc == 0.0 or wc is None:
+        wc = 0.001
+    return Ok(wc)
 
 
 @getter
@@ -543,7 +545,9 @@ def lines_wheeling_charge_back(line: Any, context: PluginContext) -> Result[floa
     Uses `hurdle_rate` from `ReEDSTransmissionLine` symmetrically. Falls back to 0.0 if not set.
     """
     wc_back = getattr(line, "hurdle_rate", None)
-    return Ok(_float_or_zero(wc_back))
+    if wc_back == 0.0 or wc_back is None:
+        wc_back = 0.001
+    return Ok(wc_back)
 
 
 @getter
