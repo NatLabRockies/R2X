@@ -41,6 +41,10 @@ model-to-model interoperability functions between those layers.
 |     | Sienna (PSY 4.0) | Sienna (PSY 4.0, 5.0) |
 |     | PLEXOS (9.0, 9.2, 10, 11) | |
 
+## Translation Reference
+
+See the [ReEDS translation reference](reeds_translation_reference.md) for component mappings, timeseries behavior and known limitations across Sienna and PLEXOS.
+
 ## Ecosystem
 
 | Package | Description |
@@ -63,6 +67,7 @@ model-to-model interoperability functions between those layers.
 ```{toctree}
 :hidden: true
 getting_started.md
+reeds_translation_reference.md
 dev_workflow.md
 architecture.md
 development.md
