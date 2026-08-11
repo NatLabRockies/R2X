@@ -770,7 +770,17 @@ def _attach_generator_time_series(
     import numpy as np
     from infrasys import SingleTimeSeries
 
+    target_system = _target_system(context)
+
     for metadata in _source_system(context).time_series.list_time_series_metadata(source_gen):
+        if metadata.name != "hydro_budget" and target_system.has_time_series(
+            target_generator,
+            name=metadata.name,
+            time_series_type=SingleTimeSeries,
+            **metadata.features,
+        ):
+            continue
+
         ts_list = _source_system(context).list_time_series(
             source_gen, name=metadata.name, **metadata.features
         )
@@ -817,7 +827,7 @@ def _attach_generator_time_series(
             )
             target_ts_name = _hydro_budget_series_name_for_resolution(output_resolution)
 
-        if not _target_system(context).has_time_series(
+        if not target_system.has_time_series(
             target_generator,
             name=target_ts_name,
             time_series_type=SingleTimeSeries,
@@ -861,7 +871,7 @@ def _attach_generator_time_series(
                 initial_timestamp=ts.initial_timestamp,
                 resolution=output_resolution,
             )
-            _target_system(context).add_time_series(fresh_ts, target_generator, **metadata.features)
+            target_system.add_time_series(fresh_ts, target_generator, **metadata.features)
             logger.debug("Attached time series {} to generator {}", target_ts_name, generator_name)
 
 
@@ -2328,7 +2338,10 @@ def get_turbine_pump_efficiency(
 
     efficiency_value = _coerce_scalar(value)
     if efficiency_value is None or math.isclose(efficiency_value, 0.0, rel_tol=0.0, abs_tol=1e-9):
-        return Ok(80.0)
+        default_efficiency = _get_defaults("pumped-hydro", "efficiency")
+        if default_efficiency <= 1.0:
+            default_efficiency *= 100.0
+        return Ok(round(default_efficiency, 2))
 
     if isinstance(source_component, HydroPumpTurbine):
         efficiency_value = efficiency_value**2
