@@ -661,10 +661,10 @@ def test_reeds_spinning_reserve_does_not_produce_non_spinning(tmp_path) -> None:
     assert len(non_spin) == 0
 
 
-def test_reeds_electrolyzer_demand_translates_to_interruptible_load(tmp_path) -> None:
-    """ReEDSElectrolyzerDemand must translate to InterruptiblePowerLoad."""
+def test_reeds_electrolyzer_demand_translates_to_standard_load(tmp_path) -> None:
+    """ReEDSElectrolyzerDemand must translate to StandardLoad."""
     from r2x_reeds.models import ReEDSElectrolyzerDemand, ReEDSRegion
-    from r2x_sienna.models import InterruptiblePowerLoad
+    from r2x_sienna.models import StandardLoad
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
@@ -685,20 +685,21 @@ def test_reeds_electrolyzer_demand_translates_to_interruptible_load(tmp_path) ->
 
     apply_rules_to_context(context)
 
-    loads = list(context.target_system.get_components(InterruptiblePowerLoad))
+    loads = list(context.target_system.get_components(StandardLoad))
     assert len(loads) == 1
 
     load = loads[0]
     assert load.name == "ELEC1"
     assert load.category == "electrolyzer"
-    assert load.max_active_power.magnitude == pytest.approx(0.8)
-    assert load.base_power.magnitude == pytest.approx(50.0)
+    assert load.constant_active_power == pytest.approx(0.8)
+    assert load.max_constant_active_power == pytest.approx(0.8)
+    assert load.base_power == pytest.approx(50.0)
 
 
-def test_reeds_datacenter_demand_translates_to_interruptible_load(tmp_path) -> None:
-    """ReEDSDataCenterDemand must translate to InterruptiblePowerLoad."""
+def test_reeds_datacenter_demand_translates_to_standard_load(tmp_path) -> None:
+    """ReEDSDataCenterDemand must translate to StandardLoad."""
     from r2x_reeds.models import ReEDSDataCenterDemand, ReEDSRegion
-    from r2x_sienna.models import InterruptiblePowerLoad
+    from r2x_sienna.models import StandardLoad
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
@@ -718,21 +719,22 @@ def test_reeds_datacenter_demand_translates_to_interruptible_load(tmp_path) -> N
 
     apply_rules_to_context(context)
 
-    loads = list(context.target_system.get_components(InterruptiblePowerLoad))
+    loads = list(context.target_system.get_components(StandardLoad))
     assert len(loads) == 1
 
     load = loads[0]
     assert load.name == "DC1"
     assert load.category == "data-center"
     # No explicit max_active_power — falls back to capacity
-    assert load.max_active_power.magnitude == pytest.approx(1.0)
-    assert load.base_power.magnitude == pytest.approx(200.0)
+    assert load.constant_active_power == pytest.approx(1.0)
+    assert load.max_constant_active_power == pytest.approx(1.0)
+    assert load.base_power == pytest.approx(200.0)
 
 
-def test_reeds_smr_demand_translates_to_interruptible_load(tmp_path) -> None:
-    """SMR electricity demand must translate to InterruptiblePowerLoad."""
+def test_reeds_smr_demand_translates_to_standard_load(tmp_path) -> None:
+    """SMR electricity demand must translate to StandardLoad."""
     from r2x_reeds.models import ReEDSRegion, ReEDSSteamMethaneReformingDemand
-    from r2x_sienna.models import InterruptiblePowerLoad
+    from r2x_sienna.models import StandardLoad
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
@@ -762,11 +764,13 @@ def test_reeds_smr_demand_translates_to_interruptible_load(tmp_path) -> None:
 
     apply_rules_to_context(context)
 
-    loads = {load.name: load for load in context.target_system.get_components(InterruptiblePowerLoad)}
+    loads = {load.name: load for load in context.target_system.get_components(StandardLoad)}
     assert set(loads) == {"SMR1", "SMR_CCS1"}
     assert loads["SMR1"].category == "smr"
-    assert loads["SMR1"].max_active_power.magnitude == pytest.approx(0.8)
-    assert loads["SMR1"].base_power.magnitude == pytest.approx(50.0)
+    assert loads["SMR1"].constant_active_power == pytest.approx(0.8)
+    assert loads["SMR1"].max_constant_active_power == pytest.approx(0.8)
+    assert loads["SMR1"].base_power == pytest.approx(50.0)
     assert loads["SMR_CCS1"].category == "smr_ccs"
-    assert loads["SMR_CCS1"].max_active_power.magnitude == pytest.approx(1.0)
-    assert loads["SMR_CCS1"].base_power.magnitude == pytest.approx(30.0)
+    assert loads["SMR_CCS1"].constant_active_power == pytest.approx(1.0)
+    assert loads["SMR_CCS1"].max_constant_active_power == pytest.approx(1.0)
+    assert loads["SMR_CCS1"].base_power == pytest.approx(30.0)
