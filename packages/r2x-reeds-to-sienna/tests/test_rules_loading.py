@@ -212,27 +212,30 @@ def test_spinning_reserve_rule_has_non_spinning_exclusion_filter() -> None:
 
 
 def test_has_consuming_technology_rules() -> None:
-    """Verify consuming technology types map to InterruptiblePowerLoad."""
+    """Verify consuming technology types map to StandardLoad."""
     rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules_data = json.loads(rules_path.read_text())
 
     assert any(
-        rule.get("source_type") == "ReEDSElectrolyzerDemand"
-        and rule.get("target_type") == "InterruptiblePowerLoad"
+        rule.get("source_type") == "ReEDSElectrolyzerDemand" and rule.get("target_type") == "StandardLoad"
         for rule in rules_data
-    ), "Missing ReEDSElectrolyzerDemand -> InterruptiblePowerLoad rule"
+    ), "Missing ReEDSElectrolyzerDemand -> StandardLoad rule"
 
     assert any(
-        rule.get("source_type") == "ReEDSDataCenterDemand"
-        and rule.get("target_type") == "InterruptiblePowerLoad"
+        rule.get("source_type") == "ReEDSDataCenterDemand" and rule.get("target_type") == "StandardLoad"
         for rule in rules_data
-    ), "Missing ReEDSDataCenterDemand -> InterruptiblePowerLoad rule"
+    ), "Missing ReEDSDataCenterDemand -> StandardLoad rule"
 
     assert any(
         rule.get("source_type") == "ReEDSSteamMethaneReformingDemand"
-        and rule.get("target_type") == "InterruptiblePowerLoad"
+        and rule.get("target_type") == "StandardLoad"
         for rule in rules_data
-    ), "Missing ReEDSSteamMethaneReformingDemand -> InterruptiblePowerLoad rule"
+    ), "Missing ReEDSSteamMethaneReformingDemand -> StandardLoad rule"
+
+    assert any(
+        rule.get("source_type") == "ReEDSConsumingTechnology" and rule.get("target_type") == "StandardLoad"
+        for rule in rules_data
+    ), "Missing ReEDSConsumingTechnology -> StandardLoad rule"
 
 
 def test_hydro_rule_uses_hydro_prime_mover() -> None:

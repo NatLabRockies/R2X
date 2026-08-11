@@ -426,7 +426,17 @@
   {
     "name": "electrolyzer_load",
     "defaults": {
-      "category": "electrolyzer"
+      "category": "electrolyzer",
+      "constant_reactive_power": 0.0,
+      "impedance_active_power": 0.0,
+      "impedance_reactive_power": 0.0,
+      "current_active_power": 0.0,
+      "current_reactive_power": 0.0,
+      "max_constant_reactive_power": 0.0,
+      "max_impedance_active_power": 0.0,
+      "max_impedance_reactive_power": 0.0,
+      "max_current_active_power": 0.0,
+      "max_current_reactive_power": 0.0
     },
     "field_map": {
       "name": "name",
@@ -435,19 +445,30 @@
     },
     "getters": {
       "bus": "get_bus_for_region",
-      "max_active_power": "get_consuming_tech_max_active_power",
+      "constant_active_power": "get_consuming_tech_max_active_power",
+      "max_constant_active_power": "get_consuming_tech_max_active_power",
       "base_power": "get_consuming_tech_base_power",
       "ext": "get_component_ext"
     },
     "depends_on": ["region_bus"],
     "source_type": "ReEDSElectrolyzerDemand",
-    "target_type": "InterruptiblePowerLoad",
+    "target_type": "StandardLoad",
     "version": 1
   },
   {
     "name": "datacenter_load",
     "defaults": {
-      "category": "data-center"
+      "category": "data-center",
+      "constant_reactive_power": 0.0,
+      "impedance_active_power": 0.0,
+      "impedance_reactive_power": 0.0,
+      "current_active_power": 0.0,
+      "current_reactive_power": 0.0,
+      "max_constant_reactive_power": 0.0,
+      "max_impedance_active_power": 0.0,
+      "max_impedance_reactive_power": 0.0,
+      "max_current_active_power": 0.0,
+      "max_current_reactive_power": 0.0
     },
     "field_map": {
       "name": "name",
@@ -456,19 +477,30 @@
     },
     "getters": {
       "bus": "get_bus_for_region",
-      "max_active_power": "get_consuming_tech_max_active_power",
+      "constant_active_power": "get_consuming_tech_max_active_power",
+      "max_constant_active_power": "get_consuming_tech_max_active_power",
       "base_power": "get_consuming_tech_base_power",
       "ext": "get_component_ext"
     },
     "depends_on": ["region_bus"],
     "source_type": "ReEDSDataCenterDemand",
-    "target_type": "InterruptiblePowerLoad",
+    "target_type": "StandardLoad",
     "version": 1
   },
   {
     "name": "smr_load",
     "defaults": {
-      "category": "smr"
+      "category": "smr",
+      "constant_reactive_power": 0.0,
+      "impedance_active_power": 0.0,
+      "impedance_reactive_power": 0.0,
+      "current_active_power": 0.0,
+      "current_reactive_power": 0.0,
+      "max_constant_reactive_power": 0.0,
+      "max_impedance_active_power": 0.0,
+      "max_impedance_reactive_power": 0.0,
+      "max_current_active_power": 0.0,
+      "max_current_reactive_power": 0.0
     },
     "field_map": {
       "name": "name",
@@ -477,21 +509,30 @@
     },
     "getters": {
       "bus": "get_bus_for_region",
-      "max_active_power": "get_consuming_tech_max_active_power",
+      "constant_active_power": "get_consuming_tech_max_active_power",
+      "max_constant_active_power": "get_consuming_tech_max_active_power",
       "base_power": "get_consuming_tech_base_power",
       "ext": "get_component_ext"
     },
     "depends_on": ["region_bus"],
     "source_type": "ReEDSSteamMethaneReformingDemand",
-    "target_type": "InterruptiblePowerLoad",
+    "target_type": "StandardLoad",
     "version": 1
   },
   {
     "name": "consuming_tech_load",
     "defaults": {
       "category": "consuming-tech",
-      "active_power": 0.0,
-      "reactive_power": 0.0
+      "constant_reactive_power": 0.0,
+      "impedance_active_power": 0.0,
+      "impedance_reactive_power": 0.0,
+      "current_active_power": 0.0,
+      "current_reactive_power": 0.0,
+      "max_constant_reactive_power": 0.0,
+      "max_impedance_active_power": 0.0,
+      "max_impedance_reactive_power": 0.0,
+      "max_current_active_power": 0.0,
+      "max_current_reactive_power": 0.0
     },
     "field_map": {
       "name": "name",
@@ -506,16 +547,14 @@
     },
     "getters": {
       "bus": "get_bus_for_region",
-      "active_power": "get_zero_active_power",
-      "reactive_power": "get_zero_reactive_power",
-      "max_active_power": "consuming_capacity_as_max_power",
-      "max_reactive_power": "demand_max_reactive_power",
+      "constant_active_power": "consuming_capacity_as_max_power",
+      "max_constant_active_power": "consuming_capacity_as_max_power",
       "base_power": "consuming_capacity_as_base_power",
       "ext": "get_component_ext"
     },
     "depends_on": ["region_bus"],
     "source_type": "ReEDSConsumingTechnology",
-    "target_type": "InterruptiblePowerLoad",
+    "target_type": "StandardLoad",
     "version": 1
   }
 ]
