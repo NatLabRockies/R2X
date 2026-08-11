@@ -42,7 +42,12 @@ def reeds_to_sienna(system: System, config: ReEDSToSiennaConfig) -> System:
         permanent=True,
     )
 
-    sienna_system = System(name="Sienna", auto_add_composed_components=True, time_series_manager=ts_manager)
+    sienna_system = System(
+        name="Sienna",
+        system_base=100.0,
+        auto_add_composed_components=True,
+        time_series_manager=ts_manager,
+    )
     context.target_system = sienna_system
 
     apply_rules_to_context(context)

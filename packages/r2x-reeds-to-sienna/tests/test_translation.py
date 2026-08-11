@@ -115,6 +115,7 @@ def test_reeds_to_sienna_returns_system():
 
     assert isinstance(result, System)
     assert result.name == "Sienna"
+    assert result.base_power == 100.0
 
 
 def test_reeds_to_sienna_translates_region_to_bus():
