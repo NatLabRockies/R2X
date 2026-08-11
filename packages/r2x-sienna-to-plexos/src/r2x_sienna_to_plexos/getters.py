@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import math
 import re
+import types
+from calendar import monthrange
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import timedelta
@@ -661,6 +663,93 @@ def _get_defaults(category: str | None, key: str) -> float:
         return 0.0
 
 
+def _convert_hydro_budget_time_series(ts: Any, cadence: str) -> tuple[Any, Any]:
+    """Convert hydro budget time series to the configured cadence."""
+    import numpy as np
+
+    data = np.asarray(ts.data, dtype=float)
+    output_resolution = ts.resolution
+
+    if cadence == "hourly" or not isinstance(ts.resolution, timedelta):
+        return data, output_resolution
+
+    seconds_per_step = ts.resolution.total_seconds()
+    if seconds_per_step <= 0:
+        return data, output_resolution
+
+    if cadence == "weekly":
+        if ts.resolution >= timedelta(days=7):
+            return data, output_resolution
+
+        points_per_bucket = max(int(round((7 * 86400) / seconds_per_step)), 1)
+        full_buckets = data.size // points_per_bucket
+        weekly_values: list[float] = []
+        if full_buckets:
+            weekly_values.extend(
+                data[: full_buckets * points_per_bucket]
+                .reshape(full_buckets, points_per_bucket)
+                .sum(axis=1)
+                .tolist()
+            )
+        remainder = data[full_buckets * points_per_bucket :]
+        if remainder.size:
+            weekly_values.append(float(remainder.sum()))
+        if len(weekly_values) >= 2:
+            return np.asarray(weekly_values, dtype=float), timedelta(days=7)
+        return data, output_resolution
+
+    points_per_day = max(int(round(86400 / seconds_per_step)), 1)
+    if points_per_day <= 0:
+        return data, output_resolution
+
+    full_days = data.size // points_per_day
+    daily_values: list[float] = []
+    if full_days:
+        daily_values.extend(
+            data[: full_days * points_per_day].reshape(full_days, points_per_day).sum(axis=1).tolist()
+        )
+    remainder = data[full_days * points_per_day :]
+    if remainder.size:
+        daily_values.append(float(remainder.sum()))
+
+    if cadence == "daily":
+        if len(daily_values) >= 2:
+            return np.asarray(daily_values, dtype=float), timedelta(days=1)
+        return data, output_resolution
+
+    if cadence == "monthly":
+        values: list[float] = []
+        year = ts.initial_timestamp.year
+        day_index = 0
+        while day_index < len(daily_values):
+            for month in range(1, 13):
+                days = monthrange(year, month)[1]
+                month_values = daily_values[day_index : day_index + days]
+                if not month_values:
+                    break
+                values.append(sum(month_values))
+                day_index += len(month_values)
+            year += 1
+        if len(values) >= 2:
+            return np.asarray(values, dtype=float), timedelta(days=30)
+        return data, output_resolution
+
+    return data, output_resolution
+
+
+def _hydro_budget_series_name_for_resolution(resolution: Any) -> str:
+    """Map hydro-budget output resolution to the PLEXOS max-energy property time-series name."""
+    if not isinstance(resolution, timedelta):
+        return "hydro_budget"
+    if resolution >= timedelta(days=28):
+        return "max_energy_month"
+    if resolution >= timedelta(days=7):
+        return "max_energy_week"
+    if resolution >= timedelta(days=1):
+        return "max_energy_day"
+    return "hydro_budget"
+
+
 def _attach_generator_time_series(
     context: PluginContext,
     generator_name: str,
@@ -681,7 +770,17 @@ def _attach_generator_time_series(
     import numpy as np
     from infrasys import SingleTimeSeries
 
+    target_system = _target_system(context)
+
     for metadata in _source_system(context).time_series.list_time_series_metadata(source_gen):
+        if metadata.name != "hydro_budget" and target_system.has_time_series(
+            target_generator,
+            name=metadata.name,
+            time_series_type=SingleTimeSeries,
+            **metadata.features,
+        ):
+            continue
+
         ts_list = _source_system(context).list_time_series(
             source_gen, name=metadata.name, **metadata.features
         )
@@ -690,63 +789,50 @@ def _attach_generator_time_series(
             continue
 
         ts = ts_list[0]
-        if not _target_system(context).has_time_series(
-            target_generator, name=ts.name, time_series_type=SingleTimeSeries, **metadata.features
-        ):
-            data = np.asarray(ts.data)
-            output_resolution = ts.resolution
+        data = np.asarray(ts.data)
+        output_resolution = ts.resolution
+        target_ts_name = ts.name
+        hydro_budget_cadence = getattr(context.config, "hydro_budget_ts", "weekly")
 
-            if ts.name == "hydro_budget":
-                # ts.data holds raw per-unit values; scale to actual MW (same logic as
-                # max_active_power TS) so that weekly sums are in MWh, not dimensionless
-                # units.  Without this, the weekly budget is ~max_active_power-factor too
-                # large (e.g. 955 MWh instead of 76 MWh for an 0.08 MW generator).
-                _max_mw = 0.0
-                _limits = getattr(source_gen, "active_power_limits", None)
-                if _limits is not None:
-                    _max_val = (
-                        _limits.get("max") if isinstance(_limits, dict) else getattr(_limits, "max", None)
+        if ts.name == "hydro_budget":
+            # ts.data holds raw per-unit values; scale to actual MW (same logic as
+            # max_active_power TS) so that weekly sums are in MWh, not dimensionless
+            # units.  Without this, the weekly budget is ~max_active_power-factor too
+            # large (e.g. 955 MWh instead of 76 MWh for an 0.08 MW generator).
+            _max_mw = 0.0
+            _limits = getattr(source_gen, "active_power_limits", None)
+            if _limits is not None:
+                _max_val = _limits.get("max") if isinstance(_limits, dict) else getattr(_limits, "max", None)
+                if _max_val is not None:
+                    _mag = get_magnitude(_max_val)
+                    _raw = (
+                        float(_mag)
+                        if _mag is not None
+                        else float(_max_val)
+                        if isinstance(_max_val, int | float)
+                        else None
                     )
-                    if _max_val is not None:
-                        _mag = get_magnitude(_max_val)
-                        _raw = (
-                            float(_mag)
-                            if _mag is not None
-                            else float(_max_val)
-                            if isinstance(_max_val, int | float)
-                            else None
-                        )
-                        if _raw is not None:
-                            _max_mw = abs(_raw) * resolve_base_power(source_gen)
-                if _max_mw > 0.0:
-                    data = data * _max_mw
+                    if _raw is not None:
+                        _max_mw = abs(_raw) * resolve_base_power(source_gen)
+            if _max_mw > 0.0:
+                data = data * _max_mw
+            ts_for_conversion = types.SimpleNamespace(
+                data=data,
+                resolution=ts.resolution,
+                initial_timestamp=ts.initial_timestamp,
+            )
+            data, output_resolution = _convert_hydro_budget_time_series(
+                ts_for_conversion,
+                hydro_budget_cadence,
+            )
+            target_ts_name = _hydro_budget_series_name_for_resolution(output_resolution)
 
-            if (
-                ts.name == "hydro_budget"
-                and isinstance(ts.resolution, timedelta)
-                and ts.resolution < timedelta(days=7)
-            ):
-                seconds_per_step = ts.resolution.total_seconds()
-                if seconds_per_step > 0:
-                    points_per_week = max(int(round((7 * 86400) / seconds_per_step)), 1)
-                    full_weeks = data.size // points_per_week
-                    weekly_values: list[float] = []
-                    if full_weeks:
-                        weekly_values.extend(
-                            data[: full_weeks * points_per_week]
-                            .reshape(full_weeks, points_per_week)
-                            .sum(axis=1)
-                            .tolist()
-                        )
-                    remainder = data[full_weeks * points_per_week :]
-                    if remainder.size:
-                        weekly_values.append(float(remainder.sum()))
-
-                    # SingleTimeSeries requires at least two points.
-                    if len(weekly_values) >= 2:
-                        data = np.asarray(weekly_values, dtype=float)
-                        output_resolution = timedelta(days=7)
-
+        if not target_system.has_time_series(
+            target_generator,
+            name=target_ts_name,
+            time_series_type=SingleTimeSeries,
+            **metadata.features,
+        ):
             if ts.name == "max_active_power":
                 max_mw = 0.0
                 limits = getattr(source_gen, "active_power_limits", None)
@@ -781,12 +867,12 @@ def _attach_generator_time_series(
                     data = data * max_mw
             fresh_ts = SingleTimeSeries.from_array(
                 data=data,
-                name=ts.name,
+                name=target_ts_name,
                 initial_timestamp=ts.initial_timestamp,
                 resolution=output_resolution,
             )
-            _target_system(context).add_time_series(fresh_ts, target_generator, **metadata.features)
-            logger.debug("Attached time series {} to generator {}", ts.name, generator_name)
+            target_system.add_time_series(fresh_ts, target_generator, **metadata.features)
+            logger.debug("Attached time series {} to generator {}", target_ts_name, generator_name)
 
 
 def _has_usable_generator_time_series(source_component: object, context: PluginContext) -> bool:
@@ -2243,43 +2329,27 @@ def get_turbine_pump_efficiency(
     source_component: HydroTurbine | HydroPumpTurbine, context: PluginContext
 ) -> Result[float, ValueError]:
     """Extract pump efficiency (%) from the HydroTurbine and HydroPumpTurbine."""
-    ht_pump_efficiency = getattr(source_component, "efficiency", None)
+    efficiency = getattr(source_component, "efficiency", None)
 
-    if isinstance(source_component, HydroTurbine):
-        default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
-        if ht_pump_efficiency is not None and ht_pump_efficiency != 0.0:
-            value = (
-                float(ht_pump_efficiency) * 100.0
-                if float(ht_pump_efficiency) <= 1.0
-                else float(ht_pump_efficiency)
-            )
-        else:
-            value = default
-        return Ok(round(value, 2))
-    elif isinstance(source_component, HydroPumpTurbine):
-        pump = getattr(ht_pump_efficiency, "pump", None) if ht_pump_efficiency is not None else None
-        default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
-        if pump is not None and pump != 0.0:
-            pump_value = float(pump)
-            value = pump_value * pump_value * 100.0
-        else:
-            value = default
-        return Ok(round(value, 2))
+    if isinstance(source_component, HydroPumpTurbine):
+        value = getattr(efficiency, "pump", None) if efficiency is not None else None
     else:
-        if (
-            ht_pump_efficiency is not None
-            and isinstance(ht_pump_efficiency, int | float)
-            and ht_pump_efficiency != 0.0
-        ):
-            return Ok(
-                round(
-                    float(ht_pump_efficiency) * 100.0
-                    if ht_pump_efficiency <= 1.0
-                    else float(ht_pump_efficiency),
-                    2,
-                )
-            )
-        return Ok(80.0)
+        value = efficiency
+
+    efficiency_value = _coerce_scalar(value)
+    if efficiency_value is None or math.isclose(efficiency_value, 0.0, rel_tol=0.0, abs_tol=1e-9):
+        default_efficiency = _get_defaults("pumped-hydro", "efficiency")
+        if default_efficiency <= 1.0:
+            default_efficiency *= 100.0
+        return Ok(round(default_efficiency, 2))
+
+    if isinstance(source_component, HydroPumpTurbine):
+        efficiency_value = efficiency_value**2
+
+    if efficiency_value <= 1.0:
+        efficiency_value *= 100.0
+
+    return Ok(round(efficiency_value, 2))
 
 
 @getter

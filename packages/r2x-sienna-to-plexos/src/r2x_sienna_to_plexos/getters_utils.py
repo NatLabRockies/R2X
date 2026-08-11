@@ -1020,7 +1020,7 @@ def _attach_hydro_reservoir_inflow_to_generator_budget(
     source_generator: Any,
     target_generator: Any,
 ) -> None:
-    """Attach HydroReservoir inflow to generator as max_energy_day for non-pumped HydroTurbine units."""
+    """Attach HydroReservoir inflow to generator as cadence-aligned max-energy series."""
     if isinstance(source_generator, HydroPumpTurbine) or not isinstance(source_generator, HydroTurbine):
         return
 
@@ -1039,7 +1039,11 @@ def _attach_hydro_reservoir_inflow_to_generator_budget(
 
     from infrasys import SingleTimeSeries
 
-    from r2x_sienna_to_plexos.getters import _build_reservoir_by_turbine_index
+    from r2x_sienna_to_plexos.getters import (
+        _build_reservoir_by_turbine_index,
+        _convert_hydro_budget_time_series,
+        _hydro_budget_series_name_for_resolution,
+    )
 
     source_reservoir = _build_reservoir_by_turbine_index(context).get(source_generator.name)
     if source_reservoir is None or not _source_system(context).time_series.has_time_series(source_reservoir):
@@ -1049,13 +1053,6 @@ def _attach_hydro_reservoir_inflow_to_generator_budget(
         if metadata.name not in {"inflow", "natural_inflow"}:
             continue
         features = getattr(metadata, "features", {}) or {}
-        if _target_system(context).has_time_series(
-            target_generator,
-            name="max_energy_day",
-            time_series_type=SingleTimeSeries,
-            **features,
-        ):
-            continue
 
         ts_list = _source_system(context).list_time_series(
             source_reservoir,
@@ -1067,7 +1064,25 @@ def _attach_hydro_reservoir_inflow_to_generator_budget(
 
         typed_source_ts = ts_list[0]
         ts_copy = deepcopy(typed_source_ts)
-        ts_copy.name = "max_energy_day"
+
+        hydro_budget_cadence = getattr(context.config, "hydro_budget_ts", "weekly")
+        converted_data, converted_resolution = _convert_hydro_budget_time_series(
+            ts_copy,
+            hydro_budget_cadence,
+        )
+        target_ts_name = _hydro_budget_series_name_for_resolution(converted_resolution)
+
+        if _target_system(context).has_time_series(
+            target_generator,
+            name=target_ts_name,
+            time_series_type=SingleTimeSeries,
+            **features,
+        ):
+            continue
+
+        ts_copy.data = converted_data
+        ts_copy.resolution = converted_resolution
+        ts_copy.name = target_ts_name
         _target_system(context).add_time_series(ts_copy, target_generator, **features)
 
 

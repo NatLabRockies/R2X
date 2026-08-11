@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field
 
@@ -21,3 +21,7 @@ class SiennaToPlexosConfig(PluginConfig):
             description="Prime mover/fuel to technology category mappings",
         ),
     ]
+    hydro_budget_ts: Literal["hourly", "daily", "weekly", "monthly"] = Field(
+        default="weekly",
+        description="Output resolution for hydro budget time series.",
+    )
