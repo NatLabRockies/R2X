@@ -10,7 +10,10 @@ from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
 
 from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
-from r2x_reeds_to_sienna.getter_utils import add_generator_emissions
+from r2x_reeds_to_sienna.getter_utils import (
+    add_generator_emissions,
+    normalize_max_active_power_time_series,
+)
 from r2x_reeds_to_sienna.plugin_config import ReEDSToSiennaConfig
 
 logger = logging.getLogger(__name__)
@@ -52,6 +55,7 @@ def reeds_to_sienna(system: System, config: ReEDSToSiennaConfig) -> System:
 
     apply_rules_to_context(context)
 
+    normalize_max_active_power_time_series(context)
     add_generator_emissions(context)
 
     return context.target_system

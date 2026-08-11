@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+from numbers import Real
 from typing import Any, cast
 
-from r2x_core import PluginContext
+from r2x_core import PluginContext, replace_single_time_series
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,80 @@ _POLLUTANT_MAP: dict[str, str] = {
     "PM2.5": "PM25",
     "PM10": "PM10",
 }
+
+
+def _get_source_max_active_power(component: Any) -> float | None:
+    """Return the scalar MW basis for a ReEDS maximum active power profile."""
+    for field_name in ("max_active_power", "capacity"):
+        value = getattr(component, field_name, None)
+        if isinstance(value, Real):
+            return float(value)
+    return None
+
+
+def normalize_max_active_power_time_series(context: PluginContext) -> None:
+    """Normalize ReEDS MW profiles for PowerSystems scaling during serialization."""
+    from infrasys import SingleTimeSeries
+    from infrasys.normalization import NormalizationByValue
+    from r2x_sienna.exporter import set_time_series_scaling_factor_multiplier
+
+    source_system = cast(Any, context.source_system)
+    target_system = cast(Any, context.target_system)
+    target_by_uuid = {str(component.uuid): component for component in target_system.iter_all_components()}
+    normalized = 0
+
+    for source_component in source_system.iter_all_components():
+        metadata_records = source_system.list_time_series_metadata(
+            source_component,
+            name="max_active_power",
+            time_series_type=SingleTimeSeries,
+        )
+        if not metadata_records:
+            continue
+
+        target_component = target_by_uuid.get(str(source_component.uuid))
+        if target_component is None:
+            continue
+
+        max_active_power = _get_source_max_active_power(source_component)
+        if max_active_power is None or max_active_power <= 0.0:
+            logger.warning(
+                "Cannot normalize max_active_power time series for %s without a positive MW basis",
+                source_component.name,
+            )
+            continue
+
+        for metadata in metadata_records:
+            features = metadata.features
+            time_series = target_system.get_time_series(
+                target_component,
+                name="max_active_power",
+                time_series_type=SingleTimeSeries,
+                **features,
+            )
+            normalized_time_series = SingleTimeSeries.from_array(
+                data=time_series.data_array,
+                name=time_series.name,
+                initial_timestamp=time_series.initial_timestamp,
+                resolution=time_series.resolution,
+                normalization=NormalizationByValue(value=max_active_power),
+            )
+            replace_single_time_series(
+                target_system,
+                target_component,
+                normalized_time_series,
+                **features,
+            )
+            normalized += 1
+
+        set_time_series_scaling_factor_multiplier(
+            target_system,
+            target_component,
+            "max_active_power",
+            "get_max_active_power",
+        )
+
+    logger.info("Normalized %s max_active_power time series for Sienna", normalized)
 
 
 def add_generator_emissions(context: PluginContext) -> None:
