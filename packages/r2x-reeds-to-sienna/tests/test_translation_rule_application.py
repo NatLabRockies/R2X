@@ -28,7 +28,7 @@ def test_reeds_region_translates_to_area(tmp_path) -> None:
     context.source_system.add_component(
         ReEDSRegion(name="R_TEST", category="region-cat", max_active_power=123.0, interconnect="west")
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -39,7 +39,7 @@ def test_reeds_region_translates_to_area(tmp_path) -> None:
     area = areas[0]
     assert area.name == "R_TEST"
     assert area.category == "region-cat"
-    assert pytest.approx(123.0) == area.peak_active_power
+    assert pytest.approx(1.23) == area.peak_active_power
     assert pytest.approx(0.0) == area.peak_reactive_power
     assert pytest.approx(0.0) == area.load_response
 
@@ -51,7 +51,7 @@ def test_reeds_region_translates_to_acbus(tmp_path) -> None:
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
     context.source_system.add_component(ReEDSRegion(name="p42", category="region"))
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -79,7 +79,7 @@ def test_reeds_region_with_non_numeric_name(tmp_path) -> None:
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
     context.source_system.add_component(ReEDSRegion(name="otx", category="region"))
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -132,7 +132,7 @@ def test_reeds_generators_translate_to_sienna_types(tmp_path) -> None:
             capacity=25.0,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -155,19 +155,22 @@ def test_reeds_generators_translate_to_sienna_types(tmp_path) -> None:
     thermal = thermal_gens[0]
     assert thermal.name == "THERM1"
     assert thermal.category == "gas-cc"
-    assert thermal.rating == 100.0
+    assert thermal.rating == 1.0
+    assert thermal.base_power == 100.0
     assert thermal.bus == buses[0]
 
     wind = vre_dispatch[0]
     assert wind.name == "VRE1"
     assert wind.category == "wind-ons"
-    assert wind.rating == 50.0
+    assert wind.rating == 1.0
+    assert wind.base_power == 50.0
     assert wind.bus == buses[0]
 
     pv = vre_nondispatch[0]
     assert pv.name == "DISTPV"
     assert pv.category == "distpv"
-    assert pv.rating == 25.0
+    assert pv.rating == 1.0
+    assert pv.base_power == 25.0
     assert pv.bus == buses[0]
 
 
@@ -189,7 +192,7 @@ def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
             ramp_rate=10.0,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -201,9 +204,10 @@ def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
     hydro = hydros[0]
     assert hydro.name == "HYDRO1"
     assert hydro.category == "hydro"
-    assert hydro.rating == 100.0
-    assert hydro.active_power_limits.max == 100.0
-    assert hydro.ramp_limits.up == pytest.approx(100.0 * 10.0 / 60.0)  # cap * rate / 60
+    assert hydro.rating == 1.0
+    assert hydro.base_power == 100.0
+    assert hydro.active_power_limits.max == 1.0
+    assert hydro.ramp_limits.up == pytest.approx(10.0 / 60.0)
     assert hydro.time_limits.up == 0.0
     assert hydro.time_limits.down == 0.0
 
@@ -226,7 +230,7 @@ def test_reeds_storage_translates_to_energy_reservoir(tmp_path) -> None:
             round_trip_efficiency=0.85,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -238,8 +242,11 @@ def test_reeds_storage_translates_to_energy_reservoir(tmp_path) -> None:
     storage = storages[0]
     assert storage.name == "BATT1"
     assert storage.category == "battery_4"
-    assert storage.rating == 50.0
-    assert storage.storage_capacity == 200.0  # 50 * 4
+    assert storage.base_power == 50.0
+    assert storage.rating == 1.0
+    assert storage.storage_capacity == 4.0
+    assert storage.input_active_power_limits.max == 1.0
+    assert storage.output_active_power_limits.max == 1.0
     assert storage.efficiency.input == pytest.approx(0.85)
     assert storage.efficiency.output == pytest.approx(1.0)
 
@@ -259,7 +266,7 @@ def test_reeds_demand_translates_to_power_load(tmp_path) -> None:
             max_active_power=500.0,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -270,8 +277,8 @@ def test_reeds_demand_translates_to_power_load(tmp_path) -> None:
 
     load = loads[0]
     assert load.name == "LOAD1"
-    assert load.max_active_power.magnitude == 500.0
-    assert load.base_power.magnitude == 100.0
+    assert load.max_active_power.magnitude == 1.0
+    assert load.base_power.magnitude == 500.0
 
 
 def test_reeds_interface_translates_to_area_interchange(tmp_path) -> None:
@@ -287,7 +294,7 @@ def test_reeds_interface_translates_to_area_interchange(tmp_path) -> None:
     context.source_system.add_component(
         ReEDSInterface(name="IFACE_1_2", from_region=region1, to_region=region2)
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -318,7 +325,7 @@ def test_reeds_reserve_translates_to_variable_reserve(tmp_path) -> None:
             duration=3600.0,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -356,7 +363,7 @@ def test_reeds_ac_transmission_line_translates_to_monitored_line(tmp_path) -> No
             max_active_power={"from_to": 125.0, "to_from": 150.0},
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -367,9 +374,9 @@ def test_reeds_ac_transmission_line_translates_to_monitored_line(tmp_path) -> No
 
     line = lines[0]
     assert line.name == "LINE_1_2"
-    assert line.rating == 150.0
-    assert line.flow_limits.from_to == 150.0
-    assert line.flow_limits.to_from == 125.0
+    assert line.rating == 1.5
+    assert line.flow_limits.from_to == 1.5
+    assert line.flow_limits.to_from == 1.25
     assert line.active_power_flow == 0.0
     assert line.rating_b is None
     assert line.rating_c is None
@@ -407,7 +414,7 @@ def test_reeds_vsc_lcc_b2b_transmission_types_translate_to_generic_hvdc_lines(tm
                 **attributes,
             )
         )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -422,10 +429,10 @@ def test_reeds_vsc_lcc_b2b_transmission_types_translate_to_generic_hvdc_lines(tm
     for name, attributes in source_lines.items():
         line = lines_by_name[name]
         assert line.active_power_flow == 0.0
-        assert line.active_power_limits_from.min == -125.0
-        assert line.active_power_limits_from.max == 150.0
-        assert line.active_power_limits_to.min == -150.0
-        assert line.active_power_limits_to.max == 125.0
+        assert line.active_power_limits_from.min == -1.25
+        assert line.active_power_limits_from.max == 1.5
+        assert line.active_power_limits_to.min == -1.5
+        assert line.active_power_limits_to.max == 1.25
         assert line.reactive_power_limits_from.min == 0.0
         assert line.reactive_power_limits_from.max == 0.0
         assert line.reactive_power_limits_to.min == 0.0
@@ -445,7 +452,7 @@ def test_multiple_regions_create_multiple_buses_and_areas(tmp_path) -> None:
     context.source_system.add_component(ReEDSRegion(name="p1", category="region"))
     context.source_system.add_component(ReEDSRegion(name="p2", category="region"))
     context.source_system.add_component(ReEDSRegion(name="p3", category="region"))
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -483,7 +490,7 @@ def test_reeds_hydro_has_hy_prime_mover(tmp_path) -> None:
             is_dispatchable=True,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     apply_rules_to_context(context)
@@ -511,7 +518,7 @@ def test_reeds_hydro_has_reactive_power_limits(tmp_path) -> None:
             is_dispatchable=True,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     apply_rules_to_context(context)
@@ -540,7 +547,7 @@ def test_reeds_non_spinning_reserve_translates_to_variable_reserve_non_spinning(
             duration=1800.0,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     apply_rules_to_context(context)
@@ -605,7 +612,7 @@ def test_gen_services_attaches_non_spinning_reserve_to_generator(tmp_path) -> No
         )
     )
 
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     apply_rules_to_context(context)
@@ -642,7 +649,7 @@ def test_reeds_spinning_reserve_does_not_produce_non_spinning(tmp_path) -> None:
             time_frame=300.0,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     apply_rules_to_context(context)
@@ -673,7 +680,7 @@ def test_reeds_electrolyzer_demand_translates_to_interruptible_load(tmp_path) ->
             max_active_power=40.0,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     apply_rules_to_context(context)
@@ -684,7 +691,7 @@ def test_reeds_electrolyzer_demand_translates_to_interruptible_load(tmp_path) ->
     load = loads[0]
     assert load.name == "ELEC1"
     assert load.category == "electrolyzer"
-    assert load.max_active_power.magnitude == pytest.approx(40.0)
+    assert load.max_active_power.magnitude == pytest.approx(0.8)
     assert load.base_power.magnitude == pytest.approx(50.0)
 
 
@@ -706,7 +713,7 @@ def test_reeds_datacenter_demand_translates_to_interruptible_load(tmp_path) -> N
             electricity_efficiency=1.0,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     apply_rules_to_context(context)
@@ -718,7 +725,7 @@ def test_reeds_datacenter_demand_translates_to_interruptible_load(tmp_path) -> N
     assert load.name == "DC1"
     assert load.category == "data-center"
     # No explicit max_active_power — falls back to capacity
-    assert load.max_active_power.magnitude == pytest.approx(200.0)
+    assert load.max_active_power.magnitude == pytest.approx(1.0)
     assert load.base_power.magnitude == pytest.approx(200.0)
 
 
@@ -750,7 +757,7 @@ def test_reeds_smr_demand_translates_to_interruptible_load(tmp_path) -> None:
             electricity_efficiency=1.0,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     apply_rules_to_context(context)
@@ -758,8 +765,8 @@ def test_reeds_smr_demand_translates_to_interruptible_load(tmp_path) -> None:
     loads = {load.name: load for load in context.target_system.get_components(InterruptiblePowerLoad)}
     assert set(loads) == {"SMR1", "SMR_CCS1"}
     assert loads["SMR1"].category == "smr"
-    assert loads["SMR1"].max_active_power.magnitude == pytest.approx(40.0)
+    assert loads["SMR1"].max_active_power.magnitude == pytest.approx(0.8)
     assert loads["SMR1"].base_power.magnitude == pytest.approx(50.0)
     assert loads["SMR_CCS1"].category == "smr_ccs"
-    assert loads["SMR_CCS1"].max_active_power.magnitude == pytest.approx(30.0)
+    assert loads["SMR_CCS1"].max_active_power.magnitude == pytest.approx(1.0)
     assert loads["SMR_CCS1"].base_power.magnitude == pytest.approx(30.0)

@@ -31,11 +31,11 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
-      "peak_active_power": "max_active_power"
+      "uuid": "uuid"
     },
     "getters": {
-      "category": "get_area_category"
+      "category": "get_area_category",
+      "peak_active_power": "get_area_peak_active_power"
     },
     "source_type": "ReEDSRegion",
     "target_type": "Area",
@@ -230,7 +230,7 @@
       "services": "get_gen_services",
       "reactive_power": "get_zero_reactive_power",
       "rating": "hydro_rating",
-      "base_power": "hydro_rating",
+      "base_power": "hydro_base_power",
       "active_power_limits": "hydro_active_power_limits",
       "operation_cost": "hydro_operation_cost",
       "prime_mover_type": "get_hydro_prime_mover",
@@ -261,8 +261,8 @@
       "bus": "get_bus_for_region",
       "services": "get_gen_services",
       "rating": "storage_rating",
-      "base_power": "storage_rating",
-      "storage_capacity": "storage_capacity_mwh",
+      "base_power": "storage_base_power",
+      "storage_capacity": "storage_capacity_device_base",
       "storage_level_limits": "storage_level_limits",
       "initial_storage_capacity_level": "storage_initial_level",
       "input_active_power_limits": "storage_power_limits",

@@ -81,6 +81,23 @@ def _target_system(context: PluginContext) -> Any:
     return cast(Any, context.target_system)
 
 
+def _system_base_power(context: PluginContext) -> float:
+    return float(_target_system(context).base_power)
+
+
+def _to_system_base(value: float | int, context: PluginContext) -> float:
+    """Convert a natural-unit power value to the Sienna system base."""
+    return float(value) / _system_base_power(context)
+
+
+def _to_device_base(value: float | int, base_power: float | int) -> float:
+    """Convert a natural-unit power or energy value to a device base."""
+    base = float(base_power)
+    if base <= 0.0:
+        return 0.0
+    return float(value) / base
+
+
 def _lookup_area(context: PluginContext, name: str | None) -> Area | None:
     """Helper to find a target Area by name."""
     from r2x_sienna.models import Area
@@ -184,7 +201,7 @@ def get_line_conductance(
 def get_line_rating(component: ReEDSTransmissionLine, context: PluginContext):
     """Use max_active_power.from_to as the line rating."""
     try:
-        return Ok(component.max_active_power.from_to)
+        return Ok(_to_system_base(component.max_active_power.from_to, context))
     except Exception as e:
         return Err(ValueError(f"Could not get line rating: {e}"))
 
@@ -193,7 +210,12 @@ def get_line_rating(component: ReEDSTransmissionLine, context: PluginContext):
 def get_monitored_line_rating(component: ReEDSTransmissionLine, context: PluginContext):
     """Use the larger directional limit as the line rating."""
     try:
-        return Ok(max(component.max_active_power.from_to, component.max_active_power.to_from))
+        return Ok(
+            _to_system_base(
+                max(component.max_active_power.from_to, component.max_active_power.to_from),
+                context,
+            )
+        )
     except Exception as e:
         return Err(ValueError(f"Could not get line rating: {e}"))
 
@@ -211,8 +233,8 @@ def get_line_flow_limits(
     try:
         return Ok(
             FromTo_ToFrom(
-                from_to=component.max_active_power.to_from,
-                to_from=component.max_active_power.from_to,
+                from_to=_to_system_base(component.max_active_power.to_from, context),
+                to_from=_to_system_base(component.max_active_power.from_to, context),
             )
         )
     except Exception as e:
@@ -227,7 +249,12 @@ def get_hvdc_active_power_limits_from(
     try:
         forward = component.max_active_power.to_from
         backward = component.max_active_power.from_to
-        return Ok(MinMax(min=-backward, max=forward))
+        return Ok(
+            MinMax(
+                min=_to_system_base(-backward, context),
+                max=_to_system_base(forward, context),
+            )
+        )
     except Exception as e:
         return Err(ValueError(f"Could not get HVDC from-terminal limits: {e}"))
 
@@ -240,7 +267,12 @@ def get_hvdc_active_power_limits_to(
     try:
         forward = component.max_active_power.to_from
         backward = component.max_active_power.from_to
-        return Ok(MinMax(min=-forward, max=backward))
+        return Ok(
+            MinMax(
+                min=_to_system_base(-forward, context),
+                max=_to_system_base(backward, context),
+            )
+        )
     except Exception as e:
         return Err(ValueError(f"Could not get HVDC to-terminal limits: {e}"))
 
@@ -263,7 +295,7 @@ def get_hvdc_loss(component: ReEDSTransmissionLine, context: PluginContext):
 def get_line_active_power_flow(component: ReEDSTransmissionLine, context: PluginContext):
     """Use max_active_power.from_to as the active power flow."""
     try:
-        return Ok(component.max_active_power.from_to)
+        return Ok(_to_system_base(component.max_active_power.from_to, context))
     except Exception as e:
         return Err(ValueError(f"Could not get active_power_flow: {e}"))
 
@@ -271,7 +303,8 @@ def get_line_active_power_flow(component: ReEDSTransmissionLine, context: Plugin
 @getter
 def get_line_reactive_power_flow(component: ReEDSTransmissionLine, context: PluginContext):
     """Return reactive_power_flow or 0.0 if not available."""
-    return Ok(float(getattr(component, "reactive_power_flow", 0.0) or 0.0))
+    value = float(getattr(component, "reactive_power_flow", 0.0) or 0.0)
+    return Ok(_to_system_base(value, context))
 
 
 @getter
@@ -336,22 +369,17 @@ def get_arc_for_line(component: ReEDSTransmissionLine, context: PluginContext):
 def get_capacity_as_rating(
     component: ReEDSThermalGenerator | ReEDSVariableGenerator, context: PluginContext
 ) -> Result[float | int, ValueError]:
-    """Map ReEDS capacity (MW) to Sienna rating/base_power fields."""
-    capacity = getattr(component, "capacity", None)
-    if capacity is None:
-        return _ok_num(0.0)
-    return _ok_num(float(capacity))
+    """Return the ReEDS capacity as a rating on the device base."""
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+    return _ok_num(_to_device_base(capacity, capacity))
 
 
 @getter
 def get_capacity_as_base_power(
     component: ReEDSThermalGenerator | ReEDSVariableGenerator, context: PluginContext
 ) -> Result[float | int, ValueError]:
-    """Alias to reuse rating getter for base_power."""
-    capacity = getattr(component, "capacity", None)
-    if capacity is None:
-        return _ok_num(0.0)
-    return _ok_num(float(capacity))
+    """Use ReEDS capacity in MW as the device base power."""
+    return _ok_num(float(getattr(component, "capacity", 0.0) or 0.0))
 
 
 @getter
@@ -372,7 +400,12 @@ def get_active_power_limits(
         technology = getattr(component, "technology", "")
         default_frac = _get_defaults(technology, "min_stable_level_percentage")
         min_mw = default_frac * capacity
-    return Ok(MinMax(min=min_mw, max=capacity))
+    return Ok(
+        MinMax(
+            min=_to_device_base(min_mw, capacity),
+            max=_to_device_base(capacity, capacity),
+        )
+    )
 
 
 @getter
@@ -481,8 +514,11 @@ def get_hydro_prime_mover(
 
 @getter
 def get_load_base_power(component: ReEDSDemand, context: PluginContext) -> Result[float | int, ValueError]:
-    """Return a default load base power of 100.0 MVA."""
-    return _ok_num(100.0)
+    """Use peak demand in MW as the load device base power."""
+    demand = float(getattr(component, "max_active_power", 0.0) or 0.0)
+    if demand > 0.0:
+        return _ok_num(demand)
+    return _ok_num(_system_base_power(context))
 
 
 @getter
@@ -490,17 +526,17 @@ def get_consuming_tech_max_active_power(
     component: ReEDSElectrolyzerDemand | ReEDSDataCenterDemand | ReEDSSteamMethaneReformingDemand,
     context: PluginContext,
 ) -> Result[float | int, ValueError]:
-    """Return max_active_power for consuming technologies.
+    """Return max_active_power on the device base for consuming technologies.
 
     Prefers an explicit ``max_active_power`` field when set, then falls back to
     ``capacity``, and finally returns 0.0 if neither is available.
     """
+    base_power = float(getattr(component, "capacity", 0.0) or 0.0)
     max_ap = getattr(component, "max_active_power", None)
     if max_ap is not None:
-        return _ok_num(float(max_ap))
-    capacity = getattr(component, "capacity", None)
-    if capacity is not None:
-        return _ok_num(float(capacity))
+        return _ok_num(_to_device_base(float(max_ap), base_power))
+    if base_power > 0.0:
+        return _ok_num(1.0)
     return _ok_num(0.0)
 
 
@@ -549,11 +585,9 @@ def get_thermal_active_power(
     component: ReEDSThermalGenerator,
     context: PluginContext,
 ) -> Result[float | int, ValueError]:
-    """Return the generator capacity as initial active power dispatch."""
-    capacity = getattr(component, "capacity", None)
-    if capacity is None:
-        return _ok_num(0.0)
-    return _ok_num(float(capacity))
+    """Return full capacity as initial dispatch on the device base."""
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+    return _ok_num(_to_device_base(capacity, capacity))
 
 
 @getter
@@ -600,7 +634,7 @@ def get_default_time_at_status(
 def thermal_ramp_limits(
     component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[UpDown | None, ValueError]:
-    """Convert ramp_rate (fraction/hour) to MW/min for Sienna ramp_limits.
+    """Convert ramp_rate (fraction/hour) to per-unit/min for Sienna ramp_limits.
 
     Falls back to ``max_ramp_up_percentage`` from defaults.json (fraction of capacity
     per hour) when the source field is not populated. Returns None only if both the
@@ -614,7 +648,8 @@ def thermal_ramp_limits(
         if not ramp_rate:
             return Ok(None)
     ramp_mw_per_min = float(ramp_rate) * capacity / 60.0
-    return Ok(UpDown(up=ramp_mw_per_min, down=ramp_mw_per_min))
+    ramp_per_unit_per_min = _to_device_base(ramp_mw_per_min, capacity)
+    return Ok(UpDown(up=ramp_per_unit_per_min, down=ramp_per_unit_per_min))
 
 
 @getter
@@ -820,6 +855,15 @@ def get_area_category(component: ReEDSRegion, context: PluginContext) -> Result[
 
 
 @getter
+def get_area_peak_active_power(
+    component: ReEDSRegion, context: PluginContext
+) -> Result[float | int, ValueError]:
+    """Return peak active power on the system base."""
+    peak = float(getattr(component, "max_active_power", 0.0) or 0.0)
+    return _ok_num(_to_system_base(peak, context))
+
+
+@getter
 def base_voltage_default(component: ReEDSRegion, context: PluginContext) -> Result[float | int, ValueError]:
     """Provide default base voltage in kV."""
     return _ok_num(float(ureg.Quantity(115.0, "kV").magnitude))  # magnitude only to avoid unit issues
@@ -847,8 +891,11 @@ def bustype_default(component: ReEDSRegion, context: PluginContext) -> Result[AC
 def demand_max_active_power(
     component: ReEDSDemand, context: PluginContext
 ) -> Result[float | int, ValueError]:
-    """Return demand max active power."""
-    return _ok_num(float(getattr(component, "max_active_power", 0.0) or 0.0))
+    """Return maximum demand on the load device base."""
+    demand = float(getattr(component, "max_active_power", 0.0) or 0.0)
+    if demand > 0.0:
+        return _ok_num(_to_device_base(demand, demand))
+    return _ok_num(0.0)
 
 
 @getter
@@ -861,7 +908,16 @@ def demand_max_reactive_power(
 
 @getter
 def hydro_rating(component: ReEDSHydroGenerator, context: PluginContext) -> Result[float | int, ValueError]:
-    """Map capacity to rating/base_power."""
+    """Return the ReEDS hydro capacity as a rating on the device base."""
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+    return _ok_num(_to_device_base(capacity, capacity))
+
+
+@getter
+def hydro_base_power(
+    component: ReEDSHydroGenerator, context: PluginContext
+) -> Result[float | int, ValueError]:
+    """Use ReEDS hydro capacity in MW as the device base power."""
     return _ok_num(float(getattr(component, "capacity", 0.0) or 0.0))
 
 
@@ -871,12 +927,12 @@ def hydro_active_power_limits(
 ) -> Result[MinMax, ValueError]:
     """Min/max active power limits for hydro."""
     cap = float(getattr(component, "capacity", 0.0) or 0.0)
-    return Ok(MinMax(min=0.0, max=cap))
+    return Ok(MinMax(min=0.0, max=_to_device_base(cap, cap)))
 
 
 @getter
 def hydro_ramp_limits(component: ReEDSHydroGenerator, context: PluginContext) -> Result[UpDown, ValueError]:
-    """Convert ramp_rate (fraction/hour) to MW/min for Sienna ramp_limits.
+    """Convert ramp_rate (fraction/hour) to per-unit/min for Sienna ramp_limits.
 
     Falls back to ``max_ramp_up_percentage`` from defaults.json when the source
     field is not populated.
@@ -886,7 +942,7 @@ def hydro_ramp_limits(component: ReEDSHydroGenerator, context: PluginContext) ->
     if ramp_rate is None:
         technology = getattr(component, "technology", "")
         ramp_rate = _get_defaults(technology, "max_ramp_up_percentage") or 0.0
-    ramp_limit = cap * float(ramp_rate) / 60.0
+    ramp_limit = _to_device_base(cap * float(ramp_rate) / 60.0, cap)
     return Ok(UpDown(up=ramp_limit, down=ramp_limit))
 
 
@@ -919,19 +975,28 @@ def hydro_operation_cost(
 
 @getter
 def storage_rating(component: ReEDSStorage, context: PluginContext) -> Result[float | int, ValueError]:
-    """Use capacity as rating/base power for storage."""
+    """Return the storage rating on its device base."""
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+    return _ok_num(1.0 if capacity > 0.0 else 0.0)
+
+
+@getter
+def storage_base_power(component: ReEDSStorage, context: PluginContext) -> Result[float | int, ValueError]:
+    """Use storage capacity in MW as its device base power."""
     return _ok_num(float(getattr(component, "capacity", 0.0) or 0.0))
 
 
 @getter
-def storage_capacity_mwh(component: ReEDSStorage, context: PluginContext) -> Result[float | int, ValueError]:
-    """Energy capacity from explicit value or duration * power."""
+def storage_capacity_device_base(
+    component: ReEDSStorage, context: PluginContext
+) -> Result[float | int, ValueError]:
+    """Return storage energy capacity on the device base."""
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
     energy = getattr(component, "energy_capacity", None)
     if energy is not None:
-        return _ok_num(float(energy))
-    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+        return _ok_num(_to_device_base(float(energy), capacity))
     duration = float(getattr(component, "storage_duration", 0.0) or 0.0)
-    return _ok_num(capacity * duration)
+    return _ok_num(duration)
 
 
 @getter
@@ -942,9 +1007,9 @@ def storage_level_limits(component: ReEDSStorage, context: PluginContext) -> Res
 
 @getter
 def storage_power_limits(component: ReEDSStorage, context: PluginContext) -> Result[MinMax, ValueError]:
-    """Charge/discharge limits from capacity."""
+    """Return charge and discharge limits on the device base."""
     cap = float(getattr(component, "capacity", 0.0) or 0.0)
-    return Ok(MinMax(min=0.0, max=cap))
+    return Ok(MinMax(min=0.0, max=1.0 if cap > 0.0 else 0.0))
 
 
 @getter
@@ -991,8 +1056,9 @@ def storage_conversion_factor(
 def consuming_capacity_as_max_power(
     component: ReEDSConsumingTechnology, context: PluginContext
 ) -> Result[float | int, ValueError]:
-    """Return the consuming technology capacity (MW) as max_active_power."""
-    return _ok_num(float(getattr(component, "capacity", 0.0) or 0.0))
+    """Return consuming capacity as maximum power on the device base."""
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+    return _ok_num(_to_device_base(capacity, capacity))
 
 
 @getter
