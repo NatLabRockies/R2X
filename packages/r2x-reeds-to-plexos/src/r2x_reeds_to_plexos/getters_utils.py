@@ -109,52 +109,52 @@ def attach_reserve_time_series(context: PluginContext) -> None:
                 context.target_system.add_time_series(deepcopy(ts), reserve)
 
 
-def _convert_hydro_budget_time_series(ts: Any, cadence: str, *, budget_year: int | None = None) -> Any:
-    """Convert ReEDS hourly MWh budgets to a PLEXOS resolution in GWh."""
-    if cadence == "hourly":
-        return deepcopy(ts)
-
+def _convert_hydro_budget_time_series(ts: Any, cadence: str, capacity: float) -> Any:
+    """Convert ReEDS hourly capacity factors to PLEXOS hydro energy limits."""
     from infrasys import SingleTimeSeries
 
     if not isinstance(ts, SingleTimeSeries) or ts.resolution != timedelta(hours=1):
-        logger.warning(
-            "Cannot convert hydro_budget with type {} and resolution {}; leaving it unchanged.",
-            type(ts).__name__,
-            getattr(ts, "resolution", None),
+        raise ValueError(
+            "hydro_budget must be an hourly SingleTimeSeries; "
+            f"got {type(ts).__name__} with resolution {getattr(ts, 'resolution', None)}"
         )
-        return deepcopy(ts)
 
-    hourly_values = list(ts.data)
-    daily_values = [float(hourly_values[index]) for index in range(0, len(hourly_values), 24)]
+    hourly_values = [float(value) * capacity for value in ts.data]
 
-    if cadence == "daily":
-        values = daily_values
-        output_resolution = timedelta(days=1)
-    elif cadence == "weekly":
-        if len(daily_values) > 364:
-            values = [sum(daily_values[index : index + 7]) for index in range(0, 51 * 7, 7)]
-            values.append(sum(daily_values[51 * 7 :]))
-        else:
-            values = [sum(daily_values[index : index + 7]) for index in range(0, len(daily_values), 7)]
-        output_resolution = timedelta(days=7)
-    elif cadence == "monthly":
-        values = []
-        year = budget_year if budget_year is not None else ts.initial_timestamp.year
-        day_index = 0
-        while day_index < len(daily_values):
-            for month in range(1, 13):
-                days = monthrange(year, month)[1]
-                month_values = daily_values[day_index : day_index + days]
-                if not month_values:
-                    break
-                values.append(sum(month_values))
-                day_index += len(month_values)
-            year += 1
-        output_resolution = timedelta(days=30)
+    if cadence == "hourly":
+        values = hourly_values
+        output_resolution = timedelta(hours=1)
     else:
-        raise ValueError(f"Unsupported hydro budget resolution: {cadence}")
+        daily_values = [
+            sum(hourly_values[index : index + 24]) / 1000.0 for index in range(0, len(hourly_values), 24)
+        ]
 
-    values = [value / 1000.0 for value in values]
+        if cadence == "daily":
+            values = daily_values
+            output_resolution = timedelta(days=1)
+        elif cadence == "weekly":
+            if len(daily_values) > 364:
+                values = [sum(daily_values[index : index + 7]) for index in range(0, 51 * 7, 7)]
+                values.append(sum(daily_values[51 * 7 :]))
+            else:
+                values = [sum(daily_values[index : index + 7]) for index in range(0, len(daily_values), 7)]
+            output_resolution = timedelta(days=7)
+        elif cadence == "monthly":
+            values = []
+            year = ts.initial_timestamp.year
+            day_index = 0
+            while day_index < len(daily_values):
+                for month in range(1, 13):
+                    days = monthrange(year, month)[1]
+                    month_values = daily_values[day_index : day_index + days]
+                    if not month_values:
+                        break
+                    values.append(sum(month_values))
+                    day_index += len(month_values)
+                year += 1
+            output_resolution = timedelta(days=30)
+        else:
+            raise ValueError(f"Unsupported hydro budget resolution: {cadence}")
 
     return SingleTimeSeries.from_array(
         data=values,
@@ -184,45 +184,59 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
             continue
 
         if name in hydro_generators:
-            cadence = getattr(context.config, "hydro_budget_ts", "hourly")
+            hydro_gen = hydro_generators[name]
+            cadence = getattr(context.config, "hydro_budget_ts", "daily")
             source_keys = context.source_system.list_time_series_keys(source_gen)
             for ts_key in source_keys:
-                if ts_key.name != "hydro_budget":
+                if hydro_gen.is_dispatchable:
+                    if ts_key.name not in {"hydro_budget", "max_active_power"}:
+                        continue
+                elif ts_key.name != "max_active_power":
                     continue
+
+                if ts_key.name == "hydro_budget":
+                    target_name = "hydro_budget"
+                elif hydro_gen.is_dispatchable:
+                    target_name = "max_energy_hour"
+                else:
+                    target_name = "fixed_load"
                 for ts in context.source_system.list_time_series(
                     source_gen,
                     name=ts_key.name,
                     time_series_type=ts_key.time_series_type,
                     **ts_key.features,
                 ):
-                    if cadence == "hourly" and context.target_system.has_time_series(
+                    if ts_key.name != target_name and context.target_system.has_time_series(
                         target_gen,
-                        name=ts.name,
-                        time_series_type=type(ts),
-                        **ts_key.features,
-                    ):
-                        continue
-
-                    if context.target_system.has_time_series(
-                        target_gen,
-                        name=ts.name,
+                        name=ts_key.name,
                         time_series_type=type(ts),
                         **ts_key.features,
                     ):
                         context.target_system.remove_time_series(
                             target_gen,
-                            name=ts.name,
+                            name=ts_key.name,
                             time_series_type=type(ts),
                             **ts_key.features,
                         )
 
-                    solve_year = ts_key.features.get("solve_year")
-                    budget_year = int(solve_year) if solve_year is not None else None
-                    converted_ts = _convert_hydro_budget_time_series(
-                        ts,
-                        cadence,
-                        budget_year=budget_year,
-                    )
+                    if context.target_system.has_time_series(
+                        target_gen,
+                        name=target_name,
+                        time_series_type=type(ts),
+                        **ts_key.features,
+                    ):
+                        context.target_system.remove_time_series(
+                            target_gen,
+                            name=target_name,
+                            time_series_type=type(ts),
+                            **ts_key.features,
+                        )
+
+                    if ts_key.name == "hydro_budget":
+                        converted_ts = _convert_hydro_budget_time_series(ts, cadence, hydro_gen.capacity)
+                    else:
+                        converted_ts = deepcopy(ts)
+                        converted_ts.name = target_name
                     context.target_system.add_time_series(
                         converted_ts,
                         target_gen,

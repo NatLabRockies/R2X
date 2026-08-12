@@ -205,6 +205,7 @@ def test_basic_getters_return_values(tmp_path):
 
     # Hydro getters
     assert getters.hydro_min_flow(objs["hydro"], context).unwrap() == 0.0
+    assert getters.hydro_max_energy_per_day(objs["hydro"], context).unwrap() == 1e30
 
     # VRE category/resource class
     assert getters.vre_category_with_resource_class(objs["variable"], context).unwrap() == "wind-ons"

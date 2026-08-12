@@ -42,14 +42,14 @@ def test_attach_time_series_to_generators(context):
     getters_utils.attach_time_series_to_generators(context)
 
 
-def _hourly_hydro_budget(year: int = 2050, *, timestamp_year: int | None = None) -> SingleTimeSeries:
+def _hourly_hydro_budget(year: int = 2050) -> SingleTimeSeries:
     values: list[float] = []
     for month in range(1, 13):
-        values.extend([float(month)] * monthrange(year, month)[1] * 24)
+        values.extend([float(month) / 100.0] * monthrange(year, month)[1] * 24)
     return SingleTimeSeries.from_array(
         data=values,
         name="hydro_budget",
-        initial_timestamp=datetime(timestamp_year or year, 1, 1),
+        initial_timestamp=datetime(year, 1, 1),
         resolution=timedelta(hours=1),
     )
 
@@ -66,43 +66,60 @@ def _hourly_hydro_budget(year: int = 2050, *, timestamp_year: int | None = None)
 def test_convert_hydro_budget_time_series_resolution(resolution, expected_length, expected_resolution):
     source_ts = _hourly_hydro_budget()
 
-    converted = getters_utils._convert_hydro_budget_time_series(source_ts, resolution)
+    converted = getters_utils._convert_hydro_budget_time_series(source_ts, resolution, 5.0)
 
     assert len(converted.data) == expected_length
     assert converted.resolution == expected_resolution
 
 
-def test_convert_hydro_budget_time_series_converts_mwh_to_gwh():
+def test_convert_hydro_budget_time_series_converts_capacity_factor_to_energy():
     source_ts = _hourly_hydro_budget()
-    expected_total_gwh = sum(float(month) * monthrange(2050, month)[1] for month in range(1, 13)) / 1000.0
+    capacity = 5.0
+    expected_total_gwh = (
+        sum(float(month) / 100.0 * monthrange(2050, month)[1] * 24 for month in range(1, 13))
+        * capacity
+        / 1000.0
+    )
 
-    daily = getters_utils._convert_hydro_budget_time_series(source_ts, "daily")
-    weekly = getters_utils._convert_hydro_budget_time_series(source_ts, "weekly")
-    monthly = getters_utils._convert_hydro_budget_time_series(source_ts, "monthly")
+    hourly = getters_utils._convert_hydro_budget_time_series(source_ts, "hourly", capacity)
+    daily = getters_utils._convert_hydro_budget_time_series(source_ts, "daily", capacity)
+    weekly = getters_utils._convert_hydro_budget_time_series(source_ts, "weekly", capacity)
+    monthly = getters_utils._convert_hydro_budget_time_series(source_ts, "monthly", capacity)
 
-    assert list(monthly.data) == [
-        float(month) * monthrange(2050, month)[1] / 1000.0 for month in range(1, 13)
-    ]
+    assert list(monthly.data) == pytest.approx(
+        [float(month) / 100.0 * monthrange(2050, month)[1] * 24 * capacity / 1000.0 for month in range(1, 13)]
+    )
+    assert hourly.data[0] == pytest.approx(0.05)
     assert sum(daily.data) == pytest.approx(expected_total_gwh)
     assert sum(weekly.data) == pytest.approx(expected_total_gwh)
     assert sum(monthly.data) == pytest.approx(expected_total_gwh)
 
 
-def test_convert_monthly_hydro_budget_uses_solve_year_calendar():
-    source_ts = _hourly_hydro_budget(2050, timestamp_year=2012)
+def test_convert_monthly_hydro_budget_uses_time_series_calendar():
+    source_ts = _hourly_hydro_budget(2012)
 
-    converted = getters_utils._convert_hydro_budget_time_series(
-        source_ts,
-        "monthly",
-        budget_year=2050,
+    converted = getters_utils._convert_hydro_budget_time_series(source_ts, "monthly", 5.0)
+
+    assert list(converted.data) == pytest.approx(
+        [float(month) / 100.0 * monthrange(2012, month)[1] * 24 * 5.0 / 1000.0 for month in range(1, 13)]
     )
 
-    assert list(converted.data) == [
-        float(month) * monthrange(2050, month)[1] / 1000.0 for month in range(1, 13)
-    ]
+
+def test_convert_hydro_budget_time_series_rejects_non_hourly_series():
+    source_ts = SingleTimeSeries.from_array(
+        data=[0.5] * 365,
+        name="hydro_budget",
+        initial_timestamp=datetime(2050, 1, 1),
+        resolution=timedelta(days=1),
+    )
+
+    with pytest.raises(ValueError, match="must be an hourly SingleTimeSeries"):
+        getters_utils._convert_hydro_budget_time_series(source_ts, "daily", 5.0)
 
 
 def test_reeds_to_plexos_config_validates_hydro_budget_resolution():
+    assert ReedsToPlexosConfig().hydro_budget_ts == "daily"
+
     for resolution in ("hourly", "daily", "weekly", "monthly"):
         assert ReedsToPlexosConfig(hydro_budget_ts=resolution).hydro_budget_ts == resolution
 
@@ -136,6 +153,71 @@ def test_attach_time_series_to_generators_applies_hydro_budget_resolution(contex
     assert len(attached) == 1
     assert len(attached[0].data) == 12
     assert attached[0].resolution == timedelta(days=30)
+
+
+def test_attach_time_series_to_generators_maps_hydro_profiles(context):
+    from r2x_reeds.models.components import ReEDSHydroGenerator
+
+    region = ReEDSRegion(name="R1", transmission_region="Z1")
+    dispatchable = ReEDSHydroGenerator(
+        name="HYDRO_D",
+        region=region,
+        technology="hyded",
+        capacity=10.0,
+        is_dispatchable=True,
+    )
+    nondispatchable = ReEDSHydroGenerator(
+        name="HYDRO_ND",
+        region=region,
+        technology="hydnd",
+        capacity=8.0,
+        is_dispatchable=False,
+    )
+    context.source_system.add_component(region)
+    context.source_system.add_component(dispatchable)
+    context.source_system.add_component(nondispatchable)
+    dispatchable_target = PLEXOSGenerator(name="HYDRO_D")
+    nondispatchable_target = PLEXOSGenerator(name="HYDRO_ND")
+    context.target_system.add_component(dispatchable_target)
+    context.target_system.add_component(nondispatchable_target)
+
+    budget = _hourly_hydro_budget()
+    power = SingleTimeSeries.from_array(
+        data=[4.0] * 8760,
+        name="max_active_power",
+        initial_timestamp=datetime(2050, 1, 1),
+        resolution=timedelta(hours=1),
+    )
+    context.source_system.add_time_series(budget, dispatchable, solve_year=2050)
+    context.source_system.add_time_series(power, dispatchable, solve_year=2050)
+    context.source_system.add_time_series(power.model_copy(deep=True), nondispatchable, solve_year=2050)
+    context.target_system.add_time_series(power.model_copy(deep=True), dispatchable_target, solve_year=2050)
+    context.target_system.add_time_series(
+        power.model_copy(deep=True), nondispatchable_target, solve_year=2050
+    )
+    context.config = ReedsToPlexosConfig()
+
+    getters_utils.attach_time_series_to_generators(context)
+
+    dispatchable_budget = context.target_system.list_time_series(
+        dispatchable_target, name="hydro_budget", solve_year=2050
+    )
+    dispatchable_limit = context.target_system.list_time_series(
+        dispatchable_target, name="max_energy_hour", solve_year=2050
+    )
+    nondispatchable_output = context.target_system.list_time_series(
+        nondispatchable_target, name="fixed_load", solve_year=2050
+    )
+    assert len(dispatchable_budget) == 1
+    assert dispatchable_budget[0].resolution == timedelta(days=1)
+    assert list(dispatchable_limit[0].data) == list(power.data)
+    assert list(nondispatchable_output[0].data) == list(power.data)
+    assert not context.target_system.has_time_series(
+        dispatchable_target, name="max_active_power", solve_year=2050
+    )
+    assert not context.target_system.has_time_series(
+        nondispatchable_target, name="max_active_power", solve_year=2050
+    )
 
 
 def test_attach_time_series_to_purchasers(context, monkeypatch):
