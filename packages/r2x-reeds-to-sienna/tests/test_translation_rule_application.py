@@ -280,7 +280,7 @@ def test_reeds_pumped_hydro_translates_to_turbine_and_reservoirs(tmp_path) -> No
             vom_cost=0.38,
         )
     )
-    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
 
     result = apply_rules_to_context(context)
@@ -300,10 +300,10 @@ def test_reeds_pumped_hydro_translates_to_turbine_and_reservoirs(tmp_path) -> No
     tail = reservoirs_by_name["PSH1_tail"]
 
     assert turbine.name == "PSH1"
-    assert turbine.rating == 50.0
+    assert turbine.rating == 1.0
     assert turbine.base_power == 50.0
-    assert turbine.active_power_limits.max == 50.0
-    assert turbine.active_power_limits_pump.max == 50.0
+    assert turbine.active_power_limits.max == 1.0
+    assert turbine.active_power_limits_pump.max == 1.0
     assert turbine.time_at_status == 0.0
     assert turbine.efficiency.turbine == 1.0
     assert turbine.efficiency.pump == 0.8

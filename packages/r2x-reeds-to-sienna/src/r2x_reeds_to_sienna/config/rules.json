@@ -324,7 +324,7 @@
       "bus": "get_bus_for_region",
       "services": "get_gen_services",
       "rating": "storage_rating",
-      "base_power": "storage_rating",
+      "base_power": "storage_base_power",
       "active_power_limits": "storage_power_limits",
       "active_power_limits_pump": "storage_power_limits",
       "efficiency": "pumped_hydro_efficiency",

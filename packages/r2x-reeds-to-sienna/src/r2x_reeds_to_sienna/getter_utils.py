@@ -37,7 +37,6 @@ def _get_source_max_active_power(component: Any) -> float | None:
 
 def normalize_max_active_power_time_series(context: PluginContext) -> None:
     """Normalize ReEDS MW profiles for PowerSystems scaling during serialization."""
-    from infrasys import SingleTimeSeries
     from infrasys.normalization import NormalizationByValue
     from r2x_sienna.exporter import set_time_series_scaling_factor_multiplier
 
