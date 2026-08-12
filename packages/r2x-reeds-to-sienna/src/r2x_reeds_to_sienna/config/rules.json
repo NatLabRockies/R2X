@@ -224,6 +224,11 @@
       "uuid": "uuid",
       "category": "technology"
     },
+    "filter": {
+      "field": "is_dispatchable",
+      "op": "eq",
+      "values": [true]
+    },
     "getters": {
       "bus": "get_bus_for_region",
       "active_power": "get_zero_active_power",
@@ -243,6 +248,38 @@
     "depends_on": ["region_bus", "variable_reserve"],
     "source_type": "ReEDSHydroGenerator",
     "target_type": "HydroDispatch",
+    "version": 1
+  },
+  {
+    "name": "hydro_gen_nondispatch",
+    "defaults": {
+      "category": "hydro",
+      "active_power": 0.0,
+      "reactive_power": 0.0
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "technology"
+    },
+    "filter": {
+      "field": "is_dispatchable",
+      "op": "eq",
+      "values": [false]
+    },
+    "getters": {
+      "bus": "get_bus_for_region",
+      "active_power": "get_zero_active_power",
+      "services": "get_gen_services",
+      "reactive_power": "get_zero_reactive_power",
+      "rating": "hydro_rating",
+      "base_power": "hydro_base_power",
+      "prime_mover_type": "get_hydro_prime_mover",
+      "ext": "nondispatchable_hydro_ext"
+    },
+    "depends_on": ["region_bus", "variable_reserve"],
+    "source_type": "ReEDSHydroGenerator",
+    "target_type": "RenewableNonDispatch",
     "version": 1
   },
   {
