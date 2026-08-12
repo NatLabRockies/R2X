@@ -190,6 +190,7 @@ def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
             capacity=100.0,
             is_dispatchable=True,
             ramp_rate=10.0,
+            vom_cost=1.02,
         )
     )
     context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
@@ -210,6 +211,9 @@ def test_reeds_hydro_translates_to_hydro_dispatch(tmp_path) -> None:
     assert hydro.ramp_limits.up == pytest.approx(10.0 / 60.0)
     assert hydro.time_limits.up == 0.0
     assert hydro.time_limits.down == 0.0
+    assert hydro.operation_cost.fixed == 0.0
+    assert hydro.operation_cost.variable is not None
+    assert hydro.operation_cost.variable.vom_cost.function_data.proportional_term == pytest.approx(1.02)
 
 
 def test_reeds_storage_translates_to_energy_reservoir(tmp_path) -> None:
@@ -249,6 +253,75 @@ def test_reeds_storage_translates_to_energy_reservoir(tmp_path) -> None:
     assert storage.output_active_power_limits.max == 1.0
     assert storage.efficiency.input == pytest.approx(0.85)
     assert storage.efficiency.output == pytest.approx(1.0)
+
+
+def test_reeds_pumped_hydro_translates_to_turbine_and_reservoirs(tmp_path) -> None:
+    from r2x_reeds.models import ReEDSRegion, ReEDSStorage
+    from r2x_sienna.models import (
+        EnergyReservoirStorage,
+        HydroPumpTurbine,
+        HydroReservoir,
+        ReservoirDataType,
+        ReservoirLocation,
+    )
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", category="region")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSStorage(
+            name="PSH1",
+            region=region,
+            technology="pumped-hydro",
+            capacity=50.0,
+            storage_duration=4.0,
+            round_trip_efficiency=0.8,
+            vom_cost=0.38,
+        )
+    )
+    context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
+    context.rules = rules
+
+    result = apply_rules_to_context(context)
+    assert result.total_rules > 0
+
+    assert list(context.target_system.get_components(EnergyReservoirStorage)) == []
+
+    turbines = list(context.target_system.get_components(HydroPumpTurbine))
+    reservoirs = list(context.target_system.get_components(HydroReservoir))
+
+    assert len(turbines) == 1
+    assert len(reservoirs) == 2
+
+    turbine = turbines[0]
+    reservoirs_by_name = {reservoir.name: reservoir for reservoir in reservoirs}
+    head = reservoirs_by_name["PSH1_head"]
+    tail = reservoirs_by_name["PSH1_tail"]
+
+    assert turbine.name == "PSH1"
+    assert turbine.rating == 1.0
+    assert turbine.base_power == 50.0
+    assert turbine.active_power_limits.max == 1.0
+    assert turbine.active_power_limits_pump.max == 1.0
+    assert turbine.time_at_status == 0.0
+    assert turbine.efficiency.turbine == 1.0
+    assert turbine.efficiency.pump == 0.8
+    assert turbine.operation_cost.fixed == 0.0
+    assert turbine.operation_cost.variable is not None
+    assert turbine.operation_cost.variable.vom_cost.function_data.proportional_term == 0.0
+    assert turbine.ext["reeds_vom_cost"] == pytest.approx(0.38)
+
+    assert head.storage_level_limits.max == 200.0
+    assert tail.storage_level_limits.max == 200.0
+    assert head.initial_level == 0.5
+    assert tail.initial_level == 0.5
+    assert head.level_data_type == ReservoirDataType.ENERGY
+    assert tail.level_data_type == ReservoirDataType.ENERGY
+    assert head.reservoir_location == ReservoirLocation.HEAD
+    assert tail.reservoir_location == ReservoirLocation.TAIL
+    assert head.downstream_turbines == [turbine]
+    assert tail.upstream_turbines == [turbine]
 
 
 def test_reeds_demand_translates_to_power_load(tmp_path) -> None:
@@ -572,7 +645,12 @@ def test_gen_services_attaches_non_spinning_reserve_to_generator(tmp_path) -> No
     an empty services list even after the reserve was translated.
     """
     from r2x_reeds.models import ReEDSRegion, ReEDSReserve, ReEDSStorage, ReEDSThermalGenerator
-    from r2x_sienna.models import EnergyReservoirStorage, ThermalStandard, VariableReserveNonSpinning
+    from r2x_sienna.models import (
+        EnergyReservoirStorage,
+        HydroPumpTurbine,
+        ThermalStandard,
+        VariableReserveNonSpinning,
+    )
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
@@ -611,6 +689,17 @@ def test_gen_services_attaches_non_spinning_reserve_to_generator(tmp_path) -> No
             ext={"reserves": ["NON_SPIN_UP"]},
         )
     )
+    context.source_system.add_component(
+        ReEDSStorage(
+            name="PSH1",
+            region=region,
+            technology="pumped-hydro",
+            capacity=50.0,
+            storage_duration=12.0,
+            round_trip_efficiency=0.8,
+            ext={"reserves": ["NON_SPIN_UP"]},
+        )
+    )
 
     context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
@@ -632,6 +721,12 @@ def test_gen_services_attaches_non_spinning_reserve_to_generator(tmp_path) -> No
     assert (
         non_spin in storages[0].services
     ), "EnergyReservoirStorage must have the VariableReserveNonSpinning in its services"
+
+    pumped_hydro = list(context.target_system.get_components(HydroPumpTurbine))
+    assert len(pumped_hydro) == 1
+    assert (
+        non_spin in pumped_hydro[0].services
+    ), "HydroPumpTurbine must have the VariableReserveNonSpinning in its services"
 
 
 def test_reeds_spinning_reserve_does_not_produce_non_spinning(tmp_path) -> None:

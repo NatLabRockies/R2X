@@ -372,6 +372,7 @@
       "min_stable_level": "min_stable_level_mw",
       "pump_efficiency": "get_generator_pump_efficiency_percent",
       "pump_load": "get_generator_pump_load_mw",
+      "vom_charge": "storage_vom_cost_energy",
       "commit": "get_commitment_status"
     },
     "source_type": "ReEDSStorage",

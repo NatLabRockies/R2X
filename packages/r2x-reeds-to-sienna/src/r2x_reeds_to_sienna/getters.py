@@ -10,9 +10,14 @@ from typing import TYPE_CHECKING, Any, cast
 from infrasys.cost_curves import CostCurve, FuelCurve, LinearCurve
 from infrasys.cost_curves import UnitSystem as InfraUnitSystem
 from r2x_sienna.models import ACBus, Arc
-from r2x_sienna.models.costs import HydroGenerationCost, RenewableGenerationCost, ThermalGenerationCost
+from r2x_sienna.models.costs import (
+    HydroGenerationCost,
+    HydroReservoirCost,
+    RenewableGenerationCost,
+    ThermalGenerationCost,
+)
 from r2x_sienna.models.enums import ACBusTypes, PrimeMoversType, StorageTechs, ThermalFuels
-from r2x_sienna.models.named_tuples import FromTo_ToFrom, InputOutput, MinMax, UpDown
+from r2x_sienna.models.named_tuples import FromTo_ToFrom, InputOutput, MinMax, TurbinePump, UpDown
 from r2x_sienna.units import ureg
 
 from r2x_core import Err, Ok, Result
@@ -108,17 +113,13 @@ def _lookup_area(context: PluginContext, name: str | None) -> Area | None:
     return None
 
 
-@getter
-def get_component_ext(component: object, context: PluginContext) -> Result[dict, ValueError]:
-    """
-    Get the component's ext dict, storing the technology name under the 'technology' key
-    and the ReEDS line type under the 'reeds_line_type' key.
-    """
+def _component_ext(component: object) -> dict:
+    """Copy component metadata and include its technology name and ReEDS line type."""
     ext = getattr(component, "ext", None)
     if ext is None:
         ext = {}
     elif not isinstance(ext, dict):
-        return Err(ValueError("Component ext attribute is not a dict"))
+        raise ValueError("Component ext attribute is not a dict")
 
     ext = dict(ext)
     technology = getattr(component, "technology", None)
@@ -129,7 +130,19 @@ def get_component_ext(component: object, context: PluginContext) -> Result[dict,
     if line_type is not None:
         ext["reeds_line_type"] = line_type
 
-    return Ok(ext)
+    return ext
+
+
+@getter
+def get_component_ext(component: object, context: PluginContext) -> Result[dict, ValueError]:
+    """
+    Get the component's ext dict, storing the technology name under the 'technology' key
+    and the ReEDS line type under the 'reeds_line_type' key.
+    """
+    try:
+        return Ok(_component_ext(component))
+    except ValueError as e:
+        return Err(e)
 
 
 @getter
@@ -958,16 +971,17 @@ def hydro_time_limits(component: ReEDSHydroGenerator, context: PluginContext) ->
 def hydro_operation_cost(
     component: ReEDSHydroGenerator, context: PluginContext
 ) -> Result[HydroGenerationCost, ValueError]:
-    """Return zeroed hydro cost."""
+    """Map ReEDS variable O&M to a hydro generation cost."""
     from r2x_sienna.models.costs import HydroGenerationCost
 
+    vom_cost = float(getattr(component, "vom_cost", 0.0) or 0.0)
     return Ok(
         HydroGenerationCost(
             fixed=0.0,
             variable=CostCurve(
-                value_curve=LinearCurve(10),
+                value_curve=LinearCurve(0.0),
                 power_units=InfraUnitSystem.NATURAL_UNITS,
-                vom_cost=LinearCurve(5.0),
+                vom_cost=LinearCurve(vom_cost),
             ),
         )
     )
@@ -984,6 +998,16 @@ def storage_rating(component: ReEDSStorage, context: PluginContext) -> Result[fl
 def storage_base_power(component: ReEDSStorage, context: PluginContext) -> Result[float | int, ValueError]:
     """Use storage capacity in MW as its device base power."""
     return _ok_num(float(getattr(component, "capacity", 0.0) or 0.0))
+
+
+def _storage_capacity_mwh(component: ReEDSStorage) -> float:
+    """Energy capacity from explicit value or duration * power."""
+    energy = getattr(component, "energy_capacity", None)
+    if energy is not None:
+        return float(energy)
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+    duration = float(getattr(component, "storage_duration", 0.0) or 0.0)
+    return capacity * duration
 
 
 @getter
@@ -1050,6 +1074,93 @@ def storage_conversion_factor(
 ) -> Result[float | int, ValueError]:
     """Default conversion factor."""
     return _ok_num(1.0)
+
+
+@getter
+def pumped_hydro_head_name(component: ReEDSStorage, context: PluginContext) -> Result[str, ValueError]:
+    """Append the head-reservoir suffix to a pumped-hydro component name."""
+    return Ok(f"{component.name}_head")
+
+
+@getter
+def pumped_hydro_tail_name(component: ReEDSStorage, context: PluginContext) -> Result[str, ValueError]:
+    """Append the tail-reservoir suffix to a pumped-hydro component name."""
+    return Ok(f"{component.name}_tail")
+
+
+@getter
+def pumped_hydro_storage_level_limits(
+    component: ReEDSStorage, context: PluginContext
+) -> Result[MinMax, ValueError]:
+    """Return pumped-hydro reservoir limits in MWh."""
+    return Ok(MinMax(min=0.0, max=_storage_capacity_mwh(component)))
+
+
+@getter
+def pumped_hydro_efficiency(
+    component: ReEDSStorage, context: PluginContext
+) -> Result[TurbinePump, ValueError]:
+    """Apply the ReEDS storage efficiency to pumping only."""
+    efficiency = float(getattr(component, "round_trip_efficiency", 1.0) or 1.0)
+    return Ok(TurbinePump(turbine=1.0, pump=efficiency))
+
+
+@getter
+def pumped_hydro_operation_cost(
+    component: ReEDSStorage, context: PluginContext
+) -> Result[HydroGenerationCost, ValueError]:
+    """Return a zero operating cost for pumped hydro."""
+    # ReEDS applies pumped-hydro VOM only to generation, while HydroPowerSimulations applies
+    # this shared cost to both generation and pumping. We set it to zero to avoid
+    # charging the generation-only ReEDS VOM during pumping. The original value
+    # is preserved in the component metadata by pumped_hydro_ext.
+    return Ok(
+        HydroGenerationCost(
+            fixed=0.0,
+            variable=CostCurve(
+                value_curve=LinearCurve(0.0),
+                power_units=InfraUnitSystem.NATURAL_UNITS,
+                vom_cost=LinearCurve(0.0),
+            ),
+        )
+    )
+
+
+@getter
+def pumped_hydro_ext(component: ReEDSStorage, context: PluginContext) -> Result[dict, ValueError]:
+    """Preserve the generation-only ReEDS VOM in pumped-hydro metadata."""
+    try:
+        ext = _component_ext(component)
+    except ValueError as e:
+        return Err(e)
+    ext["reeds_vom_cost"] = float(getattr(component, "vom_cost", 0.0) or 0.0)
+    return Ok(ext)
+
+
+@getter
+def hydro_reservoir_operation_cost(
+    component: ReEDSStorage, context: PluginContext
+) -> Result[HydroReservoirCost, ValueError]:
+    """Return a zeroed operating cost for a pumped-hydro reservoir."""
+    return Ok(HydroReservoirCost())
+
+
+@getter
+def get_pumped_hydro_turbine(component: ReEDSStorage, context: PluginContext) -> Result[list, ValueError]:
+    """Return the translated pumped-hydro turbine for reservoir linkage."""
+    from r2x_sienna.models import HydroPumpTurbine
+
+    turbine = next(
+        (
+            candidate
+            for candidate in _target_system(context).get_components(HydroPumpTurbine)
+            if candidate.name == component.name
+        ),
+        None,
+    )
+    if turbine is None:
+        return Err(ValueError(f"Could not find HydroPumpTurbine for {component.name}"))
+    return Ok([turbine])
 
 
 @getter

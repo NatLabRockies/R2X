@@ -336,6 +336,23 @@ def test_bus_number_with_z_prefix(tmp_path) -> None:
     assert result == 122
 
 
+def test_get_pumped_hydro_turbine_returns_error_when_missing(tmp_path) -> None:
+    """The pumped-hydro linkage getter reports a missing turbine."""
+    context = make_context(tmp_path)
+    context.target_system = System(name="target")
+    region = ReEDSRegion(name="p1")
+    storage = ReEDSStorage(
+        name="p1_PSH",
+        region=region,
+        technology="pumped-hydro",
+        capacity=4.0,
+        storage_duration=2.0,
+        round_trip_efficiency=0.8,
+    )
+
+    assert getters.get_pumped_hydro_turbine(storage, context).is_err()
+
+
 def test_get_gen_services_all_generator_types(tmp_path) -> None:
     """get_gen_services must work for all generator types, not just thermal.
 

@@ -158,6 +158,38 @@ def test_reeds_storage_translates_to_plexos_storage(tmp_path) -> None:
     )
 
 
+def test_reeds_pumped_hydro_vom_translates_to_plexos(tmp_path) -> None:
+    from r2x_plexos.models import PLEXOSGenerator
+    from r2x_reeds.models import ReEDSRegion, ReEDSStorage
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", transmission_region="Z1")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSStorage(
+            name="PUMPED_HYDRO1",
+            region=region,
+            technology="pumped-hydro",
+            capacity=50.0,
+            storage_duration=12.0,
+            round_trip_efficiency=0.8,
+            vom_cost=0.38,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    result = apply_rules_to_context(context)
+    assert result.total_rules > 0
+
+    generators = list(context.target_system.get_components(PLEXOSGenerator))
+    assert len(generators) == 1
+    generator = generators[0]
+    assert generator.name == "PUMPED_HYDRO1"
+    assert generator.vom_charge == 0.38
+
+
 def test_reeds_interface_translates_to_plexos_interface(tmp_path) -> None:
     from r2x_plexos.models import PLEXOSInterface
     from r2x_reeds.models import FromTo_ToFrom, ReEDSInterface, ReEDSRegion, ReEDSTransmissionLine

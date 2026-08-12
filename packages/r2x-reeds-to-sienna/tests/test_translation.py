@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+import numpy as np
 import pytest
 from infrasys import SingleTimeSeries
 from infrasys.normalization import NormalizationByValue
@@ -30,6 +31,8 @@ from r2x_sienna.models import (
     AreaInterchange,
     EnergyReservoirStorage,
     HydroDispatch,
+    HydroPumpTurbine,
+    HydroReservoir,
     Line,
     PowerLoad,
     RenewableDispatch,
@@ -206,6 +209,49 @@ def test_reeds_to_sienna_translates_storage():
 
     storages = list(result.get_components(EnergyReservoirStorage))
     assert any(s.name == "battery_p1" for s in storages)
+
+
+def test_reeds_to_sienna_attaches_pumped_hydro_inflow_time_series():
+    source = _build_source_system()
+    region = source.get_component(ReEDSRegion, name="p1")
+    demand = source.get_component(ReEDSDemand, name="load_p1")
+    source.add_component(
+        ReEDSStorage(
+            name="pumped-hydro_p1",
+            category="pumped-hydro",
+            region=region,
+            technology="pumped-hydro",
+            capacity=50.0,
+            storage_duration=4.0,
+            round_trip_efficiency=0.8,
+        )
+    )
+    reference = SingleTimeSeries.from_array(
+        data=np.arange(24, dtype=float),
+        name="max_active_power",
+        initial_timestamp=datetime(2012, 1, 1),
+        resolution=timedelta(hours=1),
+    )
+    source.add_time_series(reference, demand, solve_year=2050, weather_year=2012)
+
+    result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
+
+    turbine = result.get_component(HydroPumpTurbine, name="pumped-hydro_p1")
+    reservoirs = list(result.get_components(HydroReservoir))
+    assert len(reservoirs) == 2
+    for reservoir in reservoirs:
+        inflow = result.list_time_series(
+            reservoir,
+            name="inflow",
+            solve_year=2050,
+            weather_year=2012,
+        )
+        assert len(inflow) == 1
+        assert np.array_equal(inflow[0].data, np.zeros(24))
+        assert inflow[0].initial_timestamp == reference.initial_timestamp
+        assert inflow[0].resolution == reference.resolution
+
+    assert not result.has_time_series(turbine, name="inflow")
 
 
 def test_reeds_to_sienna_translates_demand_to_load():
