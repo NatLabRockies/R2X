@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.1](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-sienna-v0.2.0...r2x-reeds-to-sienna-v0.2.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* Fix ReEDS-Sienna natural unit serialization ([#311](https://github.com/NatLabRockies/R2X/issues/311)) ([399d173](https://github.com/NatLabRockies/R2X/commit/399d1732e60386c6a27b5697d2c5ee82107f9a04))
+* Map ReEDS hydro by operating mode in Sienna ([#305](https://github.com/NatLabRockies/R2X/issues/305)) ([3336fed](https://github.com/NatLabRockies/R2X/commit/3336fed870a00c2bcc292e1985b459e539896332))
+* mix fixes across packages based on recent runs and observations ([#289](https://github.com/NatLabRockies/R2X/issues/289)) ([8f1e6f5](https://github.com/NatLabRockies/R2X/commit/8f1e6f5e9157b65d7d7cf9577be6211c9632c756))
+* Normalize Sienna max_active_power timeseries ([#304](https://github.com/NatLabRockies/R2X/issues/304)) ([3a77498](https://github.com/NatLabRockies/R2X/commit/3a774987330ac48f3a4087f9f491793bc9627f49))
+* ReEDS consuming technology mapping in Sienna ([#312](https://github.com/NatLabRockies/R2X/issues/312)) ([e3ebd67](https://github.com/NatLabRockies/R2X/commit/e3ebd6770f1fe7f28319c587855b73edebcab4d7))
+* ReEDS data center demand mapping to Sienna ([#297](https://github.com/NatLabRockies/R2X/issues/297)) ([5c0fcb3](https://github.com/NatLabRockies/R2X/commit/5c0fcb36f7ae7653ec1c545a2a792ec7cff4b87f))
+* ReEDS pumped hydro mapping and hydro operating costs ([#303](https://github.com/NatLabRockies/R2X/issues/303)) ([1ef5875](https://github.com/NatLabRockies/R2X/commit/1ef58758a720cdcdfb649899caf27b6854fd052e))
+* ReEDS storage efficiency mapping in PLEXOS and Sienna ([#300](https://github.com/NatLabRockies/R2X/issues/300)) ([c4b12ae](https://github.com/NatLabRockies/R2X/commit/c4b12aef37c1450be177f41f3822493cbf2c43d6))
+* ReEDS transmission mappings for Sienna and PLEXOS ([#298](https://github.com/NatLabRockies/R2X/issues/298)) ([27786c2](https://github.com/NatLabRockies/R2X/commit/27786c24ecdc6ad9aa4fbdbd7280f1e0683a2db1))
+* Translate smr and smr_ccs correctly in PLEXOS and Sienna ([#296](https://github.com/NatLabRockies/R2X/issues/296)) ([265a308](https://github.com/NatLabRockies/R2X/commit/265a308274926441dc5f3994e7f8c2a0084c27bb))
+
+
+### Build
+
+* **deps-dev:** bump prek from 0.4.3 to 0.4.5 ([#280](https://github.com/NatLabRockies/R2X/issues/280)) ([7d19ed6](https://github.com/NatLabRockies/R2X/commit/7d19ed636f02eec3d12511068f51a5afa2d3951e))
+
 ## [0.2.0](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-sienna-v0.1.0...r2x-reeds-to-sienna-v0.2.0) (2026-06-22)
 
 
