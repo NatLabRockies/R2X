@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/NatLabRockies/R2X/compare/r2x-sienna-to-plexos-v0.2.0...r2x-sienna-to-plexos-v0.3.0) (2026-08-13)
+
+
+### Features
+
+* update translation to match latest EI codebase ([#307](https://github.com/NatLabRockies/R2X/issues/307)) ([3719f3f](https://github.com/NatLabRockies/R2X/commit/3719f3fe12e5e7f61f16547d17a2c1871af794b7))
+
+
+### Bug Fixes
+
+* bump dependencies for correctly release on r2x ([#301](https://github.com/NatLabRockies/R2X/issues/301)) ([68aa5d6](https://github.com/NatLabRockies/R2X/commit/68aa5d6923cf0126b3d48e37ad6e7b36edda1ac4))
+* mix fixes across packages based on recent runs and observations ([#289](https://github.com/NatLabRockies/R2X/issues/289)) ([8f1e6f5](https://github.com/NatLabRockies/R2X/commit/8f1e6f5e9157b65d7d7cf9577be6211c9632c756))
+
+
+### Build
+
+* **deps-dev:** bump prek from 0.4.3 to 0.4.5 ([#280](https://github.com/NatLabRockies/R2X/issues/280)) ([7d19ed6](https://github.com/NatLabRockies/R2X/commit/7d19ed636f02eec3d12511068f51a5afa2d3951e))
+
 ## [0.2.0](https://github.com/NatLabRockies/R2X/compare/r2x-sienna-to-plexos-v0.1.0...r2x-sienna-to-plexos-v0.2.0) (2026-06-22)
 
 
