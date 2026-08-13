@@ -1,5 +1,41 @@
 # Changelog
 
+## [2.2.0](https://github.com/NatLabRockies/R2X/compare/r2x-v2.1.0...r2x-v2.2.0) (2026-08-13)
+
+
+### Features
+
+* update translation to match latest EI codebase ([#307](https://github.com/NatLabRockies/R2X/issues/307)) ([3719f3f](https://github.com/NatLabRockies/R2X/commit/3719f3fe12e5e7f61f16547d17a2c1871af794b7))
+
+
+### Bug Fixes
+
+* bump dependencies for correctly release on r2x ([#301](https://github.com/NatLabRockies/R2X/issues/301)) ([68aa5d6](https://github.com/NatLabRockies/R2X/commit/68aa5d6923cf0126b3d48e37ad6e7b36edda1ac4))
+* Fix ReEDS-Sienna natural unit serialization ([#311](https://github.com/NatLabRockies/R2X/issues/311)) ([399d173](https://github.com/NatLabRockies/R2X/commit/399d1732e60386c6a27b5697d2c5ee82107f9a04))
+* Map ReEDS hydro by operating mode in Sienna ([#305](https://github.com/NatLabRockies/R2X/issues/305)) ([3336fed](https://github.com/NatLabRockies/R2X/commit/3336fed870a00c2bcc292e1985b459e539896332))
+* mix fixes across packages based on recent runs and observations ([#289](https://github.com/NatLabRockies/R2X/issues/289)) ([8f1e6f5](https://github.com/NatLabRockies/R2X/commit/8f1e6f5e9157b65d7d7cf9577be6211c9632c756))
+* Normalize Sienna max_active_power timeseries ([#304](https://github.com/NatLabRockies/R2X/issues/304)) ([3a77498](https://github.com/NatLabRockies/R2X/commit/3a774987330ac48f3a4087f9f491793bc9627f49))
+* ReEDS consuming technology mapping in Sienna ([#312](https://github.com/NatLabRockies/R2X/issues/312)) ([e3ebd67](https://github.com/NatLabRockies/R2X/commit/e3ebd6770f1fe7f28319c587855b73edebcab4d7))
+* ReEDS data center demand mapping to Sienna ([#297](https://github.com/NatLabRockies/R2X/issues/297)) ([5c0fcb3](https://github.com/NatLabRockies/R2X/commit/5c0fcb36f7ae7653ec1c545a2a792ec7cff4b87f))
+* ReEDS hydro operating mode translation to PLEXOS ([#306](https://github.com/NatLabRockies/R2X/issues/306)) ([62039c5](https://github.com/NatLabRockies/R2X/commit/62039c52552a725d9254697bfab916dbcd1f9e7d))
+* ReEDS pumped hydro mapping and hydro operating costs ([#303](https://github.com/NatLabRockies/R2X/issues/303)) ([1ef5875](https://github.com/NatLabRockies/R2X/commit/1ef58758a720cdcdfb649899caf27b6854fd052e))
+* ReEDS storage efficiency mapping in PLEXOS and Sienna ([#300](https://github.com/NatLabRockies/R2X/issues/300)) ([c4b12ae](https://github.com/NatLabRockies/R2X/commit/c4b12aef37c1450be177f41f3822493cbf2c43d6))
+* ReEDS transmission mappings for Sienna and PLEXOS ([#298](https://github.com/NatLabRockies/R2X/issues/298)) ([27786c2](https://github.com/NatLabRockies/R2X/commit/27786c24ecdc6ad9aa4fbdbd7280f1e0683a2db1))
+* remove capacity factor getter entry from r2p translations ([#285](https://github.com/NatLabRockies/R2X/issues/285)) ([d083095](https://github.com/NatLabRockies/R2X/commit/d083095940e9b37d39be510a718a377df73a1b93))
+* resolve r2p load participation factor for region/nodes ([#282](https://github.com/NatLabRockies/R2X/issues/282)) ([051fc89](https://github.com/NatLabRockies/R2X/commit/051fc89bbb8ed478faabd92a6affc5106f3a08bc))
+* Translate smr and smr_ccs correctly in PLEXOS and Sienna ([#296](https://github.com/NatLabRockies/R2X/issues/296)) ([265a308](https://github.com/NatLabRockies/R2X/commit/265a308274926441dc5f3994e7f8c2a0084c27bb))
+* update wheel charging for lines params ([#309](https://github.com/NatLabRockies/R2X/issues/309)) ([334f408](https://github.com/NatLabRockies/R2X/commit/334f40871dc04dffc88002e1a9f8c290b21683c8))
+
+
+### Build
+
+* **deps-dev:** bump prek from 0.4.3 to 0.4.5 ([#280](https://github.com/NatLabRockies/R2X/issues/280)) ([7d19ed6](https://github.com/NatLabRockies/R2X/commit/7d19ed636f02eec3d12511068f51a5afa2d3951e))
+* **deps-dev:** bump ruff from 0.6.9 to 0.15.17 ([#279](https://github.com/NatLabRockies/R2X/issues/279)) ([3b39b1b](https://github.com/NatLabRockies/R2X/commit/3b39b1b0f49a1b2cd944ab329eab6be156ea33c4))
+* **deps:** bump actions/checkout from 6.0.3 to 7.0.1 ([#291](https://github.com/NatLabRockies/R2X/issues/291)) ([8126f95](https://github.com/NatLabRockies/R2X/commit/8126f95c9cb14a811f2847a99b3b40c1919a52f7))
+* **deps:** bump actions/labeler from 6.1.0 to 7.0.0 ([#293](https://github.com/NatLabRockies/R2X/issues/293)) ([3629589](https://github.com/NatLabRockies/R2X/commit/3629589b9ea7896aa71657ebd36021cc1b839ffc))
+* **deps:** bump astral-sh/setup-uv from 8.2.0 to 9.0.0 ([#290](https://github.com/NatLabRockies/R2X/issues/290)) ([9aa13e2](https://github.com/NatLabRockies/R2X/commit/9aa13e2b5963cd0ed4b6beb84f0397f61a0052f3))
+* **deps:** bump pypa/gh-action-pypi-publish from 1.14.0 to 1.14.2 ([#310](https://github.com/NatLabRockies/R2X/issues/310)) ([9986d1c](https://github.com/NatLabRockies/R2X/commit/9986d1c9498eed8c1ed87cd489a220f2b0bc5ef4))
+
 ## [2.1.0](https://github.com/NatLabRockies/R2X/compare/r2x-v2.0.0...r2x-v2.1.0) (2026-06-22)
 
 
