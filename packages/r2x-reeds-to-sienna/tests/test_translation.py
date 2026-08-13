@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
+import numpy as np
 import pytest
+from infrasys import SingleTimeSeries
+from infrasys.normalization import NormalizationByValue
 from r2x_reeds.models import (
     EmissionType,
     FromTo_ToFrom,
@@ -26,6 +31,8 @@ from r2x_sienna.models import (
     AreaInterchange,
     EnergyReservoirStorage,
     HydroDispatch,
+    HydroPumpTurbine,
+    HydroReservoir,
     Line,
     PowerLoad,
     RenewableDispatch,
@@ -115,6 +122,7 @@ def test_reeds_to_sienna_returns_system():
 
     assert isinstance(result, System)
     assert result.name == "Sienna"
+    assert result.base_power == 100.0
 
 
 def test_reeds_to_sienna_translates_region_to_bus():
@@ -152,6 +160,41 @@ def test_reeds_to_sienna_translates_wind_to_renewable_dispatch():
     assert any(r.name == "wind-ons_p1" for r in renewables)
 
 
+def test_reeds_to_sienna_normalizes_max_active_power_time_series(monkeypatch):
+    source = _build_source_system()
+    source_wind = source.get_component(ReEDSVariableGenerator, "wind-ons_p1")
+    scaling_calls = []
+
+    def record_scaling_call(system, owner, name, function_name):
+        scaling_calls.append((system, owner, name, function_name))
+
+    monkeypatch.setattr(
+        "r2x_sienna.exporter.set_time_series_scaling_factor_multiplier",
+        record_scaling_call,
+    )
+    source_profile = SingleTimeSeries.from_array(
+        data=[0.0, 37.5, 75.0],
+        name="max_active_power",
+        initial_timestamp=datetime(2012, 1, 1),
+        resolution=timedelta(hours=1),
+    )
+    source.add_time_series(source_profile, source_wind)
+
+    result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
+
+    target_wind = result.get_component(RenewableDispatch, "wind-ons_p1")
+    target_profile = result.get_time_series(target_wind, name="max_active_power")
+    target_metadata = result.list_time_series_metadata(target_wind, name="max_active_power")[0]
+    preserved_source = source.get_time_series(source_wind, name="max_active_power")
+
+    assert isinstance(target_metadata.normalization, NormalizationByValue)
+    assert target_metadata.normalization.value == pytest.approx(75.0)
+    assert target_profile.data_array == pytest.approx([0.0, 0.5, 1.0])
+    assert preserved_source.data_array == pytest.approx([0.0, 37.5, 75.0])
+
+    assert scaling_calls == [(result, target_wind, "max_active_power", "get_max_active_power")]
+
+
 def test_reeds_to_sienna_translates_hydro():
     source = _build_source_system()
     result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
@@ -166,6 +209,49 @@ def test_reeds_to_sienna_translates_storage():
 
     storages = list(result.get_components(EnergyReservoirStorage))
     assert any(s.name == "battery_p1" for s in storages)
+
+
+def test_reeds_to_sienna_attaches_pumped_hydro_inflow_time_series():
+    source = _build_source_system()
+    region = source.get_component(ReEDSRegion, name="p1")
+    demand = source.get_component(ReEDSDemand, name="load_p1")
+    source.add_component(
+        ReEDSStorage(
+            name="pumped-hydro_p1",
+            category="pumped-hydro",
+            region=region,
+            technology="pumped-hydro",
+            capacity=50.0,
+            storage_duration=4.0,
+            round_trip_efficiency=0.8,
+        )
+    )
+    reference = SingleTimeSeries.from_array(
+        data=np.arange(24, dtype=float),
+        name="max_active_power",
+        initial_timestamp=datetime(2012, 1, 1),
+        resolution=timedelta(hours=1),
+    )
+    source.add_time_series(reference, demand, solve_year=2050, weather_year=2012)
+
+    result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
+
+    turbine = result.get_component(HydroPumpTurbine, name="pumped-hydro_p1")
+    reservoirs = list(result.get_components(HydroReservoir))
+    assert len(reservoirs) == 2
+    for reservoir in reservoirs:
+        inflow = result.list_time_series(
+            reservoir,
+            name="inflow",
+            solve_year=2050,
+            weather_year=2012,
+        )
+        assert len(inflow) == 1
+        assert np.array_equal(inflow[0].data, np.zeros(24))
+        assert inflow[0].initial_timestamp == reference.initial_timestamp
+        assert inflow[0].resolution == reference.resolution
+
+    assert not result.has_time_series(turbine, name="inflow")
 
 
 def test_reeds_to_sienna_translates_demand_to_load():

@@ -1,7 +1,8 @@
 [
   {
     "defaults": {
-      "category": "node"
+      "category": "node",
+      "units": 1
     },
     "field_map": {
       "name": "name",
@@ -56,6 +57,7 @@
   {
     "defaults": {
       "category": "line",
+      "units": 1,
       "min_flow": 0.0,
       "max_flow": 0.0,
       "loss_incr": 0.0
@@ -81,7 +83,8 @@
   },
   {
     "defaults": {
-      "category": "monitored-line"
+      "category": "monitored-line",
+      "units": 1
     },
     "field_map": {
       "name": "name",
@@ -104,7 +107,8 @@
   },
   {
     "defaults": {
-      "category": "discrete-controlled-ac-branch"
+      "category": "discrete-controlled-ac-branch",
+      "units": 1
     },
     "field_map": {
       "name": "name",
@@ -125,6 +129,7 @@
   {
     "defaults": {
       "category": "two-terminal-generic-hvdc-line",
+      "units": 1,
       "reactance": 0.0,
       "resistance": 0.0
     },
@@ -148,6 +153,7 @@
   {
     "defaults": {
       "category": "two-terminal-lcc-line",
+      "units": 1,
       "resistance": 0.0
     },
     "field_map": {
@@ -169,6 +175,7 @@
   {
     "defaults": {
       "category": "two-terminal-vsc-line",
+      "units": 1,
       "resistance": 0.0
     },
     "field_map": {
@@ -189,6 +196,7 @@
   {
     "defaults": {
       "category": "transformer-2w",
+      "units": 1,
       "resistance": 0.0,
       "reactance": 0.0,
       "susceptance": 0.0
@@ -212,6 +220,7 @@
   {
     "defaults": {
       "category": "tap-transformer",
+      "units": 1,
       "susceptance": 0.0
     },
     "field_map": {
@@ -233,6 +242,7 @@
   {
     "defaults": {
       "category": "phase-shifting-transformer",
+      "units": 1,
       "susceptance": 0.0
     },
     "field_map": {
@@ -262,9 +272,9 @@
       "resistance": "r_primary"
     },
     "getters": {
+      "units": "get_availability",
       "name": "get_3w_transformer_primary_name",
       "uuid": "get_3w_transformer_primary_uuid",
-      "units": "get_availability",
       "rating": "get_3w_transformer_primary_rating",
       "susceptance": "get_3w_transformer_susceptance"
     },
@@ -283,6 +293,7 @@
       "resistance": "r_secondary"
     },
     "getters": {
+      "units": "get_availability",
       "name": "get_3w_transformer_secondary_name",
       "uuid": "get_3w_transformer_secondary_uuid",
       "rating": "get_3w_transformer_secondary_rating",
@@ -303,6 +314,7 @@
       "resistance": "r_tertiary"
     },
     "getters": {
+      "units": "get_availability",
       "name": "get_3w_transformer_tertiary_name",
       "uuid": "get_3w_transformer_tertiary_uuid",
       "rating": "get_3w_transformer_tertiary_rating",
@@ -323,6 +335,7 @@
       "resistance": "r_primary"
     },
     "getters": {
+      "units": "get_availability",
       "name": "get_3w_transformer_primary_name",
       "uuid": "get_3w_transformer_primary_uuid",
       "rating": "get_3w_transformer_primary_rating",
@@ -343,6 +356,7 @@
       "resistance": "r_secondary"
     },
     "getters": {
+      "units": "get_availability",
       "name": "get_3w_transformer_secondary_name",
       "uuid": "get_3w_transformer_secondary_uuid",
       "rating": "get_3w_transformer_secondary_rating",
@@ -363,6 +377,7 @@
       "resistance": "r_tertiary"
     },
     "getters": {
+      "units": "get_availability",
       "name": "get_3w_transformer_tertiary_name",
       "uuid": "get_3w_transformer_tertiary_uuid",
       "rating": "get_3w_transformer_tertiary_rating",

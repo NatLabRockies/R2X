@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 from infrasys.cost_curves import FuelCurve, LinearCurve
 from r2x_reeds.models import (
+    ReEDSConsumingTechnology,
     ReEDSDataCenterDemand,
     ReEDSDemand,
     ReEDSElectrolyzerDemand,
@@ -40,7 +39,7 @@ def test_basic_getters_return_values(tmp_path) -> None:
 
     context = make_context(tmp_path)
     context.source_system = System(name="source")
-    context.target_system = System(name="target")
+    context.target_system = System(name="target", system_base=100.0)
 
     region = ReEDSRegion(name="p1")
     context.source_system.add_component(region)
@@ -131,13 +130,27 @@ def test_basic_getters_return_values(tmp_path) -> None:
     )
     context.source_system.add_component(line)
 
+    hvdc_line = ReEDSTransmissionLine(
+        name="p1_p2_vsc",
+        interface=interface,
+        max_active_power={"from_to": 80.0, "to_from": 100.0},
+        losses=0.03,
+        line_type="vsc",
+    )
+    context.source_system.add_component(hvdc_line)
+
     # Test thermal generator getters
     assert getters.unique_component_name(thermal, context).unwrap() == "p1_THERM"
-    assert getters.get_capacity_as_rating(thermal, context).unwrap() == 10.0
+    assert getters.get_capacity_as_rating(thermal, context).unwrap() == 1.0
     assert getters.get_capacity_as_base_power(thermal, context).unwrap() == 10.0
     limits = getters.get_active_power_limits(thermal, context).unwrap()
-    assert limits.max == 10.0
-    assert limits.min == pytest.approx(0.4 * 10.0)  # min_stable_level_percentage from defaults.json
+    assert limits.max == 1.0
+    assert limits.min == pytest.approx(0.4)  # min_stable_level_percentage from defaults.json
+    assert getters.get_thermal_active_power(thermal, context).unwrap() == 1.0
+    thermal_ramp_limits = getters.thermal_ramp_limits(thermal, context).unwrap()
+    assert thermal_ramp_limits is not None
+    assert thermal_ramp_limits.up == pytest.approx(0.02 / 60.0)
+    assert thermal_ramp_limits.down == pytest.approx(0.02 / 60.0)
     assert getters.get_thermal_operation_cost(thermal, context).unwrap() is not None
     assert getters.get_prime_mover(thermal, context).unwrap() == PrimeMoversType.ST
     assert getters.get_fuel_enum(thermal, context).unwrap() == ThermalFuels.COAL
@@ -163,34 +176,59 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.get_area_category(region, context).unwrap() == "region"
 
     # Test demand getters
-    assert getters.demand_max_active_power(demand, context).unwrap() == 3.0
+    assert getters.demand_max_active_power(demand, context).unwrap() == 1.0
     assert getters.demand_max_reactive_power(demand, context).unwrap() == 0.0
-    assert getters.get_load_base_power(demand, context).unwrap() == 100.0
+    assert getters.get_load_base_power(demand, context).unwrap() == 3.0
+
+    # Test transmission line getters
+    assert getters.get_monitored_line_rating(line, context).unwrap() == 1.0
+    assert getters.get_line_flow_limits(line, context).unwrap().from_to == 1.0
+    assert getters.get_line_flow_limits(line, context).unwrap().to_from == 1.0
+
+    hvdc_limits_from = getters.get_hvdc_active_power_limits_from(hvdc_line, context).unwrap()
+    assert hvdc_limits_from.min == -0.8
+    assert hvdc_limits_from.max == 1.0
+    hvdc_limits_to = getters.get_hvdc_active_power_limits_to(hvdc_line, context).unwrap()
+    assert hvdc_limits_to.min == -1.0
+    assert hvdc_limits_to.max == 0.8
+    reactive_limits = getters.get_hvdc_reactive_power_limits(hvdc_line, context).unwrap()
+    assert reactive_limits.min == 0.0
+    assert reactive_limits.max == 0.0
+    assert getters.get_hvdc_loss(hvdc_line, context).unwrap().function_data.proportional_term == 0.03
 
     # Test hydro getters
-    assert getters.hydro_rating(hydro, context).unwrap() == 8.0
+    assert getters.hydro_rating(hydro, context).unwrap() == 1.0
+    assert getters.hydro_base_power(hydro, context).unwrap() == 8.0
     assert getters.hydro_operation_cost(hydro, context).unwrap() is not None
     hydro_limits = getters.hydro_active_power_limits(hydro, context).unwrap()
-    assert hydro_limits.max == 8.0
+    assert hydro_limits.max == 1.0
     assert hydro_limits.min == 0.0
     ramp_limits = getters.hydro_ramp_limits(hydro, context).unwrap()
-    assert ramp_limits.up == pytest.approx(8.0 * 10.0 / 60.0)  # cap * rate / 60
-    assert ramp_limits.down == pytest.approx(8.0 * 10.0 / 60.0)
+    assert ramp_limits.up == pytest.approx(10.0 / 60.0)
+    assert ramp_limits.down == pytest.approx(10.0 / 60.0)
     time_limits = getters.hydro_time_limits(hydro, context).unwrap()
     assert time_limits.up == 0.0
     assert time_limits.down == 0.0
 
     # Test storage getters
-    assert getters.storage_rating(storage, context).unwrap() == 4.0
-    assert getters.storage_capacity_mwh(storage, context).unwrap() == 8.0
+    assert getters.storage_rating(storage, context).unwrap() == 1.0
+    assert getters.storage_base_power(storage, context).unwrap() == 4.0
+    assert getters.storage_capacity_device_base(storage, context).unwrap() == 2.0
+    storage_with_energy = storage.model_copy(update={"energy_capacity": 10.0})
+    assert getters.storage_capacity_device_base(storage_with_energy, context).unwrap() == 2.5
     storage_limits = getters.storage_level_limits(storage, context).unwrap()
     assert storage_limits.min == 0.0
     assert storage_limits.max == 1.0
     power_limits = getters.storage_power_limits(storage, context).unwrap()
-    assert power_limits.max == 4.0
+    assert power_limits.max == 1.0
     efficiency = getters.storage_efficiency(storage, context).unwrap()
-    assert efficiency.output == pytest.approx(math.sqrt(0.9))  # sqrt(rte)
-    assert efficiency.input == pytest.approx(math.sqrt(0.9))  # symmetric
+    assert efficiency.input == pytest.approx(0.9)
+    assert efficiency.output == pytest.approx(1.0)
+    default_efficiency = getters.storage_efficiency(
+        storage.model_copy(update={"round_trip_efficiency": 0.0}), context
+    ).unwrap()
+    assert default_efficiency.input == pytest.approx(0.95)
+    assert default_efficiency.output == pytest.approx(1.0)
     assert getters.storage_tech(storage, context).unwrap() == StorageTechs.LIB
     assert getters.storage_prime_mover(storage, context).unwrap() == PrimeMoversType.ES
     assert getters.storage_initial_level(storage, context).unwrap() == 0.0
@@ -214,8 +252,8 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.get_reserve_deployed_fraction(reserve, context).unwrap() == 1.0
 
     # Test line getters
-    assert getters.get_line_rating(line, context).unwrap() == 100.0
-    assert getters.get_line_active_power_flow(line, context).unwrap() == 100.0
+    assert getters.get_line_rating(line, context).unwrap() == 1.0
+    assert getters.get_line_active_power_flow(line, context).unwrap() == 1.0
     assert getters.get_line_reactive_power_flow(line, context).unwrap() == 0.0
     assert getters.get_line_resistance(line, context).unwrap() == 0.0
     assert getters.get_line_reactance(line, context).unwrap() == 0.0
@@ -240,7 +278,7 @@ def test_unique_component_name_collision(tmp_path) -> None:
 
     context = make_context(tmp_path)
     context.source_system = System(name="source")
-    context.target_system = System(name="target")
+    context.target_system = System(name="target", system_base=100.0)
 
     region = ReEDSRegion(name="p1")
     area = Area(name="p1", category="region")
@@ -291,11 +329,28 @@ def test_bus_number_with_z_prefix(tmp_path) -> None:
     """Test bus number extraction for z-prefixed regions."""
     context = make_context(tmp_path)
     context.source_system = System(name="source")
-    context.target_system = System(name="target")
+    context.target_system = System(name="target", system_base=100.0)
 
     region = ReEDSRegion(name="z122")
     result = getters.get_bus_number(region, context).unwrap()
     assert result == 122
+
+
+def test_get_pumped_hydro_turbine_returns_error_when_missing(tmp_path) -> None:
+    """The pumped-hydro linkage getter reports a missing turbine."""
+    context = make_context(tmp_path)
+    context.target_system = System(name="target")
+    region = ReEDSRegion(name="p1")
+    storage = ReEDSStorage(
+        name="p1_PSH",
+        region=region,
+        technology="pumped-hydro",
+        capacity=4.0,
+        storage_duration=2.0,
+        round_trip_efficiency=0.8,
+    )
+
+    assert getters.get_pumped_hydro_turbine(storage, context).is_err()
 
 
 def test_get_gen_services_all_generator_types(tmp_path) -> None:
@@ -309,7 +364,7 @@ def test_get_gen_services_all_generator_types(tmp_path) -> None:
 
     context = make_context(tmp_path)
     context.source_system = System(name="source")
-    context.target_system = System(name="target")
+    context.target_system = System(name="target", system_base=100.0)
 
     region = ReEDSRegion(name="p1")
     area = Area(name="p1", category="region")
@@ -406,7 +461,7 @@ def test_get_gen_services_resolves_non_spinning_reserve(tmp_path) -> None:
 
     context = make_context(tmp_path)
     context.source_system = System(name="source")
-    context.target_system = System(name="target")
+    context.target_system = System(name="target", system_base=100.0)
 
     region = ReEDSRegion(name="p1")
     area = Area(name="p1", category="region")
@@ -496,7 +551,7 @@ def test_get_hydro_prime_mover(tmp_path) -> None:
     """get_hydro_prime_mover must always return PrimeMoversType.HY."""
     context = make_context(tmp_path)
     context.source_system = System(name="source")
-    context.target_system = System(name="target")
+    context.target_system = System(name="target", system_base=100.0)
 
     region = ReEDSRegion(name="p1")
     hydro = ReEDSHydroGenerator(
@@ -514,7 +569,7 @@ def test_get_zero_reactive_power_limits(tmp_path) -> None:
     """get_zero_reactive_power_limits always returns MinMax(0.0, 0.0) regardless of component type."""
     context = make_context(tmp_path)
     context.source_system = System(name="source")
-    context.target_system = System(name="target")
+    context.target_system = System(name="target", system_base=100.0)
 
     region = ReEDSRegion(name="p1")
 
@@ -539,10 +594,10 @@ def test_get_zero_reactive_power_limits(tmp_path) -> None:
 
 
 def test_consuming_tech_getters(tmp_path) -> None:
-    """get_consuming_tech_max_active_power and get_consuming_tech_base_power work for both consuming tech types."""
+    """Test device-base getters for specific and generic consuming technologies."""
     context = make_context(tmp_path)
     context.source_system = System(name="source")
-    context.target_system = System(name="target")
+    context.target_system = System(name="target", system_base=100.0)
 
     region = ReEDSRegion(name="p1")
 
@@ -557,16 +612,26 @@ def test_consuming_tech_getters(tmp_path) -> None:
     datacenter = ReEDSDataCenterDemand(
         name="DC1",
         region=region,
-        technology="datacenter",
+        technology="data-center",
         capacity=30.0,
         electricity_efficiency=1.0,
         # max_active_power not set — should fall back to capacity
     )
+    consuming_technology = ReEDSConsumingTechnology(
+        name="CONSUMING1",
+        region=region,
+        technology="consume",
+        capacity=20.0,
+        electricity_efficiency=1.0,
+    )
 
     # Electrolyzer: prefers explicit max_active_power
-    assert getters.get_consuming_tech_max_active_power(electrolyzer, context).unwrap() == 40.0
+    assert getters.get_consuming_tech_max_active_power(electrolyzer, context).unwrap() == 0.8
     assert getters.get_consuming_tech_base_power(electrolyzer, context).unwrap() == 50.0
 
     # DataCenter: no explicit max_active_power → uses capacity
-    assert getters.get_consuming_tech_max_active_power(datacenter, context).unwrap() == 30.0
+    assert getters.get_consuming_tech_max_active_power(datacenter, context).unwrap() == 1.0
     assert getters.get_consuming_tech_base_power(datacenter, context).unwrap() == 30.0
+
+    assert getters.consuming_capacity_as_max_power(consuming_technology, context).unwrap() == 1.0
+    assert getters.consuming_capacity_as_base_power(consuming_technology, context).unwrap() == 20.0

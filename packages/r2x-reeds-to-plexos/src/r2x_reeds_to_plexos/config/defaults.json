@@ -48,6 +48,10 @@
     "wind-ons_8",
     "wind-ons_9"
   ],
+  "general_defaults": {
+    "wheeling_charge": 0.001,
+    "wheeling_charge_back": 0.001
+  },
   "pcm_defaults": {
     "battery": {
       "average_capacity_MW": 10.0,

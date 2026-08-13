@@ -381,17 +381,17 @@ def _resolve_iso_rto_for_buses(buses: list[Any], context: PluginContext) -> str 
 
 
 def _resolve_iso_rto_description_for_buses(buses: list[Any], context: PluginContext) -> str | None:
-    """Return a description string listing every ISO/RTO that contains at least one bus.
+    """Return a comma-separated string listing every ISO/RTO that contains at least one bus.
 
     When a region's buses span multiple ISO/RTOs the names are sorted
-    alphabetically and joined with ``'-'`` (e.g. ``'ercot-miso'``).
+    alphabetically and joined with ``', '`` (e.g. ``'ercot, miso'``).
     Returns ``None`` when no bus falls inside any ISO/RTO boundary
     (e.g. Canadian utilities whose coordinates are outside all boundaries).
     """
     iso_counts = _count_iso_rto_for_buses(buses, context)
     if not iso_counts:
         return None
-    return "-".join(sorted(iso_counts))
+    return ", ".join(sorted(iso_counts))
 
 
 def _attach_reservoir_time_series_to_storage(
@@ -839,6 +839,65 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
     logger.info("Total {} TailStorage-Generator memberships created (including fallback).", total_memberships)
 
 
+def ensure_deduplicate_lines(context: PluginContext) -> None:
+    """Remove duplicate PLEXOSLine objects that share the same name.
+
+    When the source Sienna system contains both a MonitoredLine (or Line) and a
+    DiscreteControlledACBranch with the same name, ``apply_rules_to_context``
+    creates two PLEXOSLine objects with that name but different UUIDs.  PLEXOS
+    resolves objects by name, so both property sets are written under the same
+    line, producing WARNING 3015 ("defined multiple times") and ERROR 3064.
+
+    Resolution priority: Line / MonitoredLine > DiscreteControlledACBranch.
+    When a duplicate is detected, the DiscreteControlledACBranch-derived
+    PLEXOSLine is removed.  If all duplicates originate from
+    DiscreteControlledACBranch (no higher-priority counterpart), all but the
+    first are removed.
+    """
+    from r2x_sienna.models import DiscreteControlledACBranch
+
+    by_name: dict[str, list[PLEXOSLine]] = defaultdict(list)
+    for line in _target_system(context).get_components(PLEXOSLine):
+        by_name[line.name].append(line)
+
+    removed = 0
+    for name, lines in by_name.items():
+        if len(lines) <= 1:
+            continue
+
+        to_remove: list[PLEXOSLine] = []
+        for line in lines:
+            line_uuid = getattr(line, "uuid", None)
+            if line_uuid is None:
+                continue
+            try:
+                source_comp = _source_system(context).get_component_by_uuid(line_uuid)
+            except Exception:
+                source_comp = None
+            if isinstance(source_comp, DiscreteControlledACBranch):
+                to_remove.append(line)
+
+        if to_remove and len(to_remove) < len(lines):
+            # At least one non-DiscreteControlledACBranch PLEXOSLine remains.
+            for line in to_remove:
+                _target_system(context).remove_component(line)
+                removed += 1
+                logger.debug(
+                    "Removed duplicate PLEXOSLine '{}' derived from DiscreteControlledACBranch.", name
+                )
+        elif len(to_remove) == len(lines):
+            # All duplicates are from DiscreteControlledACBranch — keep the first.
+            for line in lines[1:]:
+                _target_system(context).remove_component(line)
+                removed += 1
+                logger.debug(
+                    "Removed duplicate PLEXOSLine '{}' (kept first DiscreteControlledACBranch copy).", name
+                )
+
+    if removed:
+        logger.info("Removed {} duplicate PLEXOSLine object(s) by name deduplication.", removed)
+
+
 def ensure_source_conflicts_resolved(context: PluginContext) -> None:
     """Remove PLEXOSGenerators for available=False source generators that are replaced by Source components.
 
@@ -961,7 +1020,7 @@ def _attach_hydro_reservoir_inflow_to_generator_budget(
     source_generator: Any,
     target_generator: Any,
 ) -> None:
-    """Attach HydroReservoir inflow to generator as max_energy_day for non-pumped HydroTurbine units."""
+    """Attach HydroReservoir inflow to generator as cadence-aligned max-energy series."""
     if isinstance(source_generator, HydroPumpTurbine) or not isinstance(source_generator, HydroTurbine):
         return
 
@@ -980,7 +1039,11 @@ def _attach_hydro_reservoir_inflow_to_generator_budget(
 
     from infrasys import SingleTimeSeries
 
-    from r2x_sienna_to_plexos.getters import _build_reservoir_by_turbine_index
+    from r2x_sienna_to_plexos.getters import (
+        _build_reservoir_by_turbine_index,
+        _convert_hydro_budget_time_series,
+        _hydro_budget_series_name_for_resolution,
+    )
 
     source_reservoir = _build_reservoir_by_turbine_index(context).get(source_generator.name)
     if source_reservoir is None or not _source_system(context).time_series.has_time_series(source_reservoir):
@@ -990,13 +1053,6 @@ def _attach_hydro_reservoir_inflow_to_generator_budget(
         if metadata.name not in {"inflow", "natural_inflow"}:
             continue
         features = getattr(metadata, "features", {}) or {}
-        if _target_system(context).has_time_series(
-            target_generator,
-            name="max_energy_day",
-            time_series_type=SingleTimeSeries,
-            **features,
-        ):
-            continue
 
         ts_list = _source_system(context).list_time_series(
             source_reservoir,
@@ -1008,7 +1064,25 @@ def _attach_hydro_reservoir_inflow_to_generator_budget(
 
         typed_source_ts = ts_list[0]
         ts_copy = deepcopy(typed_source_ts)
-        ts_copy.name = "max_energy_day"
+
+        hydro_budget_cadence = getattr(context.config, "hydro_budget_ts", "weekly")
+        converted_data, converted_resolution = _convert_hydro_budget_time_series(
+            ts_copy,
+            hydro_budget_cadence,
+        )
+        target_ts_name = _hydro_budget_series_name_for_resolution(converted_resolution)
+
+        if _target_system(context).has_time_series(
+            target_generator,
+            name=target_ts_name,
+            time_series_type=SingleTimeSeries,
+            **features,
+        ):
+            continue
+
+        ts_copy.data = converted_data
+        ts_copy.resolution = converted_resolution
+        ts_copy.name = target_ts_name
         _target_system(context).add_time_series(ts_copy, target_generator, **features)
 
 

@@ -228,8 +228,8 @@
       "maintenance_rate": 0.01,
       "mean_time_to_repair": 48,
       "ramp_rate": 0.8,
-      "efficiency": 0.9,
-      "vom_cost": 3.2
+      "efficiency": 0.8,
+      "vom_cost": 0.0
     },
     "upv": {
       "capacity_MW": 20.0,

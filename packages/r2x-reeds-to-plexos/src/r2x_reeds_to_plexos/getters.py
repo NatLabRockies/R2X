@@ -67,6 +67,18 @@ def _get_defaults(technology: str, key: str) -> float:
         return 0.0
 
 
+def _get_general_default(key: str) -> float:
+    """Extract a general default value from defaults.json for the given key."""
+    defaults_path = files("r2x_reeds_to_plexos.config") / "defaults.json"
+    with defaults_path.open() as f:
+        defaults = json.load(f)
+    value = defaults.get("general_defaults", {}).get(key, 0.0)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _lookup_target_node(context: PluginContext, region_name: str) -> Result[Any, ValueError]:
     """Return the translated node for a given region name."""
     from r2x_plexos.models import PLEXOSNode
@@ -135,50 +147,8 @@ def region_load(component: ReEDSRegion, context: PluginContext) -> Result[float 
 def get_load_participation_factor(
     component: ReEDSRegion, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Compute load participation factor as region_load / total_load_in_transmission_region.
-
-    Load is sourced from ``ReEDSDemand.max_active_power`` (not ``ReEDSRegion.load``,
-    which is always 0 because demand is stored on the demand component, not the region).
-    Groups all regions that share the same ``transmission_region`` and returns this
-    region's fractional share.  Falls back to 1.0 when no grouping is available and
-    to 0.0 when this region has no associated demand.
-    """
-    from r2x_reeds.models.components import ReEDSDemand
-
-    if context.source_system is None:
-        return Ok(1.0)
-
-    transmission_region = getattr(component, "transmission_region", None)
-    if transmission_region is None:
-        return Ok(1.0)
-
-    # Build and cache a {transmission_region: {region_name: total_demand}} map on first call
-    # so subsequent per-region calls are O(1) instead of O(D) each.
-    _cache_key = "_load_participation_demand_map"
-    demand_map: dict[str, dict[str, float]] | None = context._cache.get(_cache_key)
-    if demand_map is None:
-        demand_map = {}
-        for demand in context.source_system.get_components(ReEDSDemand):
-            region = getattr(demand, "region", None)
-            if region is None:
-                continue
-            tr = getattr(region, "transmission_region", None)
-            if tr is None:
-                continue
-            region_name = getattr(region, "name", "")
-            tr_map = demand_map.setdefault(tr, {})
-            tr_map[region_name] = tr_map.get(region_name, 0.0) + _float_or_zero(
-                getattr(demand, "max_active_power", 0.0)
-            )
-        context._cache[_cache_key] = demand_map
-
-    zone_demand = demand_map.get(transmission_region, {})
-    total_load = sum(zone_demand.values())
-    if total_load == 0.0:
-        return Ok(0.0)
-
-    this_region_load = zone_demand.get(getattr(component, "name", ""), 0.0)
-    return Ok(round(this_region_load / total_load, 6))
+    """Return 1.0 because each ReEDSRegion is translated 1:1 to a PLEXOSNode and should take 100% of its region load."""
+    return Ok(1.0)
 
 
 @getter
@@ -196,8 +166,11 @@ def region_ext(component: ReEDSRegion, context: PluginContext) -> Result[dict, V
 def hydro_max_energy_per_day(
     component: ReEDSHydroGenerator, context: PluginContext
 ) -> Result[float | int, ValueError]:
-    """Return the maximum energy per day for a hydro generator as a PLEXOSPropertyValue with units MW."""
-    value = _float_or_zero(getattr(component, "max_energy_per_day", 0.0))
+    """Return the maximum daily hydro energy or the PLEXOS default."""
+    value = getattr(component, "max_energy_per_day", None)
+    if value is None:
+        return Ok(1e30)
+    value = _float_or_zero(value)
     return Ok(value)
 
 
@@ -380,9 +353,9 @@ def charge_efficiency_percent(
 ) -> Result[float, ValueError]:
     """Convert charge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
     gen_technology = getattr(component, "technology", "")
-    efficiency = getattr(component, "charge_efficiency", None)
+    efficiency = getattr(component, "round_trip_efficiency", None)
 
-    if efficiency is not None:
+    if efficiency is not None and efficiency != 0.0:
         return Ok(_float_or_zero(efficiency) * 100.0)
 
     default_efficiency = _get_defaults(gen_technology, "charge_efficiency")
@@ -393,15 +366,8 @@ def charge_efficiency_percent(
 def discharge_efficiency_percent(
     component: ReEDSGenerator | ReEDSStorage, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert discharge efficiency (0-1) to percent for PLEXOS, using defaults if missing."""
-    gen_technology = getattr(component, "technology", "")
-    efficiency = getattr(component, "round_trip_efficiency", None)
-
-    if efficiency is not None and efficiency != 0.0:
-        return Ok(_float_or_zero(efficiency) * 100.0)
-
-    default_efficiency = _get_defaults(gen_technology, "discharge_efficiency")
-    return Ok(float(default_efficiency) * 100.0)
+    """Use lossless discharging to match the ReEDS storage-level equation."""
+    return Ok(100.0)
 
 
 @getter
@@ -484,7 +450,7 @@ def get_battery_capacity(
 
 @getter
 def interface_max_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
-    """Return the maximum flow for an interface (sum of all lines' max flows)."""
+    """Return the interface forward limit as the sum of member-line forward limits."""
     from r2x_reeds.models import ReEDSTransmissionLine
 
     if context.source_system is None:
@@ -501,15 +467,14 @@ def interface_max_flow(component: ReEDSInterface, context: PluginContext) -> Res
         if line_interface_name == interface_name:
             limits = getattr(line, "max_active_power", None)
             if limits is not None:
-                max_flow = max(limits.from_to, limits.to_from)
-                total_max_flow += float(max_flow)
+                total_max_flow += float(limits.to_from)
 
     return Ok(round(total_max_flow, 1))
 
 
 @getter
 def interface_min_flow(component: ReEDSInterface, context: PluginContext) -> Result[float, ValueError]:
-    """Return the minimum flow for an interface (negative sum of all lines' max flows)."""
+    """Return the interface reverse limit as the negative sum of member-line reverse limits."""
     from r2x_reeds.models import ReEDSTransmissionLine
 
     if context.source_system is None:
@@ -526,8 +491,7 @@ def interface_min_flow(component: ReEDSInterface, context: PluginContext) -> Res
         if line_interface_name == interface_name:
             limits = getattr(line, "max_active_power", None)
             if limits is not None:
-                min_flow = max(abs(limits.from_to), abs(limits.to_from))
-                total_min_flow += float(min_flow)
+                total_min_flow += float(limits.from_to)
 
     return Ok(-round(total_min_flow, 1))
 
@@ -544,39 +508,6 @@ def get_interface_name(component: ReEDSInterface, context: PluginContext) -> Res
 
     interface_name = f"{from_transmission_region}_{to_transmission_region}-{name}"
     return Ok(interface_name)
-
-
-@getter
-def min_capacity_factor_percent(
-    component: ReEDSGenerator, context: PluginContext
-) -> Result[float, ValueError]:
-    """Convert minimum capacity factor (0-1) to percent.
-
-    Reads from `capacity_factor_range.min` (ThermalGenerator) or `min_capacity_factor`.
-    """
-    factor = getattr(component, "min_capacity_factor", None)
-    if factor is None:
-        cfr = getattr(component, "capacity_factor_range", None)
-        if cfr is not None:
-            factor = getattr(cfr, "min", None)
-    return Ok(_float_or_zero(factor) * 100.0)
-
-
-@getter
-def max_capacity_factor_percent(
-    component: ReEDSGenerator, context: PluginContext
-) -> Result[float, ValueError]:
-    """Convert maximum capacity factor (0-1) to percent.
-
-    Reads from `max_capacity_factor` (VariableGenerator) or `capacity_factor_range.max`
-    (ThermalGenerator). Returns 0 if neither is set.
-    """
-    factor = getattr(component, "max_capacity_factor", None)
-    if factor is None:
-        cfr = getattr(component, "capacity_factor_range", None)
-        if cfr is not None:
-            factor = getattr(cfr, "max", None)
-    return Ok(_float_or_zero(factor) * 100.0)
 
 
 @getter
@@ -614,20 +545,24 @@ def lines_loss_incremental(
 def lines_wheeling_charge(line: Any, context: PluginContext) -> Result[float, ValueError]:
     """Return the wheeling charge for the forward direction (from_region to to_region).
 
-    Uses `hurdle_rate` from `ReEDSTransmissionLine`. Falls back to 0.0 if not set.
+    Uses `hurdle_rate` from `ReEDSTransmissionLine`. Falls back to the configured default if not set.
     """
     wc = getattr(line, "hurdle_rate", None)
-    return Ok(_float_or_zero(wc))
+    if wc == 0.0 or wc is None:
+        return Ok(_get_general_default("wheeling_charge"))
+    return Ok(float(wc))
 
 
 @getter
 def lines_wheeling_charge_back(line: Any, context: PluginContext) -> Result[float, ValueError]:
     """Return the wheeling charge for the reverse direction (to_region to from_region).
 
-    Uses `hurdle_rate` from `ReEDSTransmissionLine` symmetrically. Falls back to 0.0 if not set.
+    Uses `hurdle_rate` from `ReEDSTransmissionLine` symmetrically. Falls back to the configured default if not set.
     """
     wc_back = getattr(line, "hurdle_rate", None)
-    return Ok(_float_or_zero(wc_back))
+    if wc_back == 0.0 or wc_back is None:
+        return Ok(_get_general_default("wheeling_charge_back"))
+    return Ok(float(wc_back))
 
 
 @getter

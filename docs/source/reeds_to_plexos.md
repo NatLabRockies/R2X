@@ -24,7 +24,6 @@ from typing import cast
 from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
-from loguru import logger
 from r2x_plexos import PLEXOSConfig
 from r2x_plexos.exporter import PLEXOSExporter  # type: ignore
 from r2x_reeds import ReEDSConfig, ReEDSParser  # type: ignore
@@ -36,16 +35,16 @@ from r2x_reeds_to_plexos import (
     attach_time_series_to_generators,
 )
 from r2x_reeds_to_plexos.getters_utils import attach_time_series_to_purchasers
+from r2x_reeds_to_plexos.plugin_config import ReedsToPlexosConfig
 
 from r2x_core import DataStore, PluginContext, Rule, System, apply_rules_to_context  # type: ignore
 from r2x_core.logger import setup_logging  # type: ignore
 
 
-logger.enable("r2x_reeds")
-setup_logging(verbosity=2)
+setup_logging(verbosity=1)
 
 case_name = "test_Pacific"
-base_path = "/Users/mvelasqu/Documents/marck/GDO/test-r2x-translations/reeds-to-plexos"
+base_path = "/path/to/reeds/runs"
 
 # =====================================
 # ReEDS PARSER
@@ -75,16 +74,16 @@ context.source_system = reeds_sys
 # ReEDS System Modifier: Add purchaser loads
 # ==========================================
 inputs_case_path = run_path / "inputs_case"
-ouputs_case_path = run_path / "outputs"
+outputs_case_path = run_path / "outputs"
 purchaser_load_config = PurchaserLoadConfig(
     models=("r2x_reeds.models", "r2x_plexos.models"),
     solve_year=solve_year,
     weather_year=weather_year,
-    electrolyzer_capacity_fpath=ouputs_case_path / "cap.csv",
+    hydrogen_production_capacity_fpath=outputs_case_path / "cap.csv",
     consume_characteristics_fpath=inputs_case_path / "consume_char.csv",
-    electrolyzer_prod_load_fpath=ouputs_case_path / "prod_load.csv",
-    electrolyzer_prod_load_ann_fpath=ouputs_case_path / "prod_load_ann.csv",
-    loadsite_op_fpath=ouputs_case_path / "loadsite_op.csv",
+    hydrogen_production_load_fpath=outputs_case_path / "prod_load.csv",
+    hydrogen_production_annual_load_fpath=outputs_case_path / "prod_load_ann.csv",
+    loadsite_op_fpath=outputs_case_path / "loadsite_op.csv",
     hour_map_myr_fpath=inputs_case_path / "rep" / "hmap_myr.csv",
 )
 purchaser_load_result = add_purchaser_load(reeds_sys, purchaser_load_config)
@@ -147,6 +146,8 @@ ts_manager = TimeSeriesManager(
 # =====================================
 # ReEDS to PLEXOS (TRANSLATION) (r2x-reeds-to-plexos)
 # =====================================
+context.config = ReedsToPlexosConfig(hydro_budget_ts="monthly")
+
 plexos_sys = System(
     name="PLEXOS",
     auto_add_composed_components=True,
@@ -182,3 +183,14 @@ exporter.weather_year = weather_year
 
 exporter.on_export()
 ```
+
+The purchaser-load modifier reads hydrogen-production technologies from `cap.csv`. Positive
+`electrolyzer`, `smr`, `smr_ccs`, and data-center rows for the configured solve year create
+ReEDS consuming-demand components (for example `ReEDSElectrolyzerDemand`,
+`ReEDSSteamMethaneReformingDemand`, or `ReEDSConsumingTechnology`, depending on the installed
+`r2x-reeds` version). Their hourly profiles come from `prod_load.csv`, with annual totals from
+`prod_load_ann.csv`, and are translated to PLEXOS purchasers by the ReEDS-to-PLEXOS rules.
+
+To export hydro budgets as monthly profiles instead of hourly time series, set
+`context.config = ReedsToPlexosConfig(hydro_budget_ts="monthly")` before calling
+`attach_time_series_to_generators(context)`.

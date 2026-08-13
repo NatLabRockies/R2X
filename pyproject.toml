@@ -82,6 +82,9 @@ docs = ["furo", "ghp-import", "myst-parser", "sphinx", "sphinx-copybutton"]
 requires = ["uv_build>=0.8.22,<0.9.0"]
 build-backend = "uv_build"
 
+[tool.uv]
+constraint-dependencies = ["plexos2duckdb==0.1.0b11"]
+
 [tool.uv.sources]
 r2x-sienna-to-plexos = { workspace = true }
 r2x-plexos-to-sienna = { workspace = true }

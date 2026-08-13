@@ -25,7 +25,6 @@
       "units": "get_component_units",
       "commit": "get_commitment_status",
       "forced_outage_rate": "forced_outage_rate_percent",
-      "min_capacity_factor": "min_capacity_factor_percent",
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
       "max_ramp_up": "ramp_rate_up_mw_per_hour",
@@ -33,8 +32,7 @@
       "min_stable_level": "min_stable_level_mw",
       "min_up_time": "min_up_time_hours",
       "min_down_time": "min_down_time_hours",
-      "start_cost": "gen_startup_cost",
-      "max_capacity_factor": "max_capacity_factor_percent"
+      "start_cost": "gen_startup_cost"
     },
     "source_type": "ReEDSThermalGenerator",
     "target_type": "PLEXOSGenerator",
@@ -71,8 +69,7 @@
       "load_subtracter": "load_subtracter",
       "min_stable_level": "min_stable_level_mw",
       "maintenance_rate": "maintenance_rate_percent",
-      "start_cost": "gen_startup_cost",
-      "max_capacity_factor": "max_capacity_factor_percent"
+      "start_cost": "gen_startup_cost"
     },
     "source_type": "ReEDSVariableGenerator",
     "target_type": "PLEXOSGenerator",
@@ -153,7 +150,7 @@
       "casefold": true,
       "field": "technology",
       "op": "not_in",
-      "values": ["electrolyzer", "data-center"]
+      "values": ["electrolyzer", "data-center", "smr", "smr_ccs"]
     },
     "source_type": "ReEDSConsumingTechnology",
     "target_type": "PLEXOSGenerator",
@@ -174,6 +171,24 @@
       "units": "get_component_units"
     },
     "source_type": "ReEDSElectrolyzerDemand",
+    "target_type": "PLEXOSPurchaser",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "smr",
+      "max_load": 0.0
+    },
+    "field_map": {
+      "category": "technology",
+      "name": "name",
+      "max_load": "capacity",
+      "ext": "ext"
+    },
+    "getters": {
+      "units": "get_component_units"
+    },
+    "source_type": "ReEDSSteamMethaneReformingDemand",
     "target_type": "PLEXOSPurchaser",
     "version": 1
   },
@@ -259,7 +274,6 @@
   "getters": {
       "units": "get_component_units",
       "forced_outage_rate": "forced_outage_rate_percent",
-      "min_capacity_factor": "min_capacity_factor_percent",
       "maintenance_rate": "maintenance_rate_percent",
       "mean_time_to_repair": "mean_time_to_repair_hours",
       "max_ramp_up": "ramp_rate_up_mw_per_hour",
@@ -270,8 +284,7 @@
       "min_stable_level": "min_stable_level_mw",
       "pump_load": "get_generator_pump_load_mw",
       "pump_efficiency": "get_generator_pump_efficiency_percent",
-      "start_cost": "gen_startup_cost",
-      "max_capacity_factor": "max_capacity_factor_percent"
+      "start_cost": "gen_startup_cost"
     },
     "source_type": "ReEDSGenerator",
     "target_type": "PLEXOSGenerator",
@@ -359,6 +372,7 @@
       "min_stable_level": "min_stable_level_mw",
       "pump_efficiency": "get_generator_pump_efficiency_percent",
       "pump_load": "get_generator_pump_load_mw",
+      "vom_charge": "storage_vom_cost_energy",
       "commit": "get_commitment_status"
     },
     "source_type": "ReEDSStorage",

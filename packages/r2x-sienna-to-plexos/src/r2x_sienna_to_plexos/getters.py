@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+import re
+import types
+from calendar import monthrange
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import timedelta
@@ -35,6 +38,8 @@ from r2x_sienna.models import (
     HydroPumpTurbine,
     HydroReservoir,
     HydroTurbine,
+    InterruptiblePowerLoad,
+    InterruptibleStandardLoad,
     Line,
     LoadZone,
     MonitoredLine,
@@ -395,6 +400,28 @@ def _lookup_source_generator(context: PluginContext, gen_name: str) -> Any | Non
     return index.get(gen_name)
 
 
+def _sanitize_generator_name(name: Any) -> str:
+    """Normalize generator names that may include embedded metadata text."""
+    text = str(name or "")
+    text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return ""
+
+    plant_match = re.search(r"Plant name:\s*([^\n,]+)", text, flags=re.IGNORECASE)
+    if plant_match:
+        return plant_match.group(1).strip()
+
+    text = re.sub(r",\s*Unit name:.*$", "", text, flags=re.IGNORECASE).strip()
+
+    if "\n" in text:
+        for line in text.split("\n"):
+            line = line.strip()
+            if line:
+                return line
+
+    return text
+
+
 def _build_generator_display_name_index(context: PluginContext) -> dict[str, str]:
     """Map each source generator's original name -> final display name.
 
@@ -427,12 +454,12 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
             ext = getattr(gen, "ext", None)
             ext_dict = ext if isinstance(ext, dict) else {}
 
-            unit_name = ext_dict.get("unit_name")
-            if unit_name:
-                result[orig] = str(unit_name)
+            unit_name = _sanitize_generator_name(ext_dict.get("unit_name"))
+            if unit_name and unit_name.casefold() not in {"none", "nothing", "null", "nan"}:
+                result[orig] = unit_name
             else:
-                plant_name = ext_dict.get("plant_name")
-                display = str(plant_name) if plant_name else orig
+                plant_name = _sanitize_generator_name(ext_dict.get("plant_name"))
+                display = plant_name if plant_name else _sanitize_generator_name(orig)
                 needs_dedup.append((orig, display))
 
     groups: dict[str, list[str]] = defaultdict(list)
@@ -636,6 +663,93 @@ def _get_defaults(category: str | None, key: str) -> float:
         return 0.0
 
 
+def _convert_hydro_budget_time_series(ts: Any, cadence: str) -> tuple[Any, Any]:
+    """Convert hydro budget time series to the configured cadence."""
+    import numpy as np
+
+    data = np.asarray(ts.data, dtype=float)
+    output_resolution = ts.resolution
+
+    if cadence == "hourly" or not isinstance(ts.resolution, timedelta):
+        return data, output_resolution
+
+    seconds_per_step = ts.resolution.total_seconds()
+    if seconds_per_step <= 0:
+        return data, output_resolution
+
+    if cadence == "weekly":
+        if ts.resolution >= timedelta(days=7):
+            return data, output_resolution
+
+        points_per_bucket = max(int(round((7 * 86400) / seconds_per_step)), 1)
+        full_buckets = data.size // points_per_bucket
+        weekly_values: list[float] = []
+        if full_buckets:
+            weekly_values.extend(
+                data[: full_buckets * points_per_bucket]
+                .reshape(full_buckets, points_per_bucket)
+                .sum(axis=1)
+                .tolist()
+            )
+        remainder = data[full_buckets * points_per_bucket :]
+        if remainder.size:
+            weekly_values.append(float(remainder.sum()))
+        if len(weekly_values) >= 2:
+            return np.asarray(weekly_values, dtype=float), timedelta(days=7)
+        return data, output_resolution
+
+    points_per_day = max(int(round(86400 / seconds_per_step)), 1)
+    if points_per_day <= 0:
+        return data, output_resolution
+
+    full_days = data.size // points_per_day
+    daily_values: list[float] = []
+    if full_days:
+        daily_values.extend(
+            data[: full_days * points_per_day].reshape(full_days, points_per_day).sum(axis=1).tolist()
+        )
+    remainder = data[full_days * points_per_day :]
+    if remainder.size:
+        daily_values.append(float(remainder.sum()))
+
+    if cadence == "daily":
+        if len(daily_values) >= 2:
+            return np.asarray(daily_values, dtype=float), timedelta(days=1)
+        return data, output_resolution
+
+    if cadence == "monthly":
+        values: list[float] = []
+        year = ts.initial_timestamp.year
+        day_index = 0
+        while day_index < len(daily_values):
+            for month in range(1, 13):
+                days = monthrange(year, month)[1]
+                month_values = daily_values[day_index : day_index + days]
+                if not month_values:
+                    break
+                values.append(sum(month_values))
+                day_index += len(month_values)
+            year += 1
+        if len(values) >= 2:
+            return np.asarray(values, dtype=float), timedelta(days=30)
+        return data, output_resolution
+
+    return data, output_resolution
+
+
+def _hydro_budget_series_name_for_resolution(resolution: Any) -> str:
+    """Map hydro-budget output resolution to the PLEXOS max-energy property time-series name."""
+    if not isinstance(resolution, timedelta):
+        return "hydro_budget"
+    if resolution >= timedelta(days=28):
+        return "max_energy_month"
+    if resolution >= timedelta(days=7):
+        return "max_energy_week"
+    if resolution >= timedelta(days=1):
+        return "max_energy_day"
+    return "hydro_budget"
+
+
 def _attach_generator_time_series(
     context: PluginContext,
     generator_name: str,
@@ -656,7 +770,17 @@ def _attach_generator_time_series(
     import numpy as np
     from infrasys import SingleTimeSeries
 
+    target_system = _target_system(context)
+
     for metadata in _source_system(context).time_series.list_time_series_metadata(source_gen):
+        if metadata.name != "hydro_budget" and target_system.has_time_series(
+            target_generator,
+            name=metadata.name,
+            time_series_type=SingleTimeSeries,
+            **metadata.features,
+        ):
+            continue
+
         ts_list = _source_system(context).list_time_series(
             source_gen, name=metadata.name, **metadata.features
         )
@@ -665,63 +789,50 @@ def _attach_generator_time_series(
             continue
 
         ts = ts_list[0]
-        if not _target_system(context).has_time_series(
-            target_generator, name=ts.name, time_series_type=SingleTimeSeries, **metadata.features
-        ):
-            data = np.asarray(ts.data)
-            output_resolution = ts.resolution
+        data = np.asarray(ts.data)
+        output_resolution = ts.resolution
+        target_ts_name = ts.name
+        hydro_budget_cadence = getattr(context.config, "hydro_budget_ts", "weekly")
 
-            if ts.name == "hydro_budget":
-                # ts.data holds raw per-unit values; scale to actual MW (same logic as
-                # max_active_power TS) so that weekly sums are in MWh, not dimensionless
-                # units.  Without this, the weekly budget is ~max_active_power-factor too
-                # large (e.g. 955 MWh instead of 76 MWh for an 0.08 MW generator).
-                _max_mw = 0.0
-                _limits = getattr(source_gen, "active_power_limits", None)
-                if _limits is not None:
-                    _max_val = (
-                        _limits.get("max") if isinstance(_limits, dict) else getattr(_limits, "max", None)
+        if ts.name == "hydro_budget":
+            # ts.data holds raw per-unit values; scale to actual MW (same logic as
+            # max_active_power TS) so that weekly sums are in MWh, not dimensionless
+            # units.  Without this, the weekly budget is ~max_active_power-factor too
+            # large (e.g. 955 MWh instead of 76 MWh for an 0.08 MW generator).
+            _max_mw = 0.0
+            _limits = getattr(source_gen, "active_power_limits", None)
+            if _limits is not None:
+                _max_val = _limits.get("max") if isinstance(_limits, dict) else getattr(_limits, "max", None)
+                if _max_val is not None:
+                    _mag = get_magnitude(_max_val)
+                    _raw = (
+                        float(_mag)
+                        if _mag is not None
+                        else float(_max_val)
+                        if isinstance(_max_val, int | float)
+                        else None
                     )
-                    if _max_val is not None:
-                        _mag = get_magnitude(_max_val)
-                        _raw = (
-                            float(_mag)
-                            if _mag is not None
-                            else float(_max_val)
-                            if isinstance(_max_val, int | float)
-                            else None
-                        )
-                        if _raw is not None:
-                            _max_mw = abs(_raw) * resolve_base_power(source_gen)
-                if _max_mw > 0.0:
-                    data = data * _max_mw
+                    if _raw is not None:
+                        _max_mw = abs(_raw) * resolve_base_power(source_gen)
+            if _max_mw > 0.0:
+                data = data * _max_mw
+            ts_for_conversion = types.SimpleNamespace(
+                data=data,
+                resolution=ts.resolution,
+                initial_timestamp=ts.initial_timestamp,
+            )
+            data, output_resolution = _convert_hydro_budget_time_series(
+                ts_for_conversion,
+                hydro_budget_cadence,
+            )
+            target_ts_name = _hydro_budget_series_name_for_resolution(output_resolution)
 
-            if (
-                ts.name == "hydro_budget"
-                and isinstance(ts.resolution, timedelta)
-                and ts.resolution < timedelta(days=7)
-            ):
-                seconds_per_step = ts.resolution.total_seconds()
-                if seconds_per_step > 0:
-                    points_per_week = max(int(round((7 * 86400) / seconds_per_step)), 1)
-                    full_weeks = data.size // points_per_week
-                    weekly_values: list[float] = []
-                    if full_weeks:
-                        weekly_values.extend(
-                            data[: full_weeks * points_per_week]
-                            .reshape(full_weeks, points_per_week)
-                            .sum(axis=1)
-                            .tolist()
-                        )
-                    remainder = data[full_weeks * points_per_week :]
-                    if remainder.size:
-                        weekly_values.append(float(remainder.sum()))
-
-                    # SingleTimeSeries requires at least two points.
-                    if len(weekly_values) >= 2:
-                        data = np.asarray(weekly_values, dtype=float)
-                        output_resolution = timedelta(days=7)
-
+        if not target_system.has_time_series(
+            target_generator,
+            name=target_ts_name,
+            time_series_type=SingleTimeSeries,
+            **metadata.features,
+        ):
             if ts.name == "max_active_power":
                 max_mw = 0.0
                 limits = getattr(source_gen, "active_power_limits", None)
@@ -756,12 +867,12 @@ def _attach_generator_time_series(
                     data = data * max_mw
             fresh_ts = SingleTimeSeries.from_array(
                 data=data,
-                name=ts.name,
+                name=target_ts_name,
                 initial_timestamp=ts.initial_timestamp,
                 resolution=output_resolution,
             )
-            _target_system(context).add_time_series(fresh_ts, target_generator, **metadata.features)
-            logger.debug("Attached time series {} to generator {}", ts.name, generator_name)
+            target_system.add_time_series(fresh_ts, target_generator, **metadata.features)
+            logger.debug("Attached time series {} to generator {}", target_ts_name, generator_name)
 
 
 def _has_usable_generator_time_series(source_component: object, context: PluginContext) -> bool:
@@ -843,21 +954,21 @@ def _attach_region_node_load_time_series(
 
 
 def _build_bus_to_loads_index(context: PluginContext) -> dict[str, list[Any]]:
-    """Build bus_uuid to list of all Load components (StandardLoad and PowerLoad) connected to that bus, cached."""
+    """Build bus_uuid to list of all Load components connected to that bus, cached.
+
+    Covers StandardLoad, InterruptibleStandardLoad, InterruptiblePowerLoad and PowerLoad.
+    """
     cached = context._cache.get("bus_to_loads")
     if cached is not None:
         return cached
 
     source_system = cast(Any, context.source_system)
     index: dict[str, list[Any]] = defaultdict(list)
-    for load in source_system.get_components(StandardLoad):
-        bus = getattr(load, "bus", None)
-        if bus is not None:
-            index[str(bus.uuid)].append(load)
-    for load in source_system.get_components(PowerLoad):
-        bus = getattr(load, "bus", None)
-        if bus is not None:
-            index[str(bus.uuid)].append(load)
+    for load_type in (StandardLoad, InterruptibleStandardLoad, InterruptiblePowerLoad, PowerLoad):
+        for load in source_system.get_components(load_type):
+            bus = getattr(load, "bus", None)
+            if bus is not None:
+                index[str(bus.uuid)].append(load)
 
     result = dict(index)
     context._cache["bus_to_loads"] = result
@@ -865,17 +976,24 @@ def _build_bus_to_loads_index(context: PluginContext) -> dict[str, list[Any]]:
 
 
 def _build_bus_to_standard_loads_index(context: PluginContext) -> dict[str, list[Any]]:
-    """Build bus_uuid to list of StandardLoad components connected to that bus, cached."""
+    """Build bus_uuid to list of all load types that carry ext LPF keys, cached.
+
+    Covers StandardLoad, InterruptibleStandardLoad, and InterruptiblePowerLoad —
+    every load type whose ext dict may contain ReEDS_LPF / MMWG_LPF and is used
+    by the ext-fallback path of get_load_participation_factor.
+    PowerLoad is intentionally excluded because it does not carry ext LPF metadata.
+    """
     cached = context._cache.get("bus_to_standard_loads")
     if cached is not None:
         return cached
 
     source_system = cast(Any, context.source_system)
     index: dict[str, list[Any]] = defaultdict(list)
-    for load in source_system.get_components(StandardLoad):
-        bus = getattr(load, "bus", None)
-        if bus is not None:
-            index[str(bus.uuid)].append(load)
+    for load_type in (StandardLoad, InterruptibleStandardLoad, InterruptiblePowerLoad):
+        for load in source_system.get_components(load_type):
+            bus = getattr(load, "bus", None)
+            if bus is not None:
+                index[str(bus.uuid)].append(load)
 
     result = dict(index)
     context._cache["bus_to_standard_loads"] = result
@@ -1105,21 +1223,23 @@ def get_region_ext(source_component: Area, context: PluginContext) -> Result[dic
 
     result: dict[str, Any] = {"sienna_type": sienna_type}
     if iso_rto:
-        result["description"] = iso_rto
+        result["description"] = f"ISO/RTOs where region belongs to: {iso_rto}"
     return Ok(result)
 
 
 @getter
-def get_availability(source_component: ACBus, context: PluginContext) -> Result[int, ValueError]:
-    """Populate available field with units count from ACBus.
+def get_availability(source_component: object, context: PluginContext) -> Result[int, ValueError]:
+    """Populate available field from Sienna objects.
 
-    Extracts the units attribute from ACBus and converts to int.
-    Returns 1 if units attribute is not present.
+    Priority:
+    1. ``available`` attribute, when present
+    2. Default to 1
     """
-    units = getattr(source_component, "units", None)
-    if units is None:
-        return Ok(1)
-    return Ok(int(units))
+    available = getattr(source_component, "available", None)
+    if available is not None:
+        return Ok(int(available))
+
+    return Ok(1)
 
 
 @getter
@@ -1147,14 +1267,29 @@ def get_load_participation_factor(
     source_component: ACBus,
     context: PluginContext,
 ) -> Result[float, ValueError]:
-    """Extract load participation factor from StandardLoads connected to the bus.
+    """Extract load participation factor from loads connected to the bus.
 
     Priority:
-    1. ext["MMWG_LPF"] or ext["ReEDS_LPF"] on connected StandardLoads
-    2. Computed as node_load_MW / total_system_load_MW
+    1. Computed as node_load_MW / area_total_load_MW using the live area topology.
+       Aggregates all load types on the bus (StandardLoad, InterruptibleStandardLoad,
+       InterruptiblePowerLoad, and PowerLoad) via _build_bus_to_loads_index.
+       This is correct for both the non-aggregated system (~100 original MMWG areas)
+       and an aggregated system (~20 planning regions), because it always reflects the
+       current bus-to-area assignment regardless of stale values in load ext dicts.
+    2. ext["ReEDS_LPF"] on connected StandardLoad / interruptible load types
+       (pre-computed at ~19 ReEDS regions, structurally aligned with the aggregated
+       MMWG planning regions).
+    3. ext["MMWG_LPF"] on connected StandardLoad / interruptible load types
+       (pre-computed at the original ~100+ MMWG area granularity; only valid when the
+       system has not been area-aggregated).
+
+    Note: MMWG_LPF stored in load.ext is relative to the original PSS/E MMWG areas
+    (~100+ areas).  After process_aggregated_areas! collapses those into ~20 planning
+    regions, each bus.area changes but the stored MMWG_LPF is not updated, making it
+    stale and incorrect for the aggregated topology. The live computation (Priority 1)
+    avoids this by deriving the factor directly from the current area assignments.
     """
 
-    # format LPF with scientific notation if very small, otherwise round to 4 decimals
     def format_lpf(val: float) -> float:
         """Format the LPF value with scientific notation if it's very small, otherwise round to 4 decimal places."""
         if abs(val) < 1e-4 and val != 0.0:
@@ -1162,18 +1297,10 @@ def get_load_participation_factor(
         return round(val, 4)
 
     bus_uuid_str = str(source_component.uuid)
-    index = _build_bus_to_standard_loads_index(context)
-    node_lpf_total = 0.0
-    for load in index.get(bus_uuid_str, []):
-        if hasattr(load, "ext") and isinstance(load.ext, dict):
-            lpf = load.ext.get("MMWG_LPF") or load.ext.get("ReEDS_LPF", 0)
-            if isinstance(lpf, int | float):
-                node_lpf_total += float(lpf)
 
-    if node_lpf_total > 0.0:
-        return Ok(format_lpf(node_lpf_total))
-
-    # compute LPF as node_load_MW / region_total_load_MW (nodes in each region must sum to 1.0)
+    # Priority 1: live computation from current area topology.
+    # Correct for both nodal (~100 areas) and aggregated (~20 region) systems because
+    # it uses bus.area.name, which reflects the topology after any area aggregation.
     area = getattr(source_component, "area", None)
     area_key: str | None = None
     if area is not None:
@@ -1187,6 +1314,20 @@ def get_load_participation_factor(
     region_load = area_total_load_index.get(area_key, 0.0) if area_key else 0.0
     if region_load > 0.0:
         return Ok(format_lpf(node_load / region_load))
+
+    # Priority 2: fall back to pre-computed ext LPFs.
+    # Prefer ReEDS_LPF (~19 regions, aligned with aggregated MMWG planning regions)
+    # over MMWG_LPF (~100+ original areas, stale after process_aggregated_areas!).
+    index = _build_bus_to_standard_loads_index(context)
+    node_lpf_total = 0.0
+    for load in index.get(bus_uuid_str, []):
+        if hasattr(load, "ext") and isinstance(load.ext, dict):
+            lpf = load.ext.get("ReEDS_LPF") or load.ext.get("MMWG_LPF", 0)
+            if isinstance(lpf, int | float):
+                node_lpf_total += float(lpf)
+
+    if node_lpf_total > 0.0:
+        return Ok(format_lpf(node_lpf_total))
 
     return Ok(0.0)
 
@@ -2188,43 +2329,27 @@ def get_turbine_pump_efficiency(
     source_component: HydroTurbine | HydroPumpTurbine, context: PluginContext
 ) -> Result[float, ValueError]:
     """Extract pump efficiency (%) from the HydroTurbine and HydroPumpTurbine."""
-    ht_pump_efficiency = getattr(source_component, "efficiency", None)
+    efficiency = getattr(source_component, "efficiency", None)
 
-    if isinstance(source_component, HydroTurbine):
-        default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
-        if ht_pump_efficiency is not None and ht_pump_efficiency != 0.0:
-            value = (
-                float(ht_pump_efficiency) * 100.0
-                if float(ht_pump_efficiency) <= 1.0
-                else float(ht_pump_efficiency)
-            )
-        else:
-            value = default
-        return Ok(round(value, 2))
-    elif isinstance(source_component, HydroPumpTurbine):
-        pump = getattr(ht_pump_efficiency, "pump", None) if ht_pump_efficiency is not None else None
-        default = round(_get_defaults("pumped-hydro", "efficiency") * 100.0, 2)
-        if pump is not None and pump != 0.0:
-            value = float(pump) * 100.0 if float(pump) <= 1.0 else float(pump)
-        else:
-            value = default
-        return Ok(round(value, 2))
+    if isinstance(source_component, HydroPumpTurbine):
+        value = getattr(efficiency, "pump", None) if efficiency is not None else None
     else:
-        # Generic fallback: use scalar efficiency if available, honouring 0-1 vs 0-100 scale.
-        if (
-            ht_pump_efficiency is not None
-            and isinstance(ht_pump_efficiency, int | float)
-            and ht_pump_efficiency != 0.0
-        ):
-            return Ok(
-                round(
-                    float(ht_pump_efficiency) * 100.0
-                    if ht_pump_efficiency <= 1.0
-                    else float(ht_pump_efficiency),
-                    2,
-                )
-            )
-        return Ok(89.0)
+        value = efficiency
+
+    efficiency_value = _coerce_scalar(value)
+    if efficiency_value is None or math.isclose(efficiency_value, 0.0, rel_tol=0.0, abs_tol=1e-9):
+        default_efficiency = _get_defaults("pumped-hydro", "efficiency")
+        if default_efficiency <= 1.0:
+            default_efficiency *= 100.0
+        return Ok(round(default_efficiency, 2))
+
+    if isinstance(source_component, HydroPumpTurbine):
+        efficiency_value = efficiency_value**2
+
+    if efficiency_value <= 1.0:
+        efficiency_value *= 100.0
+
+    return Ok(round(efficiency_value, 2))
 
 
 @getter

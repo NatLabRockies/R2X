@@ -1384,7 +1384,7 @@ def test_ensure_reserve_time_series_collapses_requirement_variants_to_min_provis
     assert features == {"scenario": "base"}
 
 
-def test_attach_hydro_reservoir_inflow_to_generator_budget_adds_max_energy_day(context, monkeypatch):
+def test_attach_hydro_reservoir_inflow_to_generator_budget_adds_max_energy_week(context, monkeypatch):
     import r2x_sienna_to_plexos.getters as getters_mod
 
     monkeypatch.setattr(getters_utils, "HydroTurbine", object)
@@ -1409,7 +1409,7 @@ def test_attach_hydro_reservoir_inflow_to_generator_budget_adds_max_energy_day(c
 
     source_ts = types.SimpleNamespace(
         name="inflow",
-        data=[1.0, 2.0],
+        data=[1.0] * 400,
         initial_timestamp=datetime(2025, 1, 1),
         resolution=timedelta(hours=1),
     )
@@ -1430,7 +1430,7 @@ def test_attach_hydro_reservoir_inflow_to_generator_budget_adds_max_energy_day(c
     assert len(added) == 1
     ts, comp, features = added[0]
     assert comp.name == "H1"
-    assert ts.name == "max_energy_day"
+    assert ts.name == "max_energy_week"
     assert features == {"scenario": "base"}
 
 
@@ -1699,7 +1699,7 @@ def test_resolve_iso_rto_description_sorted_join(context, monkeypatch):
         lambda buses, ctx: {"miso": 1, "ercot": 2},
     )
     result = getters_utils._resolve_iso_rto_description_for_buses([object()], context)
-    assert result == "ercot-miso"
+    assert result == "ercot, miso"
 
 
 def test_resolve_iso_rto_description_empty_returns_none(context, monkeypatch):

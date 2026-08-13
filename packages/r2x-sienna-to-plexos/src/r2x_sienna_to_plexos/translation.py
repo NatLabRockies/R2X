@@ -15,6 +15,7 @@ from .getters_utils import (
     apply_chunking_patch,
     apply_description_export_patch,
     ensure_battery_node_memberships,
+    ensure_deduplicate_lines,
     ensure_generator_node_memberships,
     ensure_generator_time_series,
     ensure_head_storage_generator_membership,
@@ -65,6 +66,7 @@ def sienna_to_plexos(system: System, config: SiennaToPlexosConfig) -> System:
     context.target_system = plexos_system
 
     apply_rules_to_context(context)
+    ensure_deduplicate_lines(context)
     ensure_source_conflicts_resolved(context)
     ensure_zone_consolidation(context)
     ensure_generator_time_series(context)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from importlib.resources import files
 
 from r2x_core import DataStore, PluginConfig, PluginContext, Rule, System, apply_rules_to_context
@@ -143,13 +144,55 @@ def test_reeds_storage_translates_to_plexos_storage(tmp_path) -> None:
     ):
         if cls is not None:
             storages.extend(list(context.target_system.get_components(cls)))
-    storage = [s for s in storages if s.name in ("BATT1", "BATT1_head", "BATT1_tail")]
-    assert storage
+    translated_storage = [
+        component for component in storages if component.name in ("BATT1", "BATT1_head", "BATT1_tail")
+    ]
+    assert translated_storage
+
+    battery = next(context.target_system.get_components(PLEXOSBattery))
+    assert battery.charge_efficiency == storage.round_trip_efficiency * 100.0
+    assert battery.discharge_efficiency == 100.0
+    assert math.isclose(
+        battery.charge_efficiency * battery.discharge_efficiency / 10_000.0,
+        storage.round_trip_efficiency,
+    )
+
+
+def test_reeds_pumped_hydro_vom_translates_to_plexos(tmp_path) -> None:
+    from r2x_plexos.models import PLEXOSGenerator
+    from r2x_reeds.models import ReEDSRegion, ReEDSStorage
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", transmission_region="Z1")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSStorage(
+            name="PUMPED_HYDRO1",
+            region=region,
+            technology="pumped-hydro",
+            capacity=50.0,
+            storage_duration=12.0,
+            round_trip_efficiency=0.8,
+            vom_cost=0.38,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    result = apply_rules_to_context(context)
+    assert result.total_rules > 0
+
+    generators = list(context.target_system.get_components(PLEXOSGenerator))
+    assert len(generators) == 1
+    generator = generators[0]
+    assert generator.name == "PUMPED_HYDRO1"
+    assert generator.vom_charge == 0.38
 
 
 def test_reeds_interface_translates_to_plexos_interface(tmp_path) -> None:
     from r2x_plexos.models import PLEXOSInterface
-    from r2x_reeds.models import ReEDSInterface, ReEDSRegion
+    from r2x_reeds.models import FromTo_ToFrom, ReEDSInterface, ReEDSRegion, ReEDSTransmissionLine
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
@@ -157,8 +200,14 @@ def test_reeds_interface_translates_to_plexos_interface(tmp_path) -> None:
     region2 = ReEDSRegion(name="p2", transmission_region="Z2")
     context.source_system.add_component(region1)
     context.source_system.add_component(region2)
+    interface = ReEDSInterface(name="IFACE_1_2", from_region=region1, to_region=region2)
+    context.source_system.add_component(interface)
     context.source_system.add_component(
-        ReEDSInterface(name="IFACE_1_2", from_region=region1, to_region=region2)
+        ReEDSTransmissionLine(
+            name="LINE_1_2",
+            interface=interface,
+            max_active_power=FromTo_ToFrom(from_to=150.0, to_from=100.0),
+        )
     )
     context.target_system = System(name="target", auto_add_composed_components=True)
     context.rules = rules
@@ -171,6 +220,8 @@ def test_reeds_interface_translates_to_plexos_interface(tmp_path) -> None:
     iface = interfaces[0]
     assert iface.name == "Z1_Z2-IFACE_1_2"
     assert iface.category == "reeds-interface"
+    assert iface.max_flow == 100.0
+    assert iface.min_flow == -150.0
 
 
 def test_reeds_reserve_translates_to_plexos_reserve(tmp_path) -> None:
@@ -301,6 +352,58 @@ def test_electrolyzer_demand_translates_to_purchaser_and_node_membership(tmp_pat
         purchaser, PLEXOSMembership
     )
     assert any(m.collection == CollectionEnum.Nodes for m in memberships)
+
+
+def test_smr_demand_translates_to_purchaser_not_generator(tmp_path) -> None:
+    from plexosdb import CollectionEnum
+    from r2x_plexos.models import PLEXOSGenerator, PLEXOSMembership, PLEXOSPurchaser
+    from r2x_reeds.models import ReEDSRegion, ReEDSSteamMethaneReformingDemand
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", transmission_region="Z1")
+    context.source_system.add_component(region)
+    context.source_system.add_component(
+        ReEDSSteamMethaneReformingDemand(
+            name="p1_smr_demand",
+            region=region,
+            technology="smr",
+            capacity=15.0,
+            electricity_efficiency=1.0,
+        )
+    )
+    context.source_system.add_component(
+        ReEDSSteamMethaneReformingDemand(
+            name="p1_smr_ccs_demand",
+            region=region,
+            technology="smr_ccs",
+            capacity=20.0,
+            electricity_efficiency=1.0,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    result = apply_rules_to_context(context)
+    assert result.total_rules > 0
+
+    purchasers = {
+        purchaser.name: purchaser for purchaser in context.target_system.get_components(PLEXOSPurchaser)
+    }
+    assert set(purchasers) == {"p1_smr_demand", "p1_smr_ccs_demand"}
+    assert purchasers["p1_smr_demand"].category == "smr"
+    assert purchasers["p1_smr_demand"].max_load == 15.0
+    assert purchasers["p1_smr_ccs_demand"].category == "smr_ccs"
+    assert purchasers["p1_smr_ccs_demand"].max_load == 20.0
+
+    generators = list(context.target_system.get_components(PLEXOSGenerator))
+    assert all(generator.name not in purchasers for generator in generators)
+
+    for purchaser in purchasers.values():
+        memberships = context.target_system.get_supplemental_attributes_with_component(
+            purchaser, PLEXOSMembership
+        )
+        assert any(membership.collection == CollectionEnum.Nodes for membership in memberships)
 
 
 def test_data_center_demand_translates_to_purchaser_not_generator(tmp_path) -> None:

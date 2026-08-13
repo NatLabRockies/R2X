@@ -125,7 +125,7 @@ def setup_systems(context):
     interface = ReEDSInterface(name="IFACE1", from_region=region, to_region=region2)
     context.source_system.add_component(interface)
     line = ReEDSTransmissionLine(
-        name="LINE1", interface=interface, max_active_power=FromTo_ToFrom(from_to=100.0, to_from=100.0)
+        name="LINE1", interface=interface, max_active_power=FromTo_ToFrom(from_to=150.0, to_from=100.0)
     )
     context.source_system.add_component(line)
     plexos_line = PLEXOSLine(name="LINE1")
@@ -177,7 +177,7 @@ def test_basic_getters_return_values(tmp_path):
     assert getters.forced_outage_rate_percent(objs["thermal"], context).unwrap() == 2.0
     assert getters.maintenance_rate_percent(objs["thermal"], context).unwrap() == 0.0
     assert getters.charge_efficiency_percent(objs["storage"], context).unwrap() == 95.0
-    assert getters.discharge_efficiency_percent(objs["storage"], context).unwrap() == 95.0
+    assert getters.discharge_efficiency_percent(objs["storage"], context).unwrap() == 100.0
     assert getters.mean_time_to_repair_hours(objs["thermal"], context).unwrap() == 0.0
     assert getters.get_battery_max_soc(objs["storage"], context).unwrap() == 100.0
     assert getters.get_battery_initial_soc(objs["storage"], context).unwrap() == 50.0
@@ -185,11 +185,10 @@ def test_basic_getters_return_values(tmp_path):
 
     # Interface and line getters
     assert getters.interface_max_flow(objs["interface"], context).unwrap() == 100.0
-    assert getters.interface_min_flow(objs["interface"], context).unwrap() == -100.0
+    assert getters.interface_min_flow(objs["interface"], context).unwrap() == -150.0
     assert getters.get_interface_name(objs["interface"], context).unwrap() == "Z1_Z2-IFACE1"
-    assert getters.min_capacity_factor_percent(objs["variable"], context).unwrap() == 0.0
     assert getters.line_max_flow(objs["line"], context).unwrap() == 100.0
-    assert getters.line_min_flow(objs["line"], context).unwrap() == -100.0
+    assert getters.line_min_flow(objs["line"], context).unwrap() == -150.0
 
     # Storage cost getters
     assert getters.storage_fom_cost_energy(objs["storage"], context).unwrap() == 2.0
@@ -206,6 +205,7 @@ def test_basic_getters_return_values(tmp_path):
 
     # Hydro getters
     assert getters.hydro_min_flow(objs["hydro"], context).unwrap() == 0.0
+    assert getters.hydro_max_energy_per_day(objs["hydro"], context).unwrap() == 1e30
 
     # VRE category/resource class
     assert getters.vre_category_with_resource_class(objs["variable"], context).unwrap() == "wind-ons"
@@ -237,6 +237,36 @@ def test_basic_getters_return_values(tmp_path):
         getters.reeds_membership_storage_child_tail_storage(objs["storage"], context).unwrap().name
         == "BAT1_tail"
     )
+
+
+def test_get_load_participation_factor(tmp_path):
+    """get_load_participation_factor always returns 1.0.
+
+    Each ReEDSRegion maps 1:1 to a PLEXOSNode, so the node receives 100 % of
+    the region load (participation factor = 1.0).  The value must be
+    unconditional: it should not change based on the region's load attribute,
+    whether the region has an associated node in the target system, or any
+    other property.
+    """
+    context = make_context(tmp_path)
+    objs = setup_systems(context)
+
+    # Standard region with a matching node already in the target system.
+    assert getters.get_load_participation_factor(objs["region"], context).unwrap() == 1.0
+
+    # A second region - same expectation.
+    assert getters.get_load_participation_factor(objs["region2"], context).unwrap() == 1.0
+
+    # A minimal region with no load data: factor must still be 1.0.
+    bare_region = ReEDSRegion(name="BARE")
+    assert getters.get_load_participation_factor(bare_region, context).unwrap() == 1.0
+
+    # A plain object that has nothing in common with ReEDSRegion: the getter
+    # is unconditional so even unknown objects return 1.0.
+    class _Dummy:
+        pass
+
+    assert getters.get_load_participation_factor(_Dummy(), context).unwrap() == 1.0
 
 
 def test_line_max_flow_and_min_flow_edge_cases(tmp_path):
