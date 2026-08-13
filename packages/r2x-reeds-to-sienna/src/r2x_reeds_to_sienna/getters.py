@@ -781,8 +781,31 @@ def get_reserve_direction(component: ReEDSReserve, context: PluginContext) -> Re
 def get_interface_flow_limits(
     component: ReEDSInterface, context: PluginContext
 ) -> Result[FromTo_ToFrom, ValueError]:
-    """Provide zeroed flow limits placeholder."""
-    return Ok(FromTo_ToFrom(from_to=0.0, to_from=0.0))
+    """Return directional flow limits from the interface's member lines."""
+    from r2x_reeds.models import ReEDSTransmissionLine
+
+    if context.source_system is None:
+        return Ok(FromTo_ToFrom(from_to=0.0, to_from=0.0))
+
+    interface_name = getattr(component, "name", "")
+    forward_limit = 0.0
+    reverse_limit = 0.0
+    for line in context.source_system.get_components(ReEDSTransmissionLine):
+        line_interface = getattr(line, "interface", None)
+        if getattr(line_interface, "name", "") != interface_name:
+            continue
+
+        limits = getattr(line, "max_active_power", None)
+        if limits is not None:
+            forward_limit += float(limits.to_from)
+            reverse_limit += float(limits.from_to)
+
+    return Ok(
+        FromTo_ToFrom(
+            from_to=_to_system_base(forward_limit, context),
+            to_from=_to_system_base(reverse_limit, context),
+        )
+    )
 
 
 @getter
