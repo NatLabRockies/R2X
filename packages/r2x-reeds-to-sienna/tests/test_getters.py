@@ -248,8 +248,8 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.get_area_from(interface, context).unwrap() == area
     assert getters.get_area_to(interface, context).unwrap() == area2
     flow_limits = getters.get_interface_flow_limits(interface, context).unwrap()
-    assert flow_limits.from_to == 2.0
-    assert flow_limits.to_from == 1.8
+    assert flow_limits.from_to == 1.8
+    assert flow_limits.to_from == 2.0
     assert getters.get_zero_flow(interface, context).unwrap() == 0.0
 
     # Test reserve getters

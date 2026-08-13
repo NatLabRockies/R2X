@@ -781,7 +781,11 @@ def get_reserve_direction(component: ReEDSReserve, context: PluginContext) -> Re
 def get_interface_flow_limits(
     component: ReEDSInterface, context: PluginContext
 ) -> Result[FromTo_ToFrom, ValueError]:
-    """Return directional flow limits from the interface's member lines."""
+    """Return directional flow limits from the interface's member lines.
+
+    PowerSimulations uses ``to_from`` as the positive from-area to to-area
+    limit and ``from_to`` as the magnitude of the negative reverse limit.
+    """
     from r2x_reeds.models import ReEDSTransmissionLine
 
     if context.source_system is None:
@@ -802,8 +806,8 @@ def get_interface_flow_limits(
 
     return Ok(
         FromTo_ToFrom(
-            from_to=_to_system_base(forward_limit, context),
-            to_from=_to_system_base(reverse_limit, context),
+            from_to=_to_system_base(reverse_limit, context),
+            to_from=_to_system_base(forward_limit, context),
         )
     )
 

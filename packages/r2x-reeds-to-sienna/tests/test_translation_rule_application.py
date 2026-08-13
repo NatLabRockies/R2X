@@ -416,8 +416,8 @@ def test_reeds_interface_translates_to_area_interchange(tmp_path) -> None:
     assert interchange.name == "IFACE_1_2"
     assert interchange.from_area.name == "p1"
     assert interchange.to_area.name == "p2"
-    assert interchange.flow_limits.from_to == 1.5
-    assert interchange.flow_limits.to_from == 1.75
+    assert interchange.flow_limits.from_to == 1.75
+    assert interchange.flow_limits.to_from == 1.5
     assert interchange.active_power_flow == 0.0
 
 
