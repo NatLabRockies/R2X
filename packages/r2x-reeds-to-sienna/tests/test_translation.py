@@ -195,6 +195,42 @@ def test_reeds_to_sienna_normalizes_max_active_power_time_series(monkeypatch):
     assert scaling_calls == [(result, target_wind, "max_active_power", "get_max_active_power")]
 
 
+def test_reeds_to_sienna_normalizes_reserve_requirement_time_series(monkeypatch):
+    source = _build_source_system()
+    source_reserve = source.get_component(ReEDSReserve, "spin_up")
+    scaling_calls = []
+
+    def record_scaling_call(system, owner, name, function_name):
+        scaling_calls.append((system, owner, name, function_name))
+
+    monkeypatch.setattr(
+        "r2x_sienna.exporter.set_time_series_scaling_factor_multiplier",
+        record_scaling_call,
+    )
+    source_profile = SingleTimeSeries.from_array(
+        data=[0.0, 25.0, 50.0],
+        name="requirement",
+        initial_timestamp=datetime(2012, 1, 1),
+        resolution=timedelta(hours=1),
+    )
+    source.add_time_series(source_profile, source_reserve)
+
+    result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
+
+    target_reserve = result.get_component(VariableReserve, "spin_up")
+    target_profile = result.get_time_series(target_reserve, name="requirement")
+    target_metadata = result.list_time_series_metadata(target_reserve, name="requirement")[0]
+    preserved_source = source.get_time_series(source_reserve, name="requirement")
+
+    assert target_reserve.requirement == pytest.approx(0.5)
+    assert isinstance(target_metadata.normalization, NormalizationByValue)
+    assert target_metadata.normalization.value == pytest.approx(50.0)
+    assert target_profile.data_array == pytest.approx([0.0, 0.5, 1.0])
+    assert preserved_source.data_array == pytest.approx([0.0, 25.0, 50.0])
+
+    assert scaling_calls == [(result, target_reserve, "requirement", "get_requirement")]
+
+
 def test_reeds_to_sienna_translates_hydro():
     source = _build_source_system()
     result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
