@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/NatLabRockies/R2X/compare/r2x-plexos-to-sienna-v0.2.0...r2x-plexos-to-sienna-v0.2.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* bump dependencies for correctly release on r2x ([#301](https://github.com/NatLabRockies/R2X/issues/301)) ([68aa5d6](https://github.com/NatLabRockies/R2X/commit/68aa5d6923cf0126b3d48e37ad6e7b36edda1ac4))
+
+
+### Build
+
+* **deps-dev:** bump prek from 0.4.3 to 0.4.5 ([#280](https://github.com/NatLabRockies/R2X/issues/280)) ([7d19ed6](https://github.com/NatLabRockies/R2X/commit/7d19ed636f02eec3d12511068f51a5afa2d3951e))
+
 ## [0.2.0](https://github.com/NatLabRockies/R2X/compare/r2x-plexos-to-sienna-v0.1.0...r2x-plexos-to-sienna-v0.2.0) (2026-06-22)
 
 
