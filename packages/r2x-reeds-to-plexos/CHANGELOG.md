@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.1](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-plexos-v0.2.0...r2x-reeds-to-plexos-v0.2.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* bump dependencies for correctly release on r2x ([#301](https://github.com/NatLabRockies/R2X/issues/301)) ([68aa5d6](https://github.com/NatLabRockies/R2X/commit/68aa5d6923cf0126b3d48e37ad6e7b36edda1ac4))
+* mix fixes across packages based on recent runs and observations ([#289](https://github.com/NatLabRockies/R2X/issues/289)) ([8f1e6f5](https://github.com/NatLabRockies/R2X/commit/8f1e6f5e9157b65d7d7cf9577be6211c9632c756))
+* ReEDS hydro operating mode translation to PLEXOS ([#306](https://github.com/NatLabRockies/R2X/issues/306)) ([62039c5](https://github.com/NatLabRockies/R2X/commit/62039c52552a725d9254697bfab916dbcd1f9e7d))
+* ReEDS pumped hydro mapping and hydro operating costs ([#303](https://github.com/NatLabRockies/R2X/issues/303)) ([1ef5875](https://github.com/NatLabRockies/R2X/commit/1ef58758a720cdcdfb649899caf27b6854fd052e))
+* ReEDS storage efficiency mapping in PLEXOS and Sienna ([#300](https://github.com/NatLabRockies/R2X/issues/300)) ([c4b12ae](https://github.com/NatLabRockies/R2X/commit/c4b12aef37c1450be177f41f3822493cbf2c43d6))
+* ReEDS transmission mappings for Sienna and PLEXOS ([#298](https://github.com/NatLabRockies/R2X/issues/298)) ([27786c2](https://github.com/NatLabRockies/R2X/commit/27786c24ecdc6ad9aa4fbdbd7280f1e0683a2db1))
+* remove capacity factor getter entry from r2p translations ([#285](https://github.com/NatLabRockies/R2X/issues/285)) ([d083095](https://github.com/NatLabRockies/R2X/commit/d083095940e9b37d39be510a718a377df73a1b93))
+* resolve r2p load participation factor for region/nodes ([#282](https://github.com/NatLabRockies/R2X/issues/282)) ([051fc89](https://github.com/NatLabRockies/R2X/commit/051fc89bbb8ed478faabd92a6affc5106f3a08bc))
+* Translate smr and smr_ccs correctly in PLEXOS and Sienna ([#296](https://github.com/NatLabRockies/R2X/issues/296)) ([265a308](https://github.com/NatLabRockies/R2X/commit/265a308274926441dc5f3994e7f8c2a0084c27bb))
+* update wheel charging for lines params ([#309](https://github.com/NatLabRockies/R2X/issues/309)) ([334f408](https://github.com/NatLabRockies/R2X/commit/334f40871dc04dffc88002e1a9f8c290b21683c8))
+
+
+### Build
+
+* **deps-dev:** bump prek from 0.4.3 to 0.4.5 ([#280](https://github.com/NatLabRockies/R2X/issues/280)) ([7d19ed6](https://github.com/NatLabRockies/R2X/commit/7d19ed636f02eec3d12511068f51a5afa2d3951e))
+
 ## [0.2.0](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-plexos-v0.1.0...r2x-reeds-to-plexos-v0.2.0) (2026-06-22)
 
 
