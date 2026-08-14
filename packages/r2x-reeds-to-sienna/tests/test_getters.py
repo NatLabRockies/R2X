@@ -139,6 +139,16 @@ def test_basic_getters_return_values(tmp_path) -> None:
     )
     context.source_system.add_component(hvdc_line)
 
+    other_interface = ReEDSInterface(name="OTHER_IFACE", from_region=region, to_region=region2)
+    context.source_system.add_component(other_interface)
+    context.source_system.add_component(
+        ReEDSTransmissionLine(
+            name="other_interface_line",
+            interface=other_interface,
+            max_active_power={"from_to": 500.0, "to_from": 500.0},
+        )
+    )
+
     # Test thermal generator getters
     assert getters.unique_component_name(thermal, context).unwrap() == "p1_THERM"
     assert getters.get_capacity_as_rating(thermal, context).unwrap() == 1.0
@@ -238,7 +248,8 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.get_area_from(interface, context).unwrap() == area
     assert getters.get_area_to(interface, context).unwrap() == area2
     flow_limits = getters.get_interface_flow_limits(interface, context).unwrap()
-    assert flow_limits.from_to == 0.0
+    assert flow_limits.from_to == 1.8
+    assert flow_limits.to_from == 2.0
     assert getters.get_zero_flow(interface, context).unwrap() == 0.0
 
     # Test reserve getters

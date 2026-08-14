@@ -376,7 +376,7 @@ def test_reeds_demand_translates_to_power_load(tmp_path) -> None:
 
 
 def test_reeds_interface_translates_to_area_interchange(tmp_path) -> None:
-    from r2x_reeds.models import ReEDSInterface, ReEDSRegion
+    from r2x_reeds.models import FromTo_ToFrom, ReEDSInterface, ReEDSRegion, ReEDSTransmissionLine
     from r2x_sienna.models import AreaInterchange
 
     context, rules = make_context_and_rules(tmp_path)
@@ -385,8 +385,23 @@ def test_reeds_interface_translates_to_area_interchange(tmp_path) -> None:
     region2 = ReEDSRegion(name="p2", category="region")
     context.source_system.add_component(region1)
     context.source_system.add_component(region2)
+    interface = ReEDSInterface(name="IFACE_1_2", from_region=region1, to_region=region2)
+    context.source_system.add_component(interface)
     context.source_system.add_component(
-        ReEDSInterface(name="IFACE_1_2", from_region=region1, to_region=region2)
+        ReEDSTransmissionLine(
+            name="LINE_1_2_AC",
+            interface=interface,
+            line_type="AC",
+            max_active_power=FromTo_ToFrom(from_to=150.0, to_from=100.0),
+        )
+    )
+    context.source_system.add_component(
+        ReEDSTransmissionLine(
+            name="LINE_1_2_VSC",
+            interface=interface,
+            line_type="VSC",
+            max_active_power=FromTo_ToFrom(from_to=25.0, to_from=50.0),
+        )
     )
     context.target_system = System(name="target", system_base=100.0, auto_add_composed_components=True)
     context.rules = rules
@@ -401,6 +416,8 @@ def test_reeds_interface_translates_to_area_interchange(tmp_path) -> None:
     assert interchange.name == "IFACE_1_2"
     assert interchange.from_area.name == "p1"
     assert interchange.to_area.name == "p2"
+    assert interchange.flow_limits.from_to == 1.75
+    assert interchange.flow_limits.to_from == 1.5
     assert interchange.active_power_flow == 0.0
 
 
