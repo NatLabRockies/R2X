@@ -519,12 +519,12 @@ def test_get_gen_services_resolves_non_spinning_reserve(tmp_path) -> None:
         ),
     ):
         services = getters.get_gen_services(component, context).unwrap()
-        assert (
-            len(services) == 1
-        ), f"{type(component).__name__}: expected 1 NON_SPINNING service, got {len(services)}"
-        assert (
-            services[0] is non_spin
-        ), f"{type(component).__name__}: service should be the VariableReserveNonSpinning instance"
+        assert len(services) == 1, (
+            f"{type(component).__name__}: expected 1 NON_SPINNING service, got {len(services)}"
+        )
+        assert services[0] is non_spin, (
+            f"{type(component).__name__}: service should be the VariableReserveNonSpinning instance"
+        )
 
     # A mix of spinning + non-spinning reserves both resolve correctly
     from r2x_sienna.models import VariableReserve

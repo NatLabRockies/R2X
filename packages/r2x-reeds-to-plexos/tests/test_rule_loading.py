@@ -165,9 +165,9 @@ def test_dependency_rules() -> None:
     for rule in rules_data:
         if "depends_on" in rule:
             for dependency in rule["depends_on"]:
-                assert (
-                    dependency in rule_names
-                ), f"Rule {rule.get('name', 'unknown')} depends on unknown rule: {dependency}"
+                assert dependency in rule_names, (
+                    f"Rule {rule.get('name', 'unknown')} depends on unknown rule: {dependency}"
+                )
 
 
 def test_node_rule_is_first() -> None:
@@ -185,9 +185,9 @@ def test_node_rule_is_first() -> None:
 
     for i, rule in enumerate(rules_data):
         if "depends_on" in rule and "region_node" in rule["depends_on"]:
-            assert (
-                i > node_rule_index
-            ), f"Rule {rule.get('name', 'unknown')} depends on region_node but comes before it"
+            assert i > node_rule_index, (
+                f"Rule {rule.get('name', 'unknown')} depends on region_node but comes before it"
+            )
 
 
 def test_dependency_rules_with_synthetic_depends_on(monkeypatch, tmp_path: Path) -> None:

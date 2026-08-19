@@ -196,9 +196,9 @@ def test_dependency_rules() -> None:
     for rule in rules_data:
         if "depends_on" in rule:
             for dependency in rule["depends_on"]:
-                assert (
-                    dependency in rule_names
-                ), f"Rule {rule.get('name', 'unknown')} depends on unknown rule: {dependency}"
+                assert dependency in rule_names, (
+                    f"Rule {rule.get('name', 'unknown')} depends on unknown rule: {dependency}"
+                )
 
 
 def test_bus_rule_is_first() -> None:
@@ -217,9 +217,9 @@ def test_bus_rule_is_first() -> None:
     # Check that rules with depends_on: ["region_bus"] come after
     for i, rule in enumerate(rules_data):
         if "depends_on" in rule and "region_bus" in rule["depends_on"]:
-            assert (
-                i > bus_rule_index
-            ), f"Rule {rule.get('name', 'unknown')} depends on region_bus but comes before it"
+            assert i > bus_rule_index, (
+                f"Rule {rule.get('name', 'unknown')} depends on region_bus but comes before it"
+            )
 
 
 def test_has_non_spinning_reserve_rule() -> None:
@@ -283,7 +283,7 @@ def test_hydro_rule_uses_hydro_prime_mover() -> None:
     assert hydro_rule is not None, "hydro_gen rule not found"
 
     getters = hydro_rule.get("getters", {})
-    assert (
-        getters.get("prime_mover_type") == "get_hydro_prime_mover"
-    ), "hydro_gen must use get_hydro_prime_mover (not get_prime_mover)"
+    assert getters.get("prime_mover_type") == "get_hydro_prime_mover", (
+        "hydro_gen must use get_hydro_prime_mover (not get_prime_mover)"
+    )
     assert "reactive_power_limits" in getters, "hydro_gen missing reactive_power_limits getter"

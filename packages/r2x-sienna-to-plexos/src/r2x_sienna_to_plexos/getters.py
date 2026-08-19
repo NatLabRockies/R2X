@@ -681,7 +681,7 @@ def _convert_hydro_budget_time_series(ts: Any, cadence: str) -> tuple[Any, Any]:
         if ts.resolution >= timedelta(days=7):
             return data, output_resolution
 
-        points_per_bucket = max(int(round((7 * 86400) / seconds_per_step)), 1)
+        points_per_bucket = max(round((7 * 86400) / seconds_per_step), 1)
         full_buckets = data.size // points_per_bucket
         weekly_values: list[float] = []
         if full_buckets:
@@ -698,7 +698,7 @@ def _convert_hydro_budget_time_series(ts: Any, cadence: str) -> tuple[Any, Any]:
             return np.asarray(weekly_values, dtype=float), timedelta(days=7)
         return data, output_resolution
 
-    points_per_day = max(int(round(86400 / seconds_per_step)), 1)
+    points_per_day = max(round(86400 / seconds_per_step), 1)
     if points_per_day <= 0:
         return data, output_resolution
 

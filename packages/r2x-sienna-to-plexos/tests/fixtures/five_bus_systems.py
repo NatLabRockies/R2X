@@ -489,6 +489,8 @@ def system_with_network(system_with_storage) -> System:
         name="line-1-2",
         arc=Arc(from_to=bus1, to_from=bus2),
         rating=100.0,
+        r=0.01,
+        x=0.1,
         active_power_flow=100,
         reactive_power_flow=100,
         angle_limits=MinMax(min=-0.03, max=0.03),
@@ -500,6 +502,8 @@ def system_with_network(system_with_storage) -> System:
         arc=Arc(from_to=bus2, to_from=bus3),
         active_power_flow=0.0,
         rating=100.0,
+        r=0.01,
+        x=0.1,
         reactive_power_flow=100,
         angle_limits=MinMax(min=-0.03, max=0.03),
     )
@@ -510,6 +514,8 @@ def system_with_network(system_with_storage) -> System:
         arc=Arc(from_to=bus3, to_from=bus4),
         active_power_flow=0.0,
         rating=100.0,
+        r=0.01,
+        x=0.1,
         reactive_power_flow=100,
         angle_limits=MinMax(min=-0.03, max=0.03),
     )
@@ -520,6 +526,8 @@ def system_with_network(system_with_storage) -> System:
         arc=Arc(from_to=bus4, to_from=bus5),
         active_power_flow=0.0,
         rating=100.0,
+        r=0.01,
+        x=0.1,
         reactive_power_flow=100,
         angle_limits=MinMax(min=-0.03, max=0.03),
     )
