@@ -30,14 +30,14 @@ logger.disable("r2x_reeds_to_plexos")
 __all__ = [
     "ReedsToPlexosConfig",
     "__version__",
+    "attach_emissions_to_generators",
     "attach_region_load_time_series",
     "attach_reserve_time_series",
-    "attach_emissions_to_generators",
+    "attach_time_series_to_generators",
     "attach_time_series_to_purchasers",
     "convert_pumped_storage_generators",
     "ensure_generator_node_memberships",
     "ensure_region_node_memberships",
     "link_line_memberships",
-    "attach_time_series_to_generators",
     "reeds_to_plexos",
 ]

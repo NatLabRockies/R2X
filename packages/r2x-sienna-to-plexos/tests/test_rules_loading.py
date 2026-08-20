@@ -89,9 +89,9 @@ def test_dependency_rules() -> None:
     for rule in rules_data:
         if "depends_on" in rule:
             for dependency in rule["depends_on"]:
-                assert (
-                    dependency in rule_names
-                ), f"Rule {rule.get('name', 'unknown')} depends on unknown rule: {dependency}"
+                assert dependency in rule_names, (
+                    f"Rule {rule.get('name', 'unknown')} depends on unknown rule: {dependency}"
+                )
 
 
 def test_node_rule_is_first() -> None:
@@ -110,9 +110,9 @@ def test_node_rule_is_first() -> None:
     # Check that rules with depends_on: ["acbus_to_node"] come after
     for i, rule in enumerate(rules_data):
         if "depends_on" in rule and "acbus_to_node" in rule["depends_on"]:
-            assert (
-                i > node_rule_index
-            ), f"Rule {rule.get('name', 'unknown')} depends on acbus_to_node but comes before it"
+            assert i > node_rule_index, (
+                f"Rule {rule.get('name', 'unknown')} depends on acbus_to_node but comes before it"
+            )
 
 
 def test_rule_from_records_basic() -> None:

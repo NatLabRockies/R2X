@@ -11,4 +11,4 @@ from .translation import reeds_to_sienna
 __version__ = version("r2x_reeds_to_sienna")
 
 
-__all__ = ["__version__", "ReEDSToSiennaConfig", "reeds_to_sienna"]
+__all__ = ["ReEDSToSiennaConfig", "__version__", "reeds_to_sienna"]

@@ -58,8 +58,8 @@ def test_get_thermal_generator_units_zero_when_fuel_price_zero(monkeypatch, cont
     context.source_system.time_series.list_time_series_metadata = lambda _component: [
         types.SimpleNamespace(name="max_active_power", features={})
     ]
-    context.source_system.list_time_series = (
-        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    context.source_system.list_time_series = lambda _component, **kwargs: (
+        [object()] if kwargs.get("name") else []
     )
 
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(0.0))
@@ -76,8 +76,8 @@ def test_get_thermal_generator_units_zero_when_heat_rate_zero(monkeypatch, conte
     context.source_system.time_series.list_time_series_metadata = lambda _component: [
         types.SimpleNamespace(name="max_active_power", features={})
     ]
-    context.source_system.list_time_series = (
-        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    context.source_system.list_time_series = lambda _component, **kwargs: (
+        [object()] if kwargs.get("name") else []
     )
 
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
@@ -94,8 +94,8 @@ def test_get_thermal_generator_units_one_when_inputs_present(monkeypatch, contex
     context.source_system.time_series.list_time_series_metadata = lambda _component: [
         types.SimpleNamespace(name="max_active_power", features={})
     ]
-    context.source_system.list_time_series = (
-        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    context.source_system.list_time_series = lambda _component, **kwargs: (
+        [object()] if kwargs.get("name") else []
     )
 
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
@@ -112,8 +112,8 @@ def test_get_thermal_generator_units_zero_for_monticello_tx(monkeypatch, context
     context.source_system.time_series.list_time_series_metadata = lambda _component: [
         types.SimpleNamespace(name="max_active_power", features={})
     ]
-    context.source_system.list_time_series = (
-        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    context.source_system.list_time_series = lambda _component, **kwargs: (
+        [object()] if kwargs.get("name") else []
     )
 
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
@@ -130,8 +130,8 @@ def test_get_thermal_generator_units_keeps_monticello_mn_active(monkeypatch, con
     context.source_system.time_series.list_time_series_metadata = lambda _component: [
         types.SimpleNamespace(name="max_active_power", features={})
     ]
-    context.source_system.list_time_series = (
-        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    context.source_system.list_time_series = lambda _component, **kwargs: (
+        [object()] if kwargs.get("name") else []
     )
 
     monkeypatch.setattr(getters, "get_fuel_price", lambda *_: Ok(2.3))
@@ -286,8 +286,8 @@ def test_get_dispatch_generator_units_one_when_time_series_present(context):
     context.source_system.time_series.list_time_series_metadata = lambda _component: [
         types.SimpleNamespace(name="max_active_power", features={})
     ]
-    context.source_system.list_time_series = (
-        lambda _component, **kwargs: [object()] if kwargs.get("name") else []
+    context.source_system.list_time_series = lambda _component, **kwargs: (
+        [object()] if kwargs.get("name") else []
     )
 
     assert getters.get_dispatch_generator_units(DummyDispatch(), context).unwrap() == 1

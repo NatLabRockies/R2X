@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from r2x_plexos.models import PLEXOSLine, PLEXOSNode, PLEXOSReserve, PLEXOSStorage, PLEXOSZone
 from r2x_reeds.models import (
     FromTo_ToFrom,
@@ -237,6 +239,28 @@ def test_basic_getters_return_values(tmp_path):
         getters.reeds_membership_storage_child_tail_storage(objs["storage"], context).unwrap().name
         == "BAT1_tail"
     )
+
+
+def test_gen_startup_cost_scales_default_per_mw_cost_by_capacity(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    objs = setup_systems(context)
+    monkeypatch.setattr(getters, "_get_defaults", lambda *_args, **_kwargs: 5.3)
+
+    assert getters.gen_startup_cost(objs["thermal"], context).unwrap() == 265.0
+
+
+def test_gen_startup_cost_uses_default_capacity_when_capacity_is_missing_or_zero(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+
+    def defaults(_technology, key):
+        return {"start_cost_per_MW": 5.3, "capacity_MW": 50.0}.get(key, 0.0)
+
+    monkeypatch.setattr(getters, "_get_defaults", defaults)
+
+    assert (
+        getters.gen_startup_cost(SimpleNamespace(technology="coal", capacity=0.0), context).unwrap() == 265.0
+    )
+    assert getters.gen_startup_cost(SimpleNamespace(technology="coal"), context).unwrap() == 265.0
 
 
 def test_get_load_participation_factor(tmp_path):

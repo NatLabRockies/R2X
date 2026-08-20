@@ -19,8 +19,8 @@ logger.disable("r2x_plexos_to_sienna")
 
 __all__ = [
     "PlexosToSiennaConfig",
-    "plexos_to_sienna",
     "__version__",
+    "plexos_to_sienna",
 ]
 
 

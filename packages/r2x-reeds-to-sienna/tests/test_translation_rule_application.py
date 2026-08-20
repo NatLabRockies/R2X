@@ -750,21 +750,21 @@ def test_gen_services_attaches_non_spinning_reserve_to_generator(tmp_path) -> No
 
     thermals = list(context.target_system.get_components(ThermalStandard))
     assert len(thermals) == 1
-    assert (
-        non_spin in thermals[0].services
-    ), "ThermalStandard must have the VariableReserveNonSpinning in its services"
+    assert non_spin in thermals[0].services, (
+        "ThermalStandard must have the VariableReserveNonSpinning in its services"
+    )
 
     storages = list(context.target_system.get_components(EnergyReservoirStorage))
     assert len(storages) == 1
-    assert (
-        non_spin in storages[0].services
-    ), "EnergyReservoirStorage must have the VariableReserveNonSpinning in its services"
+    assert non_spin in storages[0].services, (
+        "EnergyReservoirStorage must have the VariableReserveNonSpinning in its services"
+    )
 
     pumped_hydro = list(context.target_system.get_components(HydroPumpTurbine))
     assert len(pumped_hydro) == 1
-    assert (
-        non_spin in pumped_hydro[0].services
-    ), "HydroPumpTurbine must have the VariableReserveNonSpinning in its services"
+    assert non_spin in pumped_hydro[0].services, (
+        "HydroPumpTurbine must have the VariableReserveNonSpinning in its services"
+    )
 
 
 def test_reeds_spinning_reserve_does_not_produce_non_spinning(tmp_path) -> None:

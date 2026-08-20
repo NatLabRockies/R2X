@@ -708,8 +708,8 @@ def test_ensure_battery_node_memberships(context):
 def test_ensure_head_storage_generator_membership(context, monkeypatch):
     import r2x_sienna_to_plexos.getters as getters_mod
 
-    context.source_system.get_components = (
-        lambda comp_type: [types.SimpleNamespace(name="GEN_head")]
+    context.source_system.get_components = lambda comp_type: (
+        [types.SimpleNamespace(name="GEN_head")]
         if getattr(comp_type, "__name__", "") == "HydroPumpedStorage"
         else []
     )
@@ -731,8 +731,8 @@ def test_ensure_head_storage_generator_membership(context, monkeypatch):
 def test_ensure_tail_storage_generator_membership(context, monkeypatch):
     import r2x_sienna_to_plexos.getters as getters_mod
 
-    context.source_system.get_components = (
-        lambda comp_type: [types.SimpleNamespace(name="GEN_tail")]
+    context.source_system.get_components = lambda comp_type: (
+        [types.SimpleNamespace(name="GEN_tail")]
         if getattr(comp_type, "__name__", "") == "HydroPumpedStorage"
         else []
     )
@@ -1115,8 +1115,8 @@ def test_attach_reservoir_time_series_to_storage_paths(context):
 
     reservoir = types.SimpleNamespace(name="Plant_Reservoir", ext={"NARIS_Pmax": 2.0})
 
-    context.source_system.get_components = (
-        lambda comp_type: [reservoir] if comp_type.__name__ == "HydroReservoir" else []
+    context.source_system.get_components = lambda comp_type: (
+        [reservoir] if comp_type.__name__ == "HydroReservoir" else []
     )
     context.source_system.time_series.has_time_series = lambda _component: True
     context.source_system.list_time_series = lambda _component: [
@@ -1171,8 +1171,8 @@ def test_hydropumpturbine_driven_head_tail_memberships(context, monkeypatch):
         name="Plant_tail", reservoir_location=types.SimpleNamespace(value="TAIL"), ext={}
     )
     turbine = types.SimpleNamespace(name="TURB", reservoirs=[head_res, tail_res])
-    context.source_system.get_components = (
-        lambda comp_type: [turbine] if comp_type.__name__ == "HydroPumpTurbine" else []
+    context.source_system.get_components = lambda comp_type: (
+        [turbine] if comp_type.__name__ == "HydroPumpTurbine" else []
     )
 
     getters_utils.ensure_head_storage_generator_membership(context)
