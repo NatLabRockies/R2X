@@ -675,6 +675,10 @@ def gen_startup_cost(component: ReEDSGenerator, context: PluginContext) -> Resul
     technology = getattr(component, "technology", "")
     default_startup_cost = _get_defaults(technology, "start_cost_per_MW")
     capacity = getattr(component, "capacity", 0.0)
+    if not capacity:
+        capacity = _get_defaults(technology, "capacity_MW") or _get_defaults(
+            technology, "average_capacity_MW"
+        )
     return Ok(float(default_startup_cost) * float(capacity))
 
 
