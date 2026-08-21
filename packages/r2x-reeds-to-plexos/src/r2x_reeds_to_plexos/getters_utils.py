@@ -166,7 +166,11 @@ def _convert_hydro_budget_time_series(ts: Any, cadence: str, capacity: float) ->
 
 def attach_time_series_to_generators(context: PluginContext) -> None:
     """Transfer time series from ReEDS generators to translated PLEXOS generators (with duplicate check)."""
-    from r2x_reeds.models.components import ReEDSGenerator, ReEDSHydroGenerator, ReEDSVariableGenerator
+    from r2x_reeds.models.components import (
+        ReEDSGenerator,
+        ReEDSHydroGenerator,
+        ReEDSVariableGenerator,
+    )
 
     if context.source_system is None or context.target_system is None:
         return
@@ -175,6 +179,11 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
     hydro_generators = {gen.name: gen for gen in context.source_system.get_components(ReEDSHydroGenerator)}
     variable_generators = {
         gen.name: gen for gen in context.source_system.get_components(ReEDSVariableGenerator)
+    }
+    import_generators = {
+        gen.name: gen
+        for gen in context.source_system.get_components(ReEDSGenerator)
+        if (getattr(gen, "category", "") or "").casefold() == "imports"
     }
     target_generators = {gen.name: gen for gen in context.target_system.get_components(PLEXOSGenerator)}
 
@@ -242,6 +251,16 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
                         target_gen,
                         **ts_key.features,
                     )
+            continue
+
+        if name in import_generators:
+            for ts in context.source_system.list_time_series(source_gen):
+                if not context.target_system.has_time_series(
+                    target_gen,
+                    name=ts.name,
+                    time_series_type=type(ts),
+                ):
+                    context.target_system.add_time_series(deepcopy(ts), target_gen)
             continue
 
         if name in variable_generators:

@@ -266,9 +266,10 @@
   "filter": {
     "casefold": true,
     "field": "category",
-    "op": "eq",
+    "op": "in",
     "values": [
-      "reeds-generator"
+        "reeds-generator",
+        "imports"
     ]
   },
   "getters": {
