@@ -254,6 +254,9 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
             continue
 
         if name in import_generators:
+            target_ext = dict(target_gen.ext or {})
+            target_ext["r2x_category"] = "imports"
+            target_gen.ext = target_ext
             for ts in context.source_system.list_time_series(source_gen):
                 if not context.target_system.has_time_series(
                     target_gen,
