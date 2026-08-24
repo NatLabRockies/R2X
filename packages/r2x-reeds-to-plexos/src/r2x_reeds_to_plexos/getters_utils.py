@@ -257,13 +257,17 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
             target_ext = dict(target_gen.ext or {})
             target_ext["r2x_category"] = "imports"
             target_gen.ext = target_ext
-            for ts in context.source_system.list_time_series(source_gen):
-                if not context.target_system.has_time_series(
-                    target_gen,
-                    name=ts.name,
-                    time_series_type=type(ts),
+            for metadata in context.source_system.time_series.list_time_series_metadata(source_gen):
+                for ts in context.source_system.list_time_series(
+                    source_gen, name=metadata.name, **metadata.features
                 ):
-                    context.target_system.add_time_series(deepcopy(ts), target_gen)
+                    if not context.target_system.has_time_series(
+                        target_gen,
+                        name=ts.name,
+                        time_series_type=type(ts),
+                        **metadata.features,
+                    ):
+                        context.target_system.add_time_series(deepcopy(ts), target_gen, **metadata.features)
             continue
 
         if name in variable_generators:

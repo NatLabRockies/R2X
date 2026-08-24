@@ -546,6 +546,45 @@ def test_attach_time_series_to_generators_skips_missing_target(context):
     assert added == []
 
 
+def test_attach_import_time_series_preserves_metadata_features(context):
+    from r2x_plexos.models import PLEXOSGenerator
+    from r2x_reeds.models.components import ReEDSGenerator
+
+    region = ReEDSRegion(name="R1", transmission_region="Z1")
+    source_gen = ReEDSGenerator(
+        name="IMPORT1",
+        region=region,
+        technology="hydro",
+        capacity=10.0,
+        category="imports",
+    )
+    target_gen = PLEXOSGenerator(name="IMPORT1")
+    features = {"solve_year": 2035, "weather_year": 2012}
+    source_ts = types.SimpleNamespace(name="hydro_budget")
+    metadata = types.SimpleNamespace(name=source_ts.name, features=features)
+    source_queries = []
+    target_queries = []
+    added = []
+
+    context.source_system.add_component(region)
+    context.source_system.add_component(source_gen)
+    context.target_system.add_component(target_gen)
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [metadata]
+    context.source_system.list_time_series = lambda _component, **kwargs: (
+        source_queries.append(kwargs) or [source_ts]
+    )
+    context.target_system.has_time_series = lambda _component, **kwargs: (
+        target_queries.append(kwargs) or False
+    )
+    context.target_system.add_time_series = lambda ts, _component, **kwargs: added.append((ts, kwargs))
+
+    getters_utils.attach_time_series_to_generators(context)
+
+    assert source_queries == [{"name": "hydro_budget", **features}]
+    assert target_queries == [{"name": "hydro_budget", "time_series_type": type(source_ts), **features}]
+    assert added == [(source_ts, features)]
+
+
 def test_membership_helpers_skip_paths(context):
     region = PLEXOSRegion(name="NO_NODE")
     context.target_system.add_component(region)
