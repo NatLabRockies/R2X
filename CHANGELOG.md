@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.3.0](https://github.com/NatLabRockies/R2X/compare/r2x-v2.2.0...r2x-v2.3.0) (2026-08-25)
+
+
+### Features
+
+* enable can-imports translation if parser allows it ([#323](https://github.com/NatLabRockies/R2X/issues/323)) ([a5801e0](https://github.com/NatLabRockies/R2X/commit/a5801e0bba1d9bf32581227a49b644771ef6f4ab))
+
+
+### Bug Fixes
+
+* Preserve ReEDS directional limits in Sienna AreaInterchange ([#314](https://github.com/NatLabRockies/R2X/issues/314)) ([8135d3f](https://github.com/NatLabRockies/R2X/commit/8135d3f043158bb2870925b29599456bedd6b5f1))
+* resolve prek issues and min errors on reeds translation ([#319](https://github.com/NatLabRockies/R2X/issues/319)) ([bad738d](https://github.com/NatLabRockies/R2X/commit/bad738dbffe21fa329f2131d6ba103d4fff27d60))
+
 ## [2.2.0](https://github.com/NatLabRockies/R2X/compare/r2x-v2.1.0...r2x-v2.2.0) (2026-08-13)
 
 
