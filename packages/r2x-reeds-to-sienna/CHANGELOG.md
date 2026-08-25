@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-sienna-v0.2.1...r2x-reeds-to-sienna-v0.2.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* Preserve ReEDS directional limits in Sienna AreaInterchange ([#314](https://github.com/NatLabRockies/R2X/issues/314)) ([8135d3f](https://github.com/NatLabRockies/R2X/commit/8135d3f043158bb2870925b29599456bedd6b5f1))
+* resolve prek issues and min errors on reeds translation ([#319](https://github.com/NatLabRockies/R2X/issues/319)) ([bad738d](https://github.com/NatLabRockies/R2X/commit/bad738dbffe21fa329f2131d6ba103d4fff27d60))
+
 ## [0.2.1](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-sienna-v0.2.0...r2x-reeds-to-sienna-v0.2.1) (2026-08-13)
 
 
