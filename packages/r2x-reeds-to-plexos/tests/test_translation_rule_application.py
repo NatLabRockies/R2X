@@ -113,6 +113,47 @@ def test_reeds_generators_translate_to_plexos_types(tmp_path) -> None:
     assert {"THERM1", "VRE1", "HYDRO1"} <= names
 
 
+def test_import_generators_translate_with_time_series(tmp_path) -> None:
+    from datetime import datetime, timedelta
+
+    from infrasys.time_series_models import SingleTimeSeries
+    from r2x_plexos.models import PLEXOSGenerator
+    from r2x_reeds.models import ReEDSGenerator, ReEDSRegion
+    from r2x_reeds_to_plexos.getters_utils import attach_time_series_to_generators
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    region = ReEDSRegion(name="p1", transmission_region="Z1")
+    context.source_system.add_component(region)
+    generator = ReEDSGenerator(
+        name="can-imports_init-1_p1",
+        category="imports",
+        region=region,
+        technology="can-imports",
+        capacity=50.0,
+    )
+    context.source_system.add_component(generator)
+    context.source_system.add_time_series(
+        SingleTimeSeries.from_array(
+            data=[1.0, 2.0],
+            name="hydro_budget",
+            initial_timestamp=datetime(2024, 1, 1),
+            resolution=timedelta(days=1),
+        ),
+        generator,
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    result = apply_rules_to_context(context)
+    assert result.total_rules > 0
+    attach_time_series_to_generators(context)
+
+    target_generator = next(context.target_system.get_components(PLEXOSGenerator))
+    assert target_generator.name == generator.name
+    assert context.target_system.has_time_series(target_generator, name="hydro_budget")
+
+
 def test_reeds_storage_translates_to_plexos_storage(tmp_path) -> None:
     from r2x_plexos.models import PLEXOSBattery, PLEXOSGenerator
     from r2x_reeds.models import ReEDSRegion, ReEDSStorage
