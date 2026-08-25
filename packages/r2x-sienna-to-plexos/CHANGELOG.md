@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/NatLabRockies/R2X/compare/r2x-sienna-to-plexos-v0.3.0...r2x-sienna-to-plexos-v0.3.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* resolve prek issues and min errors on reeds translation ([#319](https://github.com/NatLabRockies/R2X/issues/319)) ([bad738d](https://github.com/NatLabRockies/R2X/commit/bad738dbffe21fa329f2131d6ba103d4fff27d60))
+
 ## [0.3.0](https://github.com/NatLabRockies/R2X/compare/r2x-sienna-to-plexos-v0.2.0...r2x-sienna-to-plexos-v0.3.0) (2026-08-13)
 
 
