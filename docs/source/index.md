@@ -26,6 +26,10 @@ DataStore, units), see
 |     | Sienna (PSY 4.0) | Sienna (PSY 4.0, 5.0) |
 |     | PLEXOS (9.0, 9.2, 10, 11) | |
 
+## Translation Reference
+
+See the [ReEDS translation reference](reeds_translation_reference.md) for component mappings, timeseries behavior and known limitations across Sienna and PLEXOS.
+
 ## Ecosystem
 
 | Package | Description |
@@ -51,6 +55,7 @@ DataStore, units), see
 
 ```{toctree}
 :hidden: true
+reeds_translation_reference
 dev_workflow.md
 CHANGELOG.md
 ```
