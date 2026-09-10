@@ -11,8 +11,8 @@ layer for moving systems between ReEDS, PLEXOS, and Sienna formats.
   end-to-end parser, interoperability, and exporter examples.
 - [Architecture](source/architecture.md): parser, core, interoperability, and
   exporter boundaries.
-- [Development](source/development.md): repository checks, plugin changes,
-  documentation conventions, and optional localized documentation maintenance.
+- [Development](source/development.md): repository checks and changes to
+  interoperability packages.
 - [Changelog](source/CHANGELOG.md): released changes.
 
 Build the current site with the same commands used by CI:

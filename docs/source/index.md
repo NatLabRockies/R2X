@@ -2,20 +2,22 @@
 
 Translation plugins for ReEDS, PLEXOS, and Sienna model interoperability.
 
-This repository contains the translation layer in the
-[r2x-cli](https://github.com/NatlabRockies/r2x-cli) ecosystem. For the shared
-plugin architecture, rule engine, `System`, `DataStore`, and units, see
-[r2x-core](https://nrel.github.io/r2x-core/).
+This repository contains the interoperability layer in the
+[r2x-cli](https://github.com/NatlabRockies/r2x-cli) ecosystem. It connects
+model-specific parsers and exporters through shared
+[`r2x-core`](https://github.com/NatLabRockies/r2x-core) systems, rules, plugins,
+data stores, and units.
 
 ## Start here
 
 - [Getting started](getting_started.md) explains installation and how to choose
   a translation workflow.
-- [Translation workflows](dev_workflow.md) contains end-to-end Python examples.
-- [Architecture](architecture.md) explains the parser, translation, and
+- [Translation workflows](dev_workflow.md) contains contributor-oriented,
+  end-to-end interoperability examples.
+- [Architecture](architecture.md) explains the parser, interoperability, and
   exporter boundaries.
-- [Development](development.md) covers checks, adding translation directions,
-  and maintaining translated documentation.
+- [Development](development.md) covers repository checks and changes to
+  interoperability packages.
 
 ## Translation plugins
 
