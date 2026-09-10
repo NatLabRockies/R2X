@@ -32,8 +32,11 @@ uv run sphinx-build docs/source/ docs/build/
 1. Choose the package under `packages/` for the source-to-target direction.
 2. Confirm the source and target component APIs in the parser, exporter, and
    `r2x-core` packages.
-3. Update `config/rules.json` for declarative mappings, defaults, filters, and
-   type changes.
+3. Update the appropriate configuration asset under `config/`. For
+   interoperability mappings, this is commonly `translation_rules.json`; use
+   `parser_rules.json`, `exporter_rules.json`, or a package-specific `rules.json`
+   when that is the package's contract. `PluginConfig` exposes the resolved
+   path, for example `config.translation_rules_path`.
 4. Update the package-specific getter or post-processing module when a value
    requires computation, context, unit conversion, membership resolution, or
    time-series handling.
@@ -43,9 +46,9 @@ uv run sphinx-build docs/source/ docs/build/
 7. Run the focused tests, the repository checks, and the documentation build.
 
 A new interoperability direction must expose a public function and typed
-configuration, register its entry point, include its rules and integration
-logic, and include a test that verifies a representative source-to-target
-result. Add the direction to `docs/source/dev_workflow.md` and keep its page
+configuration, register its entry point, include its configuration assets such
+as `translation_rules.json` and its integration logic, and include a test that
+verifies a representative source-to-target result. Add the direction to `docs/source/dev_workflow.md` and keep its page
 focused on the actual public integration boundary. Follow the shared plugin and
 rule conventions in the [`r2x-core` plugin-system documentation](https://natlabrockies.github.io/r2x-core/explanations/plugin-system/)
 and [`r2x-core` rules documentation](https://natlabrockies.github.io/r2x-core/explanations/rules-system/).

@@ -10,7 +10,8 @@ layer for moving systems between ReEDS, PLEXOS, and Sienna formats.
 - [Translation workflows](source/dev_workflow.md): contributor-oriented,
   end-to-end parser, interoperability, and exporter examples.
 - [Architecture](source/architecture.md): parser, core, interoperability, and
-  exporter boundaries.
+  exporter boundaries, including configuration assets such as
+  `translation_rules.json`.
 - [Development](source/development.md): repository checks and changes to
   interoperability packages.
 - [Changelog](source/CHANGELOG.md): released changes.
