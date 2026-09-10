@@ -1,7 +1,8 @@
-# Dev Workflow
+# Translation workflows
 
-Each workflow below shows how to install the relevant upstream packages as editable installs
-(so local changes are picked up immediately) and provides a full end-to-end example script.
+Each workflow below shows how to install the upstream parser and exporter as
+editable packages and provides a complete Python API example. Use the guide
+that matches your source and target formats.
 
 ```{toctree}
 :maxdepth: 1
