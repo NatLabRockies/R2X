@@ -6,7 +6,8 @@ translation-management guide.
 
 ## Run the repository checks
 
-The project uses a uv workspace. From the repository root:
+The project uses a uv workspace. From the repository root, install the
+runtime and development dependencies:
 
 ```bash
 uv sync
@@ -19,14 +20,14 @@ the uv workspace. Preserve package metadata, entry points, and this smoke-test
 coverage when changing a package.
 
 The documentation workflow uses the existing Sphinx setup and Python docs
-extras:
+extras. Build it before opening a documentation PR:
 
 ```bash
 uv sync --group docs
 uv run sphinx-build docs/source/ docs/build/
 ```
 
-## Change a translation plugin
+## Change an interoperability plugin
 
 1. Choose the package under `packages/` for the source-to-target direction.
 2. Confirm the source and target component APIs in the parser, exporter, and
@@ -45,7 +46,9 @@ A new interoperability direction must expose a public function and typed
 configuration, register its entry point, include its rules and integration
 logic, and include a test that verifies a representative source-to-target
 result. Add the direction to `docs/source/dev_workflow.md` and keep its page
-focused on the actual public integration boundary.
+focused on the actual public integration boundary. Follow the shared plugin and
+rule conventions in the [`r2x-core` plugin-system documentation](https://natlabrockies.github.io/r2x-core/explanations/plugin-system/)
+and [`r2x-core` rules documentation](https://natlabrockies.github.io/r2x-core/explanations/rules-system/).
 
 ## Documentation changes
 

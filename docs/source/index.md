@@ -11,13 +11,18 @@ data stores, and units.
 ## Start here
 
 - [Getting started](getting_started.md) explains installation and how to choose
-  a translation workflow.
+  an interoperability workflow.
 - [Translation workflows](dev_workflow.md) contains contributor-oriented,
   end-to-end interoperability examples.
 - [Architecture](architecture.md) explains the parser, interoperability, and
   exporter boundaries.
 - [Development](development.md) covers repository checks and changes to
   interoperability packages.
+
+The `r2x-cli` orchestrates installed plugins, while
+[`r2x-core`](https://github.com/NatLabRockies/r2x-core) supplies the shared
+system, plugin, data, and rule infrastructure. This repository provides the
+model-to-model interoperability functions between those layers.
 
 ## Translation plugins
 
