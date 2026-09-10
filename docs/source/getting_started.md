@@ -7,8 +7,10 @@ published as separate Python packages and are orchestrated by the
 ## Prerequisites
 
 Use Python 3.11, 3.12, or 3.13. For a managed environment, install
-[uv](https://docs.astral.sh/uv/). The command-line workflow also requires the
-[r2x-cli](https://github.com/NatlabRockies/r2x-cli).
+[uv](https://docs.astral.sh/uv/). For the command-line workflow, install
+[r2x-cli](https://github.com/NatlabRockies/r2x-cli) using its
+[installation instructions](https://github.com/NatLabRockies/r2x-cli#installation)
+before running the `r2x` commands below.
 
 ## Install a translation plugin
 
@@ -27,8 +29,9 @@ To manage the environment yourself, install a published package with `pip`:
 python -m pip install r2x-reeds-to-plexos
 ```
 
-See the package [README files](https://github.com/NatlabRockies/R2X/tree/main/packages)
-for package-specific entry points and examples.
+See the [workflow guides](dev_workflow.md) for package-specific setup and
+examples. Package READMEs may contain older examples while their APIs are being
+aligned.
 
 ## Choose a workflow
 
@@ -71,6 +74,5 @@ uv sync
 uv run pytest
 ```
 
-The documentation build is maintained separately from the Python environment.
 See [development](development.md) for the documentation commands and the
 translation-package maintenance workflow.

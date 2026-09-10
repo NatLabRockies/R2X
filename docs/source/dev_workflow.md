@@ -1,8 +1,14 @@
 # Translation workflows
 
-Each workflow below shows how to install the upstream parser and exporter as
-editable packages and provides a complete Python API example. Use the guide
-that matches your source and target formats.
+These pages document the supported translation workflows in this repository.
+They are end-to-end contributor examples: each one shows parser setup, the
+R2X interoperability function, and target export. They intentionally expose the
+integration boundary so a contributor can adapt the workflow to a real input
+system.
+
+For the smaller public API surface, start with [Getting started](getting_started.md).
+For the package boundaries and rule-engine responsibilities, see
+[Architecture](architecture.md).
 
 ```{toctree}
 :maxdepth: 1
