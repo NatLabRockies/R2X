@@ -169,7 +169,9 @@
       "active_power_flow": "fixed_flow",
       "category": "category",
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "x": "reactance",
+      "r": "resistance"
     },
     "getters": {
       "arc": "get_line_arc",
