@@ -384,18 +384,6 @@ def test_get_reeds_thermal_category_returns_none_for_non_list_mapping_values(mon
     assert getters._get_reeds_thermal_category_from_fuel(gen, context) is None
 
 
-def test_get_reservoir_location_helper_priority_order():
-    by_name = types.SimpleNamespace(name="Plant_HEAD")
-    by_attr = types.SimpleNamespace(name="Plant", reservoir_location="tail")
-    by_ext = types.SimpleNamespace(name="Plant", ext={"RESERVOIR_LOCATION": "head"})
-    unknown = types.SimpleNamespace(name="Plant")
-
-    assert getters._get_reservoir_location(by_name) == "HEAD"
-    assert getters._get_reservoir_location(by_attr) == "TAIL"
-    assert getters._get_reservoir_location(by_ext) == "HEAD"
-    assert getters._get_reservoir_location(unknown) is None
-
-
 def test_has_explicit_side_reservoir_for_base_detects_matching_side(monkeypatch, context):
     current = types.SimpleNamespace(name="Plant", ext={"plant_name": "Plant"}, uuid="1")
     explicit_head = types.SimpleNamespace(name="Plant_head", ext={"plant_name": "Plant"}, uuid="2")

@@ -391,8 +391,7 @@
       "outflow": 0.0,
       "level_targets": null,
       "intake_elevation": 0.0,
-      "level_data_type": "ENERGY",
-      "reservoir_location": "HEAD"
+      "level_data_type": "ENERGY"
     },
     "getters": {
       "name": "pumped_hydro_head_name",
@@ -424,8 +423,7 @@
       "outflow": 0.0,
       "level_targets": null,
       "intake_elevation": 0.0,
-      "level_data_type": "ENERGY",
-      "reservoir_location": "TAIL"
+      "level_data_type": "ENERGY"
     },
     "getters": {
       "name": "pumped_hydro_tail_name",

@@ -41,7 +41,6 @@ from r2x_sienna.models.enums import (
     PrimeMoversType,
     ReserveType,
     ReservoirDataType,
-    ReservoirLocation,
     StorageTechs,
     ThermalFuels,
 )
@@ -123,7 +122,6 @@ def test_get_head_tail_storage_uuid(context):
         level_targets=0.8,
         intake_elevation=500.0,
         head_to_volume_factor=LinearCurve(1.0),
-        reservoir_location=ReservoirLocation.HEAD,
         operation_cost=HydroReservoirCost(),
         level_data_type=ReservoirDataType.USABLE_VOLUME,
         category="hydro_reservoir",
@@ -155,7 +153,6 @@ def test_get_head_tail_storage_name(context, monkeypatch):
         level_targets=0.8,
         intake_elevation=500.0,
         head_to_volume_factor=LinearCurve(1.0),
-        reservoir_location=ReservoirLocation.HEAD,
         operation_cost=HydroReservoirCost(),
         level_data_type=ReservoirDataType.USABLE_VOLUME,
         category="hydro_reservoir",
@@ -176,7 +173,6 @@ def test_get_head_tail_storage_name_without_pumped_storage_association(context):
         level_targets=0.8,
         intake_elevation=500.0,
         head_to_volume_factor=LinearCurve(1.0),
-        reservoir_location=ReservoirLocation.HEAD,
         operation_cost=HydroReservoirCost(),
         level_data_type=ReservoirDataType.USABLE_VOLUME,
         category="hydro_reservoir",
@@ -584,7 +580,6 @@ def test_head_tail_storage_name_infers_location_from_suffix_when_missing(context
         level_data_type="USABLE_VOLUME",
         intake_elevation=0.0,
         operation_cost=HydroReservoirCost.example(),
-        reservoir_location=ReservoirLocation.HEAD,
         ext={"plant_name": "Plant"},
     )
     tail = HydroReservoir(
@@ -599,7 +594,6 @@ def test_head_tail_storage_name_infers_location_from_suffix_when_missing(context
         level_data_type="USABLE_VOLUME",
         intake_elevation=0.0,
         operation_cost=HydroReservoirCost.example(),
-        reservoir_location=ReservoirLocation.TAIL,
         ext={"plant_name": "Plant"},
     )
 
@@ -629,7 +623,6 @@ def test_head_tail_storage_name_suffix_overrides_conflicting_metadata(context, m
         level_data_type="USABLE_VOLUME",
         intake_elevation=0.0,
         operation_cost=HydroReservoirCost.example(),
-        reservoir_location=ReservoirLocation.HEAD,
         ext={"plant_name": "Abitibi Canyon"},
     )
 
@@ -656,7 +649,6 @@ def test_unsuffixed_reservoir_skips_side_with_explicit_reservoir(context, monkey
         level_data_type="USABLE_VOLUME",
         intake_elevation=0.0,
         operation_cost=HydroReservoirCost.example(),
-        reservoir_location=ReservoirLocation.HEAD,
         ext={"plant_name": "Wallace Dam"},
     )
     unsuffixed = HydroReservoir(
@@ -671,7 +663,6 @@ def test_unsuffixed_reservoir_skips_side_with_explicit_reservoir(context, monkey
         level_data_type="USABLE_VOLUME",
         intake_elevation=0.0,
         operation_cost=HydroReservoirCost.example(),
-        reservoir_location=ReservoirLocation.TAIL,
         ext={"plant_name": "Wallace Dam"},
     )
 

@@ -2444,41 +2444,6 @@ def _build_reservoir_pump_turbine_name_set(context: PluginContext) -> set[str]:
     return names
 
 
-def _get_reservoir_location(source_component: HydroReservoir) -> str | None:
-    """Return normalized reservoir location label (HEAD/TAIL) when available.
-
-    Falls back to ext metadata and name suffixes when explicit reservoir_location
-    is missing in source data.
-    """
-    # Most reliable signal in EI data: explicit _head/_tail suffix in component name.
-    name = str(getattr(source_component, "name", "")).strip().upper()
-    if name.endswith(("_HEAD", " HEAD")):
-        return "HEAD"
-    if name.endswith(("_TAIL", " TAIL")):
-        return "TAIL"
-
-    location = getattr(source_component, "reservoir_location", None)
-    raw = getattr(location, "value", location)
-    if raw is not None:
-        label = str(raw).upper()
-        if "HEAD" in label:
-            return "HEAD"
-        if "TAIL" in label:
-            return "TAIL"
-
-    ext = getattr(source_component, "ext", None)
-    if isinstance(ext, dict):
-        ext_loc = ext.get("reservoir_location") or ext.get("RESERVOIR_LOCATION")
-        if ext_loc is not None:
-            label = str(getattr(ext_loc, "value", ext_loc)).upper()
-            if "HEAD" in label:
-                return "HEAD"
-            if "TAIL" in label:
-                return "TAIL"
-
-    return None
-
-
 def _get_reservoir_name_suffix_location(source_component: HydroReservoir) -> str | None:
     """Return HEAD/TAIL when reservoir name explicitly ends with _head/_tail."""
     name = str(getattr(source_component, "name", "")).strip().casefold()

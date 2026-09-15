@@ -170,7 +170,7 @@ def test_hydro_reservoir_without_suffix_translates_to_head_and_tail_storage(tmp_
     from r2x_plexos.models import PLEXOSStorage
     from r2x_sienna.models import HydroReservoir
     from r2x_sienna.models.costs import HydroReservoirCost
-    from r2x_sienna.models.enums import ReservoirDataType, ReservoirLocation
+    from r2x_sienna.models.enums import ReservoirDataType
     from r2x_sienna.models.named_tuples import MinMax
     from r2x_sienna_to_plexos import getters as getters_module
 
@@ -188,7 +188,6 @@ def test_hydro_reservoir_without_suffix_translates_to_head_and_tail_storage(tmp_
             level_targets=0.8,
             intake_elevation=500.0,
             head_to_volume_factor=LinearCurve(1.0),
-            reservoir_location=ReservoirLocation.HEAD,
             operation_cost=HydroReservoirCost(),
             level_data_type=ReservoirDataType.USABLE_VOLUME,
             category="hydro_reservoir",

@@ -161,15 +161,15 @@
   },
   {
     "defaults": {
-      "category": "two-terminal-hvdc-line",
-      "reactance": 0.0,
-      "resistance": 0.0
+      "category": "two-terminal-hvdc-line"
     },
     "field_map": {
       "active_power_flow": "fixed_flow",
       "category": "category",
       "name": "name",
-      "uuid": "uuid"
+      "uuid": "uuid",
+      "x": "reactance",
+      "r": "resistance"
     },
     "getters": {
       "arc": "get_line_arc",
@@ -194,8 +194,7 @@
   },
   {
     "defaults": {
-      "category": "transformer-2w",
-      "susceptance": 0.0
+      "category": "transformer-2w"
     },
     "field_map": {
       "name": "name",
@@ -220,9 +219,7 @@
   },
   {
     "defaults": {
-      "ac_tap_ratio": 1.0,
-      "category": "tap-transformer",
-      "susceptance": 0.0
+      "category": "tap-transformer"
     },
     "field_map": {
       "name": "name",
@@ -248,9 +245,7 @@
   },
   {
     "defaults": {
-      "ac_tap_ratio": 1.0,
-      "category": "phase-shifting-transformer",
-      "susceptance": 0.0
+      "category": "phase-shifting-transformer"
     },
     "field_map": {
       "name": "name",
@@ -460,8 +455,7 @@
       "initial_level": 0.5
     },
     "field_map": {
-      "initial_storage": "initial_level",
-      "rating": "rating",
+      "initial_level": "initial_level",
       "category": "category",
       "name": "name",
       "uuid": "uuid"

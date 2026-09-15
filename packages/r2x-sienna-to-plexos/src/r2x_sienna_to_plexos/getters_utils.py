@@ -708,8 +708,8 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
             continue
 
         for reservoir in getattr(turbine, "reservoirs", None) or []:
-            location = getattr(getattr(reservoir, "reservoir_location", None), "value", None)
-            if str(location).upper() != "HEAD":
+            reservoir_name = str(getattr(reservoir, "name", "")).lower()
+            if not reservoir_name.endswith(("_head", " head")):
                 continue
 
             rname = getattr(reservoir, "name", None)
@@ -813,8 +813,8 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
             continue
 
         for reservoir in getattr(turbine, "reservoirs", None) or []:
-            location = getattr(getattr(reservoir, "reservoir_location", None), "value", None)
-            if str(location).upper() != "TAIL":
+            reservoir_name = str(getattr(reservoir, "name", "")).lower()
+            if not reservoir_name.endswith(("_tail", " tail")):
                 continue
 
             rname = getattr(reservoir, "name", None)

@@ -579,7 +579,7 @@ def test_attach_generator_time_series_skips_hydro_reservoir(context):
     from r2x_plexos.models import PLEXOSGenerator
     from r2x_sienna.models import HydroReservoir
     from r2x_sienna.models.costs import HydroReservoirCost
-    from r2x_sienna.models.enums import ReservoirDataType, ReservoirLocation
+    from r2x_sienna.models.enums import ReservoirDataType
 
     reservoir = HydroReservoir(
         name="res-skip",
@@ -593,7 +593,6 @@ def test_attach_generator_time_series_skips_hydro_reservoir(context):
         level_data_type=ReservoirDataType.USABLE_VOLUME,
         intake_elevation=0.0,
         operation_cost=HydroReservoirCost.example(),
-        reservoir_location=ReservoirLocation.HEAD,
         head_to_volume_factor=LinearCurve(1.0),
     )
     context.source_system.add_component(reservoir)
