@@ -75,7 +75,10 @@
       "bus": "get_purchaser_bus",
       "active_power": "get_purchaser_active_power",
       "available": "get_purchaser_available",
-      "max_active_power": "get_purchaser_max_active_power"
+      "max_active_power": "get_purchaser_max_active_power",
+      "reactive_power": "get_purchaser_reactive_power",
+      "max_reactive_power": "get_purchaser_max_reactive_power",
+      "base_power": "get_purchaser_base_power"
     },
     "source_type": "PLEXOSPurchaser",
     "target_type": "PowerLoad",

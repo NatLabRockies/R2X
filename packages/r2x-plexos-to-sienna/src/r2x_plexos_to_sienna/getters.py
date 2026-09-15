@@ -354,6 +354,26 @@ def get_purchaser_max_active_power(component: PLEXOSPurchaser, context: PluginCo
 
 
 @getter
+def get_purchaser_reactive_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
+    """Get the purchaser's reactive power, defaulting to zero."""
+    return Ok(getattr(component, "reactive_power", 0.0) or 0.0)
+
+
+@getter
+def get_purchaser_max_reactive_power(
+    component: PLEXOSPurchaser, context: PluginContext
+) -> Result[float, Any]:
+    """Get the purchaser's maximum reactive power, defaulting to zero."""
+    return Ok(getattr(component, "max_reactive_power", 0.0) or 0.0)
+
+
+@getter
+def get_purchaser_base_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
+    """Get the purchaser's base power, defaulting to 100 MW."""
+    return Ok(getattr(component, "base_power", 100.0) or 100.0)
+
+
+@getter
 def get_load_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the initial steady-state active power demand of the load in the region."""
     return Ok(getattr(component, "load", 0.0))
