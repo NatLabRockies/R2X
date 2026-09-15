@@ -593,7 +593,6 @@ def test_attach_generator_time_series_skips_hydro_reservoir(context):
         level_data_type=ReservoirDataType.USABLE_VOLUME,
         intake_elevation=0.0,
         operation_cost=HydroReservoirCost.example(),
-        reservoir_location=ReservoirLocation.HEAD,
         head_to_volume_factor=LinearCurve(1.0),
     )
     context.source_system.add_component(reservoir)

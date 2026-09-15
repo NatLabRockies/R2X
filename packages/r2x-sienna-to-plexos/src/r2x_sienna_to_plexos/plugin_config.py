@@ -25,3 +25,7 @@ class SiennaToPlexosConfig(PluginConfig):
         default="weekly",
         description="Output resolution for hydro budget time series.",
     )
+    use_plant_names: bool = Field(
+        default=True,
+        description="Use plant and unit names from generator metadata instead of Sienna names.",
+    )

@@ -499,7 +499,6 @@ def _make_hydro_turbine_for_units_tests(bus: ACBus, name: str, rating: float) ->
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
 

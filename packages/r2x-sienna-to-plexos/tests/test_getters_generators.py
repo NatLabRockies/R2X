@@ -27,6 +27,7 @@ from r2x_sienna.models.enums import (
     ThermalFuels,
 )
 from r2x_sienna_to_plexos import getters
+from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
 
 from r2x_core import DataStore, Ok, PluginConfig, PluginContext, System
 
@@ -48,6 +49,48 @@ def make_context(tmp_path) -> PluginContext:
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
     return ctx
+
+
+def test_get_generator_name_can_use_original_sienna_name(monkeypatch, context):
+    class DummyGenerator:
+        pass
+
+    generator = DummyGenerator()
+    generator.name = "SIENNA_GENERATOR"
+    generator.ext = {"plant_name": "Plant Name", "unit_name": "Unit Name"}
+
+    class DummySourceSystem:
+        def get_components(self, component_type):
+            if component_type is getters.Source:
+                return []
+            return [generator]
+
+    context.config = SiennaToPlexosConfig(use_plant_names=False)
+    context.source_system = DummySourceSystem()
+    monkeypatch.setattr(getters, "SOURCE_GENERATOR_TYPES", (DummyGenerator,))
+
+    assert getters.get_generator_name(generator, context).unwrap() == "SIENNA_GENERATOR"
+
+
+def test_get_generator_name_uses_plant_unit_name_by_default(monkeypatch, context):
+    class DummyGenerator:
+        pass
+
+    generator = DummyGenerator()
+    generator.name = "SIENNA_GENERATOR"
+    generator.ext = {"plant_name": "Plant Name", "unit_name": "Unit Name"}
+
+    class DummySourceSystem:
+        def get_components(self, component_type):
+            if component_type is getters.Source:
+                return []
+            return [generator]
+
+    context.config = SiennaToPlexosConfig()
+    context.source_system = DummySourceSystem()
+    monkeypatch.setattr(getters, "SOURCE_GENERATOR_TYPES", (DummyGenerator,))
+
+    assert getters.get_generator_name(generator, context).unwrap() == "Unit Name"
 
 
 def test_get_thermal_generator_units_zero_when_fuel_price_zero(monkeypatch, context):
@@ -367,7 +410,6 @@ def test_get_turbine_pump_load_and_efficiency(context):
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
     assert getters.get_turbine_pump_load(ht, context).unwrap() == 22500.0
@@ -438,7 +480,6 @@ def test_get_pumped_hydro_category_demotes_zero_pump_load(context):
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
     assert getters.get_pumped_hydro_category(ht_zero, context).unwrap() == "hydro"
@@ -462,7 +503,6 @@ def test_get_pumped_hydro_category_demotes_zero_pump_load(context):
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
     # Non-zero pump load: defer to standard resolution rather than demoting
@@ -494,7 +534,6 @@ def test_get_thermal_forced_outage_rate_defaults(context):
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
     assert getters.get_generator_forced_outage_rate(ht, context).unwrap() >= 0.0

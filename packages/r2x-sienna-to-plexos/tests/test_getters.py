@@ -720,7 +720,6 @@ def test_get_head_tail_storage_names_valid(context, monkeypatch):
         level_targets=0.8,
         intake_elevation=500.0,
         head_to_volume_factor=LinearCurve(1.0),
-        reservoir_location=ReservoirLocation.HEAD,
         operation_cost=HydroReservoirCost(),
         level_data_type=ReservoirDataType.USABLE_VOLUME,
         category="hydro_reservoir",
@@ -800,7 +799,6 @@ def test_get_component_rating_hydro_turbine(context):
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
     assert getters.get_generator_rating(ht, context).unwrap() == 22500.0

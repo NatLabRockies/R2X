@@ -425,7 +425,8 @@ def _sanitize_generator_name(name: Any) -> str:
 def _build_generator_display_name_index(context: PluginContext) -> dict[str, str]:
     """Map each source generator's original name -> final display name.
 
-    Priority:
+    When ``use_plant_names`` is false, the original Sienna name is retained.
+    Otherwise, use the following priority:
     1. ext["unit_name"] — used as-is, deduplicated when shared
     2. ext["plant_name"] — deduplicated with _1, _2, ... suffixes when shared
     3. original component name — same dedup logic as plant_name
@@ -453,6 +454,10 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
                 continue
             ext = getattr(gen, "ext", None)
             ext_dict = ext if isinstance(ext, dict) else {}
+
+            if not getattr(context.config, "use_plant_names", True):
+                result[orig] = orig
+                continue
 
             unit_name = _sanitize_generator_name(ext_dict.get("unit_name"))
             if unit_name and unit_name.casefold() not in {"none", "nothing", "null", "nan"}:
@@ -2150,7 +2155,7 @@ def get_max_ramp_down(source_component: object, context: PluginContext) -> Resul
 
 @getter
 def get_generator_name(source_component: object, context: PluginContext) -> Result[str, ValueError]:
-    """Return plant_name from ext (with _N suffix for duplicates), otherwise component name."""
+    """Return the configured plant/unit name or the original Sienna component name."""
     index = _build_generator_display_name_index(context)
     orig_name = getattr(source_component, "name", "")
     return Ok(index.get(orig_name, orig_name))
