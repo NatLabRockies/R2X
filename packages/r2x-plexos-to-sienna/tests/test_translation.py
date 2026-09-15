@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
+import numpy as np
 import pytest
+from infrasys import SingleTimeSeries
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
     PLEXOSBattery,
@@ -126,6 +130,27 @@ def test_plexos_to_sienna_translates_region_to_load():
     assert load.active_power.magnitude == 200.0
     assert load.bus is not None
     assert load.bus.name == "NODE1"
+
+
+def test_plexos_node_time_series_attaches_to_region_load():
+    source = _build_source_system()
+    node = next(source.get_components(PLEXOSNode))
+    source.add_time_series(
+        SingleTimeSeries(
+            name="load",
+            data=np.array([10.0, 20.0]),
+            resolution=timedelta(hours=1),
+            initial_timestamp=datetime(2026, 1, 1),
+        ),
+        node,
+    )
+
+    result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
+
+    load = next(load for load in result.get_components(PowerLoad) if load.name == "REGION1")
+    time_series = result.list_time_series(load, name="load")
+    assert len(time_series) == 1
+    np.testing.assert_array_equal(time_series[0].data, [10.0, 20.0])
 
 
 def test_plexos_to_sienna_translates_generator():

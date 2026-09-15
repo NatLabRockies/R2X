@@ -238,6 +238,32 @@ def test_sienna_interface_translates_to_plexos_interface(tmp_path):
     assert interfaces[0].name == "A1_A2-IFACE_1_2"
 
 
+def test_sienna_interface_replacement_character_is_cleaned(tmp_path):
+    from r2x_plexos.models import PLEXOSInterface
+    from r2x_sienna.models import Area, TransmissionInterface
+    from r2x_sienna.models.named_tuples import MinMax
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.source_system.add_component(Area(name="A1"))
+    context.source_system.add_component(Area(name="A2"))
+    context.source_system.add_component(
+        TransmissionInterface(
+            name="PJM_AEP � Dominion (AEP-DOM)",
+            active_power_flow_limits=MinMax(min=-150.0, max=150.0),
+            direction_mapping={"line-01": 1},
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    result = apply_rules_to_context(context)
+
+    assert result.total_rules > 0
+    interfaces = list(context.target_system.get_components(PLEXOSInterface))
+    assert [interface.name for interface in interfaces] == ["PJM_AEP - Dominion (AEP-DOM)"]
+
+
 def test_sienna_reserve_translates_to_plexos_reserve(tmp_path):
     from r2x_plexos.models import PLEXOSReserve
     from r2x_sienna.models import VariableReserve

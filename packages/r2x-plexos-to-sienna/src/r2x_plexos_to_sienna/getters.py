@@ -111,16 +111,34 @@ def _get_target_types_for_source(component: Any) -> list[type[Component]]:
         return [EnergyReservoirStorage]
     if isinstance(component, PLEXOSRegion):
         return [PowerLoad]
+    if isinstance(component, PLEXOSNode):
+        return [PowerLoad]
     if isinstance(component, PLEXOSReserve):
         return [VariableReserve]
     return []
 
 
 def _get_targets_by_name(context: PluginContext, source_component: Any) -> list[Any]:
+    if context.target_system is None:
+        return []
+
+    if isinstance(source_component, PLEXOSNode) and context.source_system is not None:
+        region_names = {
+            membership.child_object.name
+            for membership in context.source_system.get_supplemental_attributes_with_component(
+                source_component
+            )
+            if getattr(membership, "collection", None) == CollectionEnum.Region
+            and getattr(getattr(membership, "child_object", None), "name", None)
+        }
+        return [
+            load
+            for load in context.target_system.get_components(PowerLoad)
+            if getattr(load, "name", None) in region_names
+        ]
+
     name = getattr(source_component, "name", None)
     if not name:
-        return []
-    if context.target_system is None:
         return []
     targets: list[Any] = []
     for target_type in _get_target_types_for_source(source_component):
@@ -380,6 +398,8 @@ def get_base_voltage(component: PLEXOSNode, context: PluginContext) -> Result[fl
 @getter
 def get_node_ext(component: PLEXOSNode, context: PluginContext) -> Result[dict[str, Any], Any]:
     """Get the ext dictionary for a node."""
+    if context is not None:
+        _sync_time_series_for_source(component, context)
     value = {
         "load_participation_factor": getattr(component, "load_participation_factor", None),
     }

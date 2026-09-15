@@ -58,6 +58,11 @@ _ISO_RTO_POLYGONS: dict[str, list] | None = None
 _ISO_RTO_CONFIG_DIR = pathlib.Path(__file__).parent / "config" / "iso-rto-coordinates"
 
 
+def clean_interface_name(name: Any) -> str:
+    """Replace Unicode replacement characters in transmission interface names."""
+    return str(name or "").replace("\ufffd", "-").strip()
+
+
 def _chunked_setup_target_and_child_tables(
     tgt_metadata: Any,
     src_associations: Any,

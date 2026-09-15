@@ -723,6 +723,7 @@
       "category": "category"
     },
     "getters": {
+      "name": "get_interface_name",
       "min_flow": "get_interface_min_flow",
       "max_flow": "get_interface_max_flow"
     },
