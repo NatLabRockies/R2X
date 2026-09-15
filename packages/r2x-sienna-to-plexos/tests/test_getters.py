@@ -41,7 +41,6 @@ from r2x_sienna.models.enums import (
     PrimeMoversType,
     ReserveType,
     ReservoirDataType,
-    ReservoirLocation,
     StorageTechs,
     ThermalFuels,
 )

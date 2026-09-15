@@ -579,7 +579,7 @@ def test_attach_generator_time_series_skips_hydro_reservoir(context):
     from r2x_plexos.models import PLEXOSGenerator
     from r2x_sienna.models import HydroReservoir
     from r2x_sienna.models.costs import HydroReservoirCost
-    from r2x_sienna.models.enums import ReservoirDataType, ReservoirLocation
+    from r2x_sienna.models.enums import ReservoirDataType
 
     reservoir = HydroReservoir(
         name="res-skip",

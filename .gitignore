@@ -194,3 +194,4 @@ notebooks/
 .worktree
 tags
 uv.lock
+cenv
