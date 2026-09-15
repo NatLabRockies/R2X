@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-from copy import deepcopy
 from importlib.resources import files
 from typing import Any
 
@@ -19,6 +18,7 @@ from r2x_plexos.models import (
     PLEXOSInterface,
     PLEXOSLine,
     PLEXOSNode,
+    PLEXOSPurchaser,
     PLEXOSRegion,
     PLEXOSReserve,
     PLEXOSStorage,
@@ -57,7 +57,13 @@ from r2x_sienna.models.enums import (
     TransformerControlObjective,
     WindingGroupNumber,
 )
-from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput, MinMax, UpDown
+from r2x_sienna.models.named_tuples import (
+    Complex,
+    FromTo_ToFrom,
+    InputOutput,
+    MinMax,
+    UpDown,
+)
 
 from r2x_core import Ok, PluginContext, Result
 from r2x_core.getters import getter
@@ -112,6 +118,8 @@ def _get_target_types_for_source(component: Any) -> list[type[Component]]:
     if isinstance(component, PLEXOSRegion):
         return [PowerLoad]
     if isinstance(component, PLEXOSNode):
+        return [PowerLoad]
+    if isinstance(component, PLEXOSPurchaser):
         return [PowerLoad]
     if isinstance(component, PLEXOSReserve):
         return [VariableReserve]
@@ -171,16 +179,31 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
             continue
 
         source_ts = ts_list[0]
+        if not isinstance(source_ts, SingleTimeSeries):
+            continue
         for target_component in targets:
+            target_name = (
+                "active_power"
+                if isinstance(source_component, (PLEXOSNode, PLEXOSPurchaser))
+                and isinstance(target_component, PowerLoad)
+                and source_ts.name in {"load", "fixed_load"}
+                else source_ts.name
+            )
+            target_ts = SingleTimeSeries.from_array(
+                data=source_ts.data,
+                name=target_name,
+                initial_timestamp=source_ts.initial_timestamp,
+                resolution=source_ts.resolution,
+            )
             if context.target_system.has_time_series(
                 target_component,
-                name=source_ts.name,
+                name=target_name,
                 time_series_type=SingleTimeSeries,
                 **features,
             ):
                 continue
             try:
-                context.target_system.add_time_series(deepcopy(source_ts), target_component, **features)
+                context.target_system.add_time_series(target_ts, target_component, **features)
             except Exception:
                 logger.debug(
                     "Failed attaching time series '{}' to '{}'",
@@ -278,6 +301,56 @@ def get_load_bus(component: PLEXOSRegion, context: PluginContext) -> Result[ACBu
         bus = next((b for b in acbuses if getattr(b, "name", None) == node_name), None)
         return Ok(bus)
     return Ok(None)
+
+
+@getter
+def get_purchaser_bus(component: PLEXOSPurchaser, context: PluginContext) -> Result[ACBus | None, Any]:
+    """Get the ACBus associated with a purchaser through its node membership."""
+    _sync_time_series_for_source(component, context)
+
+    if context.source_system is None or context.target_system is None:
+        return Ok(None)
+
+    memberships = context.source_system.get_supplemental_attributes_with_component(component)
+    node_name = next(
+        (
+            membership.child_object.name
+            for membership in memberships
+            if getattr(membership, "collection", None) == CollectionEnum.Nodes
+            and getattr(getattr(membership, "child_object", None), "name", None)
+        ),
+        None,
+    )
+    if node_name is None:
+        return Ok(None)
+
+    bus = next(
+        (
+            candidate
+            for candidate in context.target_system.get_components(ACBus)
+            if getattr(candidate, "name", None) == node_name
+        ),
+        None,
+    )
+    return Ok(bus)
+
+
+@getter
+def get_purchaser_active_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
+    """Get the purchaser's fixed load as Sienna active power."""
+    return Ok(getattr(component, "fixed_load", 0.0))
+
+
+@getter
+def get_purchaser_available(component: PLEXOSPurchaser, context: PluginContext) -> Result[bool, Any]:
+    """Convert the PLEXOS purchaser units flag to Sienna availability."""
+    return Ok(bool(getattr(component, "units", 0)))
+
+
+@getter
+def get_purchaser_max_active_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
+    """Get the purchaser's maximum load as Sienna maximum active power."""
+    return Ok(getattr(component, "max_load", 0.0))
 
 
 @getter

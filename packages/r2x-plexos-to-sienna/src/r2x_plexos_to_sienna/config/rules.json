@@ -64,6 +64,25 @@
   },
   {
     "defaults": {
+      "category": "power-load"
+    },
+    "field_map": {
+      "name": "name",
+      "uuid": "uuid",
+      "category": "category"
+    },
+    "getters": {
+      "bus": "get_purchaser_bus",
+      "active_power": "get_purchaser_active_power",
+      "available": "get_purchaser_available",
+      "max_active_power": "get_purchaser_max_active_power"
+    },
+    "source_type": "PLEXOSPurchaser",
+    "target_type": "PowerLoad",
+    "version": 2
+  },
+  {
+    "defaults": {
       "category": "area"
     },
     "field_map": {
