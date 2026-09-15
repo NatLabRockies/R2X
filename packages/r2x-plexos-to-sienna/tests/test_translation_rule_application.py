@@ -299,6 +299,21 @@ def test_plexos_battery_translates_to_energy_reservoir(tmp_path) -> None:
     assert storage.bus.name == "NODE1"
 
 
+@pytest.mark.parametrize(
+    "target_type",
+    [
+        "TapTransformer",
+        "PhaseShiftingTransformer",
+    ],
+)
+def test_plexos_transformer_tap_rule_uses_current_fields(tmp_path, target_type: str) -> None:
+    _, rules = make_context_and_rules(tmp_path)
+
+    rule = next(rule for rule in rules if rule.target_type == target_type)
+
+    assert rule.field_map["tap"] == "ac_tap_ratio"
+
+
 def test_plexos_reserve_translates_to_variable_reserve(tmp_path) -> None:
     from r2x_plexos.models import PLEXOSReserve
     from r2x_sienna.models import VariableReserve

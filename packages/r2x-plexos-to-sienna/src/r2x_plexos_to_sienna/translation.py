@@ -31,6 +31,11 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
 
     assert context.source_system is not None, "source_system must be set"
     tmp_ts_dir = context.source_system.get_time_series_directory()
+    context.source_system.convert_storage(
+        time_series_directory=tmp_ts_dir,
+        time_series_storage_type=TimeSeriesStorageType.ARROW,
+        permanent=True,
+    )
     connection = create_in_memory_db()
     ts_manager = TimeSeriesManager(
         connection,
