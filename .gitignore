@@ -194,3 +194,6 @@ notebooks/
 .worktree
 tags
 uv.lock
+
+### Env files
+cenv

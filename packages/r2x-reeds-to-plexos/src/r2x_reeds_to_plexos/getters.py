@@ -668,10 +668,17 @@ def ramp_rate_down_mw_per_hour(
 
 @getter
 def gen_startup_cost(component: ReEDSGenerator, context: PluginContext) -> Result[float, ValueError]:
-    """Return the startup cost for a thermal generator."""
-    startup_cost = getattr(component, "startup_cost", None)
-    if startup_cost is not None:
-        return Ok(float(startup_cost))
+    """Return the generator startup cost in dollars.
+
+    ReEDS startup costs are expressed in dollars per MW, including explicit
+    values loaded from the start-cost data. PLEXOS expects the total startup
+    cost for the generator, so scale both explicit and default values by
+    capacity.
+    """
+    startup_cost_per_mw = getattr(component, "startup_cost", None)
+    if startup_cost_per_mw is not None:
+        capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+        return Ok(float(startup_cost_per_mw) * capacity)
     technology = getattr(component, "technology", "")
     default_startup_cost = _get_defaults(technology, "start_cost_per_MW")
     capacity = getattr(component, "capacity", 0.0)

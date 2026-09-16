@@ -2,6 +2,50 @@
 
 Cloning the necessary packages for each translation is important.
 
+## Mapping Overview
+
+The translation keeps the PLEXOS object class where it is meaningful, and uses
+the generator `category` to choose the Sienna generator family. Click a node in
+the diagram to jump to the corresponding mapping group in the rule set.
+
+```{mermaid}
+flowchart LR
+    zone[PLEXOSZone] --> loadzone[LoadZone]
+    node[PLEXOSNode] --> bus[ACBus]
+    region[PLEXOSRegion] --> powerload[PowerLoad]
+    region --> area[Area]
+    purchaser[PLEXOSPurchaser] --> powerload
+    reserve[PLEXOSReserve] --> variableReserve[VariableReserve]
+    line[PLEXOSLine] --> lineTarget[Line / MonitoredLine / HVDC]
+    transformer[PLEXOSTransformer] --> transformerTarget[Transformer2W / Tap / Phase-Shifting]
+    interface[PLEXOSInterface] --> transmission[TransmissionInterface]
+    battery[PLEXOSBattery] --> batteryTarget[EnergyReservoirStorage]
+    storage[PLEXOSStorage] --> reservoir[HydroReservoir]
+
+    generator[PLEXOSGenerator] --> thermal[gas-cc, gas-ct, coal, nuclear, biomass<br/>ThermalStandard]
+    generator --> multiStart[thermal-multi-start<br/>ThermalMultiStart]
+    generator --> hydro[hydro, hyd, hydro-d, hydro-and<br/>HydroDispatch]
+    generator --> hydroTurbine[pumped-hydro, egs, rtes<br/>HydroTurbine]
+    generator --> renewable[wind, solar, upv, dupv, csp<br/>RenewableDispatch]
+    generator --> nonDispatch[distpv, rooftop, pvnsg<br/>RenewableNonDispatch]
+    generator --> condenser[synchronous-condenser, syncon<br/>SynchronousCondenser]
+
+    click generator "https://github.com/NatLabRockies/R2X/blob/main/packages/r2x-plexos-to-sienna/src/r2x_plexos_to_sienna/config/rules.json" "Open PLEXOS-to-Sienna rules"
+    click thermal "#generator-category-families" "Read category family details"
+    click renewable "#generator-category-families" "Read category family details"
+    click nonDispatch "#generator-category-families" "Read category family details"
+```
+
+### Generator Category Families {#generator-category-families}
+
+The exact slug mappings are defined in `r2x_plexos_to_sienna.mappings`.
+Descriptive categories such as `Wind SA`, `Black Coal QLD`, and `Hydro TAS`
+use ordered keyword matching; the first matching keyword determines the Sienna
+family. For example, `gas-cc` and `gas-ct` become `ThermalStandard`, while
+`thermal-multi-start` becomes `ThermalMultiStart`.
+
+For field-by-field mappings, see [PLEXOS to Sienna property mappings](plexos_to_sienna_properties.md).
+
 ## Setup
 
 ```bash

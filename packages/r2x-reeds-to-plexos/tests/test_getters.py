@@ -249,6 +249,13 @@ def test_gen_startup_cost_scales_default_per_mw_cost_by_capacity(tmp_path, monke
     assert getters.gen_startup_cost(objs["thermal"], context).unwrap() == 265.0
 
 
+def test_gen_startup_cost_scales_explicit_reeds_value_by_capacity(tmp_path):
+    context = make_context(tmp_path)
+    component = SimpleNamespace(technology="gas-cc", startup_cost=68.0, capacity=320.0)
+
+    assert getters.gen_startup_cost(component, context).unwrap() == 21760.0
+
+
 def test_gen_startup_cost_uses_default_capacity_when_capacity_is_missing_or_zero(tmp_path, monkeypatch):
     context = make_context(tmp_path)
 

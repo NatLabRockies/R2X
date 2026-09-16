@@ -2,6 +2,50 @@
 
 Cloning the necessary packages for each translation is important.
 
+## Mapping Overview
+
+PLEXOS does not distinguish all of the generator families represented by
+Sienna. The reverse translation therefore collapses multiple Sienna generator
+types into `PLEXOSGenerator`, with the exported `category` and memberships
+preserving the information PLEXOS can represent.
+
+```{mermaid}
+flowchart LR
+    bus[ACBus] --> node[PLEXOSNode]
+    area[Area] --> region[PLEXOSRegion]
+    zone[LoadZone] --> plexosZone[PLEXOSZone]
+    line[Line] --> plexosLine[PLEXOSLine]
+    monitored[MonitoredLine] --> plexosLine
+    hvdc[TwoTerminalGenericHVDCLine / LCC / VSC] --> plexosLine
+    transformer[Transformer2W / TapTransformer / PhaseShiftingTransformer] --> plexosTransformer[PLEXOSTransformer]
+
+    thermal[ThermalStandard] --> generator[PLEXOSGenerator]
+    multiStart[ThermalMultiStart] --> generator
+    hydro[HydroDispatch] --> generator
+    reservoirGen[HydroEnergyReservoir] --> generator
+    turbine[HydroTurbine / HydroPumpTurbine] --> generator
+    renewable[RenewableDispatch] --> generator
+    nonDispatch[RenewableNonDispatch] --> generator
+    storage[EnergyReservoirStorage] --> battery[PLEXOSBattery]
+    hydroReservoir[HydroReservoir] --> plexosStorage[PLEXOSStorage]
+    reserve[VariableReserve] --> plexosReserve[PLEXOSReserve]
+    interface[TransmissionInterface] --> plexosInterface[PLEXOSInterface]
+
+    click generator "https://github.com/NatLabRockies/R2X/blob/main/packages/r2x-sienna-to-plexos/src/r2x_sienna_to_plexos/config/rules.json" "Open Sienna-to-PLEXOS rules"
+    click thermal "#generator-collapse" "Read generator collapse details"
+    click renewable "#generator-collapse" "Read generator collapse details"
+```
+
+### Generator Collapse
+
+`ThermalStandard`, `ThermalMultiStart`, `HydroDispatch`,
+`HydroEnergyReservoir`, `HydroTurbine`, `HydroPumpTurbine`,
+`RenewableDispatch`, and `RenewableNonDispatch` all export as
+`PLEXOSGenerator`. PLEXOS-specific category values and memberships are added
+by the translation helpers after rule application.
+
+For field-by-field mappings, see [Sienna to PLEXOS property mappings](sienna_to_plexos_properties.md).
+
 ## Setup
 
 ```bash

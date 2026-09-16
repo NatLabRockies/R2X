@@ -1164,12 +1164,8 @@ def test_hydropumpturbine_driven_head_tail_memberships(context, monkeypatch):
     context.target_system.add_component(PLEXOSStorage(name="Plant_head"))
     context.target_system.add_component(PLEXOSStorage(name="Plant_tail"))
 
-    head_res = types.SimpleNamespace(
-        name="Plant_head", reservoir_location=types.SimpleNamespace(value="HEAD"), ext={}
-    )
-    tail_res = types.SimpleNamespace(
-        name="Plant_tail", reservoir_location=types.SimpleNamespace(value="TAIL"), ext={}
-    )
+    head_res = types.SimpleNamespace(name="Plant_head", ext={})
+    tail_res = types.SimpleNamespace(name="Plant_tail", ext={})
     turbine = types.SimpleNamespace(name="TURB", reservoirs=[head_res, tail_res])
     context.source_system.get_components = lambda comp_type: (
         [turbine] if comp_type.__name__ == "HydroPumpTurbine" else []

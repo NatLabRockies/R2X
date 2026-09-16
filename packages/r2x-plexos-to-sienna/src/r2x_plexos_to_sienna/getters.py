@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-from copy import deepcopy
 from importlib.resources import files
 from typing import Any
 
@@ -19,6 +18,7 @@ from r2x_plexos.models import (
     PLEXOSInterface,
     PLEXOSLine,
     PLEXOSNode,
+    PLEXOSPurchaser,
     PLEXOSRegion,
     PLEXOSReserve,
     PLEXOSStorage,
@@ -57,10 +57,23 @@ from r2x_sienna.models.enums import (
     TransformerControlObjective,
     WindingGroupNumber,
 )
-from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput, MinMax, UpDown
+from r2x_sienna.models.named_tuples import (
+    Complex,
+    FromTo_ToFrom,
+    InputOutput,
+    MinMax,
+    UpDown,
+)
 
 from r2x_core import Ok, PluginContext, Result
 from r2x_core.getters import getter
+
+from .mappings import (
+    _FUEL_KEYWORDS,
+    _GENERATOR_FAMILY_BY_SLUG,
+    _GENERATOR_FAMILY_KEYWORDS,
+    _PRIME_MOVER_KEYWORDS,
+)
 
 # Type-safe constant for power units
 NATURAL_UNITS: UnitSystem = UnitSystem.NATURAL_UNITS
@@ -111,16 +124,36 @@ def _get_target_types_for_source(component: Any) -> list[type[Component]]:
         return [EnergyReservoirStorage]
     if isinstance(component, PLEXOSRegion):
         return [PowerLoad]
+    if isinstance(component, PLEXOSNode):
+        return [PowerLoad]
+    if isinstance(component, PLEXOSPurchaser):
+        return [PowerLoad]
     if isinstance(component, PLEXOSReserve):
         return [VariableReserve]
     return []
 
 
 def _get_targets_by_name(context: PluginContext, source_component: Any) -> list[Any]:
+    if context.target_system is None:
+        return []
+
+    if isinstance(source_component, PLEXOSNode) and context.source_system is not None:
+        region_names = {
+            membership.child_object.name
+            for membership in context.source_system.get_supplemental_attributes_with_component(
+                source_component
+            )
+            if getattr(membership, "collection", None) == CollectionEnum.Region
+            and getattr(getattr(membership, "child_object", None), "name", None)
+        }
+        return [
+            load
+            for load in context.target_system.get_components(PowerLoad)
+            if getattr(load, "name", None) in region_names
+        ]
+
     name = getattr(source_component, "name", None)
     if not name:
-        return []
-    if context.target_system is None:
         return []
     targets: list[Any] = []
     for target_type in _get_target_types_for_source(source_component):
@@ -153,16 +186,31 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
             continue
 
         source_ts = ts_list[0]
+        if not isinstance(source_ts, SingleTimeSeries):
+            continue
         for target_component in targets:
+            target_name = (
+                "active_power"
+                if isinstance(source_component, (PLEXOSNode, PLEXOSPurchaser))
+                and isinstance(target_component, PowerLoad)
+                and source_ts.name in {"load", "fixed_load"}
+                else source_ts.name
+            )
+            target_ts = SingleTimeSeries.from_array(
+                data=source_ts.data,
+                name=target_name,
+                initial_timestamp=source_ts.initial_timestamp,
+                resolution=source_ts.resolution,
+            )
             if context.target_system.has_time_series(
                 target_component,
-                name=source_ts.name,
+                name=target_name,
                 time_series_type=SingleTimeSeries,
                 **features,
             ):
                 continue
             try:
-                context.target_system.add_time_series(deepcopy(source_ts), target_component, **features)
+                context.target_system.add_time_series(target_ts, target_component, **features)
             except Exception:
                 logger.debug(
                     "Failed attaching time series '{}' to '{}'",
@@ -215,12 +263,35 @@ def extract_number_from_name(name: str) -> int:
             return PLEXOS_NUMBER_COUNTER
 
 
+def _classify_generator_category(category: str | None) -> str:
+    """Return the Sienna generator technology family for a PLEXOS category.
+
+    Resolves canonical slugs exactly, then falls back to substring keyword
+    matching on descriptive names. Unmatched categories default to ``thermal``.
+    """
+    key = (category or "").strip().casefold()
+    if not key:
+        return "thermal"
+    if key in _GENERATOR_FAMILY_BY_SLUG:
+        return _GENERATOR_FAMILY_BY_SLUG[key]
+    for keyword, family in _GENERATOR_FAMILY_KEYWORDS:
+        if keyword in key:
+            return family
+    return "thermal"
+
+
 def _get_prime_mover_type(category: str) -> PrimeMoversType:
     defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
     with defaults_path.open() as f:
         defaults = json.load(f)
-    code = defaults.get("prime_mover_types", {}).get(category, "OT")
-    return getattr(PrimeMoversType, code, PrimeMoversType.OT)
+    mapping = defaults.get("prime_mover_types", {})
+    if category in mapping:
+        return getattr(PrimeMoversType, mapping[category], PrimeMoversType.OT)
+    key = (category or "").strip().casefold()
+    for keyword, code in _PRIME_MOVER_KEYWORDS:
+        if keyword in key:
+            return getattr(PrimeMoversType, code, PrimeMoversType.OT)
+    return PrimeMoversType.OT
 
 
 def _get_fuel_type(category: str) -> ThermalFuels:
@@ -228,8 +299,14 @@ def _get_fuel_type(category: str) -> ThermalFuels:
     defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
     with defaults_path.open() as f:
         defaults = json.load(f)
-    name = defaults.get("fuel_types", {}).get(category, "NATURAL_GAS")
-    return getattr(ThermalFuels, name, ThermalFuels.NATURAL_GAS)
+    mapping = defaults.get("fuel_types", {})
+    if category in mapping:
+        return getattr(ThermalFuels, mapping[category], ThermalFuels.NATURAL_GAS)
+    key = (category or "").strip().casefold()
+    for keyword, name in _FUEL_KEYWORDS:
+        if keyword in key:
+            return getattr(ThermalFuels, name, ThermalFuels.NATURAL_GAS)
+    return ThermalFuels.NATURAL_GAS
 
 
 @getter
@@ -260,6 +337,76 @@ def get_load_bus(component: PLEXOSRegion, context: PluginContext) -> Result[ACBu
         bus = next((b for b in acbuses if getattr(b, "name", None) == node_name), None)
         return Ok(bus)
     return Ok(None)
+
+
+@getter
+def get_purchaser_bus(component: PLEXOSPurchaser, context: PluginContext) -> Result[ACBus | None, Any]:
+    """Get the ACBus associated with a purchaser through its node membership."""
+    _sync_time_series_for_source(component, context)
+
+    if context.source_system is None or context.target_system is None:
+        return Ok(None)
+
+    memberships = context.source_system.get_supplemental_attributes_with_component(component)
+    node_name = next(
+        (
+            membership.child_object.name
+            for membership in memberships
+            if getattr(membership, "collection", None) == CollectionEnum.Nodes
+            and getattr(getattr(membership, "child_object", None), "name", None)
+        ),
+        None,
+    )
+    if node_name is None:
+        return Ok(None)
+
+    bus = next(
+        (
+            candidate
+            for candidate in context.target_system.get_components(ACBus)
+            if getattr(candidate, "name", None) == node_name
+        ),
+        None,
+    )
+    return Ok(bus)
+
+
+@getter
+def get_purchaser_active_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
+    """Get the purchaser's fixed load as Sienna active power."""
+    return Ok(getattr(component, "fixed_load", 0.0))
+
+
+@getter
+def get_purchaser_available(component: PLEXOSPurchaser, context: PluginContext) -> Result[bool, Any]:
+    """Convert the PLEXOS purchaser units flag to Sienna availability."""
+    return Ok(bool(getattr(component, "units", 0)))
+
+
+@getter
+def get_purchaser_max_active_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
+    """Get the purchaser's maximum load as Sienna maximum active power."""
+    return Ok(getattr(component, "max_load", 0.0))
+
+
+@getter
+def get_purchaser_reactive_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
+    """Get the purchaser's reactive power, defaulting to zero."""
+    return Ok(getattr(component, "reactive_power", 0.0) or 0.0)
+
+
+@getter
+def get_purchaser_max_reactive_power(
+    component: PLEXOSPurchaser, context: PluginContext
+) -> Result[float, Any]:
+    """Get the purchaser's maximum reactive power, defaulting to zero."""
+    return Ok(getattr(component, "max_reactive_power", 0.0) or 0.0)
+
+
+@getter
+def get_purchaser_base_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
+    """Get the purchaser's base power, defaulting to 100 MW."""
+    return Ok(getattr(component, "base_power", 100.0) or 100.0)
 
 
 @getter
@@ -380,6 +527,8 @@ def get_base_voltage(component: PLEXOSNode, context: PluginContext) -> Result[fl
 @getter
 def get_node_ext(component: PLEXOSNode, context: PluginContext) -> Result[dict[str, Any], Any]:
     """Get the ext dictionary for a node."""
+    if context is not None:
+        _sync_time_series_for_source(component, context)
     value = {
         "load_participation_factor": getattr(component, "load_participation_factor", None),
     }
@@ -400,9 +549,17 @@ def get_node_number(component: PLEXOSNode, context: PluginContext) -> Result[int
 
 @getter
 def is_slack_bus(component: PLEXOSNode, context: PluginContext) -> Result[ACBusTypes, Any]:
-    """Return ACBusTypes.SLACK if component.bustype == 1, else ACBusTypes.PQ."""
+    """Return slack type for explicit or regional reference-node memberships."""
     value = getattr(component, "is_slack_bus", 0)
-    bustype = ACBusTypes.SLACK if value == 1 else ACBusTypes.PQ
+    is_reference_node = any(
+        getattr(membership, "collection", None) == CollectionEnum.ReferenceNode
+        for membership in (
+            context.source_system.get_supplemental_attributes_with_component(component)
+            if context.source_system is not None
+            else []
+        )
+    )
+    bustype = ACBusTypes.SLACK if value == 1 or is_reference_node else ACBusTypes.PQ
     return Ok(bustype)
 
 
@@ -748,10 +905,27 @@ def get_prime_mover_type(
 
 
 @getter
-def get_gen_status(component: PLEXOSGenerator, context: PluginContext) -> Result[int, Any]:
-    """Get the status of a generator."""
-    value = getattr(component, "units", "")
-    return Ok(int(value))
+def get_gen_technology_class(component: PLEXOSGenerator, context: PluginContext) -> Result[str, Any]:
+    """Classify a generator into a Sienna technology family from its category name.
+
+    Supports both canonical ReEDS-style slugs and descriptive naming
+    conventions (e.g. AEMO ISP "Wind SA", "Black Coal QLD", "Hydro TAS").
+    """
+    return Ok(_classify_generator_category(getattr(component, "category", None)))
+
+
+@getter
+def get_gen_status(component: PLEXOSGenerator, context: PluginContext) -> Result[bool, Any]:
+    """Get the commitment status of a generator (True when any units are online)."""
+    value = getattr(component, "units", 0)
+    return Ok(int(value or 0) > 0)
+
+
+@getter
+def get_available_from_units(component: Any, context: PluginContext) -> Result[bool, Any]:
+    """Map a PLEXOS ``units`` count to a boolean availability flag."""
+    value = getattr(component, "units", 0)
+    return Ok(int(value or 0) > 0)
 
 
 @getter

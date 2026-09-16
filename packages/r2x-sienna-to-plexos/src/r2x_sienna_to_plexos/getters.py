@@ -73,6 +73,7 @@ from r2x_sienna_to_plexos.getters_utils import (
     _attach_reservoir_time_series_to_storage,
     _resolve_iso_rto_description_for_buses,
     _resolve_iso_rto_for_buses,
+    clean_interface_name,
     coerce_value,
     compute_heat_rate_data,
     compute_markup_data,
@@ -230,7 +231,10 @@ def _build_source_interface_name_index(context: PluginContext) -> dict[str, Any]
         return cached
     if context.source_system is None:
         return {}
-    result = {i.name: i for i in _source_system(context).get_components(TransmissionInterface)}
+    result = {}
+    for interface in _source_system(context).get_components(TransmissionInterface):
+        result[interface.name] = interface
+        result.setdefault(clean_interface_name(interface.name), interface)
     context._cache["source_interface_name_index"] = result
     return result
 
@@ -1391,6 +1395,14 @@ def get_area_name(source_component: Area, context: PluginContext) -> Result[str,
 
 
 @getter
+def get_interface_name(
+    source_component: TransmissionInterface, context: PluginContext
+) -> Result[str, ValueError]:
+    """Return a PLEXOS-safe transmission interface name."""
+    return Ok(clean_interface_name(source_component.name))
+
+
+@getter
 def get_zone_units(source_component: LoadZone, context: PluginContext) -> Result[float, ValueError]:
     """Return active status for translated zones."""
     return Ok(1.0)
@@ -2432,41 +2444,6 @@ def _build_reservoir_pump_turbine_name_set(context: PluginContext) -> set[str]:
     return names
 
 
-def _get_reservoir_location(source_component: HydroReservoir) -> str | None:
-    """Return normalized reservoir location label (HEAD/TAIL) when available.
-
-    Falls back to ext metadata and name suffixes when explicit reservoir_location
-    is missing in source data.
-    """
-    # Most reliable signal in EI data: explicit _head/_tail suffix in component name.
-    name = str(getattr(source_component, "name", "")).strip().upper()
-    if name.endswith(("_HEAD", " HEAD")):
-        return "HEAD"
-    if name.endswith(("_TAIL", " TAIL")):
-        return "TAIL"
-
-    location = getattr(source_component, "reservoir_location", None)
-    raw = getattr(location, "value", location)
-    if raw is not None:
-        label = str(raw).upper()
-        if "HEAD" in label:
-            return "HEAD"
-        if "TAIL" in label:
-            return "TAIL"
-
-    ext = getattr(source_component, "ext", None)
-    if isinstance(ext, dict):
-        ext_loc = ext.get("reservoir_location") or ext.get("RESERVOIR_LOCATION")
-        if ext_loc is not None:
-            label = str(getattr(ext_loc, "value", ext_loc)).upper()
-            if "HEAD" in label:
-                return "HEAD"
-            if "TAIL" in label:
-                return "TAIL"
-
-    return None
-
-
 def _get_reservoir_name_suffix_location(source_component: HydroReservoir) -> str | None:
     """Return HEAD/TAIL when reservoir name explicitly ends with _head/_tail."""
     name = str(getattr(source_component, "name", "")).strip().casefold()
@@ -3345,7 +3322,7 @@ def membership_line_parent_interface(line: PLEXOSLine, context: PluginContext) -
         target_iface_index = {iface.name: iface for iface in target_system.get_components(PLEXOSInterface)}
         context._cache["target_interface_name_index"] = target_iface_index
 
-    target_iface = target_iface_index.get(interface_name)
+    target_iface = target_iface_index.get(clean_interface_name(interface_name))
     if target_iface is None:
         return Err(ValueError(f"No PLEXOSInterface found with name '{interface_name}'"))
 

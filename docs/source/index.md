@@ -13,10 +13,10 @@ DataStore, units), see
 
 | Package | Direction | Rules |
 | --- | --- | ---: |
-| [`r2x-reeds-to-plexos`](https://github.com/NatlabRockies/R2X/tree/main/packages/r2x-reeds-to-plexos) | ReEDS → PLEXOS | 34 |
-| [`r2x-reeds-to-sienna`](https://github.com/NatlabRockies/R2X/tree/main/packages/r2x-reeds-to-sienna) | ReEDS → Sienna | — |
-| [`r2x-plexos-to-sienna`](https://github.com/NatlabRockies/R2X/tree/main/packages/r2x-plexos-to-sienna) | PLEXOS → Sienna | 21 |
-| [`r2x-sienna-to-plexos`](https://github.com/NatlabRockies/R2X/tree/main/packages/r2x-sienna-to-plexos) | Sienna → PLEXOS | 44 |
+| [`r2x-reeds-to-plexos`](https://github.com/NatlabRockies/R2X/tree/main/packages/r2x-reeds-to-plexos) | [ReEDS → PLEXOS](reeds_to_plexos.md) · [properties](reeds_to_plexos_properties.md) | 34 |
+| [`r2x-reeds-to-sienna`](https://github.com/NatlabRockies/R2X/tree/main/packages/r2x-reeds-to-sienna) | [ReEDS → Sienna](reeds_to_sienna.md) · [properties](reeds_to_sienna_properties.md) | — |
+| [`r2x-plexos-to-sienna`](https://github.com/NatlabRockies/R2X/tree/main/packages/r2x-plexos-to-sienna) | [PLEXOS → Sienna](plexos_to_sienna.md) · [properties](plexos_to_sienna_properties.md) | 21 |
+| [`r2x-sienna-to-plexos`](https://github.com/NatLabRockies/R2X/tree/main/packages/r2x-sienna-to-plexos) | [Sienna → PLEXOS](sienna_to_plexos.md) · [properties](sienna_to_plexos_properties.md) | 44 |
 
 ## Model Compatibility
 
@@ -52,5 +52,10 @@ DataStore, units), see
 ```{toctree}
 :hidden: true
 dev_workflow.md
+architecture.md
 CHANGELOG.md
+plexos_to_sienna_properties.md
+reeds_to_plexos_properties.md
+reeds_to_sienna_properties.md
+sienna_to_plexos_properties.md
 ```

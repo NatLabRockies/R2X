@@ -58,6 +58,11 @@ _ISO_RTO_POLYGONS: dict[str, list] | None = None
 _ISO_RTO_CONFIG_DIR = pathlib.Path(__file__).parent / "config" / "iso-rto-coordinates"
 
 
+def clean_interface_name(name: Any) -> str:
+    """Replace Unicode replacement characters in transmission interface names."""
+    return str(name or "").replace("\ufffd", "-").strip()
+
+
 def _chunked_setup_target_and_child_tables(
     tgt_metadata: Any,
     src_associations: Any,
@@ -703,8 +708,8 @@ def ensure_head_storage_generator_membership(context: PluginContext) -> None:
             continue
 
         for reservoir in getattr(turbine, "reservoirs", None) or []:
-            location = getattr(getattr(reservoir, "reservoir_location", None), "value", None)
-            if str(location).upper() != "HEAD":
+            reservoir_name = str(getattr(reservoir, "name", "")).lower()
+            if not reservoir_name.endswith(("_head", " head")):
                 continue
 
             rname = getattr(reservoir, "name", None)
@@ -808,8 +813,8 @@ def ensure_tail_storage_generator_membership(context: PluginContext) -> None:
             continue
 
         for reservoir in getattr(turbine, "reservoirs", None) or []:
-            location = getattr(getattr(reservoir, "reservoir_location", None), "value", None)
-            if str(location).upper() != "TAIL":
+            reservoir_name = str(getattr(reservoir, "name", "")).lower()
+            if not reservoir_name.endswith(("_tail", " tail")):
                 continue
 
             rname = getattr(reservoir, "name", None)
