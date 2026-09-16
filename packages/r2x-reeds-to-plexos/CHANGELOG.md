@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-plexos-v0.2.1...r2x-reeds-to-plexos-v0.3.0) (2026-09-16)
+
+
+### Features
+
+* enable can-imports translation if parser allows it ([#323](https://github.com/NatLabRockies/R2X/issues/323)) ([a5801e0](https://github.com/NatLabRockies/R2X/commit/a5801e0bba1d9bf32581227a49b644771ef6f4ab))
+
+
+### Bug Fixes
+
+* resolve prek issues and min errors on reeds translation ([#319](https://github.com/NatLabRockies/R2X/issues/319)) ([bad738d](https://github.com/NatLabRockies/R2X/commit/bad738dbffe21fa329f2131d6ba103d4fff27d60))
+* update property fields and getters to match latest db components ([#329](https://github.com/NatLabRockies/R2X/issues/329)) ([f7cca87](https://github.com/NatLabRockies/R2X/commit/f7cca8710a71c4e18da93c055764f67e2f59fe6a))
+
 ## [0.2.1](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-plexos-v0.2.0...r2x-reeds-to-plexos-v0.2.1) (2026-08-13)
 
 
