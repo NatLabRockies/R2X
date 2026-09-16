@@ -12,5 +12,5 @@ sienna-to-plexos = "r2x_sienna_to_plexos.translation:sienna_to_plexos"
 r2x_sienna_to_plexos = ["config/*.json"]
 
 [build-system]
-requires = ["uv_build>=0.8.22,<0.9.0"]
+requires = ["uv_build>=0.8.22,<0.13.0"]
 build-backend = "uv_build"
