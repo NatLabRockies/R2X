@@ -52,6 +52,7 @@ DataStore, units), see
 ```{toctree}
 :hidden: true
 dev_workflow.md
+architecture.md
 CHANGELOG.md
 plexos_to_sienna_properties.md
 reeds_to_plexos_properties.md
