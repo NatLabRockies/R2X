@@ -2,6 +2,54 @@
 
 Cloning the necessary packages for each translation is important.
 
+## Mapping Overview
+
+PLEXOS uses a smaller set of broad classes than ReEDS. In particular, several
+ReEDS generator families become `PLEXOSGenerator`; the technology details are
+carried by fields such as `category` and by memberships. ReEDS consuming
+technologies become either generators or purchasers according to their role.
+
+```{mermaid}
+flowchart LR
+    thermal[ReEDSThermalGenerator] --> generator[PLEXOSGenerator]
+    variable[ReEDSVariableGenerator] --> generator
+    hydro[ReEDSHydroGenerator] --> generator
+    generic[ReEDSGenerator] --> generator
+    consuming[ReEDSConsumingTechnology] --> generator
+    storageGenerator[ReEDSStorage] --> generator
+    electro[ReEDSElectrolyzerDemand] --> purchaser[PLEXOSPurchaser]
+    smr[ReEDSSteamMethaneReformingDemand] --> purchaser
+    datacenter[ReEDSDataCenterDemand] --> purchaser
+    storage[ReEDSStorage] --> battery[PLEXOSBattery]
+    storage --> plexosStorage[PLEXOSStorage]
+    region[ReEDSRegion] --> plexosRegion[PLEXOSRegion]
+    region --> zone[PLEXOSZone]
+    region --> node[PLEXOSNode]
+    transmission[ReEDSTransmissionLine] --> line[PLEXOSLine]
+    reserve[ReEDSReserve] --> plexosReserve[PLEXOSReserve]
+    interface[ReEDSInterface] --> plexosInterface[PLEXOSInterface]
+
+    click generator "https://github.com/NatLabRockies/R2X/blob/main/packages/r2x-reeds-to-plexos/src/r2x_reeds_to_plexos/config/rules.json" "Open ReEDS-to-PLEXOS rules"
+    click purchaser "#generator-and-demand-collapsing" "Read class collapsing details"
+    click region "#topology-and-memberships" "Read topology mappings"
+```
+
+### Generator and Demand Collapsing
+
+`PLEXOSGenerator` is the common PLEXOS representation for thermal, variable,
+hydro, generic, consuming-technology, and some storage-generator outputs.
+Hydrogen production and data-center demand are represented as
+`PLEXOSPurchaser`, while storage can produce `PLEXOSBattery` and
+`PLEXOSStorage` components.
+
+### Topology and Memberships
+
+Regions become the PLEXOS region, zone, and node objects needed by the target
+model. The translation helpers then create memberships connecting generators,
+batteries, purchasers, lines, and regions to their PLEXOS topology.
+
+For field-by-field mappings, see [ReEDS to PLEXOS property mappings](reeds_to_plexos_properties.md).
+
 ## Setup
 
 ```bash

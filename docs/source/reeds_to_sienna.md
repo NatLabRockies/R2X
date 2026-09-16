@@ -2,6 +2,48 @@
 
 Cloning the necessary packages for each translation is important.
 
+## Mapping Overview
+
+ReEDS technologies are translated into Sienna component families. Several
+ReEDS classes intentionally map to the same Sienna class, while demand and
+storage classes use dedicated target types.
+
+```{mermaid}
+flowchart LR
+    region[ReEDSRegion] --> bus[ACBus]
+    region --> area[Area]
+    reserve[ReEDSReserve] --> spinning[VariableReserve]
+    reserve --> nonSpinning[VariableReserveNonSpinning]
+    thermal[ReEDSThermalGenerator] --> thermalTarget[ThermalStandard]
+    variable[ReEDSVariableGenerator] --> renewable[RenewableDispatch]
+    variable --> nonDispatch[RenewableNonDispatch]
+    hydro[ReEDSHydroGenerator] --> hydroDispatch[HydroDispatch]
+    hydro --> hydroNonDispatch[RenewableNonDispatch]
+    storage[ReEDSStorage] --> battery[EnergyReservoirStorage]
+    storage --> pump[HydroPumpTurbine]
+    storage --> reservoir[HydroReservoir]
+    demand[ReEDSDemand] --> load[PowerLoad]
+    electro[ReEDSElectrolyzerDemand] --> standardLoad[StandardLoad]
+    smr[ReEDSSteamMethaneReformingDemand] --> standardLoad
+    datacenter[ReEDSDataCenterDemand] --> standardLoad
+    consuming[ReEDSConsumingTechnology] --> standardLoad
+    transmission[ReEDSTransmissionLine] --> line[Line / MonitoredLine / HVDC]
+    interface[ReEDSInterface] --> interchange[AreaInterchange]
+
+    click thermal "https://github.com/NatLabRockies/R2X/blob/main/packages/r2x-reeds-to-sienna/src/r2x_reeds_to_sienna/config/rules.json" "Open ReEDS-to-Sienna rules"
+    click demand "#demand-and-storage" "Read demand mappings"
+    click storage "#demand-and-storage" "Read storage mappings"
+```
+
+### Demand and Storage
+
+The demand-specific classes (`ReEDSElectrolyzerDemand`,
+`ReEDSSteamMethaneReformingDemand`, `ReEDSDataCenterDemand`, and
+`ReEDSConsumingTechnology`) become `StandardLoad`. Their time series and
+annual demand information are attached by the translation helpers.
+
+For field-by-field mappings, see [ReEDS to Sienna property mappings](reeds_to_sienna_properties.md).
+
 ## Setup
 
 ```bash

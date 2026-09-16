@@ -9,6 +9,7 @@ extensions = [
     "sphinx.ext.githubpages",
     "sphinx.ext.intersphinx",
     "sphinx_copybutton",
+    "sphinxcontrib.mermaid",
 ]
 
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
