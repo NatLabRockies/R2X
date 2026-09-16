@@ -68,6 +68,13 @@ from r2x_sienna.models.named_tuples import (
 from r2x_core import Ok, PluginContext, Result
 from r2x_core.getters import getter
 
+from .mappings import (
+    _FUEL_KEYWORDS,
+    _GENERATOR_FAMILY_BY_SLUG,
+    _GENERATOR_FAMILY_KEYWORDS,
+    _PRIME_MOVER_KEYWORDS,
+)
+
 # Type-safe constant for power units
 NATURAL_UNITS: UnitSystem = UnitSystem.NATURAL_UNITS
 
@@ -256,12 +263,35 @@ def extract_number_from_name(name: str) -> int:
             return PLEXOS_NUMBER_COUNTER
 
 
+def _classify_generator_category(category: str | None) -> str:
+    """Return the Sienna generator technology family for a PLEXOS category.
+
+    Resolves canonical slugs exactly, then falls back to substring keyword
+    matching on descriptive names. Unmatched categories default to ``thermal``.
+    """
+    key = (category or "").strip().casefold()
+    if not key:
+        return "thermal"
+    if key in _GENERATOR_FAMILY_BY_SLUG:
+        return _GENERATOR_FAMILY_BY_SLUG[key]
+    for keyword, family in _GENERATOR_FAMILY_KEYWORDS:
+        if keyword in key:
+            return family
+    return "thermal"
+
+
 def _get_prime_mover_type(category: str) -> PrimeMoversType:
     defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
     with defaults_path.open() as f:
         defaults = json.load(f)
-    code = defaults.get("prime_mover_types", {}).get(category, "OT")
-    return getattr(PrimeMoversType, code, PrimeMoversType.OT)
+    mapping = defaults.get("prime_mover_types", {})
+    if category in mapping:
+        return getattr(PrimeMoversType, mapping[category], PrimeMoversType.OT)
+    key = (category or "").strip().casefold()
+    for keyword, code in _PRIME_MOVER_KEYWORDS:
+        if keyword in key:
+            return getattr(PrimeMoversType, code, PrimeMoversType.OT)
+    return PrimeMoversType.OT
 
 
 def _get_fuel_type(category: str) -> ThermalFuels:
@@ -269,8 +299,14 @@ def _get_fuel_type(category: str) -> ThermalFuels:
     defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
     with defaults_path.open() as f:
         defaults = json.load(f)
-    name = defaults.get("fuel_types", {}).get(category, "NATURAL_GAS")
-    return getattr(ThermalFuels, name, ThermalFuels.NATURAL_GAS)
+    mapping = defaults.get("fuel_types", {})
+    if category in mapping:
+        return getattr(ThermalFuels, mapping[category], ThermalFuels.NATURAL_GAS)
+    key = (category or "").strip().casefold()
+    for keyword, name in _FUEL_KEYWORDS:
+        if keyword in key:
+            return getattr(ThermalFuels, name, ThermalFuels.NATURAL_GAS)
+    return ThermalFuels.NATURAL_GAS
 
 
 @getter
@@ -513,9 +549,17 @@ def get_node_number(component: PLEXOSNode, context: PluginContext) -> Result[int
 
 @getter
 def is_slack_bus(component: PLEXOSNode, context: PluginContext) -> Result[ACBusTypes, Any]:
-    """Return ACBusTypes.SLACK if component.bustype == 1, else ACBusTypes.PQ."""
+    """Return slack type for explicit or regional reference-node memberships."""
     value = getattr(component, "is_slack_bus", 0)
-    bustype = ACBusTypes.SLACK if value == 1 else ACBusTypes.PQ
+    is_reference_node = any(
+        getattr(membership, "collection", None) == CollectionEnum.ReferenceNode
+        for membership in (
+            context.source_system.get_supplemental_attributes_with_component(component)
+            if context.source_system is not None
+            else []
+        )
+    )
+    bustype = ACBusTypes.SLACK if value == 1 or is_reference_node else ACBusTypes.PQ
     return Ok(bustype)
 
 
@@ -861,10 +905,27 @@ def get_prime_mover_type(
 
 
 @getter
-def get_gen_status(component: PLEXOSGenerator, context: PluginContext) -> Result[int, Any]:
-    """Get the status of a generator."""
-    value = getattr(component, "units", "")
-    return Ok(int(value))
+def get_gen_technology_class(component: PLEXOSGenerator, context: PluginContext) -> Result[str, Any]:
+    """Classify a generator into a Sienna technology family from its category name.
+
+    Supports both canonical ReEDS-style slugs and descriptive naming
+    conventions (e.g. AEMO ISP "Wind SA", "Black Coal QLD", "Hydro TAS").
+    """
+    return Ok(_classify_generator_category(getattr(component, "category", None)))
+
+
+@getter
+def get_gen_status(component: PLEXOSGenerator, context: PluginContext) -> Result[bool, Any]:
+    """Get the commitment status of a generator (True when any units are online)."""
+    value = getattr(component, "units", 0)
+    return Ok(int(value or 0) > 0)
+
+
+@getter
+def get_available_from_units(component: Any, context: PluginContext) -> Result[bool, Any]:
+    """Map a PLEXOS ``units`` count to a boolean availability flag."""
+    value = getattr(component, "units", 0)
+    return Ok(int(value or 0) > 0)
 
 
 @getter

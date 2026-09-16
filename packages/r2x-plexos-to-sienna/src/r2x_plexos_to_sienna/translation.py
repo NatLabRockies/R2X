@@ -6,7 +6,7 @@ from importlib.resources import files
 from infrasys.time_series_manager import TimeSeriesManager
 from infrasys.time_series_models import TimeSeriesStorageType
 from infrasys.utils.sqlite import create_in_memory_db
-from r2x_plexos.models import PLEXOSNode, PLEXOSPurchaser
+from r2x_plexos.models import PLEXOSBattery, PLEXOSGenerator, PLEXOSNode, PLEXOSPurchaser
 
 from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
 from r2x_plexos_to_sienna.getters import _sync_time_series_for_source
@@ -57,5 +57,9 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
         _sync_time_series_for_source(node, context)
     for purchaser in context.source_system.get_components(PLEXOSPurchaser):
         _sync_time_series_for_source(purchaser, context)
+    for generator in context.source_system.get_components(PLEXOSGenerator):
+        _sync_time_series_for_source(generator, context)
+    for battery in context.source_system.get_components(PLEXOSBattery):
+        _sync_time_series_for_source(battery, context)
 
     return context.target_system

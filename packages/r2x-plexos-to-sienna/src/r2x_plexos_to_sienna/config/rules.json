@@ -298,9 +298,7 @@
       "name": "name",
       "uuid": "uuid",
       "rating": "rating",
-      "category": "category",
-      "available": "units",
-      "status": "units"
+      "category": "category"
     },
     "getters": {
       "bus": "get_gen_bus",
@@ -311,6 +309,7 @@
       "reactive_power_limits": "get_gen_reactive_power_limits",
       "must_run": "get_gen_must_run",
       "prime_mover_type": "get_prime_mover_type",
+      "available": "get_available_from_units",
       "status": "get_gen_status",
       "time_at_status": "get_time_at_status",
       "operation_cost": "get_thermal_operation_cost",
@@ -320,24 +319,10 @@
       "fuel": "get_fuel_type"
     },
     "filter": {
-      "field": "category",
-      "op": "in",
+      "getter": "get_gen_technology_class",
+      "op": "eq",
       "values": [
-        "thermal",
-        "geothermal",
-        "coal",
-        "coal-ccs",
-        "coal-igcc",
-        "gas-cc",
-        "gas-ct",
-        "oil-ct",
-        "lfill-gas",
-        "nuclear",
-        "nuclear-smr",
-        "o-g-s",
-        "biopower",
-        "beccs",
-        "smr"
+        "thermal"
       ]
     },
     "source_type": "PLEXOSGenerator",
@@ -374,8 +359,8 @@
       "services": "get_device_services"
     },
     "filter": {
-      "field": "category",
-      "op": "in",
+      "getter": "get_gen_technology_class",
+      "op": "eq",
       "values": [
         "thermal-multi-start"
       ]
@@ -410,24 +395,10 @@
       "time_limits": "get_gen_time_limits"
     },
     "filter": {
-      "field": "category",
-      "op": "in",
+      "getter": "get_gen_technology_class",
+      "op": "eq",
       "values": [
-        "hydro-dispatch",
-        "can-imports",
-        "hydro-and",
-        "geohydro",
-        "hydro",
-        "hydro-and",
-        "hydro-d",
-        "hyd",
-        "hyded",
-        "hydend",
-        "hydund",
-        "hydnd",
-        "hydnpnd",
-        "hydsnd",
-        "hydud"
+        "hydro-dispatch"
       ]
     },
     "source_type": "PLEXOSGenerator",
@@ -458,13 +429,10 @@
       "prime_mover_type": "get_prime_mover_type"
     },
     "filter": {
-      "field": "category",
-      "op": "in",
+      "getter": "get_gen_technology_class",
+      "op": "eq",
       "values": [
-        "pumped-hydro",
-        "egs",
-        "egs-nearfield",
-        "rtes"
+        "hydro-turbine"
       ]
     },
     "source_type": "PLEXOSGenerator",
@@ -520,16 +488,10 @@
       "power_factor": "get_gen_power_factor"
     },
     "filter": {
-      "field": "category",
-      "op": "in",
+      "getter": "get_gen_technology_class",
+      "op": "eq",
       "values": [
-        "renewable-dispatch",
-        "upv",
-        "dupv",
-        "pvb",
-        "csp",
-        "wind-ons",
-        "wind-ofs"
+        "renewable-dispatch"
       ]
     },
     "source_type": "PLEXOSGenerator",
@@ -556,11 +518,10 @@
       "prime_mover_type": "get_prime_mover_type"
     },
     "filter": {
-      "field": "category",
-      "op": "in",
+      "getter": "get_gen_technology_class",
+      "op": "eq",
       "values": [
-        "renewable-non-dispatch",
-        "distpv"
+        "renewable-non-dispatch"
       ]
     },
     "source_type": "PLEXOSGenerator",
@@ -587,8 +548,8 @@
       "active_power_losses": "get_gen_active_power_losses"
     },
     "filter": {
-      "field": "category",
-      "op": "in",
+      "getter": "get_gen_technology_class",
+      "op": "eq",
       "values": [
         "synchronous-condenser"
       ]
@@ -603,10 +564,10 @@
     },
     "field_map": {
       "name": "name",
-      "available": "units",
       "uuid": "uuid"
     },
     "getters": {
+      "available": "get_available_from_units",
       "active_power_flow_limits": "get_interface_active_power_flow_limits",
       "direction_mapping": "get_interface_direction_mapping"
     },
@@ -619,12 +580,12 @@
       "category": "battery"
     },
     "field_map": {
-      "available": "units",
       "category": "category",
       "name": "name",
       "uuid": "uuid"
     },
     "getters": {
+      "available": "get_available_from_units",
       "bus": "get_gen_bus",
       "initial_storage_capacity_level": "get_initial_storage_capacity_level",
       "prime_mover_type": "get_prime_mover_type",

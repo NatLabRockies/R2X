@@ -455,7 +455,7 @@ def test_prime_mover_type_mapping(tmp_path) -> None:
         ("distpv", PrimeMoversType.PVe),
         ("battery", PrimeMoversType.BA),
         ("hydro-dispatch", PrimeMoversType.HY),
-        ("hydro-turbine", PrimeMoversType.OT),
+        ("hydro-turbine", PrimeMoversType.HY),
         ("pumped-hydro", PrimeMoversType.PS),
         ("nuclear", PrimeMoversType.ST),
         ("o-g-s", PrimeMoversType.ST),
@@ -481,6 +481,39 @@ def test_prime_mover_type_unknown(tmp_path) -> None:
     gen = PLEXOSGenerator(name="GEN_UNKNOWN", category="unknown-type", max_capacity=50.0)
     result = getters.get_prime_mover_type(gen, context).unwrap()
     assert result == PrimeMoversType.OT  # Should default to "other"
+
+
+@pytest.mark.parametrize(
+    ("category", "expected_family"),
+    [
+        # Canonical ReEDS-style slugs.
+        ("gas-cc", "thermal"),
+        ("coal", "thermal"),
+        ("thermal-multi-start", "thermal-multi-start"),
+        ("hydro-dispatch", "hydro-dispatch"),
+        ("pumped-hydro", "hydro-turbine"),
+        ("wind-ons", "renewable-dispatch"),
+        ("distpv", "renewable-non-dispatch"),
+        ("synchronous-condenser", "synchronous-condenser"),
+        # Descriptive AEMO ISP naming convention.
+        ("Black Coal QLD", "thermal"),
+        ("Brown Coal VIC", "thermal"),
+        ("Natural Gas SA", "thermal"),
+        ("Liquid Fuel VIC", "thermal"),
+        ("Biomass QLD", "thermal"),
+        ("Hydro TAS", "hydro-dispatch"),
+        ("Wind SA", "renewable-dispatch"),
+        ("Anticipated Solar NSW", "renewable-dispatch"),
+        ("Distributed RooftopPV and PVNSG NSW", "renewable-non-dispatch"),
+        ("New Entrant System Strength Providers", "synchronous-condenser"),
+        # Unknown descriptive names default to thermal.
+        ("New Entrant REZ NSW", "thermal"),
+        ("", "thermal"),
+    ],
+)
+def test_classify_generator_category(category: str, expected_family: str) -> None:
+    """Generator categories classify to the expected Sienna technology family."""
+    assert getters._classify_generator_category(category) == expected_family
 
 
 def test_storage_getters(tmp_path) -> None:

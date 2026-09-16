@@ -249,6 +249,56 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     assert pv_gen.bus.name == "NODE1"
 
 
+def test_plexos_generators_translate_by_descriptive_category(tmp_path) -> None:
+    """Descriptive category names (e.g. AEMO ISP) classify by naming convention."""
+    from plexosdb import CollectionEnum
+    from r2x_plexos.models import PLEXOSGenerator, PLEXOSMembership, PLEXOSNode
+    from r2x_sienna.models import (
+        HydroDispatch,
+        RenewableDispatch,
+        RenewableNonDispatch,
+        SynchronousCondenser,
+        ThermalStandard,
+    )
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+
+    node = PLEXOSNode(name="NODE1", voltage=115.0)
+    context.source_system.add_component(node)
+
+    expected = {
+        "COAL_GEN": ("Black Coal QLD", ThermalStandard),
+        "GAS_GEN": ("Natural Gas SA", ThermalStandard),
+        "OIL_GEN": ("Liquid Fuel VIC", ThermalStandard),
+        "HYDRO_GEN": ("Hydro TAS", HydroDispatch),
+        "WIND_GEN": ("Wind SA", RenewableDispatch),
+        "SOLAR_GEN": ("Anticipated Solar NSW", RenewableDispatch),
+        "ROOFTOP_GEN": ("Distributed RooftopPV and PVNSG NSW", RenewableNonDispatch),
+        "SYNC_GEN": ("New Entrant System Strength Providers", SynchronousCondenser),
+    }
+
+    for name, (category, _) in expected.items():
+        gen = PLEXOSGenerator(name=name, category=category, max_capacity=100.0, units=1)
+        context.source_system.add_component(gen)
+        gen_membership = PLEXOSMembership(
+            collection=CollectionEnum.Nodes,
+            parent_object=gen,
+            child_object=node,
+        )
+        context.source_system.add_supplemental_attribute(gen, gen_membership)
+        context.source_system.add_supplemental_attribute(node, gen_membership)
+
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    apply_rules_to_context(context)
+
+    for name, (_, target_type) in expected.items():
+        matches = [c for c in context.target_system.get_components(target_type) if c.name == name]
+        assert matches, f"{name} should translate to {target_type.__name__}"
+
+
 def test_plexos_battery_translates_to_energy_reservoir(tmp_path) -> None:
     from plexosdb import CollectionEnum
     from r2x_plexos.models import PLEXOSBattery, PLEXOSMembership, PLEXOSNode, PLEXOSRegion

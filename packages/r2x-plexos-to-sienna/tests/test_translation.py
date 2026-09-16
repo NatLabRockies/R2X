@@ -222,6 +222,27 @@ def test_plexos_to_sienna_translates_generator():
     assert gen.bus.name == "NODE1"
 
 
+def test_plexos_generator_time_series_attaches_to_sienna_generator():
+    source = _build_source_system()
+    generator = next(source.get_components(PLEXOSGenerator))
+    source.add_time_series(
+        SingleTimeSeries(
+            name="active_power",
+            data=np.array([10.0, 20.0]),
+            resolution=timedelta(hours=1),
+            initial_timestamp=datetime(2026, 1, 1),
+        ),
+        generator,
+    )
+
+    result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
+
+    target_generator = next(gen for gen in result.get_components(ThermalStandard) if gen.name == "GEN1")
+    time_series = result.list_time_series(target_generator, name="active_power")
+    assert len(time_series) == 1
+    np.testing.assert_array_equal(time_series[0].data, [10.0, 20.0])
+
+
 def test_plexos_to_sienna_translates_battery():
     source = _build_source_system()
     result = plexos_to_sienna(source, config=PlexosToSiennaConfig())

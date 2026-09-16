@@ -231,7 +231,9 @@ def test_filter_rules_have_valid_structure() -> None:
     for rule in rules_data:
         if "filter" in rule:
             filter_obj = rule["filter"]
-            assert "field" in filter_obj, f"Filter in rule {rule.get('name', 'unknown')} missing 'field'"
+            assert "field" in filter_obj or "getter" in filter_obj, (
+                f"Filter in rule {rule.get('name', 'unknown')} missing 'field' or 'getter'"
+            )
             assert "op" in filter_obj, f"Filter in rule {rule.get('name', 'unknown')} missing 'op'"
             assert "values" in filter_obj, f"Filter in rule {rule.get('name', 'unknown')} missing 'values'"
             assert isinstance(filter_obj["values"], list), "Filter values must be a list"
