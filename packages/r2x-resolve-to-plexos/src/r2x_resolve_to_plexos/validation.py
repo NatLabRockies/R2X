@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from r2x_core import Err, Ok, Result
+from infrasys import Component
 
-if TYPE_CHECKING:
-    from r2x_core import System
-
+from r2x_core import Err, Ok, Result, System
 
 _COMPONENT_COUNT_MAP: tuple[tuple[str, str, str], ...] = (
     ("ResolveZone", "PLEXOSNode", "zones"),
@@ -23,6 +21,11 @@ def _count_components(system: System, component_type: type[Any]) -> int:
     return sum(1 for _ in system.get_components(component_type))
 
 
+def _count_named_components(system: System, type_name: str) -> int:
+    """Count components by their public class name."""
+    return sum(1 for component in system.get_components(Component) if type(component).__name__ == type_name)
+
+
 def validate_component_counts(source: System, target: System) -> Result[None, ValueError]:
     """Validate one-to-one Resolve-to-PLEXOS component counts.
 
@@ -32,14 +35,7 @@ def validate_component_counts(source: System, target: System) -> Result[None, Va
     be reported as a successful translation.
     """
     from r2x_plexos.models import PLEXOSGenerator, PLEXOSInterface, PLEXOSNode, PLEXOSPurchaser
-    from r2x_resolve import ResolveGenerator, ResolveInterface, ResolveLoad, ResolveZone
 
-    source_types: dict[str, type[Any]] = {
-        "ResolveZone": ResolveZone,
-        "ResolveGenerator": ResolveGenerator,
-        "ResolveLoad": ResolveLoad,
-        "ResolveInterface": ResolveInterface,
-    }
     target_types: dict[str, type[Any]] = {
         "PLEXOSNode": PLEXOSNode,
         "PLEXOSGenerator": PLEXOSGenerator,
@@ -47,9 +43,12 @@ def validate_component_counts(source: System, target: System) -> Result[None, Va
         "PLEXOSInterface": PLEXOSInterface,
     }
 
+    source_components = list(source.get_components(Component))
+    source_type_by_name = {type(component).__name__: type(component) for component in source_components}
     mismatches: list[str] = []
     for source_name, target_name, label in _COMPONENT_COUNT_MAP:
-        source_count = _count_components(source, source_types[source_name])
+        source_type = source_type_by_name.get(source_name)
+        source_count = _count_components(source, source_type) if source_type is not None else 0
         target_count = _count_components(target, target_types[target_name])
         if source_count != target_count:
             mismatches.append(f"{label}: {source_count} Resolve -> {target_count} PLEXOS")

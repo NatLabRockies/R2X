@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from importlib.resources import files
 
+from infrasys import Component
+
 from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
 
 from .plugin_config import ResolveToPlexosConfig
@@ -14,6 +16,10 @@ from .validation import validate_component_counts
 @expose_plugin
 def resolve_to_plexos(system: System, config: ResolveToPlexosConfig) -> System:
     """Translate a Resolve system into PLEXOS component models."""
+    source_type_modules = tuple(
+        dict.fromkeys(type(component).__module__ for component in system.get_components(Component))
+    )
+    config = config.model_copy(update={"models": (*source_type_modules, *config.models)})
     context = PluginContext(source_system=system, config=config)
     rules_path = files("r2x_resolve_to_plexos.config") / "translation_rules.json"
     context.rules = tuple(Rule.from_records(json.loads(rules_path.read_text())))

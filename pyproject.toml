@@ -99,7 +99,6 @@ r2x-plexos-to-sienna = { workspace = true }
 r2x-reeds-to-plexos = { workspace = true }
 r2x-reeds-to-sienna = { workspace = true }
 r2x-resolve-to-plexos = { workspace = true }
-r2x-resolve = { git = "https://github.com/NatLabRockies/r2x-resolve.git", branch = "main" }
 r2x-plexos = { git = "https://github.com/NatLabRockies/r2x-plexos.git", branch = "main" }
 r2x-sienna = { git = "https://github.com/NatLabRockies/r2x-sienna.git", branch = "main" }
 r2x-reeds = { git = "https://github.com/NatLabRockies/r2x-reeds.git", branch = "main" }

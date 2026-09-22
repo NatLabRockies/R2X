@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from r2x_resolve import ResolveGenerator, ResolveInterface, ResolveLoad, ResolveZone
 from r2x_resolve_to_plexos.validation import validate_component_counts
+from source_components import ResolveGenerator, ResolveInterface, ResolveLoad, ResolveZone
 
 from r2x_core import System
 
