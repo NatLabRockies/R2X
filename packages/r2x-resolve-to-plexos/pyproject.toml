@@ -1,0 +1,25 @@
+[project]
+name = "r2x-resolve-to-plexos"
+version = "0.1.0"
+description = "Translation helpers for Resolve-to-PLEXOS interoperability."
+requires-python = ">=3.11, <3.14"
+dependencies = [
+  "r2x-core>=0.8.0,<1.0.0",
+  "r2x-plexos>=0.3.0,<1.0.0",
+  "r2x-resolve>=0.0.0,<1.0.0",
+]
+
+[project.entry-points."r2x.transforms"]
+resolve-to-plexos = "r2x_resolve_to_plexos.translation:resolve_to_plexos"
+
+[tool.setuptools.package-data]
+r2x_resolve_to_plexos = ["config/*.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "-v"]
+
+[build-system]
+requires = ["uv_build>=0.8.22,<0.13.0"]
+build-backend = "uv_build"

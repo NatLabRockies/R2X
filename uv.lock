@@ -16,6 +16,7 @@ members = [
     "r2x-plexos-to-sienna",
     "r2x-reeds-to-plexos",
     "r2x-reeds-to-sienna",
+    "r2x-resolve-to-plexos",
     "r2x-sienna-to-plexos",
 ]
 constraints = [{ name = "plexos2duckdb", specifier = "==0.1.0b11" }]
@@ -1247,6 +1248,7 @@ dependencies = [
     { name = "r2x-plexos-to-sienna" },
     { name = "r2x-reeds-to-plexos" },
     { name = "r2x-reeds-to-sienna" },
+    { name = "r2x-resolve-to-plexos" },
     { name = "r2x-sienna-to-plexos" },
 ]
 
@@ -1279,6 +1281,7 @@ requires-dist = [
     { name = "r2x-plexos-to-sienna", editable = "packages/r2x-plexos-to-sienna" },
     { name = "r2x-reeds-to-plexos", editable = "packages/r2x-reeds-to-plexos" },
     { name = "r2x-reeds-to-sienna", editable = "packages/r2x-reeds-to-sienna" },
+    { name = "r2x-resolve-to-plexos", editable = "packages/r2x-resolve-to-plexos" },
     { name = "r2x-sienna-to-plexos", editable = "packages/r2x-sienna-to-plexos" },
 ]
 
@@ -1306,7 +1309,7 @@ docs = [
 
 [[package]]
 name = "r2x-core"
-version = "0.7.0"
+version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h5py" },
@@ -1317,9 +1320,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "rust-ok" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4b/71/72226a7b7d84ad6dfacdccbeb1613862fc4f9f34f3a47a5f6fb77899c1d5/r2x_core-0.7.0.tar.gz", hash = "sha256:1d0f3a9c707aeb64b217e11a6582b198034ae2c7c84767d909d585f4e3be0e43", size = 73512, upload-time = "2026-08-10T20:34:08.355Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/06/322b18ace8b40b475cb3a6be3a2bb69bc57e5df92970efcfb9031b390e03/r2x_core-0.8.0.tar.gz", hash = "sha256:1010261b345a5b3211a018f024202219578f476ba9c2bf48364af90cea96e552", size = 78530, upload-time = "2026-08-20T23:54:22.389Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/86/6e4f5a6ad88266d73bfeea60134fc2e5217eafebc2b83fd1e05ce6d572eb/r2x_core-0.7.0-py3-none-any.whl", hash = "sha256:3c71fc23c0cc0f586e586a91f15d54b46810c691f6b05723eb9881963aad2153", size = 89204, upload-time = "2026-08-10T20:34:06.966Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/af/2a1b750aaaa8088bc355d3988b802e7ce896bffe86b63e969967a9283746/r2x_core-0.8.0-py3-none-any.whl", hash = "sha256:1953e13d21c01737d3983acad61d1e106645c1ef479fac3b2f538ca497ba368d", size = 94089, upload-time = "2026-08-20T23:54:21.204Z" },
 ]
 
 [[package]]
@@ -1382,6 +1385,31 @@ dependencies = [
 requires-dist = [
     { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?branch=main" },
     { name = "r2x-sienna", git = "https://github.com/NatLabRockies/r2x-sienna.git?branch=main" },
+]
+
+[[package]]
+name = "r2x-resolve"
+version = "0.0.0"
+source = { git = "https://github.com/NatLabRockies/r2x-resolve.git?branch=main#912d6e10c81a9a805657b8935c7b49afd3a456ce" }
+dependencies = [
+    { name = "r2x-core" },
+]
+
+[[package]]
+name = "r2x-resolve-to-plexos"
+version = "0.1.0"
+source = { editable = "packages/r2x-resolve-to-plexos" }
+dependencies = [
+    { name = "r2x-core" },
+    { name = "r2x-plexos" },
+    { name = "r2x-resolve" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "r2x-core", specifier = ">=0.8.0,<1.0.0" },
+    { name = "r2x-plexos", git = "https://github.com/NatLabRockies/r2x-plexos.git?branch=main" },
+    { name = "r2x-resolve", git = "https://github.com/NatLabRockies/r2x-resolve.git?branch=main" },
 ]
 
 [[package]]
@@ -1515,23 +1543,23 @@ resolution-markers = [
     "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "alabaster", marker = "python_full_version < '3.12'" },
-    { name = "babel", marker = "python_full_version < '3.12'" },
-    { name = "colorama", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "docutils", marker = "python_full_version < '3.12'" },
-    { name = "imagesize", marker = "python_full_version < '3.12'" },
-    { name = "jinja2", marker = "python_full_version < '3.12'" },
-    { name = "packaging", marker = "python_full_version < '3.12'" },
-    { name = "pygments", marker = "python_full_version < '3.12'" },
-    { name = "requests", marker = "python_full_version < '3.12'" },
-    { name = "roman-numerals", marker = "python_full_version < '3.12'" },
-    { name = "snowballstemmer", marker = "python_full_version < '3.12'" },
-    { name = "sphinxcontrib-applehelp", marker = "python_full_version < '3.12'" },
-    { name = "sphinxcontrib-devhelp", marker = "python_full_version < '3.12'" },
-    { name = "sphinxcontrib-htmlhelp", marker = "python_full_version < '3.12'" },
-    { name = "sphinxcontrib-jsmath", marker = "python_full_version < '3.12'" },
-    { name = "sphinxcontrib-qthelp", marker = "python_full_version < '3.12'" },
-    { name = "sphinxcontrib-serializinghtml", marker = "python_full_version < '3.12'" },
+    { name = "alabaster" },
+    { name = "babel" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "docutils" },
+    { name = "imagesize" },
+    { name = "jinja2" },
+    { name = "packaging" },
+    { name = "pygments" },
+    { name = "requests" },
+    { name = "roman-numerals" },
+    { name = "snowballstemmer" },
+    { name = "sphinxcontrib-applehelp" },
+    { name = "sphinxcontrib-devhelp" },
+    { name = "sphinxcontrib-htmlhelp" },
+    { name = "sphinxcontrib-jsmath" },
+    { name = "sphinxcontrib-qthelp" },
+    { name = "sphinxcontrib-serializinghtml" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/50/a8c6ccc36d5eacdfd7913ddccd15a9cee03ecafc5ee2bc40e1f168d85022/sphinx-9.0.4.tar.gz", hash = "sha256:594ef59d042972abbc581d8baa577404abe4e6c3b04ef61bd7fc2acbd51f3fa3", size = 8710502, upload-time = "2025-12-04T07:45:27.343Z" }
 wheels = [
@@ -1548,23 +1576,23 @@ resolution-markers = [
     "python_full_version >= '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "alabaster", marker = "python_full_version >= '3.12'" },
-    { name = "babel", marker = "python_full_version >= '3.12'" },
-    { name = "colorama", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
-    { name = "docutils", marker = "python_full_version >= '3.12'" },
-    { name = "imagesize", marker = "python_full_version >= '3.12'" },
-    { name = "jinja2", marker = "python_full_version >= '3.12'" },
-    { name = "packaging", marker = "python_full_version >= '3.12'" },
-    { name = "pygments", marker = "python_full_version >= '3.12'" },
-    { name = "requests", marker = "python_full_version >= '3.12'" },
-    { name = "roman-numerals", marker = "python_full_version >= '3.12'" },
-    { name = "snowballstemmer", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-applehelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-devhelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-htmlhelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-jsmath", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-qthelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-serializinghtml", marker = "python_full_version >= '3.12'" },
+    { name = "alabaster" },
+    { name = "babel" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "docutils" },
+    { name = "imagesize" },
+    { name = "jinja2" },
+    { name = "packaging" },
+    { name = "pygments" },
+    { name = "requests" },
+    { name = "roman-numerals" },
+    { name = "snowballstemmer" },
+    { name = "sphinxcontrib-applehelp" },
+    { name = "sphinxcontrib-devhelp" },
+    { name = "sphinxcontrib-htmlhelp" },
+    { name = "sphinxcontrib-jsmath" },
+    { name = "sphinxcontrib-qthelp" },
+    { name = "sphinxcontrib-serializinghtml" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cd/bd/f08eb0f4eed5c83f1ba2a3bd18f7745a2b1525fad70660a1c00224ec468a/sphinx-9.1.0.tar.gz", hash = "sha256:7741722357dd75f8190766926071fed3bdc211c74dd2d7d4df5404da95930ddb", size = 8718324, upload-time = "2025-12-31T15:09:27.646Z" }
 wheels = [
