@@ -1,46 +1,47 @@
-# ReEDS translation reference
+# ReEDS translation reference for Sienna and PLEXOS
 
-This page describes how ReEDS concepts and technologies map to Sienna and PLEXOS through the R2X translation packages.
-It focuses on physical role, component type, timeseries behavior and known limitations.
+This reference provides a side-by-side view of how R2X translates ReEDS concepts and technologies into Sienna and PLEXOS.
+It summarizes their physical roles, target component types, timeseries treatment and important modeling assumptions and limitations.
 
 ## System structure and demand
 
-| ReEDS concept | ReEDS role | Sienna representation | PLEXOS representation |
+| ReEDS model element | Model role | Sienna representation | PLEXOS representation |
 |---|---|---|---|
-| `ReEDSRegion` | Electrical region | `Area` and `ACBus` | `PLEXOSRegion`, `PLEXOSZone` and `PLEXOSNode` |
-| `ReEDSDemand` | Inflexible electricity demand | `PowerLoad` | Load timeseries on `PLEXOSRegion` |
-| Transmission region | Aggregation of ReEDS regions | `Area` metadata and associations | `PLEXOSZone` |
+| Model zone (`ReEDSRegion`) | Electrical region | `Area` and `ACBus` | `PLEXOSRegion` and `PLEXOSNode` |
+| Electricity demand (`ReEDSDemand`) | Inflexible electricity demand | `PowerLoad` | Load timeseries on `PLEXOSRegion` |
+| Transmission region (`transreg`) | Aggregation of ReEDS model zones | No separate component  but used for reserve grouping. | `PLEXOSZone` |
 
 ## Electricity-consuming technologies
 
-| ReEDS identifier or family | ReEDS role | Sienna representation | PLEXOS representation |
+| ReEDS technology or demand type | Model role | Sienna representation | PLEXOS representation |
 |---|---|---|---|
 | `electrolyzer` | Electricity consumption for hydrogen production | `StandardLoad` | `PLEXOSPurchaser` |
 | `smr` | Electricity consumption associated with steam methane reforming | `StandardLoad` | `PLEXOSPurchaser` |
 | `smr_ccs` | Electricity consumption associated with steam methane reforming with carbon capture | `StandardLoad` | `PLEXOSPurchaser` |
-| `data-center` | Electricity demand | `StandardLoad` | `PLEXOSPurchaser` |
-| Other `ReEDSConsumingTechnology` | Technology-specific electricity consumption | `StandardLoad` | `PLEXOSGenerator` |
+| Optimally sited data-center load (`data-center`) | Electricity demand | `StandardLoad` | `PLEXOSPurchaser` |
+| Other technology in the `CONSUME` subset (`ReEDSConsumingTechnology`) | Technology-specific electricity consumption | `StandardLoad` | `PLEXOSGenerator` |
 
 ## Thermal and hydrogen generation
 
-| ReEDS identifier or family | ReEDS role | Sienna representation | PLEXOS representation |
+| ReEDS technology or technology subset | Model role | Sienna representation | PLEXOS representation |
 |---|---|---|---|
 | Conventional thermal generation | Dispatchable electricity generation | `ThermalStandard` | `PLEXOSGenerator` |
-| `h2-cc` | Hydrogen-fueled combined-cycle electricity generation | `ThermalStandard` | `PLEXOSGenerator` |
+| `h2-cc` family, such as `gas-cc_h2-cc` | Hydrogen-fueled combined-cycle electricity generation | `ThermalStandard` | `PLEXOSGenerator` |
+| `h2-ct` family, such as `gas-ct_h2-ct` | Hydrogen-fueled combustion-turbine electricity generation | `ThermalStandard` | `PLEXOSGenerator` |
 | `nuclear-smr` | Small modular nuclear electricity generation | `ThermalStandard` | `PLEXOSGenerator` |
 
 ## Variable and distributed generation
 
-| ReEDS identifier or family | ReEDS role | Sienna representation | PLEXOS representation |
+| ReEDS technology or technology subset | Model role | Sienna representation | PLEXOS representation |
 |---|---|---|---|
-| Utility-scale PV | Curtailable variable generation | `RenewableDispatch` | `PLEXOSGenerator` |
-| Onshore wind | Curtailable variable generation | `RenewableDispatch` | `PLEXOSGenerator` |
-| Offshore wind | Curtailable variable generation | `RenewableDispatch` | `PLEXOSGenerator` |
-| Distributed PV | Nondispatchable distributed generation | `RenewableNonDispatch` | `PLEXOSGenerator` with an availability profile |
+| Utility-scale PV in the `UPV` subset | Curtailable variable generation | `RenewableDispatch` | `PLEXOSGenerator` |
+| Onshore wind in the `ONSWIND` subset | Curtailable variable generation | `RenewableDispatch` | `PLEXOSGenerator` |
+| Offshore wind in the `OFSWIND` subset | Curtailable variable generation | `RenewableDispatch` | `PLEXOSGenerator` |
+| Distributed PV in the `distpv` subset | Nondispatchable distributed generation | `RenewableNonDispatch` | `PLEXOSGenerator` with an availability profile |
 
 ## Conventional hydro
 
-| ReEDS category | ReEDS role | Sienna representation | PLEXOS representation |
+| ReEDS technology subset | Model role | Sienna representation | PLEXOS representation |
 |---|---|---|---|
 | Dispatchable conventional hydro in `HYDRO_D` | Dispatchable generation with a water-energy budget | `HydroDispatch` | `PLEXOSGenerator` with energy and hourly power limits |
 | Nondispatchable conventional hydro in `HYDRO_ND` | Fixed hydro generation derived from water availability | `RenewableNonDispatch` | `PLEXOSGenerator` with `Fixed Load` |
@@ -54,7 +55,6 @@ Its energy budget is derived from installed capacity, hydro capacity factor and 
 
 Nondispatchable hydro does not receive a flexible energy budget.
 Its hourly output is installed capacity multiplied by the applicable hydro capacity factor.
-It should not receive operating-reserve memberships.
 
 The target budget interval is separate from the simulation timestep.
 An hourly simulation can enforce a daily, weekly or monthly energy budget.
@@ -62,7 +62,7 @@ An hourly simulation can enforce a daily, weekly or monthly energy budget.
 :::{note}
 Nondispatchable hydro could be serialized as a [PowerSystems.jl](https://sienna-platform.github.io/PowerSystems.jl/stable/) hydro component.
 However [PowerSimulations.jl](https://sienna-platform.github.io/PowerSimulations.jl/stable/) assigns one `DeviceModel` formulation to each component type in a simulation template.
-If both hydro categories used `HydroDispatch`, the model could not apply `HydroDispatchRunOfRiverBudget` to dispatchable hydro and `FixedOutput` to nondispatchable hydro at the same time.
+If both hydro categories used `HydroDispatch`, a single simulation template could not assign `HydroDispatchRunOfRiverBudget` to dispatchable hydro and `FixedOutput` to nondispatchable hydro at the same time.
 The translator therefore uses `HydroDispatch` for dispatchable hydro and `RenewableNonDispatch` for nondispatchable hydro.
 :::
 
@@ -74,9 +74,9 @@ The translator preserves the original nondispatchable hydro VOM as `ext["reeds_v
 
 ## Pumped hydro
 
-| ReEDS representation | ReEDS role | Sienna representation | PLEXOS representation |
+| ReEDS technology | Model role | Sienna representation | PLEXOS representation |
 |---|---|---|---|
-| `ReEDSStorage` with `pumped-hydro` technology | Storage with pumping and turbine generation | `HydroPumpTurbine` with linked head and tail `HydroReservoir` components | `PLEXOSGenerator` with linked head and tail `PLEXOSStorage` objects |
+| `pumped-hydro` technology in the `PSH` subset | Storage with pumping and turbine generation | `HydroPumpTurbine` with linked head and tail `HydroReservoir` components | `PLEXOSGenerator` with linked head and tail `PLEXOSStorage` objects |
 
 ReEDS classifies pumped hydro through its storage framework rather than the conventional-hydro framework.
 The target representation preserves pumping, turbine generation, stored energy and the relationship between the head and tail reservoirs.
@@ -88,7 +88,7 @@ Initial head and tail levels use translator assumptions because ReEDS does not p
 
 :::{note}
 PLEXOS can apply ReEDS VOM to turbine generation.
-[HydroPowerSimulations.jl](https://sienna-platform.github.io/HydroPowerSimulations.jl/stable/) uses the `HydroPumpTurbine` operation cost for both generation and pumping while ReEDS applies this VOM only to generation.
+[HydroPowerSimulations.jl](https://sienna-platform.github.io/HydroPowerSimulations.jl/stable/) uses the `HydroPumpTurbine` operation cost for both generation and pumping, while ReEDS applies this VOM only to generation.
 The Sienna translator therefore sets the pumped-hydro operation cost to zero to avoid applying a generation-only cost during pumping.
 It preserves the original value as `ext["reeds_vom_cost"]`.
 :::
@@ -100,27 +100,28 @@ Sienna therefore requires explicit zero inflow profiles on both reservoirs to sa
 
 ## Storage
 
-| ReEDS identifier or family | ReEDS role | Sienna representation | PLEXOS representation |
+| ReEDS technology or technology subset | Model role | Sienna representation | PLEXOS representation |
 |---|---|---|---|
-| Battery technology | Electrochemical storage | `EnergyReservoirStorage` | `PLEXOSBattery` |
-| Other non-pumped `ReEDSStorage` technologies | Generic energy storage | `EnergyReservoirStorage` | No generic target rule |
+| Battery technologies in the `BATTERY` subset | Electrochemical storage | `EnergyReservoirStorage` | `PLEXOSBattery` |
+| Other non-pumped technologies in the `STORAGE` subset | Generic energy storage | `EnergyReservoirStorage` | No generic target rule |
 
 ## Transmission and interfaces
 
-| ReEDS line or interface type | ReEDS role | Sienna representation | PLEXOS representation |
+| ReEDS transmission capacity type or interface | Model role | Sienna representation | PLEXOS representation |
 |---|---|---|---|
-| AC corridor | Directional AC transfer capability | `MonitoredLine` | `PLEXOSLine` |
-| VSC corridor | Directional HVDC transfer capability | `TwoTerminalGenericHVDCLine` | `PLEXOSLine` |
-| LCC corridor | Directional HVDC transfer capability | `TwoTerminalGenericHVDCLine` | `PLEXOSLine` |
-| B2B corridor | Directional back-to-back transfer capability | `TwoTerminalGenericHVDCLine` | `PLEXOSLine` |
-| `ReEDSInterface` | Aggregate transfer interface | `AreaInterchange` | `PLEXOSInterface` |
+| `AC` transmission capacity type | Directional AC transfer capability | `MonitoredLine` | `PLEXOSLine` |
+| `VSC` transmission capacity type | Directional HVDC transfer capability | `TwoTerminalGenericHVDCLine` | `PLEXOSLine` |
+| `LCC` transmission capacity type | Directional HVDC transfer capability | `TwoTerminalGenericHVDCLine` | `PLEXOSLine` |
+| `B2B` transmission capacity type | Directional back-to-back transfer capability | `TwoTerminalGenericHVDCLine` | `PLEXOSLine` |
+| Interzonal interface (`ReEDSInterface`) | Aggregate transfer interface | `AreaInterchange` | `PLEXOSInterface` |
 
 ## Reserves
 
-| ReEDS reserve information | Sienna representation | PLEXOS representation |
+| ReEDS operating reserve concept | Sienna representation | PLEXOS representation |
 |---|---|---|
 | Spinning, regulation and flexibility reserve products | `VariableReserve` | `PLEXOSReserve` |
-| Nonspinning reserve product | `VariableReserveNonSpinning` | `PLEXOSReserve` |
-| Reserve direction | Reserve direction | Reserve type and direction properties |
-| Regional eligibility | Service membership | Reserve memberships |
+| `NON_SPINNING` reserve product | `VariableReserveNonSpinning` | `PLEXOSReserve` |
+| Reserve direction | Reserve direction | Encoded in the reserve `Type` property |
+| Translated reserve eligibility | Service membership | Reserve membership |
 | Hourly requirement | Requirement timeseries | `Min Provision` timeseries |
+
