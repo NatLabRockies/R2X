@@ -39,6 +39,7 @@ _PACKAGE_GETTER_MODULES = {
     "r2x-plexos-to-sienna": ["r2x_plexos_to_sienna.getters"],
     "r2x-reeds-to-plexos": ["r2x_reeds_to_plexos.getters"],
     "r2x-reeds-to-sienna": ["r2x_reeds_to_sienna.getters"],
+    "r2x-resolve-to-plexos": ["r2x_resolve_to_plexos.getters"],
 }
 
 # Track which package was last loaded so we only reload on transitions.
