@@ -14,6 +14,9 @@ data stores, and units.
   an interoperability workflow.
 - [Translation workflows](dev_workflow.md) contains contributor-oriented,
   end-to-end interoperability examples.
+- [ReEDS translation reference for Sienna and PLEXOS](reeds_translation_reference.md)
+  compares component mappings, timeseries treatment and modeling limitations
+  across PLEXOS and Sienna.
 - [Architecture](architecture.md) explains the parser, interoperability, and
   exporter boundaries.
 - [Development](development.md) covers repository checks and changes to
@@ -64,6 +67,7 @@ model-to-model interoperability functions between those layers.
 :hidden: true
 getting_started.md
 dev_workflow.md
+reeds_translation_reference.md
 architecture.md
 development.md
 CHANGELOG.md
