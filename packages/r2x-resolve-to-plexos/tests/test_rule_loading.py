@@ -24,8 +24,12 @@ def test_translation_rules_cover_resolve_domain_components() -> None:
     records = json.loads(path.read_text())
     pairs = {(record["source_type"], record["target_type"]) for record in records}
 
-    assert ("ResolveZone", "PLEXOSNode") in pairs
-    assert ("ResolveGenerator", "PLEXOSGenerator") in pairs
-    assert ("ResolveLoad", "PLEXOSPurchaser") in pairs
-    assert ("ResolveInterface", "PLEXOSInterface") in pairs
-    assert ("PLEXOSPurchaser", "PLEXOSMembership") in pairs
+    assert {
+        ("ResolveZone", "PLEXOSNode"),
+        ("ResolveZone", "PLEXOSRegion"),
+        ("InvestmentComponent", "PLEXOSGenerator"),
+        ("ResolveFuel", "PLEXOSFuel"),
+        ("ResolveTransmissionLine", "PLEXOSLine"),
+        ("ResolveGroupedInterface", "PLEXOSInterface"),
+        ("PLEXOSGenerator", "PLEXOSMembership"),
+    } <= pairs

@@ -5,10 +5,9 @@ from __future__ import annotations
 import json
 from importlib.resources import files
 
-from infrasys import Component
-
 from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
 
+from .attach import add_interface_lines, attach_generator_profiles, attach_region_load
 from .plugin_config import ResolveToPlexosConfig
 from .validation import validate_component_counts
 
@@ -16,10 +15,6 @@ from .validation import validate_component_counts
 @expose_plugin
 def resolve_to_plexos(system: System, config: ResolveToPlexosConfig) -> System:
     """Translate a Resolve system into PLEXOS component models."""
-    source_type_modules = tuple(
-        dict.fromkeys(type(component).__module__ for component in system.get_components(Component))
-    )
-    config = config.model_copy(update={"models": (*source_type_modules, *config.models)})
     context = PluginContext(source_system=system, config=config)
     rules_path = files("r2x_resolve_to_plexos.config") / "translation_rules.json"
     context.rules = tuple(Rule.from_records(json.loads(rules_path.read_text())))
@@ -33,8 +28,11 @@ def resolve_to_plexos(system: System, config: ResolveToPlexosConfig) -> System:
             if not result.success
         )
         raise ValueError(f"Resolve-to-PLEXOS translation failed: {failures}")
-    if context.target_system is None:
-        raise RuntimeError("Resolve-to-PLEXOS translation did not create a target system")
+
+    attach_region_load(context)
+    attach_generator_profiles(context)
+    add_interface_lines(context)
+
     validation = validate_component_counts(system, context.target_system)
     if validation.is_err():
         raise ValueError(validation.error)

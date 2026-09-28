@@ -102,6 +102,7 @@ r2x-resolve-to-plexos = { workspace = true }
 r2x-plexos = { git = "https://github.com/NatLabRockies/r2x-plexos.git", branch = "main" }
 r2x-sienna = { git = "https://github.com/NatLabRockies/r2x-sienna.git", branch = "main" }
 r2x-reeds = { git = "https://github.com/NatLabRockies/r2x-reeds.git", branch = "main" }
+r2x-resolve = { git = "https://github.com/NatLabRockies/r2x-resolve.git", branch = "fix/nyserda" }
 
 [tool.uv.workspace]
 members = ["packages/*"]

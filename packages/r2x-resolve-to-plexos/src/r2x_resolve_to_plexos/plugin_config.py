@@ -9,6 +9,7 @@ class ResolveToPlexosConfig(PluginConfig):
     """Configuration for the Resolve-to-PLEXOS transform."""
 
     models: tuple[str, ...] = (
+        "r2x_resolve",
         "r2x_plexos.models",
         "r2x_resolve_to_plexos.getters",
     )

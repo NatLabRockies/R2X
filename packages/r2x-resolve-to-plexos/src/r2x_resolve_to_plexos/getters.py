@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from infrasys import Component
 from plexosdb import CollectionEnum
+from r2x_plexos.models import PLEXOSFuel, PLEXOSNode, PLEXOSRegion
+from r2x_resolve import (
+    InvestmentComponent,
+    ResolveFuel,
+    ResolveGroupedInterface,
+    ResolveLoad,
+    ResolveTechnology,
+    ResolveTransmissionLine,
+    ResolveZone,
+)
 
 from r2x_core import Err, Ok, Result
 from r2x_core.getters import getter
@@ -13,201 +23,183 @@ from r2x_core.getters import getter
 if TYPE_CHECKING:
     from r2x_core import PluginContext
 
+T = TypeVar("T", bound=Component)
 
-def _target_by_name(context: PluginContext, component_type: type[Any], name: str) -> Any | None:
-    """Find a target component by its public name."""
-    if context.target_system is None:
-        return None
-    return next(
-        (item for item in context.target_system.get_components(component_type) if item.name == name),
-        None,
+# Fuel burned by each fuel-using technology. Gas & FO burns the natural gas or,
+# for oil units (FO_ST, FO_CT), the residual fuel oil priced for its zone group.
+FUEL_BY_TECHNOLOGY: dict[ResolveTechnology, str] = {
+    ResolveTechnology.ZERO_CARBON_FIRM: "RNG_Tier_1",
+    ResolveTechnology.NUCLEAR: "Nuclear",
+    ResolveTechnology.BIOMASS: "Biomass",
+}
+OIL_RESOURCE_PREFIX = "FO_"
+
+
+def _source(context: PluginContext, component_type: type[T], name: str) -> Result[T, ValueError]:
+    """Find a source component by name, including subclasses of ``component_type``."""
+    assert context.source_system is not None
+    for component in context.source_system.get_components(component_type):
+        if component.name == name:
+            return Ok(component)
+    return Err(ValueError(f"No {component_type.__name__} named '{name}' in the Resolve system"))
+
+
+def _target(context: PluginContext, component_type: type[T], name: str) -> Result[T, ValueError]:
+    """Find a translated component by name."""
+    assert context.target_system is not None
+    for component in context.target_system.get_components(component_type):
+        if component.name == name:
+            return Ok(component)
+    return Err(ValueError(f"No {component_type.__name__} named '{name}' in the PLEXOS system"))
+
+
+@getter(name="resolve_zone_category")
+def zone_category(component: ResolveZone, context: PluginContext) -> Result[str, ValueError]:
+    """Separate the Resolve zones from the external regions they trade with."""
+    return Ok("external-zone" if component.ext.get("external") else "resolve-zone")
+
+
+@getter(name="resolve_region_load")
+def region_load(component: ResolveZone, context: PluginContext) -> Result[float, ValueError]:
+    """Return the zone's peak demand, or zero for zones without load."""
+    assert context.source_system is not None
+    demand = (
+        load.demand
+        for load in context.source_system.get_components(ResolveLoad)
+        if load.zone.name == component.name
     )
+    return Ok(float(next(demand, 0.0)))
 
 
-def _source_by_type_name(context: PluginContext, type_name: str, name: str) -> Any | None:
-    """Find a source component by class name and public name."""
-    if context.source_system is None:
-        return None
-    return next(
-        (
-            item
-            for item in context.source_system.get_components(Component)
-            if type(item).__name__ == type_name and item.name == name
-        ),
-        None,
-    )
+@getter(name="resolve_generator_category")
+def generator_category(component: InvestmentComponent, context: PluginContext) -> Result[str, ValueError]:
+    """Return the Resolve technology label as the PLEXOS category."""
+    return Ok(component.technology.value)
 
 
-@getter(name="resolve_get_units")
-def get_units(component: Any, context: PluginContext) -> Result[int, ValueError]:
-    """Return the PLEXOS in-service flag for a Resolve component."""
-    return Ok(1)
+@getter(name="resolve_generator_units")
+def generator_units(component: InvestmentComponent, context: PluginContext) -> Result[int, ValueError]:
+    """Put units with capacity in service."""
+    return Ok(1 if component.capacity > 0 else 0)
 
 
-@getter(name="resolve_get_generator_capacity")
-def get_generator_capacity(component: Any, context: PluginContext) -> Result[float, ValueError]:
-    """Map Resolve generator capacity to PLEXOS capacity fields."""
-    return Ok(float(component.capacity_mw))
+@getter(name="resolve_line_max_flow")
+def line_max_flow(component: ResolveTransmissionLine, context: PluginContext) -> Result[float, ValueError]:
+    """Return the From-to-To rating as Max Flow."""
+    return Ok(float(component.max_active_power.from_to))
 
 
-@getter(name="resolve_get_generator_category")
-def get_generator_category(component: Any, context: PluginContext) -> Result[str, ValueError]:
-    """Return the Resolve technology as the PLEXOS generator category."""
-    technology = (getattr(component, "ext", None) or {}).get("technology")
-    return Ok(str(technology or "resolve-generator"))
+@getter(name="resolve_line_min_flow")
+def line_min_flow(component: ResolveTransmissionLine, context: PluginContext) -> Result[float, ValueError]:
+    """Return the negative To-to-From rating as Min Flow."""
+    return Ok(-float(component.max_active_power.to_from))
 
 
-def _resolve_generator_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Resolve a generator's zone to its translated PLEXOS node."""
-    from r2x_plexos.models import PLEXOSNode
-
-    zone_name = getattr(getattr(component, "zone", None), "name", None)
-    if zone_name is None:
-        return Err(ValueError(f"Resolve generator '{component.name}' has no zone"))
-    node = _target_by_name(context, PLEXOSNode, zone_name)
-    if node is None:
-        return Err(ValueError(f"No PLEXOSNode found for Resolve zone '{zone_name}'"))
-    return Ok(node)
+@getter(name="resolve_interface_max_flow")
+def interface_max_flow(
+    component: ResolveGroupedInterface, context: PluginContext
+) -> Result[float, ValueError]:
+    """Return the forward limit, or no limit when Resolve has none."""
+    return Ok(1e30 if component.forward_limit is None else float(component.forward_limit))
 
 
-@getter(name="resolve_get_generator_node")
-def get_generator_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Resolve a generator's zone to its translated PLEXOS node."""
-    return _resolve_generator_node(component, context)
+@getter(name="resolve_interface_min_flow")
+def interface_min_flow(
+    component: ResolveGroupedInterface, context: PluginContext
+) -> Result[float, ValueError]:
+    """Return the negative reverse limit, or no limit when Resolve has none."""
+    return Ok(-1e30 if component.reverse_limit is None else -float(component.reverse_limit))
 
 
-@getter(name="resolve_get_load_value")
-def get_load_value(component: Any, context: PluginContext) -> Result[float, ValueError]:
-    """Map Resolve load demand to the PLEXOS purchaser maximum load."""
-    return Ok(float(component.demand_mw))
-
-
-def _resolve_load_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Resolve a load's zone to its translated PLEXOS node."""
-    from r2x_plexos.models import PLEXOSNode
-
-    zone_name = getattr(getattr(component, "zone", None), "name", None)
-    if zone_name is None:
-        return Err(ValueError(f"Resolve load '{component.name}' has no zone"))
-    node = _target_by_name(context, PLEXOSNode, zone_name)
-    if node is None:
-        return Err(ValueError(f"No PLEXOSNode found for Resolve zone '{zone_name}'"))
-    return Ok(node)
-
-
-@getter(name="resolve_get_load_node")
-def get_load_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Resolve a load's zone to its translated PLEXOS node."""
-    return _resolve_load_node(component, context)
-
-
-@getter(name="resolve_get_interface_max_flow")
-def get_interface_max_flow(component: Any, context: PluginContext) -> Result[float, ValueError]:
-    """Map the Resolve transfer limit to PLEXOS maximum flow."""
-    return Ok(float(component.transfer_limit_mw))
-
-
-@getter(name="resolve_get_interface_min_flow")
-def get_interface_min_flow(component: Any, context: PluginContext) -> Result[float, ValueError]:
-    """Map a Resolve transfer limit to a symmetric PLEXOS minimum flow."""
-    return Ok(-float(component.transfer_limit_mw))
-
-
-def _interface_node(component: Any, context: PluginContext, *, from_side: bool) -> Result[Any, ValueError]:
-    """Resolve one interface endpoint to a translated PLEXOS node."""
-    from r2x_plexos.models import PLEXOSNode
-
-    zone_attr = "from_zone" if from_side else "to_zone"
-    zone_name = getattr(getattr(component, zone_attr, None), "name", None)
-    if zone_name is None:
-        return Err(ValueError(f"Resolve interface '{component.name}' has incomplete zone data"))
-    node = _target_by_name(context, PLEXOSNode, zone_name)
-    if node is None:
-        return Err(ValueError(f"No PLEXOSNode found for Resolve zone '{zone_name}'"))
-    return Ok(node)
-
-
-def _resolve_interface_from_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Return the translated origin node for a Resolve interface."""
-    return _interface_node(component, context, from_side=True)
-
-
-@getter(name="resolve_get_interface_from_node")
-def get_interface_from_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Return the translated origin node for a Resolve interface."""
-    return _resolve_interface_from_node(component, context)
-
-
-def _resolve_interface_to_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Return the translated destination node for a Resolve interface."""
-    return _interface_node(component, context, from_side=False)
-
-
-@getter(name="resolve_get_interface_to_node")
-def get_interface_to_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Return the translated destination node for a Resolve interface."""
-    return _resolve_interface_to_node(component, context)
-
-
-@getter(name="resolve_membership_parent_component")
-def membership_parent_component(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Return the target component as the membership parent."""
+@getter(name="resolve_membership_parent")
+def membership_parent(component: Any, context: PluginContext) -> Result[Any, ValueError]:
+    """Return the translated component itself as the membership parent."""
     return Ok(component)
 
 
-@getter(name="resolve_generator_membership_child_node")
-def generator_membership_child_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Resolve a PLEXOS generator membership child from its Resolve source."""
-    source = _source_by_type_name(context, "ResolveGenerator", component.name)
-    if source is None:
-        return Err(ValueError(f"No Resolve generator found for '{component.name}'"))
-    return _resolve_generator_node(source, context)
+@getter(name="resolve_node_region")
+def node_region(component: PLEXOSNode, context: PluginContext) -> Result[PLEXOSRegion, ValueError]:
+    """Return the Region translated from the same zone as the Node."""
+    return _target(context, PLEXOSRegion, component.name)
 
 
-@getter(name="resolve_interface_membership_child_from_node")
-def interface_membership_child_from_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Resolve an interface membership's origin node from its Resolve source."""
-    source = _source_by_type_name(context, "ResolveInterface", component.name)
-    if source is None:
-        return Err(ValueError(f"No Resolve interface found for '{component.name}'"))
-    return _resolve_interface_from_node(source, context)
+@getter(name="resolve_generator_node")
+def generator_node(component: Any, context: PluginContext) -> Result[PLEXOSNode, ValueError]:
+    """Return the Node of the generator's Resolve zone."""
+    return _source(context, InvestmentComponent, component.name).and_then(
+        lambda unit: _target(context, PLEXOSNode, unit.zone.name)
+    )
 
 
-@getter(name="resolve_interface_membership_child_to_node")
-def interface_membership_child_to_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Resolve an interface membership's destination node from its Resolve source."""
-    source = _source_by_type_name(context, "ResolveInterface", component.name)
-    if source is None:
-        return Err(ValueError(f"No Resolve interface found for '{component.name}'"))
-    return _resolve_interface_to_node(source, context)
+def _fuel_name(unit: InvestmentComponent, context: PluginContext) -> Result[str, ValueError]:
+    """Name the Resolve fuel a unit burns."""
+    if unit.technology is not ResolveTechnology.GAS_FO:
+        fuel = FUEL_BY_TECHNOLOGY.get(unit.technology)
+        if fuel is None:
+            return Err(ValueError(f"No fuel defined for {unit.technology.value} unit '{unit.name}'"))
+        return Ok(fuel)
+
+    resource_type = str(unit.ext.get("resource_type") or "")
+    fuel_type = "RFO" if resource_type.startswith(OIL_RESOURCE_PREFIX) else "NG"
+    assert context.source_system is not None
+    for fuel in context.source_system.get_components(ResolveFuel):
+        zones = fuel.ext.get("zones")
+        if fuel.fuel_type == fuel_type and isinstance(zones, list) and unit.zone.name in zones:
+            return Ok(fuel.name)
+    return Err(ValueError(f"No {fuel_type} fuel priced for zone '{unit.zone.name}' (unit '{unit.name}')"))
 
 
-@getter(name="resolve_load_membership_child_node")
-def load_membership_child_node(component: Any, context: PluginContext) -> Result[Any, ValueError]:
-    """Resolve a PLEXOS purchaser's zone node from its Resolve source."""
-    source = _source_by_type_name(context, "ResolveLoad", component.name)
-    if source is None:
-        return Err(ValueError(f"No Resolve load found for '{component.name}'"))
-    return _resolve_load_node(source, context)
+@getter(name="resolve_generator_fuel")
+def generator_fuel(component: Any, context: PluginContext) -> Result[PLEXOSFuel, ValueError]:
+    """Return the Fuel the generator burns."""
+    return (
+        _source(context, InvestmentComponent, component.name)
+        .and_then(lambda unit: _fuel_name(unit, context))
+        .and_then(lambda name: _target(context, PLEXOSFuel, name))
+    )
 
 
-@getter(name="resolve_membership_nodes_collection")
-def membership_nodes_collection(component: Any, context: PluginContext) -> Result[CollectionEnum, ValueError]:
-    """Return the PLEXOS Nodes collection."""
+@getter(name="resolve_line_from_node")
+def line_from_node(component: Any, context: PluginContext) -> Result[PLEXOSNode, ValueError]:
+    """Return the Node the line flows from."""
+    return _source(context, ResolveTransmissionLine, component.name).and_then(
+        lambda line: _target(context, PLEXOSNode, line.from_zone.name)
+    )
+
+
+@getter(name="resolve_line_to_node")
+def line_to_node(component: Any, context: PluginContext) -> Result[PLEXOSNode, ValueError]:
+    """Return the Node the line flows to."""
+    return _source(context, ResolveTransmissionLine, component.name).and_then(
+        lambda line: _target(context, PLEXOSNode, line.to_zone.name)
+    )
+
+
+@getter(name="resolve_collection_region")
+def collection_region(component: Any, context: PluginContext) -> Result[CollectionEnum, ValueError]:
+    """Return the Node.Region collection."""
+    return Ok(CollectionEnum.Region)
+
+
+@getter(name="resolve_collection_nodes")
+def collection_nodes(component: Any, context: PluginContext) -> Result[CollectionEnum, ValueError]:
+    """Return the Generator.Nodes collection."""
     return Ok(CollectionEnum.Nodes)
 
 
-@getter(name="resolve_membership_node_from_collection")
-def membership_node_from_collection(
-    component: Any, context: PluginContext
-) -> Result[CollectionEnum, ValueError]:
-    """Return the PLEXOS NodeFrom collection."""
+@getter(name="resolve_collection_fuels")
+def collection_fuels(component: Any, context: PluginContext) -> Result[CollectionEnum, ValueError]:
+    """Return the Generator.Fuels collection."""
+    return Ok(CollectionEnum.Fuels)
+
+
+@getter(name="resolve_collection_node_from")
+def collection_node_from(component: Any, context: PluginContext) -> Result[CollectionEnum, ValueError]:
+    """Return the Line.NodeFrom collection."""
     return Ok(CollectionEnum.NodeFrom)
 
 
-@getter(name="resolve_membership_node_to_collection")
-def membership_node_to_collection(
-    component: Any, context: PluginContext
-) -> Result[CollectionEnum, ValueError]:
-    """Return the PLEXOS NodeTo collection."""
+@getter(name="resolve_collection_node_to")
+def collection_node_to(component: Any, context: PluginContext) -> Result[CollectionEnum, ValueError]:
+    """Return the Line.NodeTo collection."""
     return Ok(CollectionEnum.NodeTo)
