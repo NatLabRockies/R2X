@@ -270,8 +270,7 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.get_line_reactance(line, context).unwrap() == 0.0
     susceptance = getters.get_line_susceptance(line, context).unwrap()
     assert susceptance.from_to == 0.0
-    conductance = getters.get_line_conductance(line, context).unwrap()
-    assert conductance.from_to == 0.0
+    assert susceptance.to_from == 0.0
     angle_limits = getters.get_line_angle_limits(line, context).unwrap()
     assert angle_limits.min == -90.0
     assert angle_limits.max == 90.0

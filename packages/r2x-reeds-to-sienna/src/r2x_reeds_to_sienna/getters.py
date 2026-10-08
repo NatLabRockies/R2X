@@ -200,17 +200,6 @@ def get_line_susceptance(
 
 
 @getter
-def get_line_conductance(
-    component: ReEDSTransmissionLine, context: PluginContext
-) -> Result[FromTo_ToFrom, ValueError]:
-    """Get line susceptance 'b' value as FromTo_ToFrom."""
-    b_value = getattr(component, "b", None)
-    if b_value is None:
-        b_value = 0.0
-    return Ok(FromTo_ToFrom(from_to=float(b_value), to_from=float(b_value)))
-
-
-@getter
 def get_line_rating(component: ReEDSTransmissionLine, context: PluginContext):
     """Use max_active_power.from_to as the line rating."""
     try:

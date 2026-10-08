@@ -267,7 +267,11 @@ def test_reeds_to_sienna_translates_line():
     result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
 
     lines = list(result.get_components(Line))
-    assert any(ln.name == "line_p1_p2" for ln in lines)
+    translated_line = next(ln for ln in lines if ln.name == "line_p1_p2")
+    assert translated_line.b.from_to == 0.0
+    assert translated_line.b.to_from == 0.0
+    assert translated_line.g.from_to == 0.0
+    assert translated_line.g.to_from == 0.0
 
 
 def test_reeds_to_sienna_translates_reserve():

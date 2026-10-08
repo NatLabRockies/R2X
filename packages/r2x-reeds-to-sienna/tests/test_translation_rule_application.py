@@ -490,6 +490,10 @@ def test_reeds_ac_transmission_line_translates_to_monitored_line(tmp_path) -> No
     assert line.rating_c is None
     assert line.r == 0.0
     assert line.x == 0.0
+    assert line.b.from_to == 0.0
+    assert line.b.to_from == 0.0
+    assert line.g.from_to == 0.0
+    assert line.g.to_from == 0.0
     assert line.angle_limits.min == -90.0
     assert line.angle_limits.max == 90.0
     assert line.arc is not None
