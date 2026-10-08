@@ -129,3 +129,16 @@ def test_fuels_keep_their_monthly_price_series(plexos: System) -> None:
     series = plexos.get_time_series(fuel, name="fuel_price", time_series_type=NonSequentialTimeSeries)
     assert [timestamp.month for timestamp in series.timestamps] == list(range(1, 13))
     assert len(series.data) == 12
+
+
+def test_reversed_interface_lines_get_a_negative_flow_coefficient(plexos: System) -> None:
+    """Lines against the interface direction get Flow Coefficient -1; +1 is the PLEXOS default."""
+    from r2x_plexos.models import CollectionProperties
+
+    coefficients = {
+        (props.membership.parent_object.name, props.membership.child_object.name): props.properties[
+            "flow_coefficient"
+        ].get_value()
+        for props in plexos.get_supplemental_attributes(CollectionProperties)
+    }
+    assert coefficients == {("Test East", "J_to_PJM_W:line"): -1}

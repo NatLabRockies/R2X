@@ -22,7 +22,7 @@ Declarative mappings live in the packaged `config/translation_rules.json`;
 | Every `InvestmentComponent` | `PLEXOSGenerator` with `max_capacity` from `capacity`, category from the technology label, `units` 0 when capacity is 0, and a Generator.Nodes membership to its zone. Battery and pumped storage are generators for now; Resolve has no energy capacity for them. Wind and solar `max_active_power` profiles carry over (exported as Rating). |
 | `ResolveFuel` | `PLEXOSFuel` with the annual `price`, category from `fuel_type`, and the monthly `fuel_price` series at its own dates (exported as Price; requires an r2x-plexos exporter that writes non-sequential series). |
 | `ResolveTransmissionLine` | `PLEXOSLine` with Max Flow = `from_to` and Min Flow = -`to_from`, plus NodeFrom and NodeTo memberships. |
-| `ResolveGroupedInterface` | `PLEXOSInterface` with Max Flow = forward limit and Min Flow = -reverse limit (a missing limit is unlimited), plus Interface.Lines memberships. Line directions stay in `ext["line_directions"]`. |
+| `ResolveGroupedInterface` | `PLEXOSInterface` with Max Flow = forward limit and Min Flow = -reverse limit (a missing limit is unlimited), plus Interface.Lines memberships. Lines against the interface direction (`ext["line_directions"]` -1) get a Flow Coefficient of -1 on their membership; +1 is the PLEXOS default (requires an r2x-plexos exporter that writes membership properties). |
 
 Generator.Fuels memberships:
 
@@ -35,11 +35,6 @@ Generator.Fuels memberships:
 | `Biomass` | `Biomass` |
 
 The per-pair `ResolveInterface` has no PLEXOS counterpart; its line carries the limits.
-
-## Not yet translated
-
-- Interface line directions: the exporter cannot write the Interface.Lines Flow
-  Coefficient, so directions stay in `ext`.
 
 ## Validation
 

@@ -8,11 +8,13 @@ from typing import TYPE_CHECKING
 from infrasys.time_series_models import NonSequentialTimeSeries
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
+    CollectionProperties,
     PLEXOSFuel,
     PLEXOSGenerator,
     PLEXOSInterface,
     PLEXOSLine,
     PLEXOSMembership,
+    PLEXOSPropertyValue,
     PLEXOSRegion,
 )
 from r2x_resolve import InvestmentComponent, ResolveFuel, ResolveGroupedInterface, ResolveLoad
@@ -67,12 +69,18 @@ def attach_fuel_prices(context: PluginContext) -> None:
 
 
 def add_interface_lines(context: PluginContext) -> None:
-    """Add each grouped interface's member Lines; a Line may sit in several interfaces."""
+    """Add each grouped interface's member Lines; a Line may sit in several interfaces.
+
+    A Line running against the interface direction (``line_directions`` -1) gets a
+    Flow Coefficient of -1 on its membership; +1 is the PLEXOS default.
+    """
     source, target = _systems(context)
     interfaces = {interface.name: interface for interface in target.get_components(PLEXOSInterface)}
     lines = {line.name: line for line in target.get_components(PLEXOSLine)}
     for group in source.get_components(ResolveGroupedInterface):
         interface = interfaces[group.name]
+        directions = group.ext.get("line_directions", {})
+        assert isinstance(directions, dict)
         for member in group.lines:
             line = lines[member.name]
             membership = PLEXOSMembership(
@@ -80,3 +88,12 @@ def add_interface_lines(context: PluginContext) -> None:
             )
             target.add_supplemental_attribute(interface, membership)
             target.add_supplemental_attribute(line, membership)
+            if directions.get(member.name) == -1:
+                target.add_supplemental_attribute(
+                    line,
+                    CollectionProperties(
+                        membership=membership,
+                        collection_name=CollectionEnum.Lines.value,
+                        properties={"flow_coefficient": PLEXOSPropertyValue.from_dict({"value": -1})},
+                    ),
+                )
