@@ -1,0 +1,33 @@
+/* Prevent text wrapping in sidebar navigation */
+.sidebar-tree .toctree-l1 > a,
+.sidebar-tree .toctree-l2 > a,
+.sidebar-tree .toctree-l3 > a {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+/* Style captions to prevent wrapping */
+.sidebar-tree .caption {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Reduce font size for better fit */
+.sidebar-tree .toctree-l2 > a,
+.sidebar-tree .toctree-l3 > a {
+  font-size: 0.85rem;
+}
+
+/* Make the lowest level (individual guides) even smaller */
+.toctree-l3 > a {
+  font-size: 0.8rem !important;
+}
+
+/* Furo theme: Make index page links appear clickable but not navigate */
+.sidebar-tree a[href*="/index.html"],
+.toctree a[href*="/index.html"] {
+  cursor: pointer;
+}
