@@ -35,11 +35,65 @@ def _get_source_max_active_power(component: Any) -> float | None:
     return None
 
 
-def normalize_max_active_power_time_series(context: PluginContext) -> None:
-    """Normalize ReEDS MW profiles for PowerSystems scaling during serialization."""
+def _get_target_time_series_profiles(
+    target_system: Any,
+    target_component: Any,
+    name: str,
+    metadata_records: list[Any],
+) -> list[tuple[SingleTimeSeries, dict[str, Any]]]:
+    """Return target time series and features matching source metadata records."""
+    return [
+        (
+            target_system.get_time_series(
+                target_component,
+                name=name,
+                time_series_type=SingleTimeSeries,
+                **metadata.features,
+            ),
+            dict(metadata.features),
+        )
+        for metadata in metadata_records
+    ]
+
+
+def _normalize_target_time_series(
+    target_system: Any,
+    target_component: Any,
+    name: str,
+    profiles: list[tuple[SingleTimeSeries, dict[str, Any]]],
+    normalization_value: float,
+    scaling_function: str,
+) -> int:
+    """Normalize target profiles and associate their PowerSystems scaling function."""
     from infrasys.normalization import NormalizationByValue
     from r2x_sienna.exporter import set_time_series_scaling_factor_multiplier
 
+    for time_series, features in profiles:
+        normalized_time_series = SingleTimeSeries.from_array(
+            data=time_series.data_array,
+            name=time_series.name,
+            initial_timestamp=time_series.initial_timestamp,
+            resolution=time_series.resolution,
+            normalization=NormalizationByValue(value=normalization_value),
+        )
+        replace_single_time_series(
+            target_system,
+            target_component,
+            normalized_time_series,
+            **features,
+        )
+
+    set_time_series_scaling_factor_multiplier(
+        target_system,
+        target_component,
+        name,
+        scaling_function,
+    )
+    return len(profiles)
+
+
+def normalize_max_active_power_time_series(context: PluginContext) -> None:
+    """Normalize ReEDS MW profiles for PowerSystems scaling during serialization."""
     source_system = cast(Any, context.source_system)
     target_system = cast(Any, context.target_system)
     target_by_uuid = {str(component.uuid): component for component in target_system.iter_all_components()}
@@ -66,37 +120,77 @@ def normalize_max_active_power_time_series(context: PluginContext) -> None:
             )
             continue
 
-        for metadata in metadata_records:
-            features = metadata.features
-            time_series = target_system.get_time_series(
-                target_component,
-                name="max_active_power",
-                time_series_type=SingleTimeSeries,
-                **features,
-            )
-            normalized_time_series = SingleTimeSeries.from_array(
-                data=time_series.data_array,
-                name=time_series.name,
-                initial_timestamp=time_series.initial_timestamp,
-                resolution=time_series.resolution,
-                normalization=NormalizationByValue(value=max_active_power),
-            )
-            replace_single_time_series(
-                target_system,
-                target_component,
-                normalized_time_series,
-                **features,
-            )
-            normalized += 1
-
-        set_time_series_scaling_factor_multiplier(
+        profiles = _get_target_time_series_profiles(
             target_system,
             target_component,
             "max_active_power",
+            metadata_records,
+        )
+        normalized += _normalize_target_time_series(
+            target_system,
+            target_component,
+            "max_active_power",
+            profiles,
+            max_active_power,
             "get_max_active_power",
         )
 
     logger.info("Normalized %s max_active_power time series for Sienna", normalized)
+
+
+def normalize_reserve_requirement_time_series(context: PluginContext) -> None:
+    """Normalize ReEDS reserve requirement profiles for PowerSystems scaling."""
+    from r2x_reeds.models import ReEDSReserve
+    from r2x_sienna.models import VariableReserve, VariableReserveNonSpinning
+
+    source_system = cast(Any, context.source_system)
+    target_system = cast(Any, context.target_system)
+    target_by_uuid = {
+        str(component.uuid): component
+        for component in target_system.iter_all_components()
+        if isinstance(component, VariableReserve | VariableReserveNonSpinning)
+    }
+    normalized = 0
+
+    for source_reserve in source_system.get_components(ReEDSReserve):
+        metadata_records = source_system.list_time_series_metadata(
+            source_reserve,
+            name="requirement",
+            time_series_type=SingleTimeSeries,
+        )
+        if not metadata_records:
+            continue
+
+        target_reserve = target_by_uuid.get(str(source_reserve.uuid))
+        if target_reserve is None:
+            continue
+
+        profiles = _get_target_time_series_profiles(
+            target_system,
+            target_reserve,
+            "requirement",
+            metadata_records,
+        )
+        peak_requirement = max(float(np.max(profile.data_array)) for profile, _ in profiles)
+
+        if peak_requirement <= 0.0:
+            logger.warning(
+                "Cannot normalize requirement time series for %s without a positive MW basis",
+                source_reserve.name,
+            )
+            continue
+
+        target_reserve.requirement = peak_requirement / float(target_system.base_power)
+        normalized += _normalize_target_time_series(
+            target_system,
+            target_reserve,
+            "requirement",
+            profiles,
+            peak_requirement,
+            "get_requirement",
+        )
+
+    logger.info("Normalized %s reserve requirement time series for Sienna", normalized)
 
 
 def attach_pumped_hydro_inflow_time_series(context: PluginContext) -> None:
