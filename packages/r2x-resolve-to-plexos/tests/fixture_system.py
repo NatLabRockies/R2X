@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from infrasys.time_series_models import SingleTimeSeries
+from infrasys.time_series_models import NonSequentialTimeSeries, SingleTimeSeries
 from r2x_resolve import (
     ResolveBatteryStorage,
     ResolveFuel,
@@ -78,7 +78,16 @@ def resolve_system() -> System:
         ("RNG_Tier_1", "RNG", 29.87, []),
         ("Nuclear", "Nuclear", 0.72, []),
     ):
-        system.add_component(ResolveFuel(name=name, fuel_type=fuel_type, price=price, ext={"zones": zones}))
+        fuel = ResolveFuel(name=name, fuel_type=fuel_type, price=price, ext={"zones": zones})
+        system.add_component(fuel)
+        system.add_time_series(
+            NonSequentialTimeSeries.from_array(
+                [round(price * (0.9 + month / 60), 4) for month in range(1, 13)],
+                timestamps=[datetime(2025, month, 1) for month in range(1, 13)],
+                name="fuel_price",
+            ),
+            fuel,
+        )
 
     lines = {}
     for from_zone, to_zone, from_to, to_from in (

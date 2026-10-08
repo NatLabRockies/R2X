@@ -7,7 +7,7 @@ from importlib.resources import files
 
 from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
 
-from .attach import add_interface_lines, attach_generator_profiles, attach_region_load
+from .attach import add_interface_lines, attach_fuel_prices, attach_generator_profiles, attach_region_load
 from .plugin_config import ResolveToPlexosConfig
 from .validation import validate_component_counts
 
@@ -31,6 +31,7 @@ def resolve_to_plexos(system: System, config: ResolveToPlexosConfig) -> System:
 
     attach_region_load(context)
     attach_generator_profiles(context)
+    attach_fuel_prices(context)
     add_interface_lines(context)
 
     validation = validate_component_counts(system, context.target_system)

@@ -5,9 +5,17 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import TYPE_CHECKING
 
+from infrasys.time_series_models import NonSequentialTimeSeries
 from plexosdb import CollectionEnum
-from r2x_plexos.models import PLEXOSGenerator, PLEXOSInterface, PLEXOSLine, PLEXOSMembership, PLEXOSRegion
-from r2x_resolve import InvestmentComponent, ResolveGroupedInterface, ResolveLoad
+from r2x_plexos.models import (
+    PLEXOSFuel,
+    PLEXOSGenerator,
+    PLEXOSInterface,
+    PLEXOSLine,
+    PLEXOSMembership,
+    PLEXOSRegion,
+)
+from r2x_resolve import InvestmentComponent, ResolveFuel, ResolveGroupedInterface, ResolveLoad
 
 if TYPE_CHECKING:
     from r2x_core import PluginContext, System
@@ -16,6 +24,8 @@ if TYPE_CHECKING:
 LOAD_SERIES = "demand"
 # Wind and solar output profiles, written by the PLEXOS exporter as Rating.
 PROFILE_SERIES = "max_active_power"
+# Monthly fuel prices at their own dates, written by the PLEXOS exporter as Price.
+FUEL_PRICE_SERIES = "fuel_price"
 
 
 def _systems(context: PluginContext) -> tuple[System, System]:
@@ -42,6 +52,18 @@ def attach_generator_profiles(context: PluginContext) -> None:
         if source.has_time_series(unit, name=PROFILE_SERIES):
             series = source.get_time_series(unit, name=PROFILE_SERIES)
             target.add_time_series(deepcopy(series), generators[unit.name])
+
+
+def attach_fuel_prices(context: PluginContext) -> None:
+    """Attach each fuel's monthly price series to its Fuel."""
+    source, target = _systems(context)
+    fuels = {fuel.name: fuel for fuel in target.get_components(PLEXOSFuel)}
+    for fuel in source.get_components(ResolveFuel):
+        if source.has_time_series(fuel, name=FUEL_PRICE_SERIES, time_series_type=NonSequentialTimeSeries):
+            series = source.get_time_series(
+                fuel, name=FUEL_PRICE_SERIES, time_series_type=NonSequentialTimeSeries
+            )
+            target.add_time_series(deepcopy(series), fuels[fuel.name])
 
 
 def add_interface_lines(context: PluginContext) -> None:

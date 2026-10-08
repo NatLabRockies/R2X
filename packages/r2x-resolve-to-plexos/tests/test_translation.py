@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from fixture_system import resolve_system
+from infrasys.time_series_models import NonSequentialTimeSeries
 from r2x_plexos.models import (
     PLEXOSFuel,
     PLEXOSGenerator,
@@ -120,3 +121,11 @@ def test_grouped_interfaces_become_interfaces_over_their_lines(plexos: System) -
         ("Test East", "A_to_J:line"),
         ("Test East", "J_to_PJM_W:line"),
     }
+
+
+def test_fuels_keep_their_monthly_price_series(plexos: System) -> None:
+    """Each Fuel carries its 12 monthly prices at their own dates, not an hourly expansion."""
+    fuel = _by_name(plexos, PLEXOSFuel)["NG_NYISO_J"]
+    series = plexos.get_time_series(fuel, name="fuel_price", time_series_type=NonSequentialTimeSeries)
+    assert [timestamp.month for timestamp in series.timestamps] == list(range(1, 13))
+    assert len(series.data) == 12
