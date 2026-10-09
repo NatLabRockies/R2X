@@ -1,0 +1,152 @@
+[
+  {
+    "source_type": "ResolveZone",
+    "target_type": "PLEXOSNode",
+    "version": 1,
+    "field_map": {
+      "name": "name",
+      "ext": "ext"
+    },
+    "getters": {
+      "category": "resolve_zone_category"
+    },
+    "defaults": {
+      "load_participation_factor": 1
+    }
+  },
+  {
+    "source_type": "ResolveZone",
+    "target_type": "PLEXOSRegion",
+    "version": 1,
+    "field_map": {
+      "name": "name",
+      "ext": "ext"
+    },
+    "getters": {
+      "category": "resolve_zone_category",
+      "load": "resolve_region_load"
+    }
+  },
+  {
+    "source_type": "InvestmentComponent",
+    "target_type": "PLEXOSGenerator",
+    "version": 1,
+    "field_map": {
+      "name": "name",
+      "max_capacity": "capacity",
+      "ext": "ext"
+    },
+    "getters": {
+      "category": "resolve_generator_category",
+      "units": "resolve_generator_units"
+    }
+  },
+  {
+    "source_type": "ResolveFuel",
+    "target_type": "PLEXOSFuel",
+    "version": 1,
+    "field_map": {
+      "name": "name",
+      "category": "fuel_type",
+      "price": "price",
+      "ext": "ext"
+    }
+  },
+  {
+    "source_type": "ResolveTransmissionLine",
+    "target_type": "PLEXOSLine",
+    "version": 1,
+    "field_map": {
+      "name": "name",
+      "ext": "ext"
+    },
+    "getters": {
+      "max_flow": "resolve_line_max_flow",
+      "min_flow": "resolve_line_min_flow"
+    },
+    "defaults": {
+      "category": "resolve-line"
+    }
+  },
+  {
+    "source_type": "ResolveGroupedInterface",
+    "target_type": "PLEXOSInterface",
+    "version": 1,
+    "field_map": {
+      "name": "name",
+      "ext": "ext"
+    },
+    "getters": {
+      "max_flow": "resolve_interface_max_flow",
+      "min_flow": "resolve_interface_min_flow"
+    },
+    "defaults": {
+      "category": "resolve-interface"
+    }
+  },
+  {
+    "source_type": "PLEXOSNode",
+    "target_type": "PLEXOSMembership",
+    "version": 1,
+    "name": "node_region_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "resolve_membership_parent",
+      "child_object": "resolve_node_region",
+      "collection": "resolve_collection_region"
+    }
+  },
+  {
+    "source_type": "PLEXOSGenerator",
+    "target_type": "PLEXOSMembership",
+    "version": 1,
+    "name": "generator_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "resolve_membership_parent",
+      "child_object": "resolve_generator_node",
+      "collection": "resolve_collection_nodes"
+    }
+  },
+  {
+    "source_type": "PLEXOSGenerator",
+    "target_type": "PLEXOSMembership",
+    "version": 2,
+    "name": "generator_fuel_membership",
+    "system": "target",
+    "filter": {
+      "field": "category",
+      "op": "in",
+      "values": ["Gas & FO", "Zero-Carbon Firm", "Nuclear", "Biomass"]
+    },
+    "getters": {
+      "parent_object": "resolve_membership_parent",
+      "child_object": "resolve_generator_fuel",
+      "collection": "resolve_collection_fuels"
+    }
+  },
+  {
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 1,
+    "name": "line_from_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "resolve_membership_parent",
+      "child_object": "resolve_line_from_node",
+      "collection": "resolve_collection_node_from"
+    }
+  },
+  {
+    "source_type": "PLEXOSLine",
+    "target_type": "PLEXOSMembership",
+    "version": 2,
+    "name": "line_to_node_membership",
+    "system": "target",
+    "getters": {
+      "parent_object": "resolve_membership_parent",
+      "child_object": "resolve_line_to_node",
+      "collection": "resolve_collection_node_to"
+    }
+  }
+]
