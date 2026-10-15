@@ -46,10 +46,17 @@ export default defineConfig({
       ],
       sidebar: [
         {
-          label: "Tutorials",
+          label: "Getting started",
           items: [
             { label: "Introduction", link: "/" },
+            { label: "Prerequisites", link: "/getting-started/prerequisites/" },
+            { label: "Installation", link: "/getting-started/installation/" },
             { label: "First CLI pipeline", link: "/tutorials/getting-started/" },
+          ],
+        },
+        {
+          label: "Tutorials",
+          items: [
             { label: "ReEDS with the CLI", link: "/tutorials/reeds-to-sienna-cli/" },
           ],
         },
@@ -64,10 +71,7 @@ export default defineConfig({
             { label: "Sienna to PLEXOS", link: "/how-to/sienna-to-plexos/" },
           ],
         },
-        {
-          label: "Troubleshooting",
-          items: [{ label: "Common problems", link: "/troubleshooting/" }],
-        },
+        { label: "Troubleshooting", link: "/troubleshooting/" },
         {
           label: "Reference",
           items: [
@@ -83,14 +87,8 @@ export default defineConfig({
           label: "Explanation",
           items: [{ label: "Architecture", link: "/explanation/architecture/" }],
         },
-        {
-          label: "Changelog",
-          items: [{ label: "Release history", link: "/changelog/" }],
-        },
-        {
-          label: "Contributors",
-          items: [{ label: "Development", link: "/how-to/development/" }],
-        },
+        { label: "Changelog", link: "/changelog/" },
+        { label: "Development", link: "/how-to/development/" },
       ],
     }),
   ],

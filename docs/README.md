@@ -1,6 +1,6 @@
 # R2X documentation
 
-The Astro and Starlight site organizes the current documentation into tutorials,
+The Astro and Starlight site organizes the current documentation into Getting started, tutorials,
 how-to guides, reference, and explanation. Search indexes each version separately.
 
 ## Build and preview

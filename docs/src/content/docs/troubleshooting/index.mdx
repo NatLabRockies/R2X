@@ -19,6 +19,11 @@ Check the CLI's managed environment:
 r2x python show
 ```
 
+If this command cannot start Python, compare its runtime requirement with your
+CLI binary and complete [Installation](/R2X/getting-started/installation/) before
+changing pipeline data. A different shell's Python installation does not establish
+that the managed runtime is usable.
+
 Check registered plugins:
 
 ```bash
@@ -36,6 +41,11 @@ Install a missing target package through the same CLI:
 ```bash
 r2x install r2x-sienna
 ```
+
+Verify recovery with `r2x list r2x-sienna`: both `sienna-parser` and
+`sienna-exporter` should appear. Then repeat the original command. If discovery
+succeeds but loading still fails, compare writer and reader versions using the
+[version report below](#evidence-to-include-in-a-bug-report).
 
 Serialized components record their Python module and class names. Loading needs
 those modules, not just Infrasys itself. For direct Python inspection, use the
@@ -62,6 +72,20 @@ directory beside the JSON. Copy the complete serialization from the writer,
 rather than the JSON alone. For a ZIP, restore the complete archive if it was
 truncated or incompletely transferred.
 
+For the public first-pipeline inputs, check the exact pair from the workspace:
+
+```bash
+ls -lh inputs/test_system.json inputs/test_system_time_series_storage.h5
+python -m json.tool inputs/test_system.json > /dev/null
+```
+
+Missing or zero-size files indicate an incomplete download; a JSON parse failure
+indicates malformed JSON, not a plugin discovery problem. Download both files
+again from the pinned URLs in the [first pipeline](/R2X/tutorials/getting-started/#download-a-small-model).
+A successful JSON syntax check does not validate the model schema or HDF5 data.
+Verify recovery by rerunning that pipeline and checking its JSON, HDF5, and ZIP
+outputs. Do not substitute an arbitrary HDF5 file with the expected name.
+
 Native Sienna JSON has a companion HDF5 file instead. In the first CLI tutorial,
 check that both `inputs/test_system.json` and
 `inputs/test_system_time_series_storage.h5` retain their original names and share
@@ -82,6 +106,18 @@ r2x read outputs/my-case-system.zip --zip --exec inspect_transformed.py
 
 Create `inspect_transformed.py` using the
 [tested inspection walkthrough](/R2X/how-to/inspect-transformed-system/#list-components-and-inspect-fields).
+To distinguish a corrupt ZIP from a model-loading failure, check the archive
+without deserializing it:
+
+```bash
+python -m zipfile -t outputs/my-case-system.zip
+```
+
+A failed integrity check calls for restoring or regenerating the complete archive.
+A passing check establishes ZIP integrity only; model imports and serialization
+compatibility still need to match. Verify the restored archive with the scripted
+`r2x read` command above.
+
 For a native Sienna export, use the Sienna parser as shown in the
 [first CLI tutorial](/R2X/tutorials/getting-started/). Restore a damaged file from
 the original output. Renaming a file does not convert its format.
@@ -166,6 +202,89 @@ Check the native export paths in your YAML too: a fresh archive name does not
 change the exporter configuration. Use a separate output directory if you need
 to preserve all outputs from an earlier run.
 
+## ReEDS to PLEXOS: `hydro_budget must be an hourly SingleTimeSeries`
+
+The translation's hydro-budget conversion rejects non-hourly inputs. Selecting
+`hydro_budget_ts: daily` controls the **output** cadence; it does not permit daily
+input. Inspect the parsed ReEDS system before translation using the public
+`list_time_series` API. In a script where `sys` is the parsed source system:
+
+```python
+from r2x_reeds.models import ReEDSHydroGenerator
+
+for hydro in sys.get_components(ReEDSHydroGenerator):
+    for series in sys.list_time_series(hydro, name="hydro_budget"):
+        print(hydro.name, type(series).__name__, series.initial_timestamp,
+              series.resolution, len(series.data))
+```
+
+Expect `SingleTimeSeries` and `1:00:00`. An empty result means this component has
+no matching budget, rather than a resolution mismatch. Restore the hourly
+capacity-factor profile through the source parser/input mapping. Do not relabel
+aggregated daily values as hourly: conversion multiplies by capacity and sums
+energy. Rerun translation and inspect the target `hydro_budget` series to verify
+the requested cadence and energy totals against the source.
+
+For a configuration validation error on `hydro_budget_ts`, use exactly `hourly`,
+`daily`, `weekly`, or `monthly`; `daily` is the default. Check the resolved YAML
+with `r2x run pipeline.yaml --list` and your selected pipeline's `--print` output
+before execution. Monthly aggregation uses the series' timestamp year, including
+leap-year month lengths; check that timestamp against the actual source calendar.
+The [conversion tests](https://github.com/NatLabRockies/R2X/blob/7b2b86300b07d09aa71280b29286f7c4e080743e/packages/r2x-reeds-to-plexos/tests/test_getters_utils.py)
+cover cadence, energy totals, leap years, and rejected daily inputs. See the
+[ReEDS to PLEXOS mapping](/R2X/reference/reeds-to-plexos-properties/).
+
+## PLEXOS to Sienna: `Could not find both nodes for line` or `Could not find ACBus for names`
+
+These errors identify a network linkage problem at the translation step. The
+first means a parsed line lacks a `NodeFrom` or `NodeTo` membership. The second
+means endpoint names were found, but matching target buses were not available.
+Inspect the parsed source system before translation:
+
+```python
+from r2x_plexos.models import PLEXOSLine
+
+for line in sys.get_components(PLEXOSLine):
+    print("Line:", line.name)
+    for membership in sys.get_supplemental_attributes_with_component(line):
+        print(getattr(membership, "collection", None),
+              getattr(getattr(membership, "child_object", None), "name", None))
+```
+
+For the failing line, compare the endpoint names with the error's available-bus
+list. Correct missing endpoints in the source PLEXOS study, or investigate why
+its parser/filter omitted the referenced nodes. Use the standard
+[PLEXOS to Sienna workflow](/R2X/how-to/plexos-to-sienna/) so bus translation
+precedes line translation. Do not invent a disconnected bus merely to suppress
+the error. Verify by translating again and inspecting each affected line's arc
+and both bus names in the target. If the original study has valid memberships
+but the parsed source does not, report the smallest study and parser version.
+The [line getter](https://github.com/NatLabRockies/R2X/blob/7b2b86300b07d09aa71280b29286f7c4e080743e/packages/r2x-plexos-to-sienna/src/r2x_plexos_to_sienna/getters.py)
+contains the membership and bus-name checks.
+
+## Older PLEXOS parser: `Attribute 'Chrono Date To' not found for class 'Horizon'`
+
+[Issue #299](https://github.com/NatLabRockies/R2X/issues/299) records this exact
+failure in `r2x-plexos` 0.2.0 when a Horizon attribute is absent from the study's
+schema. Use the version-report script below with `r2x-plexos` included. If it
+reports 0.2.0, install a compatible dependency set containing `r2x-plexos>=0.3.0`
+in the environment doing the parsing; the current translation packages require
+that lower bound. Check the selected package's declared constraints before
+upgrading an older environment.
+
+For a CLI-managed environment:
+
+```bash
+r2x install r2x-plexos
+r2x list r2x-plexos
+```
+
+Repeat the version report and the failing parse. Plugin discovery alone does not
+verify Horizon resolution. If the failure persists with a compatible newer
+parser, preserve the traceback and study schema for a report rather than adding
+fake Horizon attributes. This is a documented historical cause, not evidence
+that every Horizon error has the same fix.
+
 ## Evidence to include in a bug report
 
 Include the exact failing command, complete traceback, printed log path, whether
@@ -186,6 +305,10 @@ packages = (
     "r2x-core",
     "r2x-reeds",
     "r2x-sienna",
+    "r2x-plexos",
+    "r2x-reeds-to-plexos",
+    "r2x-plexos-to-sienna",
+    "r2x-sienna-to-plexos",
     "r2x-reeds-to-sienna",
     "infrasys",
 )
@@ -206,3 +329,10 @@ placeholder with the actual path:
 For the summary error, also report whether the scripted component and time-series
 queries succeed on the same artifact. Remove credentials or private input data
 from anything you share.
+
+Include the pipeline YAML with sensitive paths removed, source model/schema
+version, selected solve and weather years, and the failing component name. For
+time-series discrepancies include start timestamp, resolution, sample count,
+units, and expected versus observed values. State whether the failure reproduces
+with the public first-pipeline fixture or requires unavailable/private data.
+Link the relevant property mapping and include any warnings before the exception.

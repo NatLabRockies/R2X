@@ -32,7 +32,8 @@ python -m pip install r2x-reeds-to-plexos
 
 Use the guide that matches your task:
 
-- [Getting started](https://natlabrockies.github.io/R2X/tutorials/getting-started/): run and inspect your first pipeline.
+- [Installation](https://natlabrockies.github.io/R2X/getting-started/installation/): prerequisites, published packages, and verification.
+- [First CLI pipeline](https://natlabrockies.github.io/R2X/tutorials/getting-started/): run and inspect your first pipeline.
 - [Translation workflows](https://natlabrockies.github.io/R2X/how-to/): parse, translate, and export a model.
 - [Property reference](https://natlabrockies.github.io/R2X/reference/reeds-to-plexos-properties/): inspect mappings and their source rules.
 - [Architecture](https://natlabrockies.github.io/R2X/explanation/architecture/): understand package boundaries.
