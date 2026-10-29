@@ -1,0 +1,161 @@
+---
+title: Inspect a transformed system
+description: Read a saved translation result, explore components and time series, and load it with Infrasys.
+---
+
+Continue from the [ReEDS CLI tutorial](/R2X/tutorials/reeds-to-sienna-cli/).
+The pipeline's final system contains Sienna components after translation.
+Inspect that result before handing the native model to a simulation tool: component
+counts, field values and time-series units are useful checks on the mapping.
+
+## Choose the serialized result
+
+Use `outputs/my-case-system.zip`, created by `r2x run ... --zip -o`.
+This is an **Infrasys system archive** containing the component graph and its
+attached time-series storage. It is different from `outputs/my-case.json`, the
+native Sienna export. Do not pass that native export to `r2x read` or
+`infrasys.System.from_json`; use `sienna-parser` to read native Sienna files.
+
+Keep the target model package installed in the environment that loads the archive.
+For this workflow that package is `r2x-sienna`; another target needs its own model
+classes. Serialized components record their Python module and class names, so
+those modules must remain importable. Use compatible package versions with the
+same serialization schema as the environment that wrote the artifact.
+
+Check the available inspection options:
+
+```bash
+r2x read --help
+```
+
+The CLI makes the loaded system available as `sys` to an inspection script.
+Start with the repeatable component checks below; you do not need an interactive
+session to inspect the result. Expected totals depend on the input model.
+
+If you do not have a ReEDS dataset, use `outputs/system.zip` from the
+[first CLI tutorial](/R2X/tutorials/getting-started/) in the commands below.
+That example has ten buses and exercises the same inspection APIs, but is a
+Sienna parse/export round trip rather than a ReEDS translation.
+
+## List components and inspect fields
+
+For repeatable checks, save the following as `inspect_transformed.py` in the
+workspace. Import the target model classes explicitly so the types used in your
+queries match those stored in the system:
+
+```python
+from r2x_sienna.models import ACBus, PowerLoad
+
+buses = list(sys.get_components(ACBus))
+print("Buses:", len(buses))
+for bus in buses:
+    print("Bus:", bus.name)
+
+loads = list(sys.get_components(PowerLoad))
+print("Loads:", len(loads))
+```
+
+Execute it against the serialized result:
+
+```bash
+r2x read outputs/my-case-system.zip --zip --exec inspect_transformed.py
+```
+
+The CLI loads the archive, supplies `sys` to the script, and exits when the script
+finishes. This makes the same checks easy to repeat after a translation change.
+For the small transformed test fixture, this printed two buses and one load;
+those are test-case counts, not the expected counts for your ReEDS run.
+
+If your system contains loads, append this section to inspect one. `model_fields`
+describes the Pydantic schema; `model_dump` shows the values on this particular
+component. Review those values against the source data and the
+[property mapping reference](/R2X/reference/reeds-to-sienna-properties/).
+
+```python
+if loads:
+    load = loads[0]
+    print("Load:", load.name)
+    print("Fields:", list(type(load).model_fields))
+    print("Values:", load.model_dump(exclude={"internal"}))
+else:
+    print("No PowerLoad components in this result.")
+```
+
+Run the same `r2x read ... --exec` command again after saving the script.
+To continue interactively after it finishes, add `--interactive`.
+In a compatible interactive session, the loaded object remains available as `sys`;
+type `exit()` to leave.
+
+## Inspect attached time series
+
+Append this section to the script. `list_time_series` returns the matching
+`SingleTimeSeries` objects attached to the load; an empty list means no matching
+series is attached. Check the timestamp, resolution and values before assuming
+that a profile has the intended length or scale:
+
+```python
+if loads:
+    for series in sys.list_time_series(loads[0]):
+        print("Series:", series.name)
+        print("Start:", series.initial_timestamp)
+        print("Resolution:", series.resolution)
+        print("First values:", series.data[:3])
+```
+
+In the transformed test fixture, `max_active_power` starts at January 1, 2035,
+with one-hour resolution and first values `[0.2, 0.4, 0.6]`. Translation normalized
+the source load profile. Real cases may have different series, units and scaling;
+check the component fields and mapping rules together. This example queries
+`SingleTimeSeries`, the default; other time-series types require the corresponding
+`time_series_type` argument. See the
+[Infrasys time-series API](https://github.com/NatLabRockies/infrasys/blob/main/src/infrasys/system.py).
+
+## Load the archive directly with Infrasys
+
+For a Python application, use the same model packages and compatible Infrasys
+version as the CLI environment. Locate that environment with `r2x python show`
+and use its printed Python executable to run the script below; an unrelated
+system Python may not have the model classes installed.
+
+Save this as `load_transformed.py`:
+
+```python
+from infrasys import Component, System
+from r2x_sienna.models import ACBus, PowerLoad
+
+system = System.load("outputs/my-case-system.zip")
+print("Buses:", len(list(system.get_components(ACBus))))
+print("Total components:", len(list(system.get_components(Component))))
+
+for load in system.get_components(PowerLoad):
+    print("Load:", load.name)
+    for series in system.list_time_series(load):
+        print(series.name, series.data[:3])
+```
+
+Run it with the Python executable reported by `r2x python show`, replacing this
+placeholder with that actual path:
+
+```bash
+/path/to/cli/environment/bin/python load_transformed.py
+```
+
+`System.load` extracts the archive and restores its time-series storage.
+The base Infrasys class provides component and time-series operations.
+If your application also needs R2X-specific system attributes, import
+`System` from `r2x_core` instead; it extends the Infrasys class.
+
+For an **Infrasys JSON serialization** created by `system.to_json(...)`, load it
+with `System.from_json("outputs/serialized-system.json")` instead. Keep the JSON
+and its generated sibling time-series directory together. A JSON filename alone
+does not identify the format: native Sienna JSON and Infrasys JSON are different.
+See the [Infrasys serialization documentation](https://github.com/NatLabRockies/infrasys)
+for the public save/load API.
+
+## If loading fails
+
+Follow [troubleshooting](/R2X/troubleshooting/) for missing model imports,
+incomplete time-series storage, schema compatibility, and the verified
+[summary metadata error](/R2X/troubleshooting/#summary-fails-with-supplemental_attribute_associations).
+The scripted queries above work on the transformed fixture even when its summary
+fails; a failed summary does not establish that its components are missing.

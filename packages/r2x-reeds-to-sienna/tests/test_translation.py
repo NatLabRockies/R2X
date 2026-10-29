@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -195,6 +197,111 @@ def test_reeds_to_sienna_normalizes_max_active_power_time_series(monkeypatch):
     assert scaling_calls == [(result, target_wind, "max_active_power", "get_max_active_power")]
 
 
+@pytest.mark.parametrize("mw_basis", [None, 0.0, -5.0])
+def test_reeds_to_sienna_preserves_profiles_without_a_positive_mw_basis(mw_basis, caplog):
+    source = _build_source_system()
+    demand = source.get_component(ReEDSDemand, "load_p1")
+    demand.max_active_power = mw_basis
+    source.add_time_series(
+        SingleTimeSeries.from_array(
+            data=[0.0, 25.0, 50.0],
+            name="max_active_power",
+            initial_timestamp=datetime(2012, 1, 1),
+            resolution=timedelta(hours=1),
+        ),
+        demand,
+    )
+
+    result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
+
+    load = result.get_component(PowerLoad, "load_p1")
+    profile = result.get_time_series(load, name="max_active_power")
+    (metadata,) = result.list_time_series_metadata(load, name="max_active_power")
+    assert profile.data_array == pytest.approx([0.0, 25.0, 50.0])
+    assert metadata.normalization is None
+    assert source.get_time_series(demand, name="max_active_power").data_array == pytest.approx(
+        [0.0, 25.0, 50.0]
+    )
+    assert "MW basis" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("profiles", "expected_shapes", "expected_requirement", "expected_peak"),
+    [
+        ([[0.0, 25.0, 50.0]], [[0.0, 0.5, 1.0]], 0.5, 50.0),
+        (
+            [[0.0, 25.0, 50.0], [100.0, 0.0, 50.0]],
+            [[0.0, 0.25, 0.5], [1.0, 0.0, 0.5]],
+            1.0,
+            100.0,
+        ),
+        ([[0.0, 0.0, 0.0]], [[0.0, 0.0, 0.0]], 0.0, None),
+    ],
+)
+def test_reeds_to_sienna_persists_reserve_scaling(
+    tmp_path, profiles, expected_shapes, expected_requirement, expected_peak
+):
+    source = _build_source_system()
+    source_reserve = source.get_component(ReEDSReserve, "spin_up")
+    for index, values in enumerate(profiles):
+        source.add_time_series(
+            SingleTimeSeries.from_array(
+                data=values,
+                name="requirement",
+                initial_timestamp=datetime(2012, 1, 1),
+                resolution=timedelta(hours=1),
+            ),
+            source_reserve,
+            scenario=str(index),
+        )
+
+    result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
+    target_reserve = result.get_component(VariableReserve, "spin_up")
+    assert target_reserve.requirement == pytest.approx(expected_requirement)
+
+    for index, (values, shape) in enumerate(zip(profiles, expected_shapes, strict=True)):
+        features = {"scenario": str(index)}
+        target_profile = result.get_time_series(target_reserve, name="requirement", **features)
+        (metadata,) = result.list_time_series_metadata(target_reserve, name="requirement", **features)
+        assert target_profile.data_array == pytest.approx(shape)
+        assert target_profile.data_array * target_reserve.requirement * result.base_power == pytest.approx(
+            values
+        )
+        if expected_peak is None:
+            assert metadata.normalization is None
+        else:
+            assert isinstance(metadata.normalization, NormalizationByValue)
+            assert metadata.normalization.value == pytest.approx(expected_peak)
+        preserved_source = source.get_time_series(source_reserve, name="requirement", **features)
+        (source_metadata,) = source.list_time_series_metadata(source_reserve, name="requirement", **features)
+        assert preserved_source.data_array == pytest.approx(values)
+        assert source_metadata.normalization is None
+
+    for system, owner, filename in (
+        (result, target_reserve, "target.db"),
+        (source, source_reserve, "source.db"),
+    ):
+        database = tmp_path / filename
+        system.time_series.metadata_store.serialize(database)
+        with sqlite3.connect(database) as connection:
+            rows = connection.execute(
+                "SELECT features, scaling_factor_multiplier FROM time_series_associations "
+                "WHERE owner_uuid = ? AND name = ?",
+                (str(owner.uuid), "requirement"),
+            ).fetchall()
+        assert len(rows) == len(profiles)
+        assert {json.loads(features)[0]["scenario"] for features, _ in rows} == {
+            str(index) for index in range(len(profiles))
+        }
+        for _, scaling in rows:
+            if system is result and expected_peak is not None:
+                assert json.loads(scaling) == {
+                    "__metadata__": {"module": "PowerSystems", "function": "get_requirement"}
+                }
+            else:
+                assert scaling is None
+
+
 def test_reeds_to_sienna_translates_hydro():
     source = _build_source_system()
     result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
@@ -267,7 +374,11 @@ def test_reeds_to_sienna_translates_line():
     result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
 
     lines = list(result.get_components(Line))
-    assert any(ln.name == "line_p1_p2" for ln in lines)
+    translated_line = next(ln for ln in lines if ln.name == "line_p1_p2")
+    assert translated_line.b.from_to == 0.0
+    assert translated_line.b.to_from == 0.0
+    assert translated_line.g.from_to == 0.0
+    assert translated_line.g.to_from == 0.0
 
 
 def test_reeds_to_sienna_translates_reserve():

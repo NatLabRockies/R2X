@@ -1,0 +1,32 @@
+{
+  "sidebar": [
+    {
+      "label": "Introduction",
+      "link": "/"
+    },
+    {
+      "label": "Changelog",
+      "link": "/reference/changelog/"
+    },
+    {
+      "label": "Dev Workflow",
+      "link": "/how-to/"
+    },
+    {
+      "label": "PLEXOS \u2192 Sienna",
+      "link": "/how-to/plexos-to-sienna/"
+    },
+    {
+      "label": "ReEDS \u2192 PLEXOS",
+      "link": "/how-to/reeds-to-plexos/"
+    },
+    {
+      "label": "ReEDS \u2192 Sienna",
+      "link": "/how-to/reeds-to-sienna/"
+    },
+    {
+      "label": "Sienna \u2192 PLEXOS",
+      "link": "/how-to/sienna-to-plexos/"
+    }
+  ]
+}

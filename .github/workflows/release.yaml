@@ -45,7 +45,7 @@ jobs:
     steps:
       - name: Run release-please
         id: rp
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v4
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: .release-please-config.json
@@ -66,12 +66,12 @@ jobs:
       # Only need read permissions to checkout and build
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup uv environment
-        uses: ./.github/actions/setup-uv-env
+        uses: NatLabRockies/R2X/.github/actions/setup-uv-env@2af872f994b1637b9dd4604d5be2d2edf4efa1c8 # r2x-v2.2.0
         with:
           uv-version: ${{ env.UV_VERSION }}
           python-version-file: "pyproject.toml"
@@ -119,7 +119,7 @@ jobs:
           ls -lah dist/
 
       - name: Upload distributions
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pypi-dists
           path: dist/
@@ -141,7 +141,7 @@ jobs:
       name: pypi
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: pypi-dists
           path: dist/

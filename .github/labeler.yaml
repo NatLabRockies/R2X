@@ -19,8 +19,8 @@ release:
   - changed-files:
       - any-glob-to-any-file:
           - ".github/workflows/release.yaml"
-          - "docs/source/CHANGELOG.md"
-          - "docs/source/release_notes.md"
+          - "docs/src/content/docs/reference/changelog.md"
+          - "docs/src/content/docs/reference/release-notes.md"
 
 tests:
   - changed-files:

@@ -1,0 +1,208 @@
+---
+title: Troubleshooting
+description: Diagnose plugin, environment, serialization, time-series and system-inspection problems.
+---
+
+Start with the symptom you see. Keep the original inputs and saved result while
+you investigate. The commands below use the artifact names from the
+[ReEDS CLI tutorial](/R2X/tutorials/reeds-to-sienna-cli/); substitute your own paths.
+
+## Plugin is missing or a model module cannot be imported
+
+A pipeline step is not registered, or loading reports `ModuleNotFoundError` for a
+target model module. The package may be absent from the environment doing the
+work, even if it is installed in another Python environment.
+
+Check the CLI's managed environment:
+
+```bash
+r2x python show
+```
+
+Check registered plugins:
+
+```bash
+r2x list
+```
+
+For a Sienna target, check its package specifically:
+
+```bash
+r2x list r2x-sienna
+```
+
+Install a missing target package through the same CLI:
+
+```bash
+r2x install r2x-sienna
+```
+
+Serialized components record their Python module and class names. Loading needs
+those modules, not just Infrasys itself. For direct Python inspection, use the
+Python executable reported by `r2x python show` and import target classes such as
+`ACBus` from `r2x_sienna.models`. Match the writer's package versions when loading
+an existing result; installing a newer package alone does not establish schema
+compatibility. See [inspect a transformed system](/R2X/how-to/inspect-transformed-system/).
+
+## Input or companion time-series storage is missing
+
+Loading reports a missing file or time-series sidecar, or a parser cannot open
+its HDF5 input. First check the files and your working directory:
+
+```bash
+pwd
+```
+
+```bash
+ls -lh outputs
+```
+
+For an Infrasys JSON serialization, keep its generated sibling time-series
+directory beside the JSON. Copy the complete serialization from the writer,
+rather than the JSON alone. For a ZIP, restore the complete archive if it was
+truncated or incompletely transferred.
+
+Native Sienna JSON has a companion HDF5 file instead. In the first CLI tutorial,
+check that both `inputs/test_system.json` and
+`inputs/test_system_time_series_storage.h5` retain their original names and share
+a directory. Read this native format with `sienna-parser`; it is not an Infrasys
+JSON serialization.
+
+## ZIP is invalid, or the JSON uses the wrong format
+
+`r2x read` reports an invalid ZIP, JSON parsing error, or invalid system structure.
+Check whether the file came from the system serialization or from a native
+exporter. A `.json` extension does not identify the schema.
+
+Use the portable archive saved by `r2x run ... --zip -o` for inspection:
+
+```bash
+r2x read outputs/my-case-system.zip --zip --exec inspect_transformed.py
+```
+
+Create `inspect_transformed.py` using the
+[tested inspection walkthrough](/R2X/how-to/inspect-transformed-system/#list-components-and-inspect-fields).
+For a native Sienna export, use the Sienna parser as shown in the
+[first CLI tutorial](/R2X/tutorials/getting-started/). Restore a damaged file from
+the original output. Renaming a file does not convert its format.
+
+## Schema or SQLite metadata is incompatible
+
+Deserialization may report missing classes or fields, validation errors, or a
+SQLite error. Record the complete traceback and compare the writer and reader
+environments before changing packages.
+
+Use the writer's compatible package versions to load the result, or follow a
+migration explicitly supported by the owning model package. There is no generic
+CLI command that repairs every schema. Do not hand-edit serialized class names,
+JSON metadata or SQLite tables to make loading succeed.
+
+The particular missing-table error below also reproduces with matching package
+versions, so it should not automatically be treated as version mismatch.
+
+## Summary fails with `supplemental_attribute_associations`
+
+The observed traceback ends with:
+
+```text
+sqlite3.OperationalError: no such table: supplemental_attribute_associations
+```
+
+This reproduced after serializing a small ReEDS-to-Sienna transformed fixture
+with r2x-core 0.9.0, r2x-reeds 0.9.2, r2x-sienna 0.5.0,
+r2x-reeds-to-sienna 0.2.1 and Infrasys 1.2.0, using Python 3.12.12 and CLI 0.1.15.
+The in-memory target had supplemental-attribute metadata, but the loaded archive's
+SQLite database lacked the associations table. `sys.info()` queries that table;
+CLI 0.1.15 also calls the summary during interactive startup.
+
+**Workaround:** use scripted component and time-series inspection without calling
+`sys.info()` or adding `--interactive`:
+
+```bash
+r2x read outputs/my-case-system.zip --zip --exec inspect_transformed.py
+```
+
+The [inspection script](/R2X/how-to/inspect-transformed-system/#list-components-and-inspect-fields)
+uses `get_components`, component fields and `list_time_series`. Those operations
+successfully returned two buses, thirteen components and the load profile on the
+same fixture. A missing summary table does **not** mean the component data is
+empty. This workaround does not repair supplemental-attribute metadata; preserve
+the original archive and report the error with the evidence below.
+
+## Execution fails after a successful dry run
+
+A dry run checks pipeline discovery and configuration without parsing the model.
+It cannot establish that the required input datasets exist or that their values
+can be translated. Inspect the resolved settings first:
+
+```bash
+r2x run reeds-pipeline.yaml reeds-to-sienna --print
+```
+
+Check the run path, solve year and weather year against the actual ReEDS run.
+Then read the log path printed by the failed execution. If another run is needed,
+verbose logging identifies the failing plugin:
+
+```bash
+r2x run reeds-pipeline.yaml reeds-to-sienna -v
+```
+
+For a missing ReEDS dataset, compare the installed parser's file mapping with the
+run's `inputs_case/` and `outputs/` files. A full translation needs those external
+data; the tutorial's placeholder path is not a downloadable example run.
+
+## Output archive already exists
+
+The CLI refuses to overwrite a saved archive. Preserve it and choose a new output
+filename for the next execution:
+
+```bash
+r2x run reeds-pipeline.yaml reeds-to-sienna \
+  --zip \
+  -o outputs/my-case-system-retry.zip
+```
+
+Check the native export paths in your YAML too: a fresh archive name does not
+change the exporter configuration. Use a separate output directory if you need
+to preserve all outputs from an earlier run.
+
+## Evidence to include in a bug report
+
+Include the exact failing command, complete traceback, printed log path, whether
+failure occurs during parsing, translation, loading or summary display, and the
+smallest shareable input or artifact that reproduces it. Record your CLI version:
+
+```bash
+r2x --version
+```
+
+Record `r2x python show` and the corresponding writer environment. To list Python
+package versions, save this as `report_versions.py`:
+
+```python
+from importlib.metadata import PackageNotFoundError, version
+
+packages = (
+    "r2x-core",
+    "r2x-reeds",
+    "r2x-sienna",
+    "r2x-reeds-to-sienna",
+    "infrasys",
+)
+for package in packages:
+    try:
+        print(package, version(package))
+    except PackageNotFoundError:
+        print(package, "not installed")
+```
+
+Run it with the Python executable reported by `r2x python show`, replacing this
+placeholder with the actual path:
+
+```bash
+/path/to/cli/environment/bin/python report_versions.py
+```
+
+For the summary error, also report whether the scripted component and time-series
+queries succeed on the same artifact. Remove credentials or private input data
+from anything you share.

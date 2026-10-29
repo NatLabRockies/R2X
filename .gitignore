@@ -70,9 +70,6 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
-docs/_build/
-
 # PyBuilder
 target/
 
@@ -195,5 +192,10 @@ notebooks/
 tags
 uv.lock
 
+# Astro documentation
+docs/dist/
+docs/.astro/
+
 ### Env files
 cenv
+node_modules/

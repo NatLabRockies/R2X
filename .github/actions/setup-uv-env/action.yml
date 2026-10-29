@@ -39,7 +39,7 @@ runs:
   steps:
     - name: Restore uv cache
       id: uv-cache-restore
-      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: ${{ github.workspace }}/.uv-cache
         key: ${{ runner.os }}-uv-${{ inputs.uv-version }}-py${{ inputs.python-version || 'from-file' }}-${{ hashFiles(inputs.lockfile-path) }}
@@ -49,13 +49,13 @@ runs:
 
     - name: Set up Python (explicit version)
       if: ${{ inputs.install-python == 'true' && inputs.python-version != '' }}
-      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: ${{ inputs.python-version }}
 
     - name: Set up Python (from file)
       if: ${{ inputs.install-python == 'true' && inputs.python-version == '' }}
-      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version-file: ${{ inputs.python-version-file }}
 
@@ -77,7 +77,7 @@ runs:
 
     - name: Save uv cache
       if: ${{ inputs.save-uv-cache == 'true' && steps.uv-cache-restore.outputs.cache-hit != 'true' }}
-      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: ${{ github.workspace }}/.uv-cache
         key: ${{ runner.os }}-uv-${{ inputs.uv-version }}-py${{ inputs.python-version || 'from-file' }}-${{ hashFiles(inputs.lockfile-path) }}

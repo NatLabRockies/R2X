@@ -1,0 +1,218 @@
+---
+title: Python API
+description: Translation functions, typed configuration fields, return values, examples, and implementation source.
+---
+
+These public functions operate on parsed `r2x_core.System` objects.
+They translate components and attach time series; the target exporter writes the native model files.
+For command-line execution, follow the [CLI tutorial](/R2X/tutorials/reeds-to-sienna-cli/).
+
+## Translation functions
+
+### `reeds_to_plexos`
+
+[View function source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-plexos/src/r2x_reeds_to_plexos/translation.py#L22-L57)
+
+```python
+reeds_to_plexos(system: System, config: ReedsToPlexosConfig) -> System
+```
+
+Translate ReEDS components to PLEXOS and attach reserve, generator, region-load, and purchaser time series.
+
+| Parameter | Contract |
+| --- | --- |
+| `system` | Parsed ReEDS system containing the components and time series expected by the [workflow](/R2X/how-to/reeds-to-plexos/). |
+| `config` | `ReedsToPlexosConfig`. See the configuration fields below. |
+
+Returns a new PLEXOS system with the translated components and attached time series.
+Input time-series storage is reused by the target system. The default hydro budget resolution is daily.
+Missing required input data or invalid mapping/configuration values can raise errors during rule application or post-processing.
+
+```python
+from r2x_reeds_to_plexos.plugin_config import ReedsToPlexosConfig
+from r2x_reeds_to_plexos.translation import reeds_to_plexos
+
+# source_system is the parsed system from the workflow guide.
+target_system = reeds_to_plexos(source_system, ReedsToPlexosConfig())
+```
+
+[source: r2x_reeds_to_plexos.translation](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-plexos/src/r2x_reeds_to_plexos/translation.py#L22-L57) · [property mappings](/R2X/reference/reeds-to-plexos-properties/)
+
+#### `ReedsToPlexosConfig`
+
+[View configuration source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-plexos/src/r2x_reeds_to_plexos/plugin_config.py#L12-L27)
+
+Keyword-only typed configuration for `reeds_to_plexos`.
+The table lists the fields declared by this translation package, including their actual defaults.
+Inherited configuration behavior is documented in [r2x-core](https://natlabrockies.github.io/r2x-core/).
+
+<div className="configuration-fields">
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `models` | `tuple[str, ...]` | `['r2x_reeds.models', 'r2x_plexos.models', 'r2x_reeds_to_plexos.getters_utils']` |
+| `commit_technologies` | `list[str] \| None` | `[]` |
+| `hydro_budget_ts` | `Literal['hourly', 'daily', 'weekly', 'monthly']` | `'daily'` |
+
+</div>
+
+- `models`: Modules used to resolve ReEDS sources and PLEXOS targets.
+- `commit_technologies`: Technologies to commit.
+- `hydro_budget_ts`: Output resolution for hydro budget time series.
+
+[source: r2x_reeds_to_plexos.plugin_config](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-plexos/src/r2x_reeds_to_plexos/plugin_config.py#L12-L27)
+
+### `reeds_to_sienna`
+
+[View function source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-sienna/src/r2x_reeds_to_sienna/translation.py#L24-L63)
+
+```python
+reeds_to_sienna(system: System, config: ReEDSToSiennaConfig) -> System
+```
+
+Translate ReEDS components to Sienna, normalize generator active-power profiles, attach pumped-hydro inflow, and add generator emissions.
+
+| Parameter | Contract |
+| --- | --- |
+| `system` | Parsed ReEDS system containing the components and time series expected by the [workflow](/R2X/how-to/reeds-to-sienna/). |
+| `config` | `ReEDSToSiennaConfig`. See the configuration fields below. |
+
+Returns a new Sienna system with the translated components and attached time series.
+The target system uses a 100 MVA system base. Input time-series storage is reused by the target system.
+Missing required input data or invalid mapping/configuration values can raise errors during rule application or post-processing.
+
+```python
+from r2x_reeds_to_sienna.plugin_config import ReEDSToSiennaConfig
+from r2x_reeds_to_sienna.translation import reeds_to_sienna
+
+# source_system is the parsed system from the workflow guide.
+target_system = reeds_to_sienna(source_system, ReEDSToSiennaConfig())
+```
+
+[source: r2x_reeds_to_sienna.translation](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-sienna/src/r2x_reeds_to_sienna/translation.py#L24-L63) · [property mappings](/R2X/reference/reeds-to-sienna-properties/)
+
+#### `ReEDSToSiennaConfig`
+
+[View configuration source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-sienna/src/r2x_reeds_to_sienna/plugin_config.py#L12-L23)
+
+Keyword-only typed configuration for `reeds_to_sienna`.
+The table lists the fields declared by this translation package, including their actual defaults.
+Inherited configuration behavior is documented in [r2x-core](https://natlabrockies.github.io/r2x-core/).
+
+<div className="configuration-fields">
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `models` | `tuple[str, ...]` | `['r2x_reeds.models', 'r2x_sienna.models']` |
+| `technology_mapping` | `dict[str, dict[str, str]] \| None` | `{}` |
+
+</div>
+
+- `models`: Modules used to resolve ReEDS sources and Sienna targets.
+- `technology_mapping`: Technology category to prime mover/fuel type mappings
+
+[source: r2x_reeds_to_sienna.plugin_config](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-sienna/src/r2x_reeds_to_sienna/plugin_config.py#L12-L23)
+
+### `plexos_to_sienna`
+
+[View function source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-plexos-to-sienna/src/r2x_plexos_to_sienna/translation.py#L17-L65)
+
+```python
+plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System
+```
+
+Translate PLEXOS components to Sienna and synchronize node, purchaser, generator, and battery time series.
+
+| Parameter | Contract |
+| --- | --- |
+| `system` | Parsed PLEXOS system containing the components and time series expected by the [workflow](/R2X/how-to/plexos-to-sienna/). |
+| `config` | `PlexosToSiennaConfig`. See the configuration fields below. |
+
+Returns a new Sienna system with the translated components and attached time series.
+The source time-series storage is converted to permanent Arrow storage before translation.
+Missing required input data or invalid mapping/configuration values can raise errors during rule application or post-processing.
+
+```python
+from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
+from r2x_plexos_to_sienna.translation import plexos_to_sienna
+
+# source_system is the parsed system from the workflow guide.
+target_system = plexos_to_sienna(source_system, PlexosToSiennaConfig())
+```
+
+[source: r2x_plexos_to_sienna.translation](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-plexos-to-sienna/src/r2x_plexos_to_sienna/translation.py#L17-L65) · [property mappings](/R2X/reference/plexos-to-sienna-properties/)
+
+#### `PlexosToSiennaConfig`
+
+[View configuration source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-plexos-to-sienna/src/r2x_plexos_to_sienna/plugin_config.py#L12-L23)
+
+Keyword-only typed configuration for `plexos_to_sienna`.
+The table lists the fields declared by this translation package, including their actual defaults.
+Inherited configuration behavior is documented in [r2x-core](https://natlabrockies.github.io/r2x-core/).
+
+<div className="configuration-fields">
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `models` | `tuple[str, ...]` | `['r2x_plexos.models', 'r2x_sienna.models']` |
+| `technology_mapping` | `dict[str, dict[str, str]] \| None` | `{}` |
+
+</div>
+
+- `models`: Modules used to resolve PLEXOS sources and Sienna targets.
+- `technology_mapping`: Technology category to prime mover/fuel type mappings
+
+[source: r2x_plexos_to_sienna.plugin_config](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-plexos-to-sienna/src/r2x_plexos_to_sienna/plugin_config.py#L12-L23)
+
+### `sienna_to_plexos`
+
+[View function source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-sienna-to-plexos/src/r2x_sienna_to_plexos/translation.py#L37-L86)
+
+```python
+sienna_to_plexos(system: System, config: SiennaToPlexosConfig) -> System
+```
+
+Translate Sienna components to PLEXOS, resolve conflicting source components, consolidate zones, attach time series, and establish the target memberships.
+
+| Parameter | Contract |
+| --- | --- |
+| `system` | Parsed Sienna system containing the components and time series expected by the [workflow](/R2X/how-to/sienna-to-plexos/). |
+| `config` | `SiennaToPlexosConfig`. See the configuration fields below. |
+
+Returns a new PLEXOS system with the translated components and attached time series.
+The translation also applies the package's exporter patches and resolves source conflicts. Use a separate loaded system if you need an untouched source.
+Missing required input data or invalid mapping/configuration values can raise errors during rule application or post-processing.
+
+```python
+from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
+from r2x_sienna_to_plexos.translation import sienna_to_plexos
+
+# source_system is the parsed system from the workflow guide.
+target_system = sienna_to_plexos(source_system, SiennaToPlexosConfig())
+```
+
+[source: r2x_sienna_to_plexos.translation](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-sienna-to-plexos/src/r2x_sienna_to_plexos/translation.py#L37-L86) · [property mappings](/R2X/reference/sienna-to-plexos-properties/)
+
+#### `SiennaToPlexosConfig`
+
+[View configuration source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-sienna-to-plexos/src/r2x_sienna_to_plexos/plugin_config.py#L12-L27)
+
+Keyword-only typed configuration for `sienna_to_plexos`.
+The table lists the fields declared by this translation package, including their actual defaults.
+Inherited configuration behavior is documented in [r2x-core](https://natlabrockies.github.io/r2x-core/).
+
+<div className="configuration-fields">
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `models` | `tuple[str, ...]` | `['r2x_sienna.models', 'r2x_plexos.models']` |
+| `prime_mover_mapping` | `dict[str, list[str]] \| None` | `{}` |
+| `hydro_budget_ts` | `Literal['hourly', 'daily', 'weekly', 'monthly']` | `'weekly'` |
+
+</div>
+
+- `models`: Modules used to resolve Sienna sources and PLEXOS targets.
+- `prime_mover_mapping`: Prime mover/fuel to technology category mappings
+- `hydro_budget_ts`: Output resolution for hydro budget time series.
+
+[source: r2x_sienna_to_plexos.plugin_config](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-sienna-to-plexos/src/r2x_sienna_to_plexos/plugin_config.py#L12-L27)

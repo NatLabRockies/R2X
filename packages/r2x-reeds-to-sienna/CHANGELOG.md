@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.2](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-sienna-v0.2.1...r2x-reeds-to-sienna-v0.2.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* default ReEDS line conductance in rules ([#337](https://github.com/NatLabRockies/R2X/issues/337)) ([1988544](https://github.com/NatLabRockies/R2X/commit/19885442e37cdd4951dd64a693ea590b0f8c83e3))
+* Fix Sienna reserve requirement timeseries scaling ([#313](https://github.com/NatLabRockies/R2X/issues/313)) ([c37d186](https://github.com/NatLabRockies/R2X/commit/c37d1865bfb8a94d11fc84e99990d8033f25d40c))
+* Preserve ReEDS directional limits in Sienna AreaInterchange ([#314](https://github.com/NatLabRockies/R2X/issues/314)) ([8135d3f](https://github.com/NatLabRockies/R2X/commit/8135d3f043158bb2870925b29599456bedd6b5f1))
+* resolve prek issues and min errors on reeds translation ([#319](https://github.com/NatLabRockies/R2X/issues/319)) ([bad738d](https://github.com/NatLabRockies/R2X/commit/bad738dbffe21fa329f2131d6ba103d4fff27d60))
+* update property fields and getters to match latest db components ([#329](https://github.com/NatLabRockies/R2X/issues/329)) ([f7cca87](https://github.com/NatLabRockies/R2X/commit/f7cca8710a71c4e18da93c055764f67e2f59fe6a))
+
+
+### Build
+
+* **deps-dev:** update uv-build requirement from &lt;0.9.0,&gt;=0.8.22 to &gt;=0.8.22,&lt;0.13.0 ([#317](https://github.com/NatLabRockies/R2X/issues/317)) ([1ef0210](https://github.com/NatLabRockies/R2X/commit/1ef021040d3eec65eb9ea8f42603395d767775c8))
+* **deps:** require r2x-reeds &gt;=0.9.3,&lt;1.0.0 ([#341](https://github.com/NatLabRockies/R2X/issues/341)) ([6169078](https://github.com/NatLabRockies/R2X/commit/616907804e75778afc03740718a40c72c211f10a))
+
 ## [0.2.1](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-sienna-v0.2.0...r2x-reeds-to-sienna-v0.2.1) (2026-08-13)
 
 

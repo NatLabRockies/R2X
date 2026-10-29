@@ -492,7 +492,8 @@
   {
     "name": "region_monitored_line",
     "defaults": {
-      "category": "monitored-line"
+      "category": "monitored-line",
+      "g": {"from_to": 0.0, "to_from": 0.0}
     },
     "field_map": {
       "name": "name",
@@ -514,7 +515,6 @@
       "r": "get_line_resistance",
       "x": "get_line_reactance",
       "b": "get_line_susceptance",
-      "g": "get_line_conductance",
       "arc": "get_arc_for_line",
       "ext": "get_component_ext"
     },
@@ -555,7 +555,8 @@
   {
     "name": "region_line",
     "defaults": {
-      "category": "line"
+      "category": "line",
+      "g": {"from_to": 0.0, "to_from": 0.0}
     },
     "field_map": {
       "name": "name",
@@ -579,7 +580,6 @@
       "r": "get_line_resistance",
       "x": "get_line_reactance",
       "b": "get_line_susceptance",
-      "g": "get_line_conductance",
       "arc": "get_arc_for_line",
       "ext": "get_component_ext"
     },

@@ -31,13 +31,13 @@ jobs:
     timeout-minutes: 10
     name: Prek hooks (lint/format/spell/type, all files)
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Setup uv environment
-        uses: ./.github/actions/setup-uv-env
+        uses: NatLabRockies/R2X/.github/actions/setup-uv-env@2af872f994b1637b9dd4604d5be2d2edf4efa1c8 # r2x-v2.2.0
         with:
           uv-version: ${{ env.UV_VERSION }}
           python-version-file: "pyproject.toml"
@@ -60,12 +60,12 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup uv environment
-        uses: ./.github/actions/setup-uv-env
+        uses: NatLabRockies/R2X/.github/actions/setup-uv-env@2af872f994b1637b9dd4604d5be2d2edf4efa1c8 # r2x-v2.2.0
         with:
           uv-version: ${{ env.UV_VERSION }}
           python-version: ${{ matrix.python }}
@@ -76,7 +76,7 @@ jobs:
 
       - name: Upload coverage reports to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
@@ -96,12 +96,12 @@ jobs:
           - r2x-sienna-to-plexos
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup uv environment
-        uses: ./.github/actions/setup-uv-env
+        uses: NatLabRockies/R2X/.github/actions/setup-uv-env@2af872f994b1637b9dd4604d5be2d2edf4efa1c8 # r2x-v2.2.0
         with:
           uv-version: ${{ env.UV_VERSION }}
           python-version-file: "pyproject.toml"

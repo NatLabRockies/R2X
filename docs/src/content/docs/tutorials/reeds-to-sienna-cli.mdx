@@ -1,0 +1,172 @@
+---
+title: Translate ReEDS with the CLI
+description: Configure, preview, execute, and inspect a ReEDS-to-Sienna pipeline.
+---
+
+Turn a completed ReEDS run into a Sienna model using three installed plugins.
+Start with the [first CLI pipeline](/R2X/tutorials/getting-started/) if you have not used pipeline files before.
+
+## Required inputs
+
+You need a completed ReEDS run directory containing its `inputs_case/` and `outputs/` data.
+Use solve and weather years present in that run.
+The parser loads the datasets named by its installed file mapping.
+A ReEDS model and run data are external to this repository; this page's list, resolved configuration, and dry-run commands were verified, but a complete ReEDS translation was not executed without those inputs.
+
+## Install and inspect the plugins
+
+Run these installation commands from your workspace using the same `r2x`
+executable that will execute the pipeline. First check its managed environment:
+
+```bash
+r2x python show
+```
+
+Install the ReEDS source parser. It reads the completed run directory and supplies
+`reeds-parser`; the translation step cannot read the source files on its own:
+
+```bash
+r2x install r2x-reeds
+```
+
+See the [r2x-reeds reference documentation](https://github.com/NatLabRockies/r2x-reeds/tree/main/docs)
+for parser configuration, input file mappings and supported ReEDS data.
+
+Install the translation package, which maps parsed ReEDS components to Sienna:
+
+```bash
+r2x install r2x-reeds-to-sienna
+```
+
+Install the target package explicitly as well. It supplies the Sienna model
+classes and `sienna-exporter` used to write the native result:
+
+```bash
+r2x install r2x-sienna
+```
+
+Check each package's registered entry points before writing the configuration.
+First, confirm `reeds-parser` is available:
+
+```bash
+r2x list r2x-reeds
+```
+
+Then confirm `reeds-to-sienna`:
+
+```bash
+r2x list r2x-reeds-to-sienna
+```
+
+Finally, confirm `sienna-exporter`:
+
+```bash
+r2x list r2x-sienna
+```
+
+Together, these lists should contain the three steps used below. Inspect the parser options to
+understand which settings locate and select your ReEDS data:
+
+```bash
+r2x run reeds-parser --help
+```
+
+Then inspect the translation options. This separates source-data settings from
+settings that control the target model:
+
+```bash
+r2x run reeds-to-sienna --help
+```
+
+The pipeline needs `reeds-parser`, `reeds-to-sienna`, and `sienna-exporter`.
+The parser requires `solve_year` and `weather_year`.
+The translation uses [ReEDSToSiennaConfig](/R2X/reference/python-api/#reedstosiennaconfig).
+
+## Configure the translation
+
+Save this as `reeds-pipeline.yaml`.
+Replace the absolute run path, case name, and years with your completed model run:
+
+```yaml
+variables:
+  run_dir: /path/to/ReEDS/runs/my-case
+  solve_year: 2035
+  weather_year: 2012
+pipelines:
+  reeds-to-sienna:
+    - reeds-parser
+    - reeds-to-sienna
+    - sienna-exporter
+config:
+  reeds-parser:
+    path: ${run_dir}
+    case_name: my-case
+    solve_year: ${solve_year}
+    weather_year: ${weather_year}
+  reeds-to-sienna: {}
+  sienna-exporter:
+    output_path: outputs/my-case.json
+output_folder: outputs
+```
+
+`path` supplies the parser's data store.
+The empty translation configuration uses the package defaults.
+The parser uses the solve year as its model year; the exporter writes to the configured output path.
+Keep the JSON export and its companion time-series file together.
+
+## Check before running
+
+From the directory containing the YAML file:
+
+```bash
+r2x run reeds-pipeline.yaml reeds-to-sienna --print
+```
+
+Check that the resolved path and both years match your run.
+Then preview the execution order:
+
+```bash
+r2x run reeds-pipeline.yaml reeds-to-sienna --dry-run
+```
+
+Expect `reeds-parser → reeds-to-sienna → sienna-exporter`.
+A successful dry run does not validate ReEDS datasets or target model values.
+
+## Execute and inspect
+
+Create the directory that will hold the exported model and serialized system:
+
+```bash
+mkdir -p outputs
+```
+
+Now execute the checked pipeline. The `--zip` option saves the final transformed
+system for inspection; `-o` names that archive. Choose a fresh filename if it
+already exists:
+
+```bash
+r2x run reeds-pipeline.yaml reeds-to-sienna \
+  --zip \
+  -o outputs/my-case-system.zip
+```
+
+Success creates the Sienna JSON and companion time-series file under `outputs/`, plus `my-case-system.zip` for inspection.
+Check the generated files before loading them:
+
+```bash
+ls -lh outputs
+```
+
+Follow [inspect a transformed system](/R2X/how-to/inspect-transformed-system/)
+to read the archive with a tested script, list buses, inspect load fields and
+attached time series, and load the same result directly with Infrasys.
+
+## Troubleshooting and next steps
+
+For missing datasets, unregistered plugins, execution failures after a dry run,
+or result-loading errors, follow [troubleshooting](/R2X/troubleshooting/).
+For unexpected target mappings, compare the
+[property reference](/R2X/reference/reeds-to-sienna-properties/) with the source
+components and pinned translation rules.
+
+For Python integration and detailed mapping behavior, see [ReEDS to Sienna](/R2X/how-to/reeds-to-sienna/).

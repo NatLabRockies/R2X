@@ -1,0 +1,57 @@
+name: Publish documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/docs-build.yaml"
+      - ".github/workflows/docs-publish.yaml"
+      - "docs/**"
+      - "src/**"
+      - "packages/*/src/**"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+concurrency:
+  group: docs-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  NODE_VERSION: "22.23.1"
+
+jobs:
+  publish:
+    name: Build and publish documentation
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write  # Required: push generated docs to gh-pages
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install documentation dependencies
+        run: npm ci
+        working-directory: docs
+
+      - name: Build Astro documentation
+        run: npm run build
+        working-directory: docs
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
+        with:
+          publish_branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/dist/
+          force_orphan: true

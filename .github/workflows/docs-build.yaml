@@ -1,77 +1,45 @@
 name: Documentation
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/**"
-      - "src/**"
-      - "packages/*/src/**"
-      - "pyproject.toml"
   pull_request:
     paths:
+      - ".github/workflows/docs-build.yaml"
+      - ".github/workflows/docs-publish.yaml"
       - "docs/**"
       - "src/**"
       - "packages/*/src/**"
       - "pyproject.toml"
-  workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
+permissions: {}
 
 env:
-  UV_VERSION: "0.11.6"
+  NODE_VERSION: "22.23.1"
 
 jobs:
   build:
     name: Build documentation
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+    concurrency:
+      group: docs-build-${{ github.ref }}
+      cancel-in-progress: true
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Setup uv environment
-        uses: ./.github/actions/setup-uv-env
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          uv-version: ${{ env.UV_VERSION }}
-          python-version-file: "pyproject.toml"
-          sync-args: "--group docs"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
 
-      - name: Build Sphinx documentation
-        run: uv run sphinx-build docs/source/ docs/build/
+      - name: Install documentation dependencies
+        run: npm ci
+        working-directory: docs
 
-      - name: Upload built docs artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: docs-site
-          path: docs/build/
-
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write  # Required: push generated docs to gh-pages
-    steps:
-      - name: Download built docs artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: docs-site
-          path: docs/build/
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
-        with:
-          publish_branch: gh-pages
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs/build/
-          force_orphan: true
+      - name: Build Astro documentation
+        run: npm run build
+        working-directory: docs

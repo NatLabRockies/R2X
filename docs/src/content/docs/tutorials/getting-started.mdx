@@ -1,0 +1,206 @@
+---
+title: Run your first CLI pipeline
+description: Parse a public two-area Sienna system, export it, and inspect the saved artifact with r2x-cli.
+---
+
+Build a two-step pipeline around a small public Sienna model.
+You will read the model, write a Sienna JSON export, and inspect a portable system archive.
+No ReEDS run or licensed PLEXOS installation is needed for this tutorial.
+
+## Before you start
+
+Install [r2x-cli](https://github.com/NatLabRockies/r2x-cli#install) and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+The commands below use a macOS or Linux shell and `curl`.
+First, confirm that the executable is available and note its version:
+
+```bash
+r2x --version
+```
+
+Install the managed Python runtime needed by that CLI binary:
+
+```bash
+r2x python install
+```
+
+Check which Python version and environment the CLI will use before installing plugins:
+
+```bash
+r2x python show
+```
+
+Use the Python version supported by your CLI binary.
+This tutorial was executed with r2x-cli 0.1.15, its Python 3.12 runtime, r2x-core 0.9.0, and r2x-sienna 0.5.0.
+`r2x python install` installs the configured managed Python version when needed.
+Installing a plugin changes the CLI's managed environment and plugin manifest.
+
+## Create a workspace and install the plugin
+
+Create a directory to keep the inputs, configuration and results together.
+Choose another name if `r2x-quickstart/` already exists:
+
+```bash
+mkdir r2x-quickstart
+```
+
+Move into it. Run the rest of this tutorial from this directory so relative paths resolve consistently:
+
+```bash
+cd r2x-quickstart
+```
+
+Create the starter configuration:
+
+```bash
+r2x init
+```
+
+Check that `pipeline.yaml` exists before continuing:
+
+```bash
+ls pipeline.yaml
+```
+Install the parser and exporter package:
+
+```bash
+r2x install r2x-sienna
+```
+
+Confirm both entry points were discovered:
+
+```bash
+r2x list r2x-sienna
+```
+
+The list includes `sienna-parser` and `sienna-exporter`.
+Inspect the parser's actual configuration options:
+
+```bash
+r2x run sienna-parser --help
+```
+
+## Download a small model
+
+Create separate directories for downloaded inputs and generated results:
+
+```bash
+mkdir -p inputs outputs
+```
+
+Download the model description from a pinned upstream revision.
+The line breaks below belong to one `curl` command:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/NatLabRockies/r2x-sienna/4a5b365e8637ebb56e5cf389b32eec801265072f/tests/data/2area-5bus-system/test_system.json \
+  -o inputs/test_system.json
+```
+
+Download its companion time-series data from the same revision:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/NatLabRockies/r2x-sienna/4a5b365e8637ebb56e5cf389b32eec801265072f/tests/data/2area-5bus-system/test_system_time_series_storage.h5 \
+  -o inputs/test_system_time_series_storage.h5
+```
+
+Confirm that both files are present and nonempty:
+
+```bash
+ls -lh inputs
+```
+
+Both files must stay in the same directory.
+The JSON identifies its companion HDF5 file by name.
+The fixture is a PowerSystems 5.0 system with two areas and ten buses (five per area).
+
+## Define the pipeline
+
+Replace the template in `pipeline.yaml` with:
+
+```yaml
+variables:
+  input_dir: inputs
+pipelines:
+  inspect-sienna:
+    - sienna-parser
+    - sienna-exporter
+config:
+  sienna-parser:
+    json_path: ${input_dir}/test_system.json
+    model_year: 2030
+    system_name: two-area-demo
+  sienna-exporter:
+    output_path: outputs/roundtrip.json
+output_folder: outputs
+```
+
+`pipelines` gives the execution order.
+`config` provides the settings for each installed plugin.
+The CLI passes the parsed system to the exporter.
+
+## Preview and execute
+
+From the workspace directory, list the available pipeline:
+
+```bash
+r2x run pipeline.yaml --list
+```
+
+Expect `inspect-sienna` with the parser and exporter as its two steps.
+Preview the flow without reading the model or writing an export:
+
+```bash
+r2x run pipeline.yaml inspect-sienna --dry-run
+```
+
+The CLI prints `sienna-parser → sienna-exporter` and confirms that no execution occurred.
+A dry run checks pipeline discovery and configuration; it does not prove that the input model can be parsed.
+Execute it and save a portable archive:
+
+```bash
+r2x run pipeline.yaml inspect-sienna --zip -o outputs/system.zip
+```
+
+A successful run reports both steps and creates:
+
+| File | Purpose |
+| --- | --- |
+| `outputs/roundtrip.json` | Exported native Sienna model. |
+| `outputs/roundtrip_time_series_storage.h5` | Its companion time-series data. |
+| `outputs/system.zip` | Portable parsed system and time series for CLI inspection. |
+
+The first run may take longer while Python imports and model data are prepared.
+
+## Inspect the result
+
+Save this file as `inspect_system.py` in the workspace:
+
+```python
+from r2x_sienna.models import ACBus
+
+sys.info()
+print("Buses:", len(list(sys.get_components(ACBus))))
+```
+
+Run it against the portable archive:
+
+```bash
+r2x read outputs/system.zip --zip --exec inspect_system.py
+```
+
+`r2x read` exposes the loaded system as `sys` to the inspection script.
+Expect a system summary and `Buses: 10`.
+For interactive exploration, omit `--exec` to open the CLI's Python session.
+
+## If a step fails
+
+Check that both downloaded inputs remain in `inputs/` and run commands from
+`r2x-quickstart/`. For plugin discovery, missing storage, invalid artifacts or
+existing output files, follow [troubleshooting](/R2X/troubleshooting/).
+Compare `r2x python show` with the ABI required by your CLI binary if runtime
+startup fails.
+
+For deeper component, field and time-series inspection, follow [inspect a transformed system](/R2X/how-to/inspect-transformed-system/).
+
+Next, [translate a ReEDS run to Sienna](/R2X/tutorials/reeds-to-sienna-cli/) or inspect the [Python API](/R2X/reference/python-api/).
