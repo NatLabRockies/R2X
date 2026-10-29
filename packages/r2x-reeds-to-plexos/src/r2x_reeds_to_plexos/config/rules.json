@@ -269,7 +269,8 @@
     "op": "in",
     "values": [
         "reeds-generator",
-        "imports"
+        "imports",
+        "exports"
     ]
   },
   "getters": {
