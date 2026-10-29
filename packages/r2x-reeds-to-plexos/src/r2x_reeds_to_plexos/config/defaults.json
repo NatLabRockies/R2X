@@ -149,6 +149,32 @@
       "min_up_time": 7.0,
       "start_cost_per_MW": 5.3
     },
+    "can-exports": {
+      "capacity_MW": null,
+      "forced_outage_rate": 0.0,
+      "maintenance_rate": 0.0,
+      "max_capacity_MW": null,
+      "max_ramp_up_percentage": 1.0,
+      "mean_time_to_repair": 0.0,
+      "min_capacity_MW": null,
+      "min_down_time": 0.0,
+      "min_stable_level_percentage": 0.0,
+      "min_up_time": 0.0,
+      "start_cost_per_MW": 0.0
+    },
+    "can-imports": {
+      "capacity_MW": null,
+      "forced_outage_rate": 0.0,
+      "maintenance_rate": 0.0,
+      "max_capacity_MW": null,
+      "max_ramp_up_percentage": 1.0,
+      "mean_time_to_repair": 0.0,
+      "min_capacity_MW": null,
+      "min_down_time": 0.0,
+      "min_stable_level_percentage": 0.0,
+      "min_up_time": 0.0,
+      "start_cost_per_MW": 0.0
+    },
     "coal-ccs": {
       "capacity_MW": 302.0,
       "forced_outage_rate": 4.29,
