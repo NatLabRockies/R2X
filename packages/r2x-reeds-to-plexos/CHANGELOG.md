@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.0](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-plexos-v0.2.1...r2x-reeds-to-plexos-v0.3.0) (2026-10-30)
+
+
+### Features
+
+* add can imports/exports generators and demand when enabled in reeds parser ([#351](https://github.com/NatLabRockies/R2X/issues/351)) ([0d131cd](https://github.com/NatLabRockies/R2X/commit/0d131cd3f3ba0afa458118512bbd0877dfd9ec35))
+* enable can-imports translation if parser allows it ([#323](https://github.com/NatLabRockies/R2X/issues/323)) ([a5801e0](https://github.com/NatLabRockies/R2X/commit/a5801e0bba1d9bf32581227a49b644771ef6f4ab))
+
+
+### Bug Fixes
+
+* **reeds:** pin PCM startup contract and verify PLEXOS export ([#340](https://github.com/NatLabRockies/R2X/issues/340)) ([6a71770](https://github.com/NatLabRockies/R2X/commit/6a717708edbea0ee4bb29bd54a684df2ea37b822))
+* resolve prek issues and min errors on reeds translation ([#319](https://github.com/NatLabRockies/R2X/issues/319)) ([bad738d](https://github.com/NatLabRockies/R2X/commit/bad738dbffe21fa329f2131d6ba103d4fff27d60))
+* update property fields and getters to match latest db components ([#329](https://github.com/NatLabRockies/R2X/issues/329)) ([f7cca87](https://github.com/NatLabRockies/R2X/commit/f7cca8710a71c4e18da93c055764f67e2f59fe6a))
+* update ramp rates calculation to min divider MW ([#350](https://github.com/NatLabRockies/R2X/issues/350)) ([b39c243](https://github.com/NatLabRockies/R2X/commit/b39c24322fce1c168ec46f66dd2f8e7c0b5f2515))
+
+
+### Build
+
+* **deps-dev:** update uv-build requirement from &lt;0.9.0,&gt;=0.8.22 to &gt;=0.8.22,&lt;0.13.0 ([#317](https://github.com/NatLabRockies/R2X/issues/317)) ([1ef0210](https://github.com/NatLabRockies/R2X/commit/1ef021040d3eec65eb9ea8f42603395d767775c8))
+* **deps:** require r2x-reeds &gt;=0.9.3,&lt;1.0.0 ([#341](https://github.com/NatLabRockies/R2X/issues/341)) ([6169078](https://github.com/NatLabRockies/R2X/commit/616907804e75778afc03740718a40c72c211f10a))
+
 ## [0.2.1](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-plexos-v0.2.0...r2x-reeds-to-plexos-v0.2.1) (2026-08-13)
 
 
