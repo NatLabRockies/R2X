@@ -3,6 +3,10 @@ title: Python API
 description: Translation functions, typed configuration fields, return values, examples, and implementation source.
 ---
 
+Run each configuration example in a fresh Python session. These examples run
+without model data. For complete parsing,
+translation, and export, use the linked workflow guides.
+
 These public functions operate on parsed `r2x_core.System` objects.
 They translate components and attach time series; the target exporter writes the native model files.
 For command-line execution, follow the [CLI tutorial](/R2X/tutorials/reeds-to-sienna-cli/).
@@ -13,7 +17,7 @@ For command-line execution, follow the [CLI tutorial](/R2X/tutorials/reeds-to-si
 
 [View function source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-plexos/src/r2x_reeds_to_plexos/translation.py#L22-L57)
 
-```python
+```text
 reeds_to_plexos(system: System, config: ReedsToPlexosConfig) -> System
 ```
 
@@ -28,12 +32,10 @@ Returns a new PLEXOS system with the translated components and attached time ser
 Input time-series storage is reused by the target system. The default hydro budget resolution is daily.
 Missing required input data or invalid mapping/configuration values can raise errors during rule application or post-processing.
 
-```python
-from r2x_reeds_to_plexos.plugin_config import ReedsToPlexosConfig
-from r2x_reeds_to_plexos.translation import reeds_to_plexos
-
-# source_system is the parsed system from the workflow guide.
-target_system = reeds_to_plexos(source_system, ReedsToPlexosConfig())
+```pycon
+>>> from r2x_reeds_to_plexos.plugin_config import ReedsToPlexosConfig
+>>> config = ReedsToPlexosConfig()
+>>> assert config.hydro_budget_ts == 'daily'
 ```
 
 [source: r2x_reeds_to_plexos.translation](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-plexos/src/r2x_reeds_to_plexos/translation.py#L22-L57) · [property mappings](/R2X/reference/reeds-to-plexos-properties/)
@@ -66,7 +68,7 @@ Inherited configuration behavior is documented in [r2x-core](https://natlabrocki
 
 [View function source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-sienna/src/r2x_reeds_to_sienna/translation.py#L24-L63)
 
-```python
+```text
 reeds_to_sienna(system: System, config: ReEDSToSiennaConfig) -> System
 ```
 
@@ -81,12 +83,10 @@ Returns a new Sienna system with the translated components and attached time ser
 The target system uses a 100 MVA system base. Input time-series storage is reused by the target system.
 Missing required input data or invalid mapping/configuration values can raise errors during rule application or post-processing.
 
-```python
-from r2x_reeds_to_sienna.plugin_config import ReEDSToSiennaConfig
-from r2x_reeds_to_sienna.translation import reeds_to_sienna
-
-# source_system is the parsed system from the workflow guide.
-target_system = reeds_to_sienna(source_system, ReEDSToSiennaConfig())
+```pycon
+>>> from r2x_reeds_to_sienna.plugin_config import ReEDSToSiennaConfig
+>>> config = ReEDSToSiennaConfig()
+>>> assert config.technology_mapping == {}
 ```
 
 [source: r2x_reeds_to_sienna.translation](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-sienna/src/r2x_reeds_to_sienna/translation.py#L24-L63) · [property mappings](/R2X/reference/reeds-to-sienna-properties/)
@@ -117,7 +117,7 @@ Inherited configuration behavior is documented in [r2x-core](https://natlabrocki
 
 [View function source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-plexos-to-sienna/src/r2x_plexos_to_sienna/translation.py#L17-L65)
 
-```python
+```text
 plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System
 ```
 
@@ -132,12 +132,10 @@ Returns a new Sienna system with the translated components and attached time ser
 The source time-series storage is converted to permanent Arrow storage before translation.
 Missing required input data or invalid mapping/configuration values can raise errors during rule application or post-processing.
 
-```python
-from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
-from r2x_plexos_to_sienna.translation import plexos_to_sienna
-
-# source_system is the parsed system from the workflow guide.
-target_system = plexos_to_sienna(source_system, PlexosToSiennaConfig())
+```pycon
+>>> from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
+>>> config = PlexosToSiennaConfig()
+>>> assert config.technology_mapping == {}
 ```
 
 [source: r2x_plexos_to_sienna.translation](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-plexos-to-sienna/src/r2x_plexos_to_sienna/translation.py#L17-L65) · [property mappings](/R2X/reference/plexos-to-sienna-properties/)
@@ -168,7 +166,7 @@ Inherited configuration behavior is documented in [r2x-core](https://natlabrocki
 
 [View function source →](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-sienna-to-plexos/src/r2x_sienna_to_plexos/translation.py#L37-L86)
 
-```python
+```text
 sienna_to_plexos(system: System, config: SiennaToPlexosConfig) -> System
 ```
 
@@ -183,12 +181,10 @@ Returns a new PLEXOS system with the translated components and attached time ser
 The translation also applies the package's exporter patches and resolves source conflicts. Use a separate loaded system if you need an untouched source.
 Missing required input data or invalid mapping/configuration values can raise errors during rule application or post-processing.
 
-```python
-from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
-from r2x_sienna_to_plexos.translation import sienna_to_plexos
-
-# source_system is the parsed system from the workflow guide.
-target_system = sienna_to_plexos(source_system, SiennaToPlexosConfig())
+```pycon
+>>> from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
+>>> config = SiennaToPlexosConfig()
+>>> assert config.hydro_budget_ts == 'weekly'
 ```
 
 [source: r2x_sienna_to_plexos.translation](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-sienna-to-plexos/src/r2x_sienna_to_plexos/translation.py#L37-L86) · [property mappings](/R2X/reference/sienna-to-plexos-properties/)

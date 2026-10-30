@@ -1,0 +1,94 @@
+---
+title: Installation
+description: Install published translation packages through r2x-cli or pip and verify plugin discovery.
+---
+
+Check the [prerequisites](/R2X/getting-started/prerequisites/) before installing.
+Use published packages for normal use; a source checkout is only needed for
+[development](/R2X/how-to/development/).
+
+## Python environment installation
+
+For Python integration, create and activate a virtual environment using Python
+3.11, 3.12, or 3.13. Confirm `python --version` selects one of these versions.
+On macOS or Linux:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+On Windows PowerShell, activate it with `.venv\Scripts\Activate.ps1` instead.
+Install the published translation package and check dependency consistency:
+
+```bash
+python -m pip install r2x-reeds-to-sienna
+python -m pip check
+python -m pip show r2x-reeds-to-sienna
+```
+
+`pip check` should report no broken requirements; `pip show` identifies the
+installed version and location. This environment is separate from the CLI's
+managed environment. Continue with the [Python workflow](/R2X/how-to/reeds-to-sienna/).
+
+## CLI-managed installation
+
+After installing [r2x-cli](https://github.com/NatLabRockies/r2x-cli#install)
+and [uv](https://docs.astral.sh/uv/getting-started/installation/), verify the CLI
+and prepare its managed runtime:
+
+```bash
+r2x --version
+r2x python install
+r2x python show
+```
+
+Use the Python version supported by your CLI binary. `r2x python show` identifies
+the environment that will load plugins. Installing a plugin changes this managed
+environment and its plugin manifest.
+
+For the [first CLI pipeline](/R2X/tutorials/getting-started/), install the Sienna
+parser and exporter:
+
+```bash
+r2x install r2x-sienna
+r2x list r2x-sienna
+```
+
+Confirm that the list includes `sienna-parser` and `sienna-exporter`, then inspect
+the parser options:
+
+```bash
+r2x run sienna-parser --help
+```
+
+For translation, install the package matching your direction:
+
+| Direction | Published package |
+| --- | --- |
+| ReEDS → PLEXOS | [r2x-reeds-to-plexos](https://pypi.org/project/r2x-reeds-to-plexos/) |
+| ReEDS → Sienna | [r2x-reeds-to-sienna](https://pypi.org/project/r2x-reeds-to-sienna/) |
+| PLEXOS → Sienna | [r2x-plexos-to-sienna](https://pypi.org/project/r2x-plexos-to-sienna/) |
+| Sienna → PLEXOS | [r2x-sienna-to-plexos](https://pypi.org/project/r2x-sienna-to-plexos/) |
+
+For example:
+
+```bash
+r2x install r2x-reeds-to-sienna
+r2x list r2x-reeds-to-sienna
+```
+
+Expect `reeds-to-sienna` in the list. Follow the
+[ReEDS CLI tutorial](/R2X/tutorials/reeds-to-sienna-cli/) to install and verify the
+source parser and target exporter as well. Use compatible parser, translator,
+and exporter versions; the translation step does not read source data by itself.
+
+## Verify your first use
+
+Once plugin discovery succeeds, follow the
+[first CLI pipeline](/R2X/tutorials/getting-started/) to initialize a workspace,
+preview execution, export a small model, and inspect the saved system. The
+walkthrough includes expected files and a ten-bus inspection result.
+
+If a command is missing or a plugin cannot be discovered, check the selected
+runtime and installed packages using [Troubleshooting](/R2X/troubleshooting/).

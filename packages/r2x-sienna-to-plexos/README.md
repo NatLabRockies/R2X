@@ -1,174 +1,70 @@
-# r2x-sienna-to-plexos
+<img src="../../docs/src/assets/r2x-logo-full-square.svg" alt="R2X framework logo" align="left" width="220px" height="220px" hspace="10"/>
+<img align="left" alt="" width="0" height="220px" hspace="10"/>
 
-Translate Sienna systems into PLEXOS models.
+#### r2x-sienna-to-plexos
+<p><small>Translate parsed Sienna systems into PLEXOS models.</small></p>
 
-## Overview
+[![PyPI](https://img.shields.io/pypi/v/r2x-sienna-to-plexos.svg)](https://pypi.org/project/r2x-sienna-to-plexos/) [![Python](https://img.shields.io/pypi/pyversions/r2x-sienna-to-plexos.svg)](https://pypi.org/project/r2x-sienna-to-plexos/) [![Docs](https://img.shields.io/badge/docs-guides-0079c2?style=flat-square)](https://natlabrockies.github.io/R2X/how-to/sienna-to-plexos/) [![License](https://img.shields.io/pypi/l/r2x-sienna-to-plexos.svg)](../../LICENSE.txt)
 
-This package provides a translation plugin to convert Sienna system models into PLEXOS XML format. The translation applies mapping rules and getters to transform Sienna components (generators, buses, lines, transformers, etc.) into their PLEXOS equivalents.
+<br clear="left">
 
-## Usage
+`r2x-sienna-to-plexos` applies component mapping rules and attaches time series to a parsed
+Sienna system. The public `sienna_to_plexos(system, config)` function returns
+a target system; the PLEXOS exporter writes native output files. Parsing,
+translation, and export are separate steps.
 
-### Basic Example
+## Install
 
-```python
-import json
-from importlib.resources import files
-from pathlib import Path
-from typing import cast
+In an activated Python environment supported by this package:
 
-from infrasys.time_series_manager import TimeSeriesManager
-from infrasys.time_series_models import TimeSeriesStorageType
-from infrasys.utils.sqlite import create_in_memory_db
-from r2x_plexos import PLEXOSConfig
-from r2x_plexos.exporter import PLEXOSExporter
-from r2x_sienna.parser import SiennaParser
-from r2x_sienna.plugin_config import SiennaConfig
-from r2x_sienna_to_plexos.getters_utils import (
-    ensure_battery_node_memberships,
-    ensure_generator_node_memberships,
-    ensure_head_storage_generator_membership,
-    ensure_interface_line_memberships,
-    ensure_region_node_memberships,
-    ensure_reserve_battery_memberships,
-    ensure_reserve_generator_memberships,
-    ensure_tail_storage_generator_membership,
-    ensure_transformer_node_memberships,
-)
-
-from r2x_core import PluginContext, Rule, System, apply_rules_to_context
-from r2x_core.logger import setup_logging
-from r2x_core.store import DataStore
-
-setup_logging(verbosity=2)
-
-# =====================================
-# Paths
-# =====================================
-sys_name = "MySystem"
-sys = Path("path/to/sys" / f"{sys_name}.json")
-
-# =====================================
-# Sienna Parser
-# =====================================
-weather_year = 2012
-model_year = 2029
-json_path = Path(sys)
-sienna_config = SiennaConfig(
-    json_path=str(json_path),
-    model_year=model_year,
-    system_name=sys_name,
-    skip_validation=True,
-    models=("r2x_sienna.models", "r2x_plexos.models"),
-)
-store = DataStore.from_data_files([], path=json_path.parent)
-context = PluginContext(
-    config=sienna_config,
-    store=store,
-    skip_validation=True,
-)
-parser = cast(SiennaParser, SiennaParser.from_context(context))
-
-sienna_sys = parser.run()
-sienna_sys = sienna_sys.system
-context.source_system = sienna_sys
-
-tmp_dir = sienna_sys.get_time_series_directory()
-sienna_sys.convert_storage(
-    time_series_directory=tmp_dir,
-    time_series_storage_type=TimeSeriesStorageType.ARROW,
-    permanent=True,
-)
-
-# =====================================
-# Rules Definition
-# =====================================
-rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"
-rules = Rule.from_records(json.loads(rules_path.read_text()))
-context.rules = rules
-
-# =====================================
-# Sienna to PLEXOS (Translation)
-# =====================================
-connection = create_in_memory_db()
-ts_manager = TimeSeriesManager(
-    connection,
-    time_series_directory=tmp_dir,
-    time_series_storage_type=TimeSeriesStorageType.ARROW,
-    permanent=True,
-)
-
-plexos_sys = System(
-    name="PLEXOS",
-    auto_add_composed_components=True,
-    time_series_manager=ts_manager,
-)
-context.target_system = plexos_sys
-
-apply_rules_to_context(context)
-ensure_region_node_memberships(context)
-ensure_generator_node_memberships(context)
-ensure_battery_node_memberships(context)
-ensure_reserve_battery_memberships(context)
-ensure_reserve_generator_memberships(context)
-ensure_transformer_node_memberships(context)
-ensure_interface_line_memberships(context)
-ensure_head_storage_generator_membership(context)
-ensure_tail_storage_generator_membership(context)
-
-# =====================================
-# PLEXOS Exporter
-# =====================================
-results_dir = "path/to/output_dir"
-results_dir.mkdir(exist_ok=True)
-
-plexos_config = PLEXOSConfig(
-    model_name=case_name,
-    timeseries_dir=output_path,
-    horizon_year=weather_year,
-)
-exporter_context = PluginContext(
-    config=plexos_config,
-    system=plexos_sys,
-)
-exporter = PLEXOSExporter.from_context(exporter_context)
-exporter.output_path = results_dir
-exporter.solve_year = model_year
-exporter.weather_year = weather_year
-
-exporter.on_export()
+```bash
+python -m pip install r2x-sienna-to-plexos
+python -m pip check
 ```
 
-### Parameters
+For a CLI-managed environment, use `r2x install r2x-sienna-to-plexos` instead. See
+[installation](https://natlabrockies.github.io/R2X/getting-started/installation/)
+for runtime selection and plugin discovery.
 
-#### `SiennaConfig`
+## Verify the configuration
 
-- **`json_path`** (str): Path to the Sienna system JSON file (e.g., `"/path/to/MySystem/MySystem.json"`).
-- **`model_year`** (int, optional): Model year for the simulation. Default is `2029`.
-- **`system_name`** (str): Name of the system (used for file naming and identification).
-- **`skip_validation`** (bool, optional): Skip validation during parsing. Default is `False`.
-- **`models`** (tuple, optional): Model namespaces to load. Default includes `r2x_sienna.models` and `r2x_plexos.models`.
+This example runs without model input files. It checks the public configuration
+and the packaged mapping rules before you prepare a full translation:
 
-#### `PLEXOSConfig`
+```pycon
+>>> import json
+>>> from importlib.resources import files
+>>> from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
+>>> config = SiennaToPlexosConfig()
+>>> assert config.hydro_budget_ts == 'weekly'
+>>> assert "r2x_sienna.models" in config.models
+>>> rules = json.loads(files("r2x_sienna_to_plexos.config").joinpath("rules.json").read_text())
+>>> assert isinstance(rules, list) and len(rules) > 0
+```
 
-- **`model_name`** (str): Name of the PLEXOS model (used for output file naming).
-- **`timeseries_dir`** (str): Path to the directory where time series and output files will be saved.
+Continue with the [complete Sienna → PLEXOS workflow](https://natlabrockies.github.io/R2X/how-to/sienna-to-plexos/)
+for input requirements, parsing, translation, and export. A translation requires
+real source components and their companion time-series files; configuration
+validation alone does not validate a model.
 
-## Translation Rules
+<span id=""></span>
+<span id="basic-example"></span>
+<span id="membership-utilities"></span>
+<span id="overview"></span>
+<span id="parameters"></span>
+<span id="paths"></span>
+<span id="plexos-exporter"></span>
+<span id="plexosconfig"></span>
+<span id="rules-definition"></span>
+<span id="sienna-parser"></span>
+<span id="sienna-to-plexos-translation"></span>
+<span id="siennaconfig"></span>
+<span id="translation-rules"></span>
+<span id="usage"></span>
 
-Translation rules are defined in `config/rules.json`. These rules specify how Sienna components are mapped to PLEXOS components, including field mappings, getters, and filters.
+## Mapping and API
 
-## Membership Utilities
-
-After applying the main translation rules, the following membership helpers must be called to wire up component relationships in the PLEXOS system:
-
-| Function | Description |
-|---|---|
-| `ensure_region_node_memberships` | Links regions to their child nodes |
-| `ensure_generator_node_memberships` | Links generators to their buses |
-| `ensure_battery_node_memberships` | Links batteries to their buses |
-| `ensure_reserve_generator_memberships` | Links reserves to contributing generators |
-| `ensure_reserve_battery_memberships` | Links reserves to contributing batteries |
-| `ensure_transformer_node_memberships` | Links transformers to their from/to nodes |
-| `ensure_interface_line_memberships` | Links interfaces to their member lines |
-| `ensure_head_storage_generator_membership` | Links head storage to its generator |
-| `ensure_tail_storage_generator_membership` | Links tail storage to its generator |
+- [Function and configuration reference](https://natlabrockies.github.io/R2X/reference/python-api/#sienna_to_plexos)
+- [Property mappings](https://natlabrockies.github.io/R2X/reference/sienna-to-plexos-properties/)
+- [Translation source](src/r2x_sienna_to_plexos/translation.py) and [packaged rules](src/r2x_sienna_to_plexos/config/rules.json)
+- [Troubleshooting](https://natlabrockies.github.io/R2X/troubleshooting/)

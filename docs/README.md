@@ -1,6 +1,6 @@
 # R2X documentation
 
-The Astro and Starlight site organizes the current documentation into tutorials,
+The Astro and Starlight site organizes the current documentation into Getting started, tutorials,
 how-to guides, reference, and explanation. Search indexes each version separately.
 
 ## Build and preview
@@ -57,3 +57,28 @@ The lockfile selects patched `postcss-nested` 7.0.2 for Expressive Code and
 KaTeX 0.18.2 for Mermaid. These overrides remove transitive security advisories;
 the Node.js 22 build and rendered CSS and diagrams have been checked. Revisit
 them when upstream dependencies include the patched versions.
+
+## Verify examples and links
+
+From the repository root, run the console examples and inspect test discovery:
+
+```bash
+uv run --frozen pytest tests/test_documentation.py --no-cov
+uv run --frozen pytest tests/test_documentation.py --collect-only --no-cov
+```
+
+The tests extract `pycon` fences and execute their prompts with the standard
+library doctest runner. Independent examples use fresh processes because the
+translation packages register some overlapping getter names. The small Python
+tutorial retains its session across blocks. Assertions and printed outputs are
+checked; comments alone are not verification. Full native-model workflows require
+the input studies described on their pages and are separate from these self-contained tests.
+
+After building, check internal page and fragment links, including release archives:
+
+```bash
+python docs/check_site.py
+```
+
+The link check does not contact external websites. Visually review the sidebar,
+search, tables, and diagrams at desktop and mobile sizes before publishing.

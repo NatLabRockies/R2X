@@ -46,10 +46,19 @@ export default defineConfig({
       ],
       sidebar: [
         {
-          label: "Tutorials",
+          label: "Getting Started",
           items: [
             { label: "Introduction", link: "/" },
+            { label: "Prerequisites", link: "/getting-started/prerequisites/" },
+            { label: "Installation", link: "/getting-started/installation/" },
+            { label: "Translation plugins", link: "/getting-started/plugins/" },
+          ],
+        },
+        {
+          label: "Tutorials",
+          items: [
             { label: "First CLI pipeline", link: "/tutorials/getting-started/" },
+            { label: "Translate in Python", link: "/tutorials/python-translation/" },
             { label: "ReEDS with the CLI", link: "/tutorials/reeds-to-sienna-cli/" },
           ],
         },
@@ -64,14 +73,29 @@ export default defineConfig({
             { label: "Sienna to PLEXOS", link: "/how-to/sienna-to-plexos/" },
           ],
         },
-        {
-          label: "Troubleshooting",
-          items: [{ label: "Common problems", link: "/troubleshooting/" }],
-        },
+        { label: "Troubleshooting", link: "/troubleshooting/" },
         {
           label: "Reference",
           items: [
-            { label: "Python API", link: "/reference/python-api/" },
+            { label: "Python API", items: [
+              { label: "Overview", link: "/reference/python-api/" },
+              { label: "reeds-to-plexos", collapsed: true, items: [
+                { label: "reeds_to_plexos()", link: "/reference/python-api/#reeds_to_plexos" },
+                { label: "ReedsToPlexosConfig", link: "/reference/python-api/#reedstoplexosconfig" },
+              ] },
+              { label: "reeds-to-sienna", collapsed: true, items: [
+                { label: "reeds_to_sienna()", link: "/reference/python-api/#reeds_to_sienna" },
+                { label: "ReEDSToSiennaConfig", link: "/reference/python-api/#reedstosiennaconfig" },
+              ] },
+              { label: "plexos-to-sienna", collapsed: true, items: [
+                { label: "plexos_to_sienna()", link: "/reference/python-api/#plexos_to_sienna" },
+                { label: "PlexosToSiennaConfig", link: "/reference/python-api/#plexostosiennaconfig" },
+              ] },
+              { label: "sienna-to-plexos", collapsed: true, items: [
+                { label: "sienna_to_plexos()", link: "/reference/python-api/#sienna_to_plexos" },
+                { label: "SiennaToPlexosConfig", link: "/reference/python-api/#siennatoplexosconfig" },
+              ] },
+            ] },
             { label: "ReEDS translation comparison", link: "/reference/reeds-translation-reference/" },
             { label: "ReEDS to PLEXOS properties", link: "/reference/reeds-to-plexos-properties/" },
             { label: "ReEDS to Sienna properties", link: "/reference/reeds-to-sienna-properties/" },
@@ -83,14 +107,8 @@ export default defineConfig({
           label: "Explanation",
           items: [{ label: "Architecture", link: "/explanation/architecture/" }],
         },
-        {
-          label: "Changelog",
-          items: [{ label: "Release history", link: "/changelog/" }],
-        },
-        {
-          label: "Contributors",
-          items: [{ label: "Development", link: "/how-to/development/" }],
-        },
+        { label: "Changelog", link: "/changelog/" },
+        { label: "Development", link: "/how-to/development/" },
       ],
     }),
   ],

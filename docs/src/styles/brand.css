@@ -33,11 +33,11 @@
 
 @media (min-width: 50rem) {
   :root {
-    --sl-nav-height: 8.5rem;
+    --sl-nav-height: 4.5rem;
   }
 
   .site-title {
-    width: calc(var(--sl-sidebar-width) - 2 * var(--sl-nav-pad-x));
+    width: 10rem;
     max-width: 100%;
   }
 

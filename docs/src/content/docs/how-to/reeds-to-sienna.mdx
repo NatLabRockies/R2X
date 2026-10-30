@@ -44,92 +44,86 @@ For field-by-field mappings, see [ReEDS to Sienna property mappings](/R2X/refere
 
 ## Setup
 
-Use Python 3.11–3.13 and uv. From this repository checkout, replace the
-editable package paths below with your local parser and exporter checkouts.
-These commands update the workspace environment and lockfile:
-
-First, install the dependencies pinned by this checkout:
+Complete [installation](/R2X/getting-started/installation/) in a Python 3.11–3.13
+virtual environment, then install the published translator and its parser/exporter
+dependencies:
 
 ```bash
-uv sync
+python -m pip install r2x-reeds-to-sienna
+python -m pip check
 ```
 
-Add your source parser checkout so the script can read the native input model:
+Use compatible versions of the source and target packages. You do not need to
+modify this repository's lockfile or add editable checkouts to run a translation.
+For a runnable exercise without external model data, start with the
+[Python translation tutorial](/R2X/tutorials/python-translation/).
 
-```bash
-uv add --editable /path/to/r2x-reeds
-```
+<span id="example-script"></span>
 
-Add the target parser/exporter checkout, then verify that the command completes
-before running the Python example:
+## Run the translation
 
-```bash
-uv add --editable /path/to/r2x-sienna
-```
-
-## Example script
-
-Replace the model paths and years with your input data. A successful run writes
+Start a fresh Python console for this workflow. Replace the model paths and years
+with your input data before entering the session below. A successful run writes
 the target model and time-series files to the configured results directory.
 `run()` executes the plugin lifecycle and raises an error if a hook fails.
 
-```python
-from pathlib import Path
-from typing import cast
+```pycon
+>>> from pathlib import Path
+>>> from typing import cast
 
-from r2x_reeds import ReEDSConfig, ReEDSParser
-from r2x_reeds_to_sienna.plugin_config import ReEDSToSiennaConfig
-from r2x_reeds_to_sienna.translation import reeds_to_sienna
-from r2x_sienna.exporter import SiennaExporter
-from r2x_sienna.plugin_config import SiennaConfig
+>>> from r2x_reeds import ReEDSConfig, ReEDSParser
+>>> from r2x_reeds_to_sienna.plugin_config import ReEDSToSiennaConfig
+>>> from r2x_reeds_to_sienna.translation import reeds_to_sienna
+>>> from r2x_sienna.exporter import SiennaExporter
+>>> from r2x_sienna.plugin_config import SiennaExporterConfig
 
-from r2x_core import DataStore, PluginContext
-from r2x_core.logger import setup_logging
+>>> from r2x_core import DataStore, PluginContext
+>>> from r2x_core.logger import setup_logging
 
-setup_logging(verbosity=2)
+>>> setup_logging(verbosity=2)
 
-case_name = "reeds_run_folder_name"
-base_path = "/path/to/reeds/runs"
-run_path = Path(base_path) / case_name
+>>> case_name = "reeds_run_folder_name"
+>>> base_path = "/path/to/reeds/runs"
+>>> run_path = Path(base_path) / case_name
 
-# ReEDS PARSER
-solve_year = 2035
-weather_year = 2012
-scenario = "base"
-reeds_config = ReEDSConfig(
-    solve_year=solve_year,
-    weather_year=weather_year,
-    case_name=case_name,
-    scenario=scenario,
-    models=("r2x_reeds.models", "r2x_sienna.models"),
-)
+>>> # ReEDS PARSER
+>>> solve_year = 2035
+>>> weather_year = 2012
+>>> scenario = "base"
+>>> reeds_config = ReEDSConfig(
+...     solve_year=solve_year,
+...     weather_year=weather_year,
+...     case_name=case_name,
+...     scenario=scenario,
+...     models=("r2x_reeds.models", "r2x_sienna.models"),
+... )
 
-store = DataStore.from_plugin_config(reeds_config, path=run_path)
-context = PluginContext(config=reeds_config, store=store)
+>>> store = DataStore.from_plugin_config(reeds_config, path=run_path)
+>>> context = PluginContext(config=reeds_config, store=store)
 
-parser = cast(ReEDSParser, ReEDSParser.from_context(context))
-reeds_sys = parser.run()
-reeds_sys = reeds_sys.system
-sienna_sys = reeds_to_sienna(reeds_sys, ReEDSToSiennaConfig())
+>>> parser = cast(ReEDSParser, ReEDSParser.from_context(context))
+>>> reeds_sys = parser.run()
+>>> reeds_sys = reeds_sys.system
+>>> sienna_sys = reeds_to_sienna(reeds_sys, ReEDSToSiennaConfig())
+>>> assert len(list(sienna_sys.iter_all_components())) > 0
 
-# Sienna Exporter
-results_dir = Path(base_path) / f"{case_name}_results"
-results_dir.mkdir(exist_ok=True)
+>>> # Sienna Exporter
+>>> results_dir = Path(base_path) / f"{case_name}_results"
+>>> results_dir.mkdir(exist_ok=True)
 
-exported_system = f"{case_name}.json"
-output_file = results_dir / exported_system
-sienna_config = SiennaConfig(
-    model_year=solve_year,
-    system_name=exported_system,
-    output_path=str(output_file),
-    system_base_power=100.0,
-    scenario=scenario,
-)
+>>> exported_system = f"{case_name}.json"
+>>> output_file = results_dir / exported_system
+>>> sienna_config = SiennaExporterConfig(
+...     output_path=str(output_file),
+...     system_base_power=100.0,
+...     scenario=scenario,
+... )
 
-exporter_context = PluginContext(
-    config=sienna_config,
-    system=sienna_sys,
-)
-exporter = SiennaExporter.from_context(exporter_context)
-exporter.run()
+>>> exporter_context = PluginContext(
+...     config=sienna_config,
+...     system=sienna_sys,
+... )
+>>> exporter = SiennaExporter.from_context(exporter_context)
+>>> export_result = exporter.run()
+>>> assert Path(output_file).is_file()
 ```
