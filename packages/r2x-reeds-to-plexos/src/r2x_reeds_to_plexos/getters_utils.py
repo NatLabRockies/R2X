@@ -180,10 +180,10 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
     variable_generators = {
         gen.name: gen for gen in context.source_system.get_components(ReEDSVariableGenerator)
     }
-    import_generators = {
-        gen.name: gen
+    trade_generators = {
+        gen.name: category
         for gen in context.source_system.get_components(ReEDSGenerator)
-        if (getattr(gen, "category", "") or "").casefold() == "imports"
+        if (category := (getattr(gen, "category", "") or "").casefold()) in {"imports", "exports"}
     }
     target_generators = {gen.name: gen for gen in context.target_system.get_components(PLEXOSGenerator)}
 
@@ -253,9 +253,9 @@ def attach_time_series_to_generators(context: PluginContext) -> None:
                     )
             continue
 
-        if name in import_generators:
+        if name in trade_generators:
             target_ext = dict(target_gen.ext or {})
-            target_ext["r2x_category"] = "imports"
+            target_ext["r2x_category"] = trade_generators[name]
             target_gen.ext = target_ext
             for metadata in context.source_system.time_series.list_time_series_metadata(source_gen):
                 for ts in context.source_system.list_time_series(
