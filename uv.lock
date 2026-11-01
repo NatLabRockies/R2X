@@ -16,6 +16,7 @@ members = [
     "r2x-plexos-to-sienna",
     "r2x-reeds-to-plexos",
     "r2x-reeds-to-sienna",
+    "r2x-resolve-to-plexos",
     "r2x-sienna-to-plexos",
 ]
 constraints = [{ name = "plexos2duckdb", specifier = "==0.1.0b11" }]
@@ -967,6 +968,7 @@ dependencies = [
     { name = "r2x-plexos-to-sienna" },
     { name = "r2x-reeds-to-plexos" },
     { name = "r2x-reeds-to-sienna" },
+    { name = "r2x-resolve-to-plexos" },
     { name = "r2x-sienna-to-plexos" },
 ]
 
@@ -990,6 +992,7 @@ requires-dist = [
     { name = "r2x-plexos-to-sienna", editable = "packages/r2x-plexos-to-sienna" },
     { name = "r2x-reeds-to-plexos", editable = "packages/r2x-reeds-to-plexos" },
     { name = "r2x-reeds-to-sienna", editable = "packages/r2x-reeds-to-sienna" },
+    { name = "r2x-resolve-to-plexos", editable = "packages/r2x-resolve-to-plexos" },
     { name = "r2x-sienna-to-plexos", editable = "packages/r2x-sienna-to-plexos" },
 ]
 
@@ -1027,15 +1030,11 @@ wheels = [
 
 [[package]]
 name = "r2x-plexos"
-version = "0.3.2"
-source = { registry = "https://pypi.org/simple" }
+version = "0.3.3"
+source = { git = "https://github.com/NatLabRockies/r2x-plexos.git?branch=main#c3e85b7397b5f5b5c4d0f0edccd94af2aee0ed2a" }
 dependencies = [
     { name = "plexosdb" },
     { name = "r2x-core" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/92/70/c429322f126a4242b11a8132c51fc2df558b9873bf979dce1f58ab91edeb/r2x_plexos-0.3.2.tar.gz", hash = "sha256:ef45797f44703d275932d8fef19a59a62cdac8638608cbf4476805f3c1ddd611", size = 114172, upload-time = "2026-08-13T01:35:59.131Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/96/1e/76f7c9eb2f43a0d1f226c078a1bf1c16fd97af5bf6b6ea5fb94fea98f799/r2x_plexos-0.3.2-py3-none-any.whl", hash = "sha256:bca269bb78f33ef19cf23274d1d446b205eb5be07926e869d11e8e3c000a7c2d", size = 131938, upload-time = "2026-08-13T01:35:57.902Z" },
 ]
 
 [[package]]
@@ -1049,20 +1048,16 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", specifier = ">=0.3.0,<1.0.0" },
-    { name = "r2x-sienna", specifier = ">=0.2.0,<1.0.0" },
+    { name = "r2x-plexos", git = "https://github.com/NatLabRockies/r2x-plexos.git?branch=main" },
+    { name = "r2x-sienna", git = "https://github.com/NatLabRockies/r2x-sienna.git?branch=main" },
 ]
 
 [[package]]
 name = "r2x-reeds"
 version = "0.9.3"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/NatLabRockies/r2x-reeds.git?branch=main#3f5270a14e367fc718848bd8321f31641e3ab6aa" }
 dependencies = [
     { name = "r2x-core" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/33/0641ff02b7925b52f4c13b701a3262377a43b2c82445428c86141eab8590/r2x_reeds-0.9.3.tar.gz", hash = "sha256:09d8ccfb421d785f6a97ab4f1c3747a78cfe4a9a5ef0b239b3a14b0bef91736e", size = 79688, upload-time = "2026-10-15T16:55:18.676Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/ea/2c30bf7a21c28a31214f41027ec32af18bf4ebf6d1988d0c6b15cdd0109f/r2x_reeds-0.9.3-py3-none-any.whl", hash = "sha256:77cce3848d36d36e294c043bed5af122a41a42f7b5ff69b49a8db154a599a353", size = 92905, upload-time = "2026-10-15T16:55:16.935Z" },
 ]
 
 [[package]]
@@ -1076,8 +1071,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", specifier = ">=0.3.0,<1.0.0" },
-    { name = "r2x-reeds", specifier = ">=0.9.3,<1.0.0" },
+    { name = "r2x-plexos", git = "https://github.com/NatLabRockies/r2x-plexos.git?branch=main" },
+    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?branch=main" },
 ]
 
 [[package]]
@@ -1091,20 +1086,41 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-reeds", specifier = ">=0.9.3,<1.0.0" },
-    { name = "r2x-sienna", specifier = ">=0.2.0,<1.0.0" },
+    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?branch=main" },
+    { name = "r2x-sienna", git = "https://github.com/NatLabRockies/r2x-sienna.git?branch=main" },
+]
+
+[[package]]
+name = "r2x-resolve"
+version = "0.0.0"
+source = { git = "https://github.com/NatLabRockies/r2x-resolve.git?branch=feat%2Freserves#cea06427c5cfbe6eec883a1cb9b23bf4cb67d3d5" }
+dependencies = [
+    { name = "r2x-core" },
+]
+
+[[package]]
+name = "r2x-resolve-to-plexos"
+version = "0.1.0"
+source = { editable = "packages/r2x-resolve-to-plexos" }
+dependencies = [
+    { name = "r2x-core" },
+    { name = "r2x-plexos" },
+    { name = "r2x-resolve" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "r2x-core", specifier = ">=0.8.0,<1.0.0" },
+    { name = "r2x-plexos", git = "https://github.com/NatLabRockies/r2x-plexos.git?branch=main" },
+    { name = "r2x-resolve", git = "https://github.com/NatLabRockies/r2x-resolve.git?branch=feat%2Freserves" },
 ]
 
 [[package]]
 name = "r2x-sienna"
-version = "0.4.2"
-source = { registry = "https://pypi.org/simple" }
+version = "0.5.0"
+source = { git = "https://github.com/NatLabRockies/r2x-sienna.git?branch=main#0c643fdbdc5709a7954ad916f244e77b90ecaff5" }
 dependencies = [
     { name = "r2x-core" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f6/67/ee27fc295a130eaa40d403246c46f34581cd9fc064d10505d781fb6c6122/r2x_sienna-0.4.2.tar.gz", hash = "sha256:edf3c69180d165fdf97f0129ae6f8166dcb7e40b3ee6585e6bff3d272af4b582", size = 59199, upload-time = "2026-08-11T22:22:29.556Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/50/af7baf27d076626d8b7dc88f68c2b99e6a9de3a688e067b65fcdca89a61b/r2x_sienna-0.4.2-py3-none-any.whl", hash = "sha256:acbce041f9bd47a11fdfb3de7565070d96bdda004fd9364c8af691560d99750b", size = 68568, upload-time = "2026-08-11T22:22:28.424Z" },
 ]
 
 [[package]]
@@ -1118,8 +1134,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", specifier = ">=0.3.0,<1.0.0" },
-    { name = "r2x-sienna", specifier = ">=0.2.0,<1.0.0" },
+    { name = "r2x-plexos", git = "https://github.com/NatLabRockies/r2x-plexos.git?branch=main" },
+    { name = "r2x-sienna", git = "https://github.com/NatLabRockies/r2x-sienna.git?branch=main" },
 ]
 
 [[package]]
