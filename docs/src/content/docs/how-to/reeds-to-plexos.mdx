@@ -195,3 +195,46 @@ ReEDS consuming-demand components (for example `ReEDSElectrolyzerDemand`,
 To export hydro budgets as monthly profiles instead of the default daily aggregation, set
 `ReedsToPlexosConfig(hydro_budget_ts="monthly")` in the call to
 `reeds_to_plexos`.
+
+## Represent fuels as PLEXOS Fuel objects
+
+By default, each thermal generator carries its own `Fuel Price` property. To
+model fuels as shared PLEXOS Fuel objects instead, enable `use_fuel_objects`:
+
+```python
+plexos_sys = reeds_to_plexos(
+    reeds_sys,
+    ReedsToPlexosConfig(hydro_budget_ts="monthly", use_fuel_objects=True),
+)
+```
+
+With the option enabled, the translation:
+
+1. Groups `ReEDSThermalGenerator` and generic `ReEDSGenerator` components that
+   have a `fuel_type` by fuel identity: fuel type, scalar `fuel_price`, and the
+   contents of any `fuel_price` time series.
+2. Creates one `PLEXOSFuel` per group. The scalar price becomes `Fuel.Price`,
+   and any `fuel_price` time series (for example, monthly hydrogen prices) is
+   attached to the Fuel.
+3. Links each generator to its Fuel with a `Generator.Fuels` membership
+   (`CollectionEnum.Fuels`).
+4. Clears the generator-level `fuel_price` and removes the generator's
+   `fuel_price` time series so the price is not written twice.
+
+`heat_rate` stays on the generator. Each ReEDS generator burns a single fuel, so
+no `Generator.Fuels` membership properties (such as `Ratio` or a per-fuel
+`Heat Rate`) are written. Consuming technologies and other components without a
+`fuel_type` keep the generator-level `fuel_price`.
+
+Generators are only grouped together when their fuel data matches exactly, so
+regions with different prices or price profiles get separate Fuel objects. See
+[Fuel objects](/R2X/reference/reeds-to-plexos-properties/#fuel-objects-opt-in)
+for the naming rules and property routing.
+
+:::note
+Exporting Fuel objects, their `Price` time series, and `Generator.Fuels`
+memberships requires an `r2x-plexos` exporter that maps `PLEXOSFuel` to the
+PLEXOS Fuel class. Older exporters skip Fuel objects. In that case the Fuel
+price is lost from the exported model, so keep the option disabled or install
+an `r2x-plexos` version with Fuel export support.
+:::

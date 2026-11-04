@@ -107,3 +107,74 @@ helpers.
 Membership rules then connect the generated PLEXOS objects to the target
 network topology. The property rules select the applicable output with filters
 for hydro/storage variants and other technology-specific cases.
+
+## Fuel objects (opt-in)
+
+When `ReedsToPlexosConfig(use_fuel_objects=True)` is set, fuel data is moved off
+the generators onto shared `PLEXOSFuel` objects after the rules above run. The
+option is disabled by default, and the generator-level `fuel_price` mapping in
+the tables above applies unchanged.
+
+```mermaid
+flowchart LR
+  accTitle: ReEDS fuel data to PLEXOS Fuel objects
+  accDescr: Thermal and generic ReEDS generators with a fuel type are grouped by fuel type, price, and fuel price time series. Each group creates a PLEXOSFuel with Price, and each generator is linked to its Fuel through a Generator.Fuels membership. Heat rate stays on the generator.
+  G["ReEDSThermalGenerator<br/>ReEDSGenerator<br/>with fuel_type"] --> K{"Group by<br/>fuel_type + fuel_price<br/>+ fuel_price time series"}
+  K --> F["PLEXOSFuel<br/>category = fuel_type<br/>Price + price time series"]
+  K --> P["PLEXOSGenerator<br/>heat_rate kept<br/>fuel_price cleared"]
+  P -->|"Generator.Fuels"| F
+  class G source
+  class K process
+  class F,P target
+  classDef source fill:#d9effa,stroke:#0079c2,color:#003a69,stroke-width:2px
+  classDef process fill:#f4f7f9,stroke:#7890a0,color:#293d4d
+  classDef target fill:#003a69,stroke:#0079c2,color:#ffffff,stroke-width:2px
+```
+
+### Applicable generators
+
+Only source classes whose rules map `fuel_price` onto `PLEXOSGenerator` and that
+carry a `fuel_type` are linked:
+
+| Source class | Linked to a Fuel |
+| --- | --- |
+| `ReEDSThermalGenerator` | Yes |
+| `ReEDSGenerator` (generic, imports, exports) | Only when `fuel_type` is set |
+| `ReEDSConsumingTechnology` | No; keeps generator-level `fuel_price` |
+| Variable, hydro, and storage generators | No; they have no fuel price mapping |
+
+### Property routing
+
+Each fuel-related property is written where PLEXOS defines it:
+
+| ReEDS source | PLEXOS scope | PLEXOS property | Disabled (default) |
+| --- | --- | --- | --- |
+| `fuel_price` (scalar) | Fuel object | `Fuel.Price` | `Generator.Fuel Price` |
+| `fuel_price` time series | Fuel object | `Fuel.Price` (data file) | Not copied for thermal generators |
+| `fuel_type` | Fuel object | Fuel `category` | Not used |
+| `heat_rate` | Generator | `Generator.Heat Rate` | `Generator.Heat Rate` |
+| Generator to fuel link | Membership | `Generator.Fuels` | No membership |
+
+No `Generator.Fuels` membership properties are written. Those properties (for
+example `Ratio`, `Max Ratio`, or a per-fuel `Heat Rate`) only matter for
+multi-fuel generators, and each ReEDS generator has one fuel.
+
+### Fuel identity and naming
+
+Two generators share a Fuel only when all of these match:
+
+- `fuel_type`
+- scalar `fuel_price` (missing prices are treated as `0`)
+- every `fuel_price` time series, compared by type, features, timestamps,
+  resolution, and values
+
+Generators in different regions share a Fuel when their data is identical, and
+fuels whose regional or time-varying data differs are never merged.
+
+Names are deterministic and do not depend on component order:
+
+| Case | Fuel name | Example |
+| --- | --- | --- |
+| One variant for the fuel type | `<fuel_type>` | `naturalgas` |
+| Several variants for the fuel type | `<fuel_type>_<first region>`, using the alphabetically first region that uses the variant | `naturalgas_p1`, `naturalgas_p2` |
+| Two variants share the same first region | A numeric suffix is appended in sorted order | `naturalgas_p1_2` |
