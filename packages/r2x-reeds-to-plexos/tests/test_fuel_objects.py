@@ -72,6 +72,12 @@ def fuel_links(system: System) -> dict[str, set[str]]:
     return links
 
 
+@pytest.fixture
+def fuel_object_support(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Simulate the PLEXOS Fuel class mapping for translation-only tests."""
+    monkeypatch.setitem(PLEXOS_TYPE_MAP_INVERTED, PLEXOSFuel, ClassEnum.Fuel)
+
+
 def test_fuel_objects_disabled_by_default_keeps_generator_fuel_price() -> None:
     assert ReedsToPlexosConfig().use_fuel_objects is False
 
@@ -93,7 +99,14 @@ def test_fuel_objects_disabled_keeps_generator_fuel_price_time_series_untouched(
     assert target.get_component(PLEXOSGenerator, "gas-cc_p1").fuel_price == 4.0
 
 
-def test_fuel_objects_shared_by_multiple_generators() -> None:
+def test_fuel_objects_require_exporter_support(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delitem(PLEXOS_TYPE_MAP_INVERTED, PLEXOSFuel, raising=False)
+
+    with pytest.raises(ValueError, match="requires an r2x-plexos exporter with Fuel support"):
+        reeds_to_plexos(build_source(), config=ReedsToPlexosConfig(use_fuel_objects=True))
+
+
+def test_fuel_objects_shared_by_multiple_generators(fuel_object_support: None) -> None:
     target = reeds_to_plexos(build_source(), config=ReedsToPlexosConfig(use_fuel_objects=True))
 
     fuels = {fuel.name: fuel for fuel in target.get_components(PLEXOSFuel)}
@@ -107,7 +120,7 @@ def test_fuel_objects_shared_by_multiple_generators() -> None:
     }
 
 
-def test_fuel_objects_remove_generator_level_fuel_price_but_keep_heat_rate() -> None:
+def test_fuel_objects_remove_generator_level_fuel_price_but_keep_heat_rate(fuel_object_support: None) -> None:
     target = reeds_to_plexos(build_source(), config=ReedsToPlexosConfig(use_fuel_objects=True))
 
     for generator in target.get_components(PLEXOSGenerator):
@@ -116,7 +129,7 @@ def test_fuel_objects_remove_generator_level_fuel_price_but_keep_heat_rate() -> 
         assert "Fuel Price" not in generator.model_dump(by_alias=True, exclude_defaults=True)
 
 
-def test_fuel_objects_do_not_merge_different_regional_prices() -> None:
+def test_fuel_objects_do_not_merge_different_regional_prices(fuel_object_support: None) -> None:
     generators = [
         ("gas-cc_p2", "p2", "naturalgas", 5.0),
         ("gas-cc_p1", "p1", "naturalgas", 4.0),
@@ -133,7 +146,7 @@ def test_fuel_objects_do_not_merge_different_regional_prices() -> None:
     }
 
 
-def test_fuel_objects_naming_is_deterministic() -> None:
+def test_fuel_objects_naming_is_deterministic(fuel_object_support: None) -> None:
     generators = [
         ("gas-cc_p1", "p1", "naturalgas", 4.0),
         ("gas-cc_p2", "p2", "naturalgas", 5.0),
@@ -146,7 +159,7 @@ def test_fuel_objects_naming_is_deterministic() -> None:
     assert fuel_links(first) == fuel_links(second)
 
 
-def test_fuel_objects_do_not_merge_different_time_varying_prices() -> None:
+def test_fuel_objects_do_not_merge_different_time_varying_prices(fuel_object_support: None) -> None:
     source = build_source([("gas-cc_p1", "p1", "naturalgas", 4.0), ("gas-cc_p2", "p2", "naturalgas", 4.0)])
     add_fuel_price_series(source, "gas-cc_p1", [4.0, 5.0, 6.0])
     add_fuel_price_series(source, "gas-cc_p2", [4.0, 4.5, 6.0])
@@ -161,7 +174,7 @@ def test_fuel_objects_do_not_merge_different_time_varying_prices() -> None:
     assert not target.has_time_series(generator, name="fuel_price")
 
 
-def test_fuel_objects_merge_identical_time_varying_prices() -> None:
+def test_fuel_objects_merge_identical_time_varying_prices(fuel_object_support: None) -> None:
     source = build_source([("gas-cc_p1", "p1", "naturalgas", 4.0), ("gas-cc_p2", "p2", "naturalgas", 4.0)])
     add_fuel_price_series(source, "gas-cc_p1", [4.0, 5.0, 6.0])
     add_fuel_price_series(source, "gas-cc_p2", [4.0, 5.0, 6.0])

@@ -340,7 +340,7 @@ def _time_series_fingerprint(ts: Any, features: dict[str, Any]) -> str:
     timestamps = getattr(ts, "timestamps", None)
     header = (
         type(ts).__name__,
-        sorted((key, str(value)) for key, value in features.items()),
+        sorted((key, type(value).__qualname__, repr(value)) for key, value in features.items()),
         str(getattr(ts, "initial_timestamp", None)),
         str(getattr(ts, "resolution", None)),
         [str(stamp) for stamp in timestamps] if timestamps is not None else [],
@@ -375,16 +375,15 @@ def _assign_fuel_names(variants: dict[FuelKey, list[tuple[Any, PLEXOSGenerator]]
     for key in variants:
         by_type.setdefault(key[0], []).append(key)
 
-    names: dict[FuelKey, str] = {}
+    names: dict[FuelKey, str] = {keys[0]: fuel_type for fuel_type, keys in by_type.items() if len(keys) == 1}
+    used: set[str] = set(names.values())
     for fuel_type, keys in sorted(by_type.items()):
         if len(keys) == 1:
-            names[keys[0]] = fuel_type
             continue
 
         def first_region(key: FuelKey) -> str:
             return min(str(source_gen.region.name) for source_gen, _ in variants[key])
 
-        used: set[str] = set()
         for key in sorted(keys, key=lambda k: (first_region(k), k)):
             base = f"{fuel_type}_{first_region(key)}"
             name, index = base, 2
