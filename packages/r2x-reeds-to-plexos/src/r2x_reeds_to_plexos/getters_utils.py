@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 from calendar import monthrange
 from copy import deepcopy
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+from infrasys import NonSequentialTimeSeries, SingleTimeSeries
 from loguru import logger
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
@@ -22,6 +25,13 @@ from r2x_core import System
 
 if TYPE_CHECKING:
     from r2x_core import PluginContext, System
+
+
+FUEL_PRICE_TS_NAME = "fuel_price"
+FUEL_TS_TYPES = (SingleTimeSeries, NonSequentialTimeSeries)
+
+# (fuel_type, scalar price, sorted fingerprints of fuel price time series)
+FuelKey = tuple[str, float, tuple[str, ...]]
 
 
 def _get_reeds_purchaser_source_types() -> tuple[type[Any], ...]:
@@ -323,6 +333,126 @@ def attach_time_series_to_purchasers(context: PluginContext) -> None:
                     ts.name,
                     target_purchaser.name,
                 )
+
+
+def _time_series_fingerprint(ts: Any, features: dict[str, Any]) -> str:
+    """Return a stable digest of a time series' values, timing, and features."""
+    timestamps = getattr(ts, "timestamps", None)
+    header = (
+        type(ts).__name__,
+        sorted((key, type(value).__qualname__, repr(value)) for key, value in features.items()),
+        str(getattr(ts, "initial_timestamp", None)),
+        str(getattr(ts, "resolution", None)),
+        [str(stamp) for stamp in timestamps] if timestamps is not None else [],
+    )
+    digest = hashlib.sha256(repr(header).encode())
+    data = getattr(ts.data, "magnitude", ts.data)
+    digest.update(np.ascontiguousarray(np.asarray(data, dtype=float)).tobytes())
+    return digest.hexdigest()
+
+
+def _fuel_price_time_series(system: System, component: Any) -> list[tuple[Any, dict[str, Any]]]:
+    """Return every fuel price time series on a component with its features."""
+    series: list[tuple[Any, dict[str, Any]]] = []
+    for ts_type in FUEL_TS_TYPES:
+        for key in system.list_time_series_keys(component, name=FUEL_PRICE_TS_NAME, time_series_type=ts_type):
+            series.extend(
+                (ts, dict(key.features))
+                for ts in system.list_time_series(
+                    component, name=key.name, time_series_type=key.time_series_type, **key.features
+                )
+            )
+    return series
+
+
+def _assign_fuel_names(variants: dict[FuelKey, list[tuple[Any, PLEXOSGenerator]]]) -> dict[FuelKey, str]:
+    """Name each fuel variant deterministically.
+
+    A fuel type with a single variant keeps the bare fuel type name; otherwise each
+    variant is suffixed with the first region (sorted) that uses it.
+    """
+    by_type: dict[str, list[FuelKey]] = {}
+    for key in variants:
+        by_type.setdefault(key[0], []).append(key)
+
+    names: dict[FuelKey, str] = {keys[0]: fuel_type for fuel_type, keys in by_type.items() if len(keys) == 1}
+    used: set[str] = set(names.values())
+    for fuel_type, keys in sorted(by_type.items()):
+        if len(keys) == 1:
+            continue
+
+        def first_region(key: FuelKey) -> str:
+            return min(str(source_gen.region.name) for source_gen, _ in variants[key])
+
+        for key in sorted(keys, key=lambda k: (first_region(k), k)):
+            base = f"{fuel_type}_{first_region(key)}"
+            name, index = base, 2
+            while name in used:
+                name, index = f"{base}_{index}", index + 1
+            used.add(name)
+            names[key] = name
+    return names
+
+
+def attach_fuels_to_generators(context: PluginContext) -> None:
+    """Create PLEXOS Fuel objects from ReEDS fuel data and link generators via Generator.Fuels.
+
+    Fuel price (scalar and time series) is a Fuel object property, so it moves from the
+    generator to the Fuel. Heat rate stays on the generator: each generator has a single
+    fuel, so no Generator.Fuels membership override is needed.
+    """
+    from r2x_plexos.models import PLEXOSFuel
+    from r2x_reeds.models.components import ReEDSGenerator, ReEDSThermalGenerator
+
+    if context.source_system is None or context.target_system is None:
+        return
+
+    source_system = context.source_system
+    target_system = context.target_system
+    target_generators = {gen.name: gen for gen in target_system.get_components(PLEXOSGenerator)}
+
+    variants: dict[FuelKey, list[tuple[Any, PLEXOSGenerator]]] = {}
+    variant_series: dict[FuelKey, list[tuple[Any, dict[str, Any]]]] = {}
+    for source_gen in source_system.get_components(ReEDSGenerator):
+        # Only these source types map fuel price onto PLEXOSGenerator in rules.json.
+        if not isinstance(source_gen, ReEDSThermalGenerator) and type(source_gen) is not ReEDSGenerator:
+            continue
+        target_gen = target_generators.get(source_gen.name)
+        if not source_gen.fuel_type or target_gen is None:
+            continue
+
+        series = _fuel_price_time_series(source_system, source_gen)
+        key: FuelKey = (
+            str(source_gen.fuel_type),
+            float(source_gen.fuel_price or 0.0),
+            tuple(sorted(_time_series_fingerprint(ts, features) for ts, features in series)),
+        )
+        variants.setdefault(key, []).append((source_gen, target_gen))
+        variant_series.setdefault(key, series)
+
+    names = _assign_fuel_names(variants)
+    for key in sorted(variants, key=lambda k: names[k]):
+        fuel_type, price, _ = key
+        fuel = PLEXOSFuel(name=names[key], category=fuel_type, price=price)
+        target_system.add_component(fuel)
+        for ts, features in variant_series[key]:
+            target_system.add_time_series(deepcopy(ts), fuel, **features)
+
+        for _, target_gen in sorted(variants[key], key=lambda pair: pair[1].name):
+            target_gen.fuel_price = 0
+            for ts_type in FUEL_TS_TYPES:
+                if target_system.has_time_series(
+                    target_gen, name=FUEL_PRICE_TS_NAME, time_series_type=ts_type
+                ):
+                    target_system.remove_time_series(
+                        target_gen, name=FUEL_PRICE_TS_NAME, time_series_type=ts_type
+                    )
+            membership = PLEXOSMembership(
+                parent_object=target_gen, child_object=fuel, collection=CollectionEnum.Fuels
+            )
+            target_system.add_supplemental_attribute(target_gen, membership)
+            target_system.add_supplemental_attribute(fuel, membership)
+        logger.debug("Linked {} generators to fuel {}", len(variants[key]), fuel.name)
 
 
 def ensure_region_node_memberships(context: PluginContext) -> None:

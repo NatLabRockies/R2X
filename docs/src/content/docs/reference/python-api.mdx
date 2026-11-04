@@ -53,12 +53,14 @@ Inherited configuration behavior is documented in [r2x-core](https://natlabrocki
 | `models` | `tuple[str, ...]` | `['r2x_reeds.models', 'r2x_plexos.models', 'r2x_reeds_to_plexos.getters_utils']` |
 | `commit_technologies` | `list[str] \| None` | `[]` |
 | `hydro_budget_ts` | `Literal['hourly', 'daily', 'weekly', 'monthly']` | `'daily'` |
+| `use_fuel_objects` | `bool` | `False` |
 
 </div>
 
 - `models`: Modules used to resolve ReEDS sources and PLEXOS targets.
 - `commit_technologies`: Technologies to commit.
 - `hydro_budget_ts`: Output resolution for hydro budget time series.
+- `use_fuel_objects`: Create PLEXOS Fuel objects from ReEDS fuel data and link generators through the `Fuels` collection instead of writing fuel price on each generator. See [Fuel objects](/R2X/reference/reeds-to-plexos-properties/#fuel-objects-opt-in).
 
 [source: r2x_reeds_to_plexos.plugin_config](https://github.com/NatLabRockies/R2X/blob/19885442e37cdd4951dd64a693ea590b0f8c83e3/packages/r2x-reeds-to-plexos/src/r2x_reeds_to_plexos/plugin_config.py#L12-L27)
 

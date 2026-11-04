@@ -25,3 +25,10 @@ class ReedsToPlexosConfig(PluginConfig):
         default="daily",
         description="Output resolution for hydro budget time series.",
     )
+    use_fuel_objects: bool = Field(
+        default=False,
+        description=(
+            "Create PLEXOS Fuel objects from ReEDS fuel data and link generators through the "
+            "Fuels collection instead of writing fuel price on each generator."
+        ),
+    )
