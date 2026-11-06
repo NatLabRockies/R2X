@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import itertools
 import json
+import math
 import re
 from collections.abc import Mapping
 from importlib.resources import files
@@ -959,34 +961,79 @@ def get_thermal_operation_cost(
     """Build thermal cost, preserving banded heat rates as a piecewise curve."""
     heat_rate_value = getattr(component, "heat_rate", 0.0) or 0.0
     if isinstance(heat_rate_value, Mapping):
-        band_rates = [
-            float(rate)
-            for _, rate in sorted(heat_rate_value.items(), key=lambda item: int(item[0]))
-            if rate is not None
-        ]
+        band_rate_items = sorted(heat_rate_value.items(), key=lambda item: int(item[0]))
+        band_ids = [int(band) for band, rate in band_rate_items if rate is not None]
+        band_rates = [float(rate) for _, rate in band_rate_items if rate is not None]
     else:
+        band_ids = []
         band_rates = []
 
     if len(band_rates) > 1:
         min_output = _first_numeric(getattr(component, "min_stable_level", 0.0) or 0.0)
         max_output = _first_numeric(getattr(component, "max_capacity", 0.0) or 0.0)
+        if min_output == 0.0:
+            factor = _first_numeric(getattr(component, "min_stable_factor", 0.0) or 0.0)
+            if factor > 0.0:
+                min_output = factor / 100.0 * max_output
         if max_output > min_output:
-            x_coords = [
-                min_output + (max_output - min_output) * index / len(band_rates)
-                for index in range(len(band_rates) + 1)
-            ]
-            value_curve = AverageRateCurve(
-                function_data=PiecewiseStepData(x_coords=x_coords, y_coords=band_rates),
-                initial_input=min_output * band_rates[0],
+            load_point_value = getattr(component, "load_point", None)
+            has_explicit_load_points = (
+                bool(load_point_value)
+                if isinstance(load_point_value, Mapping)
+                else load_point_value not in (None, 0)
             )
-            logger.warning(
-                "{} has {} heat-rate bands without explicit capacity breakpoints; "
-                "assuming equal-width bands between {} and {} MW",
-                component.name,
-                len(band_rates),
-                min_output,
-                max_output,
+            load_points_by_band: dict[int, float] = {}
+            if isinstance(load_point_value, Mapping) and has_explicit_load_points:
+                try:
+                    load_points_by_band = {
+                        int(band): float(point)
+                        for band, point in load_point_value.items()
+                        if point is not None
+                    }
+                except (TypeError, ValueError, OverflowError):
+                    load_points_by_band = {}
+            elif has_explicit_load_points and len(band_ids) == 1:
+                try:
+                    load_points_by_band[band_ids[0]] = float(load_point_value)
+                except (TypeError, ValueError, OverflowError):
+                    load_points_by_band = {}
+
+            x_coords = [min_output, *(load_points_by_band.get(band, math.nan) for band in band_ids)]
+            valid_load_points = (
+                has_explicit_load_points
+                and len(load_points_by_band) == len(band_ids)
+                and set(load_points_by_band) == set(band_ids)
+                and all(math.isfinite(point) for point in x_coords)
+                and all(left < right for left, right in itertools.pairwise(x_coords))
+                and x_coords[-1] <= max_output
             )
+
+            if not valid_load_points and has_explicit_load_points:
+                logger.warning(
+                    "{} has invalid load-point breakpoints for its heat-rate bands; using band 1",
+                    component.name,
+                )
+            elif not has_explicit_load_points:
+                x_coords = [
+                    min_output + (max_output - min_output) * index / len(band_rates)
+                    for index in range(len(band_rates) + 1)
+                ]
+                logger.warning(
+                    "{} has {} heat-rate bands without explicit capacity breakpoints; "
+                    "assuming equal-width bands between {} and {} MW",
+                    component.name,
+                    len(band_rates),
+                    min_output,
+                    max_output,
+                )
+
+            if valid_load_points or not has_explicit_load_points:
+                value_curve = AverageRateCurve(
+                    function_data=PiecewiseStepData(x_coords=x_coords, y_coords=band_rates),
+                    initial_input=min_output * band_rates[0],
+                )
+            else:
+                value_curve = LinearCurve(band_rates[0])
         else:
             value_curve = LinearCurve(band_rates[0])
             logger.warning(

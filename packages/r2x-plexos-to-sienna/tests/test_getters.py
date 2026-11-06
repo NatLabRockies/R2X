@@ -492,6 +492,15 @@ def test_prime_mover_type_unknown(tmp_path) -> None:
     assert result == PrimeMoversType.OT  # Should default to "other"
 
 
+@pytest.mark.parametrize("category", ["pv", "PV"])
+def test_pv_category_getters(tmp_path, category: str) -> None:
+    context = make_context(tmp_path)
+    gen = PLEXOSGenerator(name="GEN_PV", category=category, max_capacity=50.0)
+
+    assert getters.get_gen_technology_class(gen, context).unwrap() == "renewable-dispatch"
+    assert getters.get_prime_mover_type(gen, context).unwrap() == PrimeMoversType.PVe
+
+
 @pytest.mark.parametrize(
     ("category", "expected_family"),
     [
@@ -869,6 +878,40 @@ def test_operation_cost_getters(tmp_path) -> None:
     renewable_cost = getters.get_renewable_operation_cost(gen, context).unwrap()
     assert renewable_cost is not None
     assert renewable_cost.fixed == 0.0
+
+
+def test_operation_cost_uses_load_points_matched_by_heat_rate_band(tmp_path) -> None:
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    gen = PLEXOSGenerator(
+        name="GEN_BANDED",
+        category="gas-cc",
+        max_capacity=100.0,
+        min_stable_level=10.0,
+        heat_rate=[{"band": 2, "value": 26.6958}, {"band": 1, "value": 43.247}],
+        load_point=[{"band": 2, "value": 100.0}, {"band": 1, "value": 40.0}],
+    )
+    curve = getters.get_thermal_operation_cost(gen, context).unwrap().variable.value_curve
+
+    assert isinstance(curve, AverageRateCurve)
+    assert curve.function_data.x_coords == [10.0, 40.0, 100.0]
+    assert curve.function_data.y_coords == [43.247, 26.6958]
+
+    incomplete_gen = PLEXOSGenerator(
+        name="GEN_INCOMPLETE_BANDS",
+        category="gas-cc",
+        max_capacity=100.0,
+        min_stable_level=10.0,
+        heat_rate=[{"band": 1, "value": 43.247}, {"band": 2, "value": 26.6958}],
+        load_point=[{"band": 1, "value": 40.0}],
+    )
+    incomplete_curve = (
+        getters.get_thermal_operation_cost(incomplete_gen, context).unwrap().variable.value_curve
+    )
+
+    assert not isinstance(incomplete_curve, AverageRateCurve)
 
 
 def test_area_getter(tmp_path) -> None:
