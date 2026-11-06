@@ -79,6 +79,7 @@ _GENERATOR_FAMILY_KEYWORDS: list[tuple[str, str]] = [
 _PRIME_MOVER_KEYWORDS: list[tuple[str, str]] = [
     ("rooftop", "PVe"),
     ("pvnsg", "PVe"),
+    ("pv", "PVe"),
     ("solar", "PVe"),
     ("photovoltaic", "PVe"),
     ("csp", "CP"),
