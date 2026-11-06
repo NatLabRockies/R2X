@@ -38,6 +38,7 @@ _GENERATOR_FAMILY_BY_SLUG: dict[str, str] = {
     "egs-nearfield": "hydro-turbine",
     "rtes": "hydro-turbine",
     "renewable-dispatch": "renewable-dispatch",
+    "pv": "renewable-dispatch",
     "upv": "renewable-dispatch",
     "dupv": "renewable-dispatch",
     "pvb": "renewable-dispatch",
@@ -78,6 +79,7 @@ _GENERATOR_FAMILY_KEYWORDS: list[tuple[str, str]] = [
 _PRIME_MOVER_KEYWORDS: list[tuple[str, str]] = [
     ("rooftop", "PVe"),
     ("pvnsg", "PVe"),
+    ("pv", "PVe"),
     ("solar", "PVe"),
     ("photovoltaic", "PVe"),
     ("csp", "CP"),

@@ -6,6 +6,7 @@ import types
 from typing import Any, cast
 
 import pytest
+from infrasys.value_curves import AverageRateCurve
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
     PLEXOSBattery,
@@ -376,7 +377,15 @@ def test_generator_getters(tmp_path) -> None:
     assert getters.get_gen_active_power(gen, context).unwrap() == 100.0
     assert getters.get_gen_reactive_power(gen, context).unwrap() == 0.0
     assert getters.get_gen_rating(gen, context).unwrap() == 100.0
-    assert getters.get_gen_base_power(gen, context).unwrap() == 0.0
+    assert getters.get_gen_base_power(gen, context).unwrap() == 100.0
+
+    battery = PLEXOSBattery(name="BAT1", max_power=25.0)
+    assert getters.get_gen_base_power(battery, context).unwrap() == 25.0
+
+    no_capacity_gen = PLEXOSGenerator(name="GEN_ZERO", category="gas-cc", max_capacity=0.0)
+    for invalid_base in (None, 0.0, -1.0):
+        object.__setattr__(no_capacity_gen, "base_power", invalid_base)
+        assert getters.get_gen_base_power(no_capacity_gen, context).unwrap() == 100.0
 
     limits = getters.get_gen_active_power_limits(gen, context).unwrap()
     assert limits.min == 0.0
@@ -483,6 +492,15 @@ def test_prime_mover_type_unknown(tmp_path) -> None:
     assert result == PrimeMoversType.OT  # Should default to "other"
 
 
+@pytest.mark.parametrize("category", ["pv", "PV"])
+def test_pv_category_getters(tmp_path, category: str) -> None:
+    context = make_context(tmp_path)
+    gen = PLEXOSGenerator(name="GEN_PV", category=category, max_capacity=50.0)
+
+    assert getters.get_gen_technology_class(gen, context).unwrap() == "renewable-dispatch"
+    assert getters.get_prime_mover_type(gen, context).unwrap() == PrimeMoversType.PVe
+
+
 @pytest.mark.parametrize(
     ("category", "expected_family"),
     [
@@ -493,6 +511,7 @@ def test_prime_mover_type_unknown(tmp_path) -> None:
         ("hydro-dispatch", "hydro-dispatch"),
         ("pumped-hydro", "hydro-turbine"),
         ("wind-ons", "renewable-dispatch"),
+        ("PV", "renewable-dispatch"),
         ("distpv", "renewable-non-dispatch"),
         ("synchronous-condenser", "synchronous-condenser"),
         # Descriptive AEMO ISP naming convention.
@@ -835,6 +854,21 @@ def test_operation_cost_getters(tmp_path) -> None:
     assert thermal_cost is not None
     assert thermal_cost.fixed == 0.0
 
+    banded_gen = PLEXOSGenerator(
+        name="GEN_BANDED",
+        category="gas-cc",
+        max_capacity=100.0,
+        min_stable_level=10.0,
+        heat_rate=[{"band": 1, "value": 43.247}, {"band": 2, "value": 26.6958}],
+    )
+    banded_cost = getters.get_thermal_operation_cost(banded_gen, context).unwrap()
+    assert banded_cost.variable is not None
+    curve = banded_cost.variable.value_curve
+    assert isinstance(curve, AverageRateCurve)
+    assert curve.function_data.x_coords == [10.0, 55.0, 100.0]
+    assert curve.function_data.y_coords == [43.247, 26.6958]
+    assert curve.initial_input == pytest.approx(432.47)
+
     # Test hydro operation cost
     hydro_cost = getters.get_hydro_gen_operation_cost(gen, context).unwrap()
     assert hydro_cost is not None
@@ -844,6 +878,40 @@ def test_operation_cost_getters(tmp_path) -> None:
     renewable_cost = getters.get_renewable_operation_cost(gen, context).unwrap()
     assert renewable_cost is not None
     assert renewable_cost.fixed == 0.0
+
+
+def test_operation_cost_uses_load_points_matched_by_heat_rate_band(tmp_path) -> None:
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    gen = PLEXOSGenerator(
+        name="GEN_BANDED",
+        category="gas-cc",
+        max_capacity=100.0,
+        min_stable_level=10.0,
+        heat_rate=[{"band": 2, "value": 26.6958}, {"band": 1, "value": 43.247}],
+        load_point=[{"band": 2, "value": 100.0}, {"band": 1, "value": 40.0}],
+    )
+    curve = getters.get_thermal_operation_cost(gen, context).unwrap().variable.value_curve
+
+    assert isinstance(curve, AverageRateCurve)
+    assert curve.function_data.x_coords == [10.0, 40.0, 100.0]
+    assert curve.function_data.y_coords == [43.247, 26.6958]
+
+    incomplete_gen = PLEXOSGenerator(
+        name="GEN_INCOMPLETE_BANDS",
+        category="gas-cc",
+        max_capacity=100.0,
+        min_stable_level=10.0,
+        heat_rate=[{"band": 1, "value": 43.247}, {"band": 2, "value": 26.6958}],
+        load_point=[{"band": 1, "value": 40.0}],
+    )
+    incomplete_curve = (
+        getters.get_thermal_operation_cost(incomplete_gen, context).unwrap().variable.value_curve
+    )
+
+    assert not isinstance(incomplete_curve, AverageRateCurve)
 
 
 def test_area_getter(tmp_path) -> None:
