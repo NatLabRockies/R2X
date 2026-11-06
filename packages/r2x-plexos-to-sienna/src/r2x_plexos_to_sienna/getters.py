@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from importlib.resources import files
 from typing import Any
 
@@ -65,7 +66,7 @@ from r2x_sienna.models.named_tuples import (
     UpDown,
 )
 
-from r2x_core import Ok, PluginContext, Result
+from r2x_core import Err, Ok, PluginContext, Result
 from r2x_core.getters import getter
 
 from .mappings import (
@@ -87,13 +88,17 @@ P2S_TS_PENDING_CACHE_KEY = "p2s_pending_ts"
 
 
 def _first_numeric(value: Any) -> float:
-    """Extract a scalar float from raw values or vector-like wrappers."""
+    """Extract a scalar float, using the first PLEXOS band for mappings."""
+    if isinstance(value, Mapping):
+        value = value.get(1, next(iter(value.values()), 0.0))
+        return float(value)
+
     values = getattr(value, "values", None)
     if values is not None:
-        values_any: Any = values
+        values_any: Any = values() if callable(values) else values
         try:
             return float(values_any[0])
-        except Exception:
+        except (IndexError, KeyError, TypeError):
             pass
     return float(value)
 
@@ -845,9 +850,15 @@ def get_gen_rating(component: PLEXOSGenerator, context: PluginContext) -> Result
 
 @getter
 def get_gen_base_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the base power of a generator."""
-    value = getattr(component, "base_power", 0.0)
-    return Ok(float(value))
+    """Get the generator base power, falling back to its maximum capacity."""
+    value = getattr(component, "base_power", None)
+    if value is None or float(value) <= 0.0:
+        value = getattr(component, "max_capacity", 0.0)
+
+    base_power = float(value or 0.0)
+    if base_power <= 0.0:
+        return Err(ValueError(f"Generator {component.name!r} has no positive base power or maximum capacity"))
+    return Ok(base_power)
 
 
 @getter
@@ -939,11 +950,17 @@ def get_time_at_status(component: PLEXOSGenerator, context: PluginContext) -> Re
 def get_thermal_operation_cost(
     component: PLEXOSGenerator, context: PluginContext
 ) -> Result[ThermalGenerationCost, ValueError]:
-    """Build thermal operation cost from heat_rate, fuel_price, vom_charge, and start_cost."""
-    heat_rate = float(getattr(component, "heat_rate", 0.0) or 0.0)
-    fuel_price = float(getattr(component, "fuel_price", 0.0) or 0.0)
-    vom_charge = float(getattr(component, "vom_charge", 0.0) or 0.0)
-    start_cost = float(getattr(component, "start_cost", 0.0) or 0.0)
+    """Build thermal cost, reducing banded heat rates to PLEXOS band 1."""
+    heat_rate_value = getattr(component, "heat_rate", 0.0) or 0.0
+    if isinstance(heat_rate_value, Mapping) and len(heat_rate_value) > 1:
+        logger.warning(
+            "{} has a banded heat rate; using PLEXOS band 1 for the scalar Sienna cost curve",
+            component.name,
+        )
+    heat_rate = _first_numeric(heat_rate_value)
+    fuel_price = _first_numeric(getattr(component, "fuel_price", 0.0) or 0.0)
+    vom_charge = _first_numeric(getattr(component, "vom_charge", 0.0) or 0.0)
+    start_cost = _first_numeric(getattr(component, "start_cost", 0.0) or 0.0)
     return Ok(
         ThermalGenerationCost(
             fixed=0.0,

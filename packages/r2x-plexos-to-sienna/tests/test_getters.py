@@ -376,7 +376,7 @@ def test_generator_getters(tmp_path) -> None:
     assert getters.get_gen_active_power(gen, context).unwrap() == 100.0
     assert getters.get_gen_reactive_power(gen, context).unwrap() == 0.0
     assert getters.get_gen_rating(gen, context).unwrap() == 100.0
-    assert getters.get_gen_base_power(gen, context).unwrap() == 0.0
+    assert getters.get_gen_base_power(gen, context).unwrap() == 100.0
 
     limits = getters.get_gen_active_power_limits(gen, context).unwrap()
     assert limits.min == 0.0
@@ -834,6 +834,16 @@ def test_operation_cost_getters(tmp_path) -> None:
     thermal_cost = getters.get_thermal_operation_cost(gen, context).unwrap()
     assert thermal_cost is not None
     assert thermal_cost.fixed == 0.0
+
+    banded_gen = PLEXOSGenerator(
+        name="GEN_BANDED",
+        category="gas-cc",
+        max_capacity=100.0,
+        heat_rate=[{"band": 1, "value": 43.247}, {"band": 2, "value": 26.6958}],
+    )
+    banded_cost = getters.get_thermal_operation_cost(banded_gen, context).unwrap()
+    assert banded_cost.variable is not None
+    assert banded_cost.variable.value_curve.function_data.proportional_term == pytest.approx(43.247)
 
     # Test hydro operation cost
     hydro_cost = getters.get_hydro_gen_operation_cost(gen, context).unwrap()
