@@ -856,6 +856,8 @@ def get_gen_base_power(
     """Use a positive equipment base/rating, or the standard 100 MVA fallback."""
     for field_name in ("base_power", "max_capacity", "max_power"):
         value = getattr(component, field_name, None)
+        if value is None:
+            continue
         try:
             base_power = float(value)
         except (TypeError, ValueError):
