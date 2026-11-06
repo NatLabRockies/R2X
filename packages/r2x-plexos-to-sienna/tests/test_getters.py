@@ -6,6 +6,7 @@ import types
 from typing import Any, cast
 
 import pytest
+from infrasys.value_curves import AverageRateCurve
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
     PLEXOSBattery,
@@ -378,6 +379,14 @@ def test_generator_getters(tmp_path) -> None:
     assert getters.get_gen_rating(gen, context).unwrap() == 100.0
     assert getters.get_gen_base_power(gen, context).unwrap() == 100.0
 
+    battery = PLEXOSBattery(name="BAT1", max_power=25.0)
+    assert getters.get_gen_base_power(battery, context).unwrap() == 25.0
+
+    no_capacity_gen = PLEXOSGenerator(name="GEN_ZERO", category="gas-cc", max_capacity=0.0)
+    for invalid_base in (None, 0.0, -1.0):
+        object.__setattr__(no_capacity_gen, "base_power", invalid_base)
+        assert getters.get_gen_base_power(no_capacity_gen, context).unwrap() == 100.0
+
     limits = getters.get_gen_active_power_limits(gen, context).unwrap()
     assert limits.min == 0.0
     assert limits.max == 100.0  # max_capacity
@@ -493,6 +502,7 @@ def test_prime_mover_type_unknown(tmp_path) -> None:
         ("hydro-dispatch", "hydro-dispatch"),
         ("pumped-hydro", "hydro-turbine"),
         ("wind-ons", "renewable-dispatch"),
+        ("PV", "renewable-dispatch"),
         ("distpv", "renewable-non-dispatch"),
         ("synchronous-condenser", "synchronous-condenser"),
         # Descriptive AEMO ISP naming convention.
@@ -839,11 +849,16 @@ def test_operation_cost_getters(tmp_path) -> None:
         name="GEN_BANDED",
         category="gas-cc",
         max_capacity=100.0,
+        min_stable_level=10.0,
         heat_rate=[{"band": 1, "value": 43.247}, {"band": 2, "value": 26.6958}],
     )
     banded_cost = getters.get_thermal_operation_cost(banded_gen, context).unwrap()
     assert banded_cost.variable is not None
-    assert banded_cost.variable.value_curve.function_data.proportional_term == pytest.approx(43.247)
+    curve = banded_cost.variable.value_curve
+    assert isinstance(curve, AverageRateCurve)
+    assert curve.function_data.x_coords == [10.0, 55.0, 100.0]
+    assert curve.function_data.y_coords == [43.247, 26.6958]
+    assert curve.initial_input == pytest.approx(432.47)
 
     # Test hydro operation cost
     hydro_cost = getters.get_hydro_gen_operation_cost(gen, context).unwrap()

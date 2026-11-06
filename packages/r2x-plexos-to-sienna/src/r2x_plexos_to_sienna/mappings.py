@@ -38,6 +38,7 @@ _GENERATOR_FAMILY_BY_SLUG: dict[str, str] = {
     "egs-nearfield": "hydro-turbine",
     "rtes": "hydro-turbine",
     "renewable-dispatch": "renewable-dispatch",
+    "pv": "renewable-dispatch",
     "upv": "renewable-dispatch",
     "dupv": "renewable-dispatch",
     "pvb": "renewable-dispatch",

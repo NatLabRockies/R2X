@@ -10,7 +10,8 @@ from typing import Any
 
 from infrasys import Component, SingleTimeSeries
 from infrasys.cost_curves import CostCurve, FuelCurve, UnitSystem
-from infrasys.value_curves import InputOutputCurve, LinearCurve
+from infrasys.function_data import PiecewiseStepData
+from infrasys.value_curves import AverageRateCurve, InputOutputCurve, LinearCurve
 from loguru import logger
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
@@ -66,7 +67,7 @@ from r2x_sienna.models.named_tuples import (
     UpDown,
 )
 
-from r2x_core import Err, Ok, PluginContext, Result
+from r2x_core import Ok, PluginContext, Result
 from r2x_core.getters import getter
 
 from .mappings import (
@@ -849,16 +850,19 @@ def get_gen_rating(component: PLEXOSGenerator, context: PluginContext) -> Result
 
 
 @getter
-def get_gen_base_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the generator base power, falling back to its maximum capacity."""
-    value = getattr(component, "base_power", None)
-    if value is None or float(value) <= 0.0:
-        value = getattr(component, "max_capacity", 0.0)
-
-    base_power = float(value or 0.0)
-    if base_power <= 0.0:
-        return Err(ValueError(f"Generator {component.name!r} has no positive base power or maximum capacity"))
-    return Ok(base_power)
+def get_gen_base_power(
+    component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext
+) -> Result[float, Any]:
+    """Use a positive equipment base/rating, or the standard 100 MVA fallback."""
+    for field_name in ("base_power", "max_capacity", "max_power"):
+        value = getattr(component, field_name, None)
+        try:
+            base_power = float(value)
+        except (TypeError, ValueError):
+            continue
+        if base_power > 0.0:
+            return Ok(base_power)
+    return Ok(100.0)
 
 
 @getter
@@ -950,14 +954,47 @@ def get_time_at_status(component: PLEXOSGenerator, context: PluginContext) -> Re
 def get_thermal_operation_cost(
     component: PLEXOSGenerator, context: PluginContext
 ) -> Result[ThermalGenerationCost, ValueError]:
-    """Build thermal cost, reducing banded heat rates to PLEXOS band 1."""
+    """Build thermal cost, preserving banded heat rates as a piecewise curve."""
     heat_rate_value = getattr(component, "heat_rate", 0.0) or 0.0
-    if isinstance(heat_rate_value, Mapping) and len(heat_rate_value) > 1:
-        logger.warning(
-            "{} has a banded heat rate; using PLEXOS band 1 for the scalar Sienna cost curve",
-            component.name,
-        )
-    heat_rate = _first_numeric(heat_rate_value)
+    if isinstance(heat_rate_value, Mapping):
+        band_rates = [
+            float(rate)
+            for _, rate in sorted(heat_rate_value.items(), key=lambda item: int(item[0]))
+            if rate is not None
+        ]
+    else:
+        band_rates = []
+
+    if len(band_rates) > 1:
+        min_output = _first_numeric(getattr(component, "min_stable_level", 0.0) or 0.0)
+        max_output = _first_numeric(getattr(component, "max_capacity", 0.0) or 0.0)
+        if max_output > min_output:
+            x_coords = [
+                min_output + (max_output - min_output) * index / len(band_rates)
+                for index in range(len(band_rates) + 1)
+            ]
+            value_curve = AverageRateCurve(
+                function_data=PiecewiseStepData(x_coords=x_coords, y_coords=band_rates),
+                initial_input=min_output * band_rates[0],
+            )
+            logger.warning(
+                "{} has {} heat-rate bands without explicit capacity breakpoints; "
+                "assuming equal-width bands between {} and {} MW",
+                component.name,
+                len(band_rates),
+                min_output,
+                max_output,
+            )
+        else:
+            value_curve = LinearCurve(band_rates[0])
+            logger.warning(
+                "{} has banded heat rates but invalid output limits; using band 1",
+                component.name,
+            )
+    else:
+        heat_rate = band_rates[0] if band_rates else _first_numeric(heat_rate_value)
+        value_curve = LinearCurve(heat_rate)
+
     fuel_price = _first_numeric(getattr(component, "fuel_price", 0.0) or 0.0)
     vom_charge = _first_numeric(getattr(component, "vom_charge", 0.0) or 0.0)
     start_cost = _first_numeric(getattr(component, "start_cost", 0.0) or 0.0)
@@ -967,7 +1004,7 @@ def get_thermal_operation_cost(
             shut_down=0.0,
             start_up=start_cost,
             variable=FuelCurve(
-                value_curve=LinearCurve(heat_rate),
+                value_curve=value_curve,
                 power_units=NATURAL_UNITS,
                 fuel_cost=fuel_price,
                 vom_cost=LinearCurve(vom_charge),
