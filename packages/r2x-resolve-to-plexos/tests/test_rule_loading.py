@@ -28,7 +28,7 @@ def test_translation_rules_cover_resolve_domain_components() -> None:
         ("ResolveZone", "PLEXOSNode"),
         ("ResolveZone", "PLEXOSRegion"),
         ("InvestmentComponent", "PLEXOSGenerator"),
-        ("ResolveFuel", "PLEXOSFuel"),
+        ("ResolveFuelPrice", "PLEXOSFuel"),
         ("ResolveTransmissionLine", "PLEXOSLine"),
         ("ResolveGroupedInterface", "PLEXOSInterface"),
         ("PLEXOSGenerator", "PLEXOSMembership"),

@@ -8,18 +8,19 @@ from infrasys.time_series_models import NonSequentialTimeSeries, SingleTimeSerie
 from r2x_resolve import (
     ReserveDirection,
     ResolveBatteryStorage,
-    ResolveFuel,
-    ResolveGasFO,
+    ResolveFuelPrice,
+    ResolveFuelType,
+    ResolveGenerator,
+    ResolveGeneratorFuel,
     ResolveGroupedInterface,
     ResolveInterface,
     ResolveLoad,
-    ResolveNuclear,
+    ResolvePrimeMover,
+    ResolvePumpedStorage,
     ResolveReserve,
-    ResolveSolar,
+    ResolveTechnology,
     ResolveTransmissionLine,
     ResolveTransmissionRating,
-    ResolveWind,
-    ResolveZeroCarbonFirm,
     ResolveZone,
 )
 
@@ -42,29 +43,66 @@ def resolve_system() -> System:
     for zone in (zone_a, zone_j, pjm_w):
         system.add_component(zone)
 
+    tech, fuel, mover = ResolveTechnology, ResolveFuelType, ResolvePrimeMover
     existing = {"vintage": "existing"}
-    for generator in (
-        ResolveGasFO(
-            name="J:Gas_CCGT", zone=zone_j, capacity=500, ext={**existing, "resource_type": "Gas_CCGT"}
+    for name, zone, technology, fuel_type, prime_mover, capacity, ext in (
+        (
+            "J:Gas_CCGT",
+            zone_j,
+            tech.GAS_FO,
+            fuel.NATURAL_GAS,
+            mover.CC,
+            500,
+            {**existing, "resource_type": "Gas_CCGT"},
         ),
-        ResolveGasFO(name="J:FO_ST", zone=zone_j, capacity=100, ext={**existing, "resource_type": "FO_ST"}),
-        ResolveGasFO(name="J:Gas & FO:new", zone=zone_j, capacity=50, ext={"vintage": "new"}),
-        ResolveZeroCarbonFirm(
-            name="A:Gas_CT:converted",
-            zone=zone_a,
-            capacity=80,
-            ext={"vintage": "converted", "resource_type": "Gas_CT", "converted_from": "Gas_CT"},
+        (
+            "J:FO_ST",
+            zone_j,
+            tech.GAS_FO,
+            fuel.FUEL_OIL,
+            mover.ST,
+            100,
+            {**existing, "resource_type": "FO_ST"},
         ),
-        ResolveNuclear(
-            name="A:Nuclear", zone=zone_a, capacity=1000, ext={**existing, "resource_type": "Nuclear"}
+        ("J:FO_CT", zone_j, tech.GAS_FO, fuel.FUEL_OIL, mover.CT, 40, {**existing, "resource_type": "FO_CT"}),
+        ("J:Gas & FO:new", zone_j, tech.GAS_FO, fuel.GAS_FUEL_OIL, mover.MIXED, 50, {"vintage": "new"}),
+        (
+            "A:Gas_CT:converted",
+            zone_a,
+            tech.ZERO_CARBON_FIRM,
+            fuel.RNG,
+            mover.UNKNOWN,
+            80,
+            {"vintage": "converted", "resource_type": "Gas_CT", "converted_from": "Gas_CT"},
         ),
-        ResolveSolar(name="A:Solar", zone=zone_a, capacity=200),
-        ResolveWind(name="J:Wind", zone=zone_j, capacity=0),
-        ResolveBatteryStorage(name="A:Battery Storage", zone=zone_a, capacity=20),
+        (
+            "A:Nuclear",
+            zone_a,
+            tech.NUCLEAR,
+            fuel.URANIUM,
+            mover.UNKNOWN,
+            1000,
+            {**existing, "resource_type": "Nuclear"},
+        ),
+        ("A:Solar", zone_a, tech.SOLAR, fuel.SOLAR, mover.PV, 200, {}),
+        ("J:Wind", zone_j, tech.WIND, fuel.WIND, mover.WT, 0, {}),
+        ("J:Offshore Wind", zone_j, tech.OFFSHORE_WIND, fuel.WIND, mover.WT, 300, {}),
     ):
-        system.add_component(generator)
+        system.add_component(
+            ResolveGenerator(
+                name=name,
+                zone=zone,
+                technology=technology,
+                fuel_type=fuel_type,
+                prime_mover_type=prime_mover,
+                capacity=capacity,
+                ext=ext,
+            )
+        )
+    system.add_component(ResolveBatteryStorage(name="A:Battery Storage", zone=zone_a, capacity=20))
+    system.add_component(ResolvePumpedStorage(name="A:Pumped Storage", zone=zone_a, capacity=30))
     system.add_time_series(
-        _series("max_active_power", [0.0, 50.0, 120.0]), system.get_component(ResolveSolar, "A:Solar")
+        _series("max_active_power", [0.0, 50.0, 120.0]), system.get_component(ResolveGenerator, "A:Solar")
     )
 
     for zone, demand in ((zone_a, [900.0, 950.0, 1000.0]), (zone_j, [4000.0, 4100.0, 4200.0])):
@@ -89,23 +127,44 @@ def resolve_system() -> System:
         system.add_component(reserve)
         system.add_time_series(_series("requirement", requirement), reserve)
 
+    prices = {}
     for name, fuel_type, price, zones in (
-        ("NG_NYISO_A-E", "NG", 3.86, list("ABCDE")),
-        ("NG_NYISO_J", "NG", 4.99, ["J"]),
-        ("RFO_NYISO_J", "RFO", 12.42, ["J"]),
-        ("RNG_Tier_1", "RNG", 29.87, []),
-        ("Nuclear", "Nuclear", 0.72, []),
+        ("NG_NYISO_A-E", fuel.NATURAL_GAS, 3.86, list("ABCDE")),
+        ("NG_NYISO_J", fuel.NATURAL_GAS, 4.99, ["J"]),
+        ("DFO_NYISO_J", fuel.FUEL_OIL, 19.75, ["J"]),
+        ("RFO_NYISO_J", fuel.FUEL_OIL, 12.42, ["J"]),
+        ("RNG_Tier_1", fuel.RNG, 29.87, []),
+        ("RNG_Tier_2", fuel.RNG, 35.10, []),
+        ("Nuclear", fuel.URANIUM, 0.72, []),
     ):
-        fuel = ResolveFuel(name=name, fuel_type=fuel_type, price=price, ext={"zones": zones})
-        system.add_component(fuel)
+        fuel_price = ResolveFuelPrice(name=name, fuel_type=fuel_type, price=price, ext={"zones": zones})
+        system.add_component(fuel_price)
+        prices[name] = fuel_price
         system.add_time_series(
             NonSequentialTimeSeries.from_array(
                 [round(price * (0.9 + month / 60), 4) for month in range(1, 13)],
                 timestamps=[datetime(2025, month, 1) for month in range(1, 13)],
                 name="fuel_price",
             ),
-            fuel,
+            fuel_price,
         )
+
+    # One link per fuel each generator burns, as the r2x-resolve parser builds them.
+    for generator_name, fuel_names in (
+        ("J:Gas_CCGT", ["NG_NYISO_J"]),
+        ("J:FO_ST", ["RFO_NYISO_J"]),
+        ("J:FO_CT", ["DFO_NYISO_J"]),
+        ("J:Gas & FO:new", ["NG_NYISO_J", "DFO_NYISO_J", "RFO_NYISO_J"]),
+        ("A:Gas_CT:converted", ["RNG_Tier_1", "RNG_Tier_2"]),
+        ("A:Nuclear", ["Nuclear"]),
+    ):
+        generator = system.get_component(ResolveGenerator, generator_name)
+        for fuel_name in fuel_names:
+            system.add_component(
+                ResolveGeneratorFuel(
+                    name=f"{generator_name}:{fuel_name}", generator=generator, fuel_price=prices[fuel_name]
+                )
+            )
 
     lines = {}
     for from_zone, to_zone, from_to, to_from in (

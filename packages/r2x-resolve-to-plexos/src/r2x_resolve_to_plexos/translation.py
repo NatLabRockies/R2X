@@ -8,6 +8,7 @@ from importlib.resources import files
 from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
 
 from .attach import (
+    add_generator_fuels,
     add_interface_lines,
     add_reserve_providers,
     attach_fuel_prices,
@@ -39,6 +40,7 @@ def resolve_to_plexos(system: System, config: ResolveToPlexosConfig) -> System:
     attach_region_load(context)
     attach_generator_profiles(context)
     attach_fuel_prices(context)
+    add_generator_fuels(context)
     attach_reserve_requirements(context)
     add_reserve_providers(context)
     add_interface_lines(context)

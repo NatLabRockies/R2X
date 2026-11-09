@@ -60,18 +60,43 @@ def test_zone_load_goes_on_its_region_with_the_demand_series(plexos: System) -> 
 
 
 def test_generators_keep_capacity_category_and_node(plexos: System) -> None:
-    """Every Resolve unit is a Generator on its zone's Node, categorized by technology."""
+    """Every Resolve unit, storage included, is a Generator on its zone's Node."""
     generators = _by_name(plexos, PLEXOSGenerator)
-    assert len(generators) == 8
+    assert len(generators) == 11
     ccgt = generators["J:Gas_CCGT"]
-    assert ccgt.category == "Gas & FO"
     assert ccgt.max_capacity == 500
     assert ccgt.units == 1
-    assert generators["A:Gas_CT:converted"].category == "Zero-Carbon Firm"
-    assert generators["A:Battery Storage"].category == "Battery Storage"
     assert generators["J:Wind"].units == 0
     assert ("J:Gas_CCGT", "J") in _memberships(plexos, "Nodes")
     assert ("A:Solar", "A") in _memberships(plexos, "Nodes")
+
+
+def test_generator_category_names_type_and_fuel(plexos: System) -> None:
+    """Gas and oil units are named by fuel and prime mover; other units by technology."""
+    categories = {name: generator.category for name, generator in _by_name(plexos, PLEXOSGenerator).items()}
+    assert categories == {
+        "J:Gas_CCGT": "Gas CC",
+        "J:FO_ST": "Oil ST",
+        "J:FO_CT": "Oil CT",
+        "J:Gas & FO:new": "Gas & FO",
+        "A:Gas_CT:converted": "Zero-Carbon Firm",
+        "A:Nuclear": "Nuclear",
+        "A:Solar": "Solar",
+        "J:Wind": "Wind",
+        "J:Offshore Wind": "Offshore Wind",
+        "A:Battery Storage": "Battery Storage",
+        "A:Pumped Storage": "Pumped Storage",
+    }
+
+
+def test_every_technology_has_a_category() -> None:
+    """Each Resolve technology, and each Gas & FO classification, maps to a category."""
+    from r2x_resolve import ResolveTechnology
+    from r2x_resolve.components import _GENERATOR_CLASSIFICATIONS
+    from r2x_resolve_to_plexos.getters import CATEGORY_BY_TECHNOLOGY, GAS_FO_CATEGORY_BY_CLASSIFICATION
+
+    assert set(CATEGORY_BY_TECHNOLOGY) == set(ResolveTechnology) - {ResolveTechnology.GAS_FO}
+    assert set(GAS_FO_CATEGORY_BY_CLASSIFICATION) == set(_GENERATOR_CLASSIFICATIONS[ResolveTechnology.GAS_FO])
 
 
 def test_generator_profiles_become_rating_series(plexos: System) -> None:
@@ -84,18 +109,31 @@ def test_generator_profiles_become_rating_series(plexos: System) -> None:
 def test_fuels_keep_price_and_type(plexos: System) -> None:
     """Each Resolve fuel is a PLEXOS Fuel with its annual price."""
     fuels = _by_name(plexos, PLEXOSFuel)
-    assert set(fuels) == {"NG_NYISO_A-E", "NG_NYISO_J", "RFO_NYISO_J", "RNG_Tier_1", "Nuclear"}
+    assert set(fuels) == {
+        "NG_NYISO_A-E",
+        "NG_NYISO_J",
+        "DFO_NYISO_J",
+        "RFO_NYISO_J",
+        "RNG_Tier_1",
+        "RNG_Tier_2",
+        "Nuclear",
+    }
     assert fuels["NG_NYISO_J"].price == 4.99
-    assert fuels["NG_NYISO_J"].category == "NG"
+    assert fuels["NG_NYISO_J"].category == "NATURAL_GAS"
+    assert fuels["DFO_NYISO_J"].category == "FUEL_OIL"
 
 
-def test_generators_burn_the_zone_group_fuel_for_their_technology(plexos: System) -> None:
-    """Gas and new builds burn zone-group gas, oil burns RFO, ZCF burns RNG_Tier_1."""
+def test_generator_fuels_follow_the_resolve_fuel_links(plexos: System) -> None:
+    """Each ResolveGeneratorFuel link becomes one Generator.Fuels membership."""
     assert _memberships(plexos, "Fuels") == {
         ("J:Gas_CCGT", "NG_NYISO_J"),
         ("J:FO_ST", "RFO_NYISO_J"),
+        ("J:FO_CT", "DFO_NYISO_J"),
         ("J:Gas & FO:new", "NG_NYISO_J"),
+        ("J:Gas & FO:new", "DFO_NYISO_J"),
+        ("J:Gas & FO:new", "RFO_NYISO_J"),
         ("A:Gas_CT:converted", "RNG_Tier_1"),
+        ("A:Gas_CT:converted", "RNG_Tier_2"),
         ("A:Nuclear", "Nuclear"),
     }
 

@@ -15,7 +15,7 @@ from r2x_plexos.models import (
 )
 from r2x_resolve import (
     InvestmentComponent,
-    ResolveFuel,
+    ResolveFuelPrice,
     ResolveGroupedInterface,
     ResolveReserve,
     ResolveTransmissionLine,
@@ -28,7 +28,7 @@ _COMPONENT_COUNT_MAP: tuple[tuple[type[Any], type[Any], str], ...] = (
     (ResolveZone, PLEXOSNode, "nodes"),
     (ResolveZone, PLEXOSRegion, "regions"),
     (InvestmentComponent, PLEXOSGenerator, "generators"),
-    (ResolveFuel, PLEXOSFuel, "fuels"),
+    (ResolveFuelPrice, PLEXOSFuel, "fuels"),
     (ResolveTransmissionLine, PLEXOSLine, "lines"),
     (ResolveGroupedInterface, PLEXOSInterface, "interfaces"),
     (ResolveReserve, PLEXOSReserve, "reserves"),
