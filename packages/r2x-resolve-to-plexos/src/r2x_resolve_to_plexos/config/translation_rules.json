@@ -42,7 +42,7 @@
     }
   },
   {
-    "source_type": "ResolveFuel",
+    "source_type": "ResolveFuelPrice",
     "target_type": "PLEXOSFuel",
     "version": 1,
     "field_map": {
@@ -122,23 +122,6 @@
       "parent_object": "resolve_membership_parent",
       "child_object": "resolve_generator_node",
       "collection": "resolve_collection_nodes"
-    }
-  },
-  {
-    "source_type": "PLEXOSGenerator",
-    "target_type": "PLEXOSMembership",
-    "version": 2,
-    "name": "generator_fuel_membership",
-    "system": "target",
-    "filter": {
-      "field": "category",
-      "op": "in",
-      "values": ["Gas & FO", "Zero-Carbon Firm", "Nuclear", "Biomass"]
-    },
-    "getters": {
-      "parent_object": "resolve_membership_parent",
-      "child_object": "resolve_generator_fuel",
-      "collection": "resolve_collection_fuels"
     }
   },
   {

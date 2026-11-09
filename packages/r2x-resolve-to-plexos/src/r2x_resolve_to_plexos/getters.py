@@ -6,13 +6,15 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from infrasys import Component
 from plexosdb import CollectionEnum
-from r2x_plexos.models import PLEXOSFuel, PLEXOSNode, PLEXOSRegion
+from r2x_plexos.models import PLEXOSNode, PLEXOSRegion
 from r2x_resolve import (
     InvestmentComponent,
     ReserveDirection,
-    ResolveFuel,
+    ResolveFuelType,
+    ResolveGenerator,
     ResolveGroupedInterface,
     ResolveLoad,
+    ResolvePrimeMover,
     ResolveReserve,
     ResolveTechnology,
     ResolveTransmissionLine,
@@ -27,14 +29,32 @@ if TYPE_CHECKING:
 
 T = TypeVar("T", bound=Component)
 
-# Fuel burned by each fuel-using technology. Gas & FO burns the natural gas or,
-# for oil units (FO_ST, FO_CT), the residual fuel oil priced for its zone group.
-FUEL_BY_TECHNOLOGY: dict[ResolveTechnology, str] = {
-    ResolveTechnology.ZERO_CARBON_FIRM: "RNG_Tier_1",
+# PLEXOS Generator category for every technology except Gas & FO, which is
+# named from its fuel and prime mover below.
+CATEGORY_BY_TECHNOLOGY: dict[ResolveTechnology, str] = {
     ResolveTechnology.NUCLEAR: "Nuclear",
+    ResolveTechnology.ZERO_CARBON_FIRM: "Zero-Carbon Firm",
     ResolveTechnology.BIOMASS: "Biomass",
+    ResolveTechnology.IN_STATE_HYDRO: "Hydro",
+    ResolveTechnology.HYDRO_IMPORTS_EXISTING: "Hydro Imports",
+    ResolveTechnology.HYDRO_IMPORTS_NEW: "Hydro Imports",
+    ResolveTechnology.WIND: "Wind",
+    ResolveTechnology.WIND_IMPORTS: "Wind Imports",
+    ResolveTechnology.OFFSHORE_WIND: "Offshore Wind",
+    ResolveTechnology.SOLAR: "Solar",
+    ResolveTechnology.BATTERY_STORAGE: "Battery Storage",
+    ResolveTechnology.PUMPED_STORAGE: "Pumped Storage",
 }
-OIL_RESOURCE_PREFIX = "FO_"
+# Gas & FO units split by existing resource type carry their fuel and prime mover;
+# new and unsplit units are the mixed aggregate.
+GAS_FO_CATEGORY_BY_CLASSIFICATION: dict[tuple[ResolveFuelType, ResolvePrimeMover], str] = {
+    (ResolveFuelType.NATURAL_GAS, ResolvePrimeMover.CC): "Gas CC",
+    (ResolveFuelType.NATURAL_GAS, ResolvePrimeMover.ST): "Gas ST",
+    (ResolveFuelType.NATURAL_GAS, ResolvePrimeMover.CT): "Gas CT",
+    (ResolveFuelType.FUEL_OIL, ResolvePrimeMover.ST): "Oil ST",
+    (ResolveFuelType.FUEL_OIL, ResolvePrimeMover.CT): "Oil CT",
+    (ResolveFuelType.GAS_FUEL_OIL, ResolvePrimeMover.MIXED): "Gas & FO",
+}
 
 
 def _source(context: PluginContext, component_type: type[T], name: str) -> Result[T, ValueError]:
@@ -75,8 +95,20 @@ def region_load(component: ResolveZone, context: PluginContext) -> Result[float,
 
 @getter(name="resolve_generator_category")
 def generator_category(component: InvestmentComponent, context: PluginContext) -> Result[str, ValueError]:
-    """Return the Resolve technology label as the PLEXOS category."""
-    return Ok(component.technology.value)
+    """Name the generator's type: fuel and prime mover for Gas & FO, else its technology."""
+    if component.technology is not ResolveTechnology.GAS_FO:
+        return Ok(CATEGORY_BY_TECHNOLOGY[component.technology])
+    if not isinstance(component, ResolveGenerator):
+        return Err(ValueError(f"Gas & FO unit '{component.name}' is not a ResolveGenerator"))
+    category = GAS_FO_CATEGORY_BY_CLASSIFICATION.get((component.fuel_type, component.prime_mover_type))
+    if category is None:
+        return Err(
+            ValueError(
+                f"No PLEXOS category for Gas & FO unit '{component.name}' with fuel "
+                f"{component.fuel_type.value} and prime mover {component.prime_mover_type.value}"
+            )
+        )
+    return Ok(category)
 
 
 @getter(name="resolve_generator_units")
@@ -147,34 +179,6 @@ def generator_node(component: Any, context: PluginContext) -> Result[PLEXOSNode,
     )
 
 
-def _fuel_name(unit: InvestmentComponent, context: PluginContext) -> Result[str, ValueError]:
-    """Name the Resolve fuel a unit burns."""
-    if unit.technology is not ResolveTechnology.GAS_FO:
-        fuel = FUEL_BY_TECHNOLOGY.get(unit.technology)
-        if fuel is None:
-            return Err(ValueError(f"No fuel defined for {unit.technology.value} unit '{unit.name}'"))
-        return Ok(fuel)
-
-    resource_type = str(unit.ext.get("resource_type") or "")
-    fuel_type = "RFO" if resource_type.startswith(OIL_RESOURCE_PREFIX) else "NG"
-    assert context.source_system is not None
-    for fuel in context.source_system.get_components(ResolveFuel):
-        zones = fuel.ext.get("zones")
-        if fuel.fuel_type == fuel_type and isinstance(zones, list) and unit.zone.name in zones:
-            return Ok(fuel.name)
-    return Err(ValueError(f"No {fuel_type} fuel priced for zone '{unit.zone.name}' (unit '{unit.name}')"))
-
-
-@getter(name="resolve_generator_fuel")
-def generator_fuel(component: Any, context: PluginContext) -> Result[PLEXOSFuel, ValueError]:
-    """Return the Fuel the generator burns."""
-    return (
-        _source(context, InvestmentComponent, component.name)
-        .and_then(lambda unit: _fuel_name(unit, context))
-        .and_then(lambda name: _target(context, PLEXOSFuel, name))
-    )
-
-
 @getter(name="resolve_line_from_node")
 def line_from_node(component: Any, context: PluginContext) -> Result[PLEXOSNode, ValueError]:
     """Return the Node the line flows from."""
@@ -201,12 +205,6 @@ def collection_region(component: Any, context: PluginContext) -> Result[Collecti
 def collection_nodes(component: Any, context: PluginContext) -> Result[CollectionEnum, ValueError]:
     """Return the Generator.Nodes collection."""
     return Ok(CollectionEnum.Nodes)
-
-
-@getter(name="resolve_collection_fuels")
-def collection_fuels(component: Any, context: PluginContext) -> Result[CollectionEnum, ValueError]:
-    """Return the Generator.Fuels collection."""
-    return Ok(CollectionEnum.Fuels)
 
 
 @getter(name="resolve_collection_node_from")

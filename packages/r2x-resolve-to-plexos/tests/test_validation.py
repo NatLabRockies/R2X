@@ -14,5 +14,5 @@ def test_component_count_validation_rejects_incomplete_translation() -> None:
     assert result.is_err()
     assert result.error is not None
     assert "Component count validation failed" in str(result.error)
-    assert "generators: 8 Resolve -> 0 PLEXOS" in str(result.error)
+    assert "generators: 11 Resolve -> 0 PLEXOS" in str(result.error)
     assert "regions: 3 Resolve -> 0 PLEXOS" in str(result.error)

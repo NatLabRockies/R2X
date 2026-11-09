@@ -20,7 +20,8 @@ from r2x_plexos.models import (
 )
 from r2x_resolve import (
     InvestmentComponent,
-    ResolveFuel,
+    ResolveFuelPrice,
+    ResolveGeneratorFuel,
     ResolveGroupedInterface,
     ResolveLoad,
     ResolveReserve,
@@ -69,12 +70,31 @@ def attach_fuel_prices(context: PluginContext) -> None:
     """Attach each fuel's monthly price series to its Fuel."""
     source, target = _systems(context)
     fuels = {fuel.name: fuel for fuel in target.get_components(PLEXOSFuel)}
-    for fuel in source.get_components(ResolveFuel):
+    for fuel in source.get_components(ResolveFuelPrice):
         if source.has_time_series(fuel, name=FUEL_PRICE_SERIES, time_series_type=NonSequentialTimeSeries):
             series = source.get_time_series(
                 fuel, name=FUEL_PRICE_SERIES, time_series_type=NonSequentialTimeSeries
             )
             target.add_time_series(deepcopy(series), fuels[fuel.name])
+
+
+def add_generator_fuels(context: PluginContext) -> None:
+    """Add one Generator.Fuels membership per fuel each generator burns.
+
+    r2x-resolve decides which fuels a generator burns (``ResolveGeneratorFuel``);
+    with several fuels, PLEXOS chooses among them.
+    """
+    source, target = _systems(context)
+    generators = {generator.name: generator for generator in target.get_components(PLEXOSGenerator)}
+    fuels = {fuel.name: fuel for fuel in target.get_components(PLEXOSFuel)}
+    for link in source.get_components(ResolveGeneratorFuel):
+        generator = generators[link.generator.name]
+        fuel = fuels[link.fuel_price.name]
+        membership = PLEXOSMembership(
+            parent_object=generator, child_object=fuel, collection=CollectionEnum.Fuels
+        )
+        target.add_supplemental_attribute(generator, membership)
+        target.add_supplemental_attribute(fuel, membership)
 
 
 def attach_reserve_requirements(context: PluginContext) -> None:
