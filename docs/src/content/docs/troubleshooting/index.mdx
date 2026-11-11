@@ -166,6 +166,23 @@ Check the native export paths in your YAML too: a fresh archive name does not
 change the exporter configuration. Use a separate output directory if you need
 to preserve all outputs from an earlier run.
 
+## Fuel objects are missing from the PLEXOS export
+
+With `ReedsToPlexosConfig(use_fuel_objects=True)`, fuel prices live on
+`PLEXOSFuel` objects rather than on generators. If the exported database has no
+Fuel objects or `Generator.Fuels` memberships, the installed `r2x-plexos`
+exporter does not map `PLEXOSFuel`. Check it with:
+
+```bash
+uv run python -c "from r2x_plexos.models import PLEXOSFuel; from r2x_plexos.utils_mappings import PLEXOS_TYPE_MAP_INVERTED; print(PLEXOSFuel in PLEXOS_TYPE_MAP_INVERTED)"
+```
+
+If it prints `False`, install an `r2x-plexos` version with Fuel export support,
+or disable `use_fuel_objects` to keep fuel prices on the generators.
+
+A generator `Fuel Price` of `0` next to a linked Fuel is expected. The exporter
+writes that default for thermal generators, and PLEXOS uses the Fuel's `Price`.
+
 ## Evidence to include in a bug report
 
 Include the exact failing command, complete traceback, printed log path, whether
