@@ -30,7 +30,8 @@ from r2x_core import DataStore, PluginConfig, PluginContext, System, UnitSystem
 
 def make_context(tmp_path) -> PluginContext:
     config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = DataStore(path=tmp_path)
+    store.configure_upgrades(plugin_config=config)
     return PluginContext(config=config, store=store)
 
 

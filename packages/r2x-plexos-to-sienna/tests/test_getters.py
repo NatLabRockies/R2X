@@ -256,7 +256,8 @@ def test_node_number_getter_no_number():
 
 def make_context(tmp_path):
     config = PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models", "r2x_plexos_to_sienna.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = DataStore(path=tmp_path)
+    store.configure_upgrades(plugin_config=config)
     return PluginContext(config=config, store=store)
 
 

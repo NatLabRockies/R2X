@@ -14,7 +14,8 @@ def make_context_and_rules(tmp_path):
     rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     config = PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models", "r2x_plexos_to_sienna.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = DataStore(path=tmp_path)
+    store.configure_upgrades(plugin_config=config)
     context = PluginContext(config=config, store=store)
     return context, rules
 
