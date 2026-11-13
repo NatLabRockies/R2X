@@ -53,7 +53,7 @@ dependencies = [
   "r2x-plexos-to-sienna",
   "r2x-reeds-to-plexos",
   "r2x-reeds-to-sienna",
-  "r2x-core",
+  "r2x-core @ git+https://github.com/NatLabRockies/r2x-core.git@main",
 ]
 
 [project.urls]
