@@ -25,8 +25,10 @@ from r2x_sienna.models import (
     ACBus,
     Area,
     EnergyReservoirStorage,
+    HydroDispatch,
     LoadZone,
     PowerLoad,
+    RenewableNonDispatch,
     ThermalStandard,
     TransmissionInterface,
     VariableReserve,
@@ -221,6 +223,7 @@ def test_plexos_to_sienna_translates_generator():
     gen = next(t for t in thermals if t.name == "GEN1")
     assert gen.bus is not None
     assert gen.bus.name == "NODE1"
+    assert gen.must_run is False
 
 
 def test_plexos_generator_time_series_attaches_to_sienna_generator():
@@ -242,6 +245,55 @@ def test_plexos_generator_time_series_attaches_to_sienna_generator():
     time_series = result.list_time_series(target_generator, name="active_power")
     assert len(time_series) == 1
     np.testing.assert_array_equal(time_series[0].data, [10.0, 20.0])
+
+
+@pytest.mark.parametrize(
+    ("name", "values", "hours"),
+    [
+        ("max_energy_day", [2.4, 1.2], [24, 24]),
+        ("max_energy_month", [74.4, 1.2], [744, 24]),
+    ],
+)
+def test_plexos_hydro_energy_limits_translate_to_budget(name, values, hours):
+    source = _build_source_system()
+    generator = next(source.get_components(PLEXOSGenerator))
+    generator.category = "hyded"
+    source.add_time_series(
+        SingleTimeSeries(
+            name=name,
+            data=np.repeat(values, hours),
+            resolution=timedelta(hours=1),
+            initial_timestamp=datetime(2012, 1, 1),
+        ),
+        generator,
+    )
+
+    result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
+
+    hydro = result.get_component(HydroDispatch, "GEN1")
+    profile = result.get_time_series(hydro, name="hydro_budget")
+    np.testing.assert_allclose(profile.data, np.repeat([1.0, 0.5], hours))
+
+
+def test_plexos_nondispatchable_hydro_translates_to_fixed_output():
+    source = _build_source_system()
+    generator = next(source.get_components(PLEXOSGenerator))
+    generator.category = "hydend"
+    source.add_time_series(
+        SingleTimeSeries(
+            name="max_active_power",
+            data=np.array([40.0, 60.0]),
+            resolution=timedelta(hours=1),
+            initial_timestamp=datetime(2012, 1, 1),
+        ),
+        generator,
+    )
+
+    result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
+
+    hydro = result.get_component(RenewableNonDispatch, "GEN1")
+    profile = result.get_time_series(hydro, name="max_active_power")
+    np.testing.assert_allclose(profile.data, [0.4, 0.6])
 
 
 def test_plexos_to_sienna_translates_battery():

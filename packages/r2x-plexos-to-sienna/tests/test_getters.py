@@ -397,8 +397,19 @@ def test_generator_getters(tmp_path) -> None:
     assert reactive_limits.max == 0.0
 
     assert getters.get_gen_status(gen, context).unwrap() == 1
+    assert getters.get_gen_must_run(gen, context).unwrap() is False
+    gen.must_run_units = 1
+    assert getters.get_gen_must_run(gen, context).unwrap() is True
     assert getters.get_gen_power_factor(gen, context).unwrap() == 1.0
     assert getters.get_prime_mover_type(gen, context).unwrap() == PrimeMoversType.CC
+
+
+def test_generator_must_run_partial_units(tmp_path) -> None:
+    context = make_context(tmp_path)
+    gen = PLEXOSGenerator(name="GEN1", units=2, must_run_units=1)
+
+    with pytest.raises(ValueError, match="Partial must-run units"):
+        getters.get_gen_must_run(gen, context)
 
 
 def test_generator_bus_getter(tmp_path) -> None:
@@ -510,6 +521,11 @@ def test_pv_category_getters(tmp_path, category: str) -> None:
         ("coal", "thermal"),
         ("thermal-multi-start", "thermal-multi-start"),
         ("hydro-dispatch", "hydro-dispatch"),
+        ("hydend", "renewable-non-dispatch"),
+        ("hydund", "renewable-non-dispatch"),
+        ("hydnd", "renewable-non-dispatch"),
+        ("hydnpnd", "renewable-non-dispatch"),
+        ("hydsnd", "renewable-non-dispatch"),
         ("pumped-hydro", "hydro-turbine"),
         ("wind-ons", "renewable-dispatch"),
         ("PV", "renewable-dispatch"),

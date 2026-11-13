@@ -6,13 +6,17 @@ import itertools
 import json
 import math
 import re
+from collections import Counter
 from collections.abc import Mapping
+from datetime import timedelta
 from importlib.resources import files
 from typing import Any
 
+import numpy as np
 from infrasys import Component, SingleTimeSeries
 from infrasys.cost_curves import CostCurve, FuelCurve, UnitSystem
 from infrasys.function_data import PiecewiseStepData
+from infrasys.normalization import NormalizationByValue
 from infrasys.value_curves import AverageRateCurve, InputOutputCurve, LinearCurve
 from loguru import logger
 from plexosdb import CollectionEnum
@@ -29,6 +33,7 @@ from r2x_plexos.models import (
     PLEXOSTransformer,
     PLEXOSZone,
 )
+from r2x_sienna.exporter import set_time_series_scaling_factor_multiplier
 from r2x_sienna.models import (
     ACBus,
     Arc,
@@ -173,6 +178,26 @@ def _get_targets_by_name(context: PluginContext, source_component: Any) -> list[
     return targets
 
 
+def _get_hydro_budget_values(ts: SingleTimeSeries, capacity: float) -> np.ndarray:
+    """Distribute period energy limits in GWh over represented hours as capacity factors."""
+    if ts.resolution != timedelta(hours=1):
+        raise ValueError("PLEXOS hydro energy limits must be expanded to hourly time series")
+    if capacity <= 0:
+        raise ValueError("Hydro budget conversion requires a positive generator capacity")
+
+    if ts.name not in {"max_energy_day", "max_energy_month"}:
+        raise ValueError(f"Hydro budget conversion is not supported for {ts.name}")
+    timestamps = (ts.initial_timestamp + index * ts.resolution for index in range(len(ts.data)))
+    periods = [
+        (time.year, time.month) if ts.name == "max_energy_month" else time.date() for time in timestamps
+    ]
+    # A horizon can end partway through a month, whose supplied budget must still be preserved.
+    counts = Counter(periods)
+    hours = np.array([counts[period] for period in periods])
+
+    return np.asarray(ts.data) * 1000.0 / (capacity * hours)
+
+
 def _attach_source_time_series_if_target_exists(source_component: Any, context: PluginContext) -> bool:
     if context.source_system is None or context.target_system is None:
         return True
@@ -204,12 +229,40 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
                 and source_ts.name in {"load", "fixed_load"}
                 else source_ts.name
             )
-            target_ts = SingleTimeSeries.from_array(
-                data=source_ts.data,
-                name=target_name,
-                initial_timestamp=source_ts.initial_timestamp,
-                resolution=source_ts.resolution,
+            data = source_ts.data
+            normalization = None
+            hydro = isinstance(source_component, PLEXOSGenerator) and (
+                isinstance(target_component, HydroDispatch)
+                or (
+                    isinstance(target_component, RenewableNonDispatch)
+                    and target_component.prime_mover_type == PrimeMoversType.HY
+                )
             )
+            if hydro:
+                capacity = _first_numeric(source_component.max_capacity)
+                budget_names = {
+                    "max_energy_day",
+                    "max_energy_week",
+                    "max_energy_month",
+                    "max_energy_year",
+                }
+                if isinstance(target_component, HydroDispatch) and source_ts.name in budget_names:
+                    periods = {
+                        item.name
+                        for item in metadata_list
+                        if item.name in budget_names and (getattr(item, "features", {}) or {}) == features
+                    }
+                    if len(periods) > 1:
+                        raise ValueError(
+                            f"Multiple hydro budget periods are not supported for {source_component.name}"
+                        )
+                    data = _get_hydro_budget_values(source_ts, capacity)
+                    target_name = "hydro_budget"
+                elif source_ts.name in {"max_active_power", "max_energy_hour", "fixed_load"}:
+                    if capacity <= 0:
+                        raise ValueError("Hydro power normalization requires a positive generator capacity")
+                    target_name = "max_active_power"
+                    normalization = NormalizationByValue(value=capacity)
             if context.target_system.has_time_series(
                 target_component,
                 name=target_name,
@@ -217,6 +270,13 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
                 **features,
             ):
                 continue
+            target_ts = SingleTimeSeries.from_array(
+                data=data,
+                name=target_name,
+                initial_timestamp=source_ts.initial_timestamp,
+                resolution=source_ts.resolution,
+                normalization=normalization,
+            )
             try:
                 context.target_system.add_time_series(target_ts, target_component, **features)
             except Exception:
@@ -224,6 +284,11 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
                     "Failed attaching time series '{}' to '{}'",
                     source_ts.name,
                     getattr(target_component, "name", "<unknown>"),
+                )
+                continue
+            if hydro and target_name == "max_active_power":
+                set_time_series_scaling_factor_multiplier(
+                    context.target_system, target_component, target_name, "get_max_active_power"
                 )
     return True
 
@@ -895,9 +960,10 @@ def get_gen_active_power_losses(component: PLEXOSGenerator, context: PluginConte
 
 @getter
 def get_gen_must_run(component: PLEXOSGenerator, context: PluginContext) -> Result[bool, Any]:
-    """Get the must-run status of a generator."""
-    value = getattr(component, "must_run", True)
-    return Ok(bool(value))
+    """Map must-run units to a whole-generator commitment requirement."""
+    if 0 < component.must_run_units < component.units:
+        raise ValueError(f"Partial must-run units cannot be represented for {component.name}")
+    return Ok(component.must_run_units > 0)
 
 
 @getter
