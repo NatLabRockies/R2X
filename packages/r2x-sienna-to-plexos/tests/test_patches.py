@@ -48,6 +48,67 @@ def test_apply_chunking_patch_is_idempotent():
         _ts._setup_target_and_child_tables = original
 
 
+def test_chunked_setup_target_and_child_tables_handles_empty_targets():
+    import sqlite3
+
+    from r2x_sienna_to_plexos.getters_utils import _chunked_setup_target_and_child_tables
+
+    target_metadata = sqlite3.connect(":memory:")
+    source_associations = sqlite3.connect(":memory:")
+    try:
+        child_mapping, uuid_to_type = _chunked_setup_target_and_child_tables(
+            target_metadata,
+            source_associations,
+            {},
+        )
+
+        assert child_mapping == []
+        assert uuid_to_type == {}
+        assert target_metadata.execute(
+            "SELECT name FROM sqlite_temp_master WHERE name = 'child_mapping'"
+        ).fetchone()
+    finally:
+        target_metadata.close()
+        source_associations.close()
+
+
+def test_chunked_setup_target_and_child_tables_processes_multiple_chunks():
+    import sqlite3
+    from uuid import uuid4
+
+    from r2x_sienna_to_plexos.getters_utils import _chunked_setup_target_and_child_tables
+
+    class TargetComponent:
+        pass
+
+    targets = [uuid4() for _ in range(901)]
+    children = [uuid4() for _ in targets]
+    uuid_map = {target: TargetComponent() for target in targets}
+    target_metadata = sqlite3.connect(":memory:")
+    source_associations = sqlite3.connect(":memory:")
+    source_associations.execute(
+        "CREATE TABLE component_associations (component_uuid TEXT, attached_component_uuid TEXT)"
+    )
+    source_associations.executemany(
+        "INSERT INTO component_associations VALUES (?, ?)",
+        [(str(child), str(target)) for child, target in zip(children, targets, strict=True)],
+    )
+    try:
+        child_mapping, uuid_to_type = _chunked_setup_target_and_child_tables(
+            target_metadata,
+            source_associations,
+            uuid_map,
+        )
+
+        assert len(child_mapping) == 901
+        assert set(uuid_to_type.values()) == {"TargetComponent"}
+        assert target_metadata.execute("SELECT COUNT(*) FROM target_components").fetchone()[0] == 901
+        assert target_metadata.execute("SELECT COUNT(*) FROM child_mapping").fetchone()[0] == 901
+    finally:
+        target_metadata.close()
+        source_associations.close()
+
+
 # ---------------------------------------------------------------------------
 # apply_description_export_patch
 # ---------------------------------------------------------------------------

@@ -7,11 +7,11 @@ import sys
 from importlib.resources import files
 from pathlib import Path
 
+from r2x_core import Rule
+
 
 def test_rules_json_exists_and_loads() -> None:
     """Ensure the packaged rules file is valid JSON and uses the current core schema."""
-    from r2x_core import Rule
-
     rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
     assert rules_path.is_file(), "rules.json missing"
 

@@ -114,6 +114,8 @@ reeds_config = ReEDSConfig(
     models=("r2x_reeds.models", "r2x_plexos.models"),
 )
 store = DataStore(path=run_path)
+# Required: apply r2x-core upgrade hooks / schema migrations for the selected plugin models
+# before constructing the PluginContext (this is why initialization is a two-step process).
 store.configure_upgrades(plugin_config=reeds_config)
 context = PluginContext(config=reeds_config, store=store)
 

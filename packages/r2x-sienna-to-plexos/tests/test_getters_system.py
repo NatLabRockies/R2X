@@ -39,8 +39,9 @@ from r2x_sienna.models.enums import (
     ThermalFuels,
 )
 from r2x_sienna_to_plexos import getters
+from sienna_to_plexos_test_utils import make_hydro_turbine, make_store
 
-from r2x_core import DataStore, PluginConfig, PluginContext, System
+from r2x_core import PluginConfig, PluginContext, System
 
 from .fixtures.five_bus_systems import (
     system_complete,
@@ -59,8 +60,7 @@ from .fixtures.five_bus_systems import (
 @pytest.fixture
 def context(tmp_path):
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore(path=tmp_path)
-    store.configure_upgrades(plugin_config=config)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -69,8 +69,7 @@ def context(tmp_path):
 
 def make_context(tmp_path) -> PluginContext:
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore(path=tmp_path)
-    store.configure_upgrades(plugin_config=config)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -470,7 +469,7 @@ def test_get_hydro_generator_units_always_online(context):
 
 
 def _make_hydro_turbine_for_units_tests(bus: ACBus, name: str, rating: float) -> HydroTurbine:
-    return HydroTurbine(
+    return make_hydro_turbine(
         name=name,
         available=True,
         bus=bus,
