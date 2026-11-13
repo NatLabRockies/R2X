@@ -150,7 +150,7 @@ def test_plexos_region_translates_to_power_load(tmp_path) -> None:
 
     load = loads[0]
     assert load.name == "REGION1"
-    assert load.active_power.magnitude == 250.0
+    assert load.active_power.magnitude == 2.5
     assert load.bus is not None
     assert load.bus.name == "NODE1"
 
@@ -184,7 +184,10 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     therm = PLEXOSGenerator(
         name="THERM1",
         category="gas-cc",
-        max_capacity=100.0,
+        max_capacity=50.0,
+        min_stable_level=10.0,
+        max_ramp_up=5.0,
+        max_ramp_down=10.0,
         units=1,
     )
     context.source_system.add_component(therm)
@@ -199,6 +202,7 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
         name="WIND1",
         category="wind-ons",
         max_capacity=75.0,
+        rating=30.0,
         units=1,
     )
     context.source_system.add_component(wind)
@@ -229,7 +233,12 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     assert len(thermals) >= 1
     thermal = next((t for t in thermals if t.name == "THERM1"), None)
     assert thermal is not None
-    assert thermal.rating == 0.0
+    assert thermal.rating == 1.0
+    assert thermal.active_power == 1.0
+    assert thermal.active_power_limits.min == 0.2
+    assert thermal.active_power_limits.max == 1.0
+    assert thermal.ramp_limits.up == 0.1
+    assert thermal.ramp_limits.down == 0.2
     assert thermal.bus is not None
     assert thermal.bus.name == "NODE1"
 
@@ -237,7 +246,8 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     assert len(hydros) >= 1
     hydro_gen = next((h for h in hydros if h.name == "HYDRO1"), None)
     assert hydro_gen is not None
-    assert hydro_gen.rating == 0.0
+    assert hydro_gen.rating == 1.0
+    assert hydro_gen.active_power_limits.max == 1.0
     assert hydro_gen.bus is not None
     assert hydro_gen.bus.name == "NODE1"
 
@@ -245,7 +255,7 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     assert len(renewables) >= 1
     wind_gen = next((r for r in renewables if r.name == "WIND1"), None)
     assert wind_gen is not None
-    assert wind_gen.rating == 0.0
+    assert wind_gen.rating == 1.0
     assert wind_gen.bus is not None
     assert wind_gen.bus.name == "NODE1"
 
@@ -253,7 +263,7 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     assert len(non_dispatch) >= 1
     pv_gen = next((r for r in non_dispatch if r.name == "PV1"), None)
     assert pv_gen is not None
-    assert pv_gen.rating == 0.0
+    assert pv_gen.rating == 1.0
     assert pv_gen.bus is not None
     assert pv_gen.bus.name == "NODE1"
 
@@ -307,6 +317,7 @@ def test_plexos_generators_translate_by_descriptive_category(tmp_path) -> None:
     for name, (_, target_type) in expected.items():
         matches = [c for c in context.target_system.get_components(target_type) if c.name == name]
         assert matches, f"{name} should translate to {target_type.__name__}"
+        assert matches[0].rating == 1.0
 
 
 def test_plexos_battery_translates_to_energy_reservoir(tmp_path) -> None:
@@ -333,6 +344,8 @@ def test_plexos_battery_translates_to_energy_reservoir(tmp_path) -> None:
         name="BATT1",
         category="battery",
         initial_soc=0.5,
+        max_power=25.0,
+        capacity=100.0,
     )
     context.source_system.add_component(battery)
     battery_membership = PLEXOSMembership(
@@ -353,7 +366,11 @@ def test_plexos_battery_translates_to_energy_reservoir(tmp_path) -> None:
     assert len(storages) >= 1
     storage = storages[0]
     assert storage.name == "BATT1"
-    assert storage.storage_capacity == 0.0
+    assert storage.base_power == 25.0
+    assert storage.storage_capacity == 4.0
+    assert storage.rating == 1.0
+    assert storage.input_active_power_limits.max == 1.0
+    assert storage.output_active_power_limits.max == 1.0
     assert pytest.approx(0.5) == storage.initial_storage_capacity_level
     assert storage.bus is not None
     assert storage.bus.name == "NODE1"

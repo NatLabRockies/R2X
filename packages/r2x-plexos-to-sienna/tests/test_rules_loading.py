@@ -255,6 +255,7 @@ def test_prime_mover_mappings_exist() -> None:
         "nuclear",
         "hydro-dispatch",
         "wind-ons",
+        "pv",
         "upv",
         "distpv",
         "pumped-hydro",

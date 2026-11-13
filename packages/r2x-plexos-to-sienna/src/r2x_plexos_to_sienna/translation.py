@@ -9,7 +9,7 @@ from infrasys.utils.sqlite import create_in_memory_db
 from r2x_plexos.models import PLEXOSBattery, PLEXOSGenerator, PLEXOSNode, PLEXOSPurchaser
 
 from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
-from r2x_plexos_to_sienna.getters import _sync_time_series_for_source
+from r2x_plexos_to_sienna.getters import _sync_time_series_for_source, attach_constant_load_time_series
 from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
 
 
@@ -61,5 +61,7 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
         _sync_time_series_for_source(generator, context)
     for battery in context.source_system.get_components(PLEXOSBattery):
         _sync_time_series_for_source(battery, context)
+
+    attach_constant_load_time_series(context)
 
     return context.target_system

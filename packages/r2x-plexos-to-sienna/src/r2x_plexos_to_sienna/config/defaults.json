@@ -30,6 +30,7 @@
         "hydro-and": "HY",
         "hydro-dispatch": "HY",
         "pumped-hydro": "PS",
+        "pv": "PVe",
         "upv": "PVe",
         "distpv": "PVe",
         "dupv": "PVe",
