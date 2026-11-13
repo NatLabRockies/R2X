@@ -18,6 +18,23 @@
   },
   {
     "defaults": {
+      "category": "area"
+    },
+    "field_map": {
+      "name": "name",
+      "category": "category"
+    },
+    "getters": {
+      "peak_active_power": "get_region_peak_active_power",
+      "peak_reactive_power": "get_region_peak_reactive_power",
+      "load_response" : "get_region_load_response"
+    },
+    "source_type": "PLEXOSRegion",
+    "target_type": "Area",
+    "version": 2
+  },
+  {
+    "defaults": {
       "category": "node"
     },
     "field_map": {
@@ -82,23 +99,6 @@
     },
     "source_type": "PLEXOSPurchaser",
     "target_type": "PowerLoad",
-    "version": 2
-  },
-  {
-    "defaults": {
-      "category": "area"
-    },
-    "field_map": {
-      "name": "name",
-      "category": "category"
-    },
-    "getters": {
-      "peak_active_power": "get_region_peak_active_power",
-      "peak_reactive_power": "get_region_peak_reactive_power",
-      "load_response" : "get_region_load_response"
-    },
-    "source_type": "PLEXOSRegion",
-    "target_type": "Area",
     "version": 2
   },
   {

@@ -109,6 +109,7 @@ def test_plexos_to_sienna_translates_node_to_bus():
 
     bus = next(b for b in buses if b.name == "NODE1")
     assert bus.base_voltage.magnitude == 115.0
+    assert bus.area is result.get_component(Area, "REGION1")
 
 
 def test_plexos_to_sienna_translates_region_to_area():
