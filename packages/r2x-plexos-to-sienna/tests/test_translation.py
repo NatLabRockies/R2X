@@ -131,7 +131,8 @@ def test_plexos_to_sienna_translates_region_to_load():
     loads = list(result.get_components(PowerLoad))
     assert len(loads) >= 1
     load = next(ld for ld in loads if ld.name == "REGION1")
-    assert load.active_power.magnitude == 200.0
+    assert load.active_power.magnitude == 2.0
+    assert load.max_active_power.magnitude == 2.0
     assert load.bus is not None
     assert load.bus.name == "NODE1"
 
@@ -152,9 +153,9 @@ def test_plexos_node_time_series_attaches_to_region_load():
     result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
 
     load = next(load for load in result.get_components(PowerLoad) if load.name == "REGION1")
-    time_series = result.list_time_series(load, name="active_power")
+    time_series = result.list_time_series(load, name="max_active_power")
     assert len(time_series) == 1
-    np.testing.assert_array_equal(time_series[0].data, [10.0, 20.0])
+    np.testing.assert_allclose(time_series[0].data, [0.05, 0.1])
 
 
 def test_plexos_purchaser_translates_to_load_with_time_series():
@@ -171,7 +172,7 @@ def test_plexos_purchaser_translates_to_load_with_time_series():
     source.add_supplemental_attribute(node, membership)
     source.add_time_series(
         SingleTimeSeries(
-            name="fixed_load",
+            name="max_active_power",
             data=np.array([70.0, 80.0]),
             resolution=timedelta(hours=1),
             initial_timestamp=datetime(2026, 1, 1),
@@ -183,13 +184,13 @@ def test_plexos_purchaser_translates_to_load_with_time_series():
 
     load = next(load for load in result.get_components(PowerLoad) if load.name == "PURCHASER1")
     assert load.available is True
-    assert load.active_power.magnitude == 75.0
-    assert load.max_active_power.magnitude == 100.0
+    assert load.active_power.magnitude == 0.75
+    assert load.max_active_power.magnitude == 1.0
     assert load.bus is not None
     assert load.bus.name == "NODE1"
-    time_series = result.list_time_series(load, name="active_power")
+    time_series = result.list_time_series(load, name="max_active_power")
     assert len(time_series) == 1
-    np.testing.assert_array_equal(time_series[0].data, [70.0, 80.0])
+    np.testing.assert_allclose(time_series[0].data, [0.7, 0.8])
 
 
 def test_plexos_offline_purchaser_is_unavailable():
@@ -209,8 +210,8 @@ def test_plexos_offline_purchaser_is_unavailable():
 
     load = next(load for load in result.get_components(PowerLoad) if load.name == "OFFLINE_PURCHASER")
     assert load.available is False
-    assert load.active_power.magnitude == 75.0
-    assert load.max_active_power.magnitude == 100.0
+    assert load.active_power.magnitude == 0.75
+    assert load.max_active_power.magnitude == 1.0
 
 
 def test_plexos_to_sienna_translates_generator():

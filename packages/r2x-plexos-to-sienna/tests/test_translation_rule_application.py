@@ -142,7 +142,7 @@ def test_plexos_region_translates_to_power_load(tmp_path) -> None:
 
     load = loads[0]
     assert load.name == "REGION1"
-    assert load.active_power.magnitude == 250.0
+    assert load.active_power.magnitude == 2.5
     assert load.bus is not None
     assert load.bus.name == "NODE1"
 

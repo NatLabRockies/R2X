@@ -73,6 +73,7 @@ from r2x_sienna.models.named_tuples import (
     MinMax,
     UpDown,
 )
+from r2x_sienna.units import get_magnitude
 
 from r2x_core import Ok, PluginContext, Result
 from r2x_core.getters import getter
@@ -222,15 +223,21 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
         if not isinstance(source_ts, SingleTimeSeries):
             continue
         for target_component in targets:
-            target_name = (
-                "active_power"
-                if isinstance(source_component, (PLEXOSNode, PLEXOSPurchaser))
+            load = (
+                isinstance(source_component, (PLEXOSRegion, PLEXOSNode, PLEXOSPurchaser))
                 and isinstance(target_component, PowerLoad)
-                and source_ts.name in {"load", "fixed_load"}
-                else source_ts.name
+                and source_ts.name in {"max_active_power", "load", "fixed_load"}
             )
+            target_name = "max_active_power" if load else source_ts.name
             data = source_ts.data
             normalization = None
+            if load:
+                capacity = get_magnitude(target_component.max_active_power) * get_magnitude(
+                    target_component.base_power
+                )
+                if capacity <= 0 and np.any(data):
+                    raise ValueError(f"Load profile requires a positive maximum for {target_component.name}")
+                normalization = NormalizationByValue(value=capacity or 1.0)
             hydro = isinstance(source_component, PLEXOSGenerator) and (
                 isinstance(target_component, HydroDispatch)
                 or (
@@ -286,11 +293,60 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
                     getattr(target_component, "name", "<unknown>"),
                 )
                 continue
-            if hydro and target_name == "max_active_power":
+            if (hydro or load) and target_name == "max_active_power":
                 set_time_series_scaling_factor_multiplier(
                     context.target_system, target_component, target_name, "get_max_active_power"
                 )
     return True
+
+
+def attach_constant_load_time_series(context: PluginContext) -> None:
+    """Represent scalar source demand on existing load timelines."""
+    system = context.target_system
+    if context.source_system is None or system is None:
+        return
+    scalar_loads = {}
+    profiled_loads = set()
+    for source in context.source_system.iter_all_components():
+        if not isinstance(source, (PLEXOSRegion, PLEXOSNode, PLEXOSPurchaser)):
+            continue
+        targets = _get_targets_by_name(context, source)
+        if isinstance(source, (PLEXOSRegion, PLEXOSPurchaser)):
+            scalar_loads.update((load.name, load) for load in targets)
+        if any(
+            metadata.name in {"max_active_power", "load", "fixed_load"}
+            for metadata in context.source_system.list_time_series_metadata(source)
+        ):
+            profiled_loads.update(load.name for load in targets)
+    loads = [load for name, load in scalar_loads.items() if name not in profiled_loads]
+    if not loads:
+        return
+    timelines = {}
+    for load in system.get_components(PowerLoad):
+        for metadata in system.list_time_series_metadata(load, name="max_active_power"):
+            features = dict(metadata.features)
+            key = tuple(sorted((name, repr(value)) for name, value in features.items()))
+            if key not in timelines:
+                reference = system.get_time_series(load, name="max_active_power", **features)
+                timelines[key] = (reference, features)
+
+    for reference, features in timelines.values():
+        for load in loads:
+            if system.has_time_series(load, name="max_active_power", **features):
+                continue
+            maximum = get_magnitude(load.max_active_power)
+            demand = get_magnitude(load.active_power)
+            profile = SingleTimeSeries.from_array(
+                data=np.full(len(reference.data), demand),
+                name="max_active_power",
+                initial_timestamp=reference.initial_timestamp,
+                resolution=reference.resolution,
+                normalization=NormalizationByValue(value=maximum or 1.0),
+            )
+            system.add_time_series(profile, load, **features)
+            set_time_series_scaling_factor_multiplier(
+                system, load, "max_active_power", "get_max_active_power"
+            )
 
 
 def _sync_time_series_for_source(source_component: Any, context: PluginContext) -> None:
@@ -446,8 +502,8 @@ def get_purchaser_bus(component: PLEXOSPurchaser, context: PluginContext) -> Res
 
 @getter
 def get_purchaser_active_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
-    """Get the purchaser's fixed load as Sienna active power."""
-    return Ok(getattr(component, "fixed_load", 0.0))
+    """Get the purchaser's fixed demand on its device base."""
+    return Ok(float(component.fixed_load) / get_purchaser_base_power(component, context).unwrap())
 
 
 @getter
@@ -458,14 +514,16 @@ def get_purchaser_available(component: PLEXOSPurchaser, context: PluginContext) 
 
 @getter
 def get_purchaser_max_active_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
-    """Get the purchaser's maximum load as Sienna maximum active power."""
-    return Ok(getattr(component, "max_load", 0.0))
+    """Get the maximum purchaser load on its device base."""
+    maximum = max(component.max_load, component.fixed_load)
+    return Ok(float(maximum) / get_purchaser_base_power(component, context).unwrap())
 
 
 @getter
 def get_purchaser_reactive_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
     """Get the purchaser's reactive power, defaulting to zero."""
-    return Ok(getattr(component, "reactive_power", 0.0) or 0.0)
+    value = float(getattr(component, "reactive_power", 0.0) or 0.0)
+    return Ok(value / get_purchaser_base_power(component, context).unwrap())
 
 
 @getter
@@ -473,7 +531,8 @@ def get_purchaser_max_reactive_power(
     component: PLEXOSPurchaser, context: PluginContext
 ) -> Result[float, Any]:
     """Get the purchaser's maximum reactive power, defaulting to zero."""
-    return Ok(getattr(component, "max_reactive_power", 0.0) or 0.0)
+    value = float(getattr(component, "max_reactive_power", 0.0) or 0.0)
+    return Ok(value / get_purchaser_base_power(component, context).unwrap())
 
 
 @getter
@@ -484,26 +543,28 @@ def get_purchaser_base_power(component: PLEXOSPurchaser, context: PluginContext)
 
 @getter
 def get_load_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
-    """Get the initial steady-state active power demand of the load in the region."""
-    return Ok(getattr(component, "load", 0.0))
+    """Get regional demand on the load device base."""
+    return Ok(float(component.load) / get_load_base_power(component, context).unwrap())
 
 
 @getter
 def get_load_reactive_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the reactive power of load at the bus (if available)."""
-    return Ok(getattr(component, "reactive_power", 0.0))
+    value = float(getattr(component, "reactive_power", 0.0))
+    return Ok(value / get_load_base_power(component, context).unwrap())
 
 
 @getter
 def get_load_max_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
-    """Get the maximum active power demand of the load at the bus (if available)."""
-    return Ok(getattr(component, "max_load", 0.0))
+    """Get the regional load peak on the device base."""
+    return get_load_active_power(component, context)
 
 
 @getter
 def get_load_max_reactive_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the maximum reactive power demand of the load at the bus (if available)."""
-    return Ok(getattr(component, "max_reactive_power", 0.0))
+    value = float(getattr(component, "max_reactive_power", 0.0))
+    return Ok(value / get_load_base_power(component, context).unwrap())
 
 
 @getter

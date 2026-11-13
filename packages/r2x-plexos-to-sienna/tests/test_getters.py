@@ -307,10 +307,10 @@ def test_region_getters(tmp_path) -> None:
     assert getters.get_region_load_response(region, context).unwrap() == 0.0
 
     # Load getters
-    assert getters.get_load_active_power(region, context).unwrap() == 300.0
+    assert getters.get_load_active_power(region, context).unwrap() == 3.0
     assert getters.get_load_reactive_power(region, context).unwrap() == 0.0
     assert getters.get_load_base_power(region, context).unwrap() == 100.0
-    assert getters.get_load_max_active_power(region, context).unwrap() == 0.0
+    assert getters.get_load_max_active_power(region, context).unwrap() == 3.0
     assert getters.get_load_max_reactive_power(region, context).unwrap() == 0.0
 
 
