@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/NatLabRockies/R2X/compare/r2x-plexos-to-sienna-v0.2.2...r2x-plexos-to-sienna-v0.2.3) (2026-11-13)
+
+
+### Bug Fixes
+
+* address plexos to sienna remaining bugs on object and class translations ([#355](https://github.com/NatLabRockies/R2X/issues/355)) ([12296b5](https://github.com/NatLabRockies/R2X/commit/12296b5c16b5a48ae1e73e26764000110b41b0fe))
+
 ## [0.2.2](https://github.com/NatLabRockies/R2X/compare/r2x-plexos-to-sienna-v0.2.1...r2x-plexos-to-sienna-v0.2.2) (2026-10-15)
 
 
