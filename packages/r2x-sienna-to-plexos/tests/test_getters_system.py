@@ -442,7 +442,7 @@ def test_membership_line_parent_interface_success_and_missing_target(context):
 
     target_interface = PLEXOSInterface(name="Interface-1")
     context.target_system.add_component(target_interface)
-    context._cache.pop("target_interface_name_index", None)
+    getters._get_context_cache(context).pop("target_interface_name_index", None)
 
     result = getters.membership_line_parent_interface(line, context)
     assert result.is_ok()
@@ -531,7 +531,7 @@ def test_get_pumped_hydro_generator_units_pumped_with_reservoir_is_online(contex
     ht = _make_hydro_turbine_for_units_tests(bus, "ht-with-reservoir", rating=1.0)
     monkeypatch.setattr(getters, "_resolve_generator_category", lambda _comp, _ctx: None)
     # Inject a non-empty turbine name set so the turbine is found
-    context._cache["reservoir_pump_turbine_name_set"] = {"ht-with-reservoir"}
+    getters._get_context_cache(context)["reservoir_pump_turbine_name_set"] = {"ht-with-reservoir"}
     result = getters.get_pumped_hydro_generator_units(ht, context)
     assert result.unwrap() == 1
 
@@ -558,7 +558,7 @@ def test_build_reservoir_pump_turbine_name_set_collects_ext_plants(context, monk
         lambda _res, _ctx: True,
     )
     # Clear cache so it is rebuilt
-    context._cache.pop("reservoir_pump_turbine_name_set", None)
+    getters._get_context_cache(context).pop("reservoir_pump_turbine_name_set", None)
     names = getters._build_reservoir_pump_turbine_name_set(context)
     assert "pump-turbine-A" in names
     assert "pump-turbine-B" in names
@@ -583,7 +583,7 @@ def test_build_reservoir_pump_turbine_name_set_skips_non_storage_reservoirs(cont
         "_reservoir_has_hydro_pumped_storage_association",
         lambda _res, _ctx: False,
     )
-    context._cache.pop("reservoir_pump_turbine_name_set", None)
+    getters._get_context_cache(context).pop("reservoir_pump_turbine_name_set", None)
     names = getters._build_reservoir_pump_turbine_name_set(context)
     assert "should-not-appear" not in names
 

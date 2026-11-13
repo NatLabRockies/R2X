@@ -1090,10 +1090,10 @@ def test_multiband_markup_float_conversion(two_band_load_points, two_band_markup
 
 
 def test_bus_name_to_area_and_zone_cache_and_non_area_object(context):
-    context._cache["bus_name_to_area_and_zone"] = {"cached_bus": ("A", "Z")}
+    getters_utils._get_context_cache(context)["bus_name_to_area_and_zone"] = {"cached_bus": ("A", "Z")}
     assert getters_utils._bus_name_to_area_and_zone(context) == {"cached_bus": ("A", "Z")}
 
-    context._cache.clear()
+    getters_utils._get_context_cache(context).clear()
     context.source_system.get_components = lambda _comp_type: [
         types.SimpleNamespace(name="B1", area="A1", load_zone="Z1")
     ]
