@@ -718,9 +718,9 @@ def get_hvdc_line_loss(component: PLEXOSLine, context: PluginContext) -> Result[
 
 @getter
 def get_gen_active_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the active power of a generator."""
+    """Get the active power of a generator on its device base."""
     value = getattr(component, "max_capacity", 0.0)
-    return Ok(float(value))
+    return Ok(float(value) / get_gen_base_power(component, context).unwrap())
 
 
 @getter
@@ -830,9 +830,9 @@ def get_renewable_operation_cost(
 
 @getter
 def get_gen_reactive_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the reactive power of a generator."""
+    """Get the reactive power of a generator on its device base."""
     value = getattr(component, "reactive_power", 0.0)
-    return Ok(float(value))
+    return Ok(float(value) / get_gen_base_power(component, context).unwrap())
 
 
 @getter
@@ -845,10 +845,10 @@ def get_gen_start_types(component: PLEXOSGenerator, context: PluginContext) -> R
 
 
 @getter
-def get_gen_rating(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the rating of a generator."""
-    value = getattr(component, "max_capacity", 0.0)
-    return Ok(float(value))
+def get_gen_rating(component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext) -> Result[float, Any]:
+    """Get the generator or battery rating on its device base."""
+    value = component.max_power if isinstance(component, PLEXOSBattery) else component.max_capacity
+    return Ok(float(value) / get_gen_base_power(component, context).unwrap())
 
 
 @getter
@@ -871,7 +871,7 @@ def get_gen_base_power(
 
 @getter
 def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[MinMax, Any]:
-    """Get active power limits using min_stable_level (MW) as min and max_capacity (MW) as max.
+    """Get device-base limits from min_stable_level and max_capacity in MW.
 
     If ``min_stable_level`` is zero but ``min_stable_factor`` (% of max_capacity) is set,
     the factor takes precedence.
@@ -882,14 +882,15 @@ def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginConte
         factor = float(getattr(component, "min_stable_factor", 0.0) or 0.0)
         if factor > 0.0:
             min_stable = factor / 100.0 * max_cap
-    return Ok(MinMax(min=min_stable, max=max_cap))
+    base_power = get_gen_base_power(component, context).unwrap()
+    return Ok(MinMax(min=min_stable / base_power, max=max_cap / base_power))
 
 
 @getter
 def get_gen_active_power_losses(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the active power losses incurred by having the unit online."""
+    """Get the online active power losses on the device base."""
     value = getattr(component, "active_power_losses", 0.0)
-    return Ok(float(value))
+    return Ok(float(value) / get_gen_base_power(component, context).unwrap())
 
 
 @getter
@@ -901,9 +902,10 @@ def get_gen_must_run(component: PLEXOSGenerator, context: PluginContext) -> Resu
 
 @getter
 def get_gen_reactive_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[Any, Any]:
-    """Get the reactive power limits of a generator."""
+    """Get the reactive power limits of a generator on its device base."""
     value = getattr(component, "reactive_power_limits", MinMax(min=0.0, max=0.0))
-    return Ok(value)
+    base_power = get_gen_base_power(component, context).unwrap()
+    return Ok(MinMax(min=value.min / base_power, max=value.max / base_power))
 
 
 @getter
@@ -1110,11 +1112,12 @@ def get_initial_storage_capacity_level(
 def get_storage_capacity(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the storage capacity.
 
-    For PLEXOSBattery uses the ``capacity`` field (MWh).
+    For PLEXOSBattery converts ``capacity`` (MWh) to the device base.
     For PLEXOSStorage (hydro reservoir) uses ``max_volume`` (MWh).
     """
     if hasattr(component, "capacity") and not hasattr(component, "max_volume"):
-        return Ok(float(getattr(component, "capacity", 0.0) or 0.0))
+        capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+        return Ok(capacity / get_gen_base_power(component, context).unwrap())
     return Ok(float(getattr(component, "max_volume", 0.0) or 0.0))
 
 
@@ -1138,10 +1141,12 @@ def get_storage_charge_power_limits(
 ) -> Result[MinMax, Any]:
     """Get the input (charge) active power limits.
 
-    For PLEXOSBattery uses ``max_power`` (MW). For PLEXOSStorage uses ``max_release``.
+    For PLEXOSBattery converts ``max_power`` (MW) to the device base.
+    For PLEXOSStorage uses ``max_release``.
     """
     if hasattr(component, "max_power") and not hasattr(component, "max_release"):
-        return Ok(MinMax(min=0.0, max=float(getattr(component, "max_power", 0.0) or 0.0)))
+        power = float(getattr(component, "max_power", 0.0) or 0.0)
+        return Ok(MinMax(min=0.0, max=power / get_gen_base_power(component, context).unwrap()))
     return Ok(MinMax(min=0.0, max=float(getattr(component, "max_release", 0.0) or 0.0)))
 
 
@@ -1151,10 +1156,12 @@ def get_storage_discharge_power_limits(
 ) -> Result[MinMax, Any]:
     """Get the output (discharge) active power limits.
 
-    For PLEXOSBattery uses ``max_power`` (MW). For PLEXOSStorage uses ``max_release``.
+    For PLEXOSBattery converts ``max_power`` (MW) to the device base.
+    For PLEXOSStorage uses ``max_release``.
     """
     if hasattr(component, "max_power") and not hasattr(component, "max_release"):
-        return Ok(MinMax(min=0.0, max=float(getattr(component, "max_power", 0.0) or 0.0)))
+        power = float(getattr(component, "max_power", 0.0) or 0.0)
+        return Ok(MinMax(min=0.0, max=power / get_gen_base_power(component, context).unwrap()))
     return Ok(MinMax(min=0.0, max=float(getattr(component, "max_release", 0.0) or 0.0)))
 
 

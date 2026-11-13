@@ -370,14 +370,15 @@ def test_generator_getters(tmp_path) -> None:
     gen = PLEXOSGenerator(
         name="GEN1",
         category="gas-cc",
-        max_capacity=100.0,
+        max_capacity=50.0,
+        min_stable_level=10.0,
         units=1,
     )
 
-    assert getters.get_gen_active_power(gen, context).unwrap() == 100.0
+    assert getters.get_gen_active_power(gen, context).unwrap() == 1.0
     assert getters.get_gen_reactive_power(gen, context).unwrap() == 0.0
-    assert getters.get_gen_rating(gen, context).unwrap() == 100.0
-    assert getters.get_gen_base_power(gen, context).unwrap() == 100.0
+    assert getters.get_gen_rating(gen, context).unwrap() == 1.0
+    assert getters.get_gen_base_power(gen, context).unwrap() == 50.0
 
     battery = PLEXOSBattery(name="BAT1", max_power=25.0)
     assert getters.get_gen_base_power(battery, context).unwrap() == 25.0
@@ -388,8 +389,8 @@ def test_generator_getters(tmp_path) -> None:
         assert getters.get_gen_base_power(no_capacity_gen, context).unwrap() == 100.0
 
     limits = getters.get_gen_active_power_limits(gen, context).unwrap()
-    assert limits.min == 0.0
-    assert limits.max == 100.0  # max_capacity
+    assert limits.min == 0.2
+    assert limits.max == 1.0
 
     reactive_limits = getters.get_gen_reactive_power_limits(gen, context).unwrap()
     assert reactive_limits.min == 0.0
@@ -545,20 +546,23 @@ def test_storage_getters(tmp_path) -> None:
         name="BATT1",
         category="battery",
         initial_soc=0.5,
+        max_power=25.0,
+        capacity=100.0,
     )
 
     assert getters.get_initial_storage_capacity_level(battery, context).unwrap() == 0.5
-    assert getters.get_storage_capacity(battery, context).unwrap() == 0.0
+    assert getters.get_storage_capacity(battery, context).unwrap() == 4.0
+    assert getters.get_gen_rating(battery, context).unwrap() == 1.0
 
     level_limits = getters.get_storage_level_limits(battery, context).unwrap()
     assert level_limits.min == 0.0
     assert level_limits.max == 1.0  # battery fraction convention
 
     charge_limits = getters.get_storage_charge_power_limits(battery, context).unwrap()
-    assert charge_limits.max == 0.0
+    assert charge_limits.max == 1.0
 
     discharge_limits = getters.get_storage_discharge_power_limits(battery, context).unwrap()
-    assert discharge_limits.max == 0.0
+    assert discharge_limits.max == 1.0
 
     efficiency = getters.get_storage_efficiency(battery, context).unwrap()
     assert efficiency.input == pytest.approx(0.7)  # charge_efficiency=70 / 100

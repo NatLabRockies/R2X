@@ -175,7 +175,10 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     therm = PLEXOSGenerator(
         name="THERM1",
         category="gas-cc",
-        max_capacity=100.0,
+        max_capacity=50.0,
+        min_stable_level=10.0,
+        max_ramp_up=5.0,
+        max_ramp_down=10.0,
         units=1,
     )
     context.source_system.add_component(therm)
@@ -221,6 +224,11 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     thermal = next((t for t in thermals if t.name == "THERM1"), None)
     assert thermal is not None
     assert thermal.rating == 0.0
+    assert thermal.active_power == 1.0
+    assert thermal.active_power_limits.min == 0.2
+    assert thermal.active_power_limits.max == 1.0
+    assert thermal.ramp_limits.up == 0.1
+    assert thermal.ramp_limits.down == 0.2
     assert thermal.bus is not None
     assert thermal.bus.name == "NODE1"
 
@@ -229,6 +237,7 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     hydro_gen = next((h for h in hydros if h.name == "HYDRO1"), None)
     assert hydro_gen is not None
     assert hydro_gen.rating == 0.0
+    assert hydro_gen.active_power_limits.max == 1.0
     assert hydro_gen.bus is not None
     assert hydro_gen.bus.name == "NODE1"
 
@@ -323,6 +332,8 @@ def test_plexos_battery_translates_to_energy_reservoir(tmp_path) -> None:
         name="BATT1",
         category="battery",
         initial_soc=0.5,
+        max_power=25.0,
+        capacity=100.0,
     )
     context.source_system.add_component(battery)
     battery_membership = PLEXOSMembership(
@@ -343,7 +354,11 @@ def test_plexos_battery_translates_to_energy_reservoir(tmp_path) -> None:
     assert len(storages) >= 1
     storage = storages[0]
     assert storage.name == "BATT1"
-    assert storage.storage_capacity == 0.0
+    assert storage.base_power == 25.0
+    assert storage.storage_capacity == 4.0
+    assert storage.rating == 1.0
+    assert storage.input_active_power_limits.max == 1.0
+    assert storage.output_active_power_limits.max == 1.0
     assert pytest.approx(0.5) == storage.initial_storage_capacity_level
     assert storage.bus is not None
     assert storage.bus.name == "NODE1"
