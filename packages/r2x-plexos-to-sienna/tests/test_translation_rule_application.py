@@ -247,7 +247,7 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     hydro_gen = next((h for h in hydros if h.name == "HYDRO1"), None)
     assert hydro_gen is not None
     assert hydro_gen.rating == 1.0
-    assert hydro_gen.active_power_limits.max == 1.0
+    assert hydro_gen.active_power_limits.max == pytest.approx(1.0 / hydro_gen.base_power)
     assert hydro_gen.bus is not None
     assert hydro_gen.bus.name == "NODE1"
 
@@ -369,8 +369,8 @@ def test_plexos_battery_translates_to_energy_reservoir(tmp_path) -> None:
     assert storage.base_power == 25.0
     assert storage.storage_capacity == 4.0
     assert storage.rating == 1.0
-    assert storage.input_active_power_limits.max == 1.0
-    assert storage.output_active_power_limits.max == 1.0
+    assert storage.input_active_power_limits.max == pytest.approx(1.0 / storage.base_power)
+    assert storage.output_active_power_limits.max == pytest.approx(1.0 / storage.base_power)
     assert pytest.approx(0.5) == storage.initial_storage_capacity_level
     assert storage.bus is not None
     assert storage.bus.name == "NODE1"
