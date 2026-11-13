@@ -1006,7 +1006,8 @@ def get_thermal_operation_cost(
                 and len(load_points_by_band) == len(band_ids)
                 and set(load_points_by_band) == set(band_ids)
                 and all(math.isfinite(point) for point in x_coords)
-                and all(left < right for left, right in itertools.pairwise(x_coords))
+                and x_coords[0] <= x_coords[1]
+                and all(left < right for left, right in itertools.pairwise(x_coords[1:]))
                 and x_coords[-1] <= max_output
             )
 
@@ -1030,9 +1031,14 @@ def get_thermal_operation_cost(
                 )
 
             if valid_load_points or not has_explicit_load_points:
+                initial_input = min_output * band_rates[0]
+                if x_coords[0] == x_coords[1]:
+                    # The first band's fuel input is already represented by initial_input.
+                    x_coords = x_coords[1:]
+                    band_rates = band_rates[1:]
                 value_curve = AverageRateCurve(
                     function_data=PiecewiseStepData(x_coords=x_coords, y_coords=band_rates),
-                    initial_input=min_output * band_rates[0],
+                    initial_input=initial_input,
                 )
             else:
                 value_curve = LinearCurve(band_rates[0])
@@ -1113,7 +1119,7 @@ def get_storage_capacity(component: PLEXOSGenerator, context: PluginContext) -> 
     """Get the storage capacity.
 
     For PLEXOSBattery converts ``capacity`` (MWh) to the device base.
-    For PLEXOSStorage (hydro reservoir) uses ``max_volume`` (MWh).
+    For PLEXOSStorage (hydro reservoir) returns ``max_volume`` unchanged in GWh.
     """
     if hasattr(component, "capacity") and not hasattr(component, "max_volume"):
         capacity = float(getattr(component, "capacity", 0.0) or 0.0)

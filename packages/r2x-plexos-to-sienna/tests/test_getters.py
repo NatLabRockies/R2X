@@ -918,6 +918,25 @@ def test_operation_cost_uses_load_points_matched_by_heat_rate_band(tmp_path) -> 
     assert not isinstance(incomplete_curve, AverageRateCurve)
 
 
+@pytest.mark.parametrize("min_output", [0.0, 10.0])
+def test_operation_cost_load_point_at_minimum_output(tmp_path, min_output) -> None:
+    context = make_context(tmp_path)
+    gen = PLEXOSGenerator(
+        name="GEN_BANDED",
+        category="gas-cc",
+        max_capacity=100.0,
+        min_stable_level=min_output,
+        heat_rate=[{"band": 1, "value": 12.0}, {"band": 2, "value": 8.0}],
+        load_point=[{"band": 1, "value": min_output}, {"band": 2, "value": 100.0}],
+    )
+    curve = getters.get_thermal_operation_cost(gen, context).unwrap().variable.value_curve
+
+    assert isinstance(curve, AverageRateCurve)
+    points = curve.to_input_output().function_data.points
+    assert [point.x for point in points] == [min_output, 100.0]
+    assert [point.y for point in points] == [min_output * 12.0, 800.0]
+
+
 def test_area_getter(tmp_path) -> None:
     """Test get_area getter."""
     context = make_context(tmp_path)
