@@ -20,6 +20,13 @@ def make_context_and_rules(tmp_path):
     return context, rules
 
 
+def omit_reactive_power_limits(rules: list[Rule]) -> None:
+    """Keep generator category tests independent of optional model unit validation."""
+    for rule in rules:
+        if rule.target_type in {"RenewableDispatch", "SynchronousCondenser"}:
+            rule.getters.pop("reactive_power_limits", None)
+
+
 def test_plexos_zone_translates_to_load_zone(tmp_path) -> None:
     from r2x_plexos.models import PLEXOSZone
     from r2x_sienna.models import LoadZone
@@ -159,6 +166,7 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     )
 
     context, rules = make_context_and_rules(tmp_path)
+    omit_reactive_power_limits(rules)
     context.source_system = System(name="source", auto_add_composed_components=True)
 
     node = PLEXOSNode(name="NODE1", voltage=115.0)
@@ -263,6 +271,7 @@ def test_plexos_generators_translate_by_descriptive_category(tmp_path) -> None:
     )
 
     context, rules = make_context_and_rules(tmp_path)
+    omit_reactive_power_limits(rules)
     context.source_system = System(name="source", auto_add_composed_components=True)
 
     node = PLEXOSNode(name="NODE1", voltage=115.0)

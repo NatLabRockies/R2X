@@ -377,7 +377,13 @@ def test_generator_getters(tmp_path) -> None:
     assert getters.get_gen_active_power(gen, context).unwrap() == 100.0
     assert getters.get_gen_reactive_power(gen, context).unwrap() == 0.0
     assert getters.get_gen_rating(gen, context).unwrap() == 100.0
-    assert getters.get_gen_base_power(gen, context).unwrap() == 0.0
+    assert getters.get_gen_base_power(gen, context).unwrap() == 100.0
+    assert (
+        getters.get_gen_base_power(
+            cast(PLEXOSGenerator, types.SimpleNamespace(base_power=250.0)), context
+        ).unwrap()
+        == 250.0
+    )
 
     limits = getters.get_gen_active_power_limits(gen, context).unwrap()
     assert limits.min == 0.0

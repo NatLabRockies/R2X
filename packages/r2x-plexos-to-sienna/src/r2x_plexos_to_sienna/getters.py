@@ -852,9 +852,11 @@ def get_gen_rating(component: PLEXOSGenerator, context: PluginContext) -> Result
 
 
 @getter
-def get_gen_base_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the base power of a generator."""
-    value = getattr(component, "base_power", 0.0)
+def get_gen_base_power(
+    component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext
+) -> Result[float, Any]:
+    """Get component base power, defaulting to 100 MVA when it is unavailable."""
+    value = getattr(component, "base_power", None) or 100.0
     return Ok(float(value))
 
 
