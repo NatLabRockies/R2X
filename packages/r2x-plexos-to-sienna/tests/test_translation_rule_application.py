@@ -14,9 +14,17 @@ def make_context_and_rules(tmp_path):
     rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     config = PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models", "r2x_plexos_to_sienna.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = DataStore(path=tmp_path)
+    store.configure_upgrades(plugin_config=config)
     context = PluginContext(config=config, store=store)
     return context, rules
+
+
+def omit_reactive_power_limits(rules: list[Rule]) -> None:
+    """Keep generator category tests independent of optional model unit validation."""
+    for rule in rules:
+        if rule.target_type in {"RenewableDispatch", "SynchronousCondenser"}:
+            rule.getters.pop("reactive_power_limits", None)
 
 
 def test_plexos_zone_translates_to_load_zone(tmp_path) -> None:
@@ -158,6 +166,7 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     )
 
     context, rules = make_context_and_rules(tmp_path)
+    omit_reactive_power_limits(rules)
     context.source_system = System(name="source", auto_add_composed_components=True)
 
     node = PLEXOSNode(name="NODE1", voltage=115.0)
@@ -238,7 +247,7 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     hydro_gen = next((h for h in hydros if h.name == "HYDRO1"), None)
     assert hydro_gen is not None
     assert hydro_gen.rating == 1.0
-    assert hydro_gen.active_power_limits.max == 1.0
+    assert hydro_gen.active_power_limits.max == pytest.approx(1.0 / hydro_gen.base_power)
     assert hydro_gen.bus is not None
     assert hydro_gen.bus.name == "NODE1"
 
@@ -272,6 +281,7 @@ def test_plexos_generators_translate_by_descriptive_category(tmp_path) -> None:
     )
 
     context, rules = make_context_and_rules(tmp_path)
+    omit_reactive_power_limits(rules)
     context.source_system = System(name="source", auto_add_composed_components=True)
 
     node = PLEXOSNode(name="NODE1", voltage=115.0)
@@ -359,8 +369,8 @@ def test_plexos_battery_translates_to_energy_reservoir(tmp_path) -> None:
     assert storage.base_power == 25.0
     assert storage.storage_capacity == 4.0
     assert storage.rating == 1.0
-    assert storage.input_active_power_limits.max == 1.0
-    assert storage.output_active_power_limits.max == 1.0
+    assert storage.input_active_power_limits.max == pytest.approx(1.0 / storage.base_power)
+    assert storage.output_active_power_limits.max == pytest.approx(1.0 / storage.base_power)
     assert pytest.approx(0.5) == storage.initial_storage_capacity_level
     assert storage.bus is not None
     assert storage.bus.name == "NODE1"

@@ -39,8 +39,9 @@ from r2x_sienna.models.enums import (
     ThermalFuels,
 )
 from r2x_sienna_to_plexos import getters
+from sienna_to_plexos_test_utils import make_hydro_turbine, make_store
 
-from r2x_core import DataStore, PluginConfig, PluginContext, System
+from r2x_core import PluginConfig, PluginContext, System
 
 from .fixtures.five_bus_systems import (
     system_complete,
@@ -59,7 +60,7 @@ from .fixtures.five_bus_systems import (
 @pytest.fixture
 def context(tmp_path):
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -68,7 +69,7 @@ def context(tmp_path):
 
 def make_context(tmp_path) -> PluginContext:
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -440,7 +441,7 @@ def test_membership_line_parent_interface_success_and_missing_target(context):
 
     target_interface = PLEXOSInterface(name="Interface-1")
     context.target_system.add_component(target_interface)
-    context._cache.pop("target_interface_name_index", None)
+    getters._get_context_cache(context).pop("target_interface_name_index", None)
 
     result = getters.membership_line_parent_interface(line, context)
     assert result.is_ok()
@@ -468,7 +469,7 @@ def test_get_hydro_generator_units_always_online(context):
 
 
 def _make_hydro_turbine_for_units_tests(bus: ACBus, name: str, rating: float) -> HydroTurbine:
-    return HydroTurbine(
+    return make_hydro_turbine(
         name=name,
         available=True,
         bus=bus,
@@ -529,7 +530,7 @@ def test_get_pumped_hydro_generator_units_pumped_with_reservoir_is_online(contex
     ht = _make_hydro_turbine_for_units_tests(bus, "ht-with-reservoir", rating=1.0)
     monkeypatch.setattr(getters, "_resolve_generator_category", lambda _comp, _ctx: None)
     # Inject a non-empty turbine name set so the turbine is found
-    context._cache["reservoir_pump_turbine_name_set"] = {"ht-with-reservoir"}
+    getters._get_context_cache(context)["reservoir_pump_turbine_name_set"] = {"ht-with-reservoir"}
     result = getters.get_pumped_hydro_generator_units(ht, context)
     assert result.unwrap() == 1
 
@@ -556,7 +557,7 @@ def test_build_reservoir_pump_turbine_name_set_collects_ext_plants(context, monk
         lambda _res, _ctx: True,
     )
     # Clear cache so it is rebuilt
-    context._cache.pop("reservoir_pump_turbine_name_set", None)
+    getters._get_context_cache(context).pop("reservoir_pump_turbine_name_set", None)
     names = getters._build_reservoir_pump_turbine_name_set(context)
     assert "pump-turbine-A" in names
     assert "pump-turbine-B" in names
@@ -581,7 +582,7 @@ def test_build_reservoir_pump_turbine_name_set_skips_non_storage_reservoirs(cont
         "_reservoir_has_hydro_pumped_storage_association",
         lambda _res, _ctx: False,
     )
-    context._cache.pop("reservoir_pump_turbine_name_set", None)
+    getters._get_context_cache(context).pop("reservoir_pump_turbine_name_set", None)
     names = getters._build_reservoir_pump_turbine_name_set(context)
     assert "should-not-appear" not in names
 

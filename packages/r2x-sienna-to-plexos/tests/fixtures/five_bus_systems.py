@@ -396,7 +396,6 @@ def system_with_hydro(system_with_renewables) -> System:
         HydroDispatch,
         HydroGenerationCost,
         HydroReservoir,
-        HydroTurbine,
         MinMax,
         PrimeMoversType,
     )
@@ -417,7 +416,9 @@ def system_with_hydro(system_with_renewables) -> System:
     )
     sys.add_component(hydro_dispatch)
 
-    hydro_turbine = HydroTurbine(
+    from sienna_to_plexos_test_utils import make_hydro_turbine
+
+    hydro_turbine = make_hydro_turbine(
         name="hydro-turbine",
         bus=bus3,
         active_power=0.0,

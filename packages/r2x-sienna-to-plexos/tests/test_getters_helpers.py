@@ -44,14 +44,15 @@ from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput
 from r2x_sienna.units import ActivePower
 from r2x_sienna_to_plexos import getters
 from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
+from sienna_to_plexos_test_utils import make_store
 
-from r2x_core import DataStore, PluginConfig, PluginContext, System
+from r2x_core import PluginConfig, PluginContext, System
 
 
 @pytest.fixture
 def context(tmp_path):
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -60,7 +61,7 @@ def context(tmp_path):
 
 def make_context(tmp_path) -> PluginContext:
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)

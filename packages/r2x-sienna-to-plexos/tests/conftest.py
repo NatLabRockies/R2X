@@ -18,3 +18,16 @@ def caplog(caplog):
 
     yield caplog
     logger.remove()
+
+
+@pytest.fixture(autouse=True)
+def core_time_series_legacy_hook(monkeypatch):
+    import r2x_core.time_series as time_series
+
+    if not hasattr(time_series, "_setup_target_and_child_tables"):
+        monkeypatch.setattr(
+            time_series,
+            "_setup_target_and_child_tables",
+            time_series.create_target_and_child_tables,
+            raising=False,
+        )

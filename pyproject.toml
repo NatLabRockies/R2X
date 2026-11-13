@@ -53,7 +53,7 @@ dependencies = [
   "r2x-plexos-to-sienna",
   "r2x-reeds-to-plexos",
   "r2x-reeds-to-sienna",
-  "r2x-core",
+  "r2x-core @ git+https://github.com/NatLabRockies/r2x-core.git@main",
 ]
 
 [project.urls]
@@ -89,6 +89,8 @@ r2x-sienna-to-plexos = { workspace = true }
 r2x-plexos-to-sienna = { workspace = true }
 r2x-reeds-to-plexos = { workspace = true }
 r2x-reeds-to-sienna = { workspace = true }
+r2x-reeds = { git = "https://github.com/NatLabRockies/r2x-reeds.git", rev = "fix/r2x-core" }
+r2x-sienna = { git = "https://github.com/NatLabRockies/r2x-sienna.git", rev = "fix/gen-base-power" }
 
 [tool.uv.workspace]
 members = ["packages/*"]

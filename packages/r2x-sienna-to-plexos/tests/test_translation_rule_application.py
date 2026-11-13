@@ -5,15 +5,16 @@ import types
 from importlib.resources import files
 
 from r2x_sienna_to_plexos import translation as translation_module
+from sienna_to_plexos_test_utils import make_store
 
-from r2x_core import DataStore, PluginConfig, PluginContext, Rule, System, apply_rules_to_context
+from r2x_core import PluginConfig, PluginContext, Rule, System, apply_rules_to_context
 
 
 def make_context_and_rules(tmp_path):
     rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     context = PluginContext(config=config, store=store)
     return context, rules
 

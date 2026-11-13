@@ -3,7 +3,11 @@ name = "r2x-reeds-to-sienna"
 version = "0.2.2"
 description = "Translation helpers for ReEDS-to-Sienna interoperability."
 requires-python = ">=3.11, <3.14"
-dependencies = ["r2x-reeds>=0.9.3,<1.0.0", "r2x-sienna>=0.2.0,<1.0.0"]
+dependencies = [
+  "r2x-core @ git+https://github.com/NatLabRockies/r2x-core.git@main",
+  "r2x-reeds>=0.9.3,<1.0.0",
+  "r2x-sienna>=0.2.0,<1.0.0",
+]
 
 [project.entry-points."r2x.transforms"]
 reeds-to-sienna = "r2x_reeds_to_sienna.translation:reeds_to_sienna"

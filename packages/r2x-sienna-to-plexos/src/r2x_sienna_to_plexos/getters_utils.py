@@ -56,6 +56,16 @@ InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionD
 _SIENNA_TRANSFORMER_TYPES = (Transformer2W, TapTransformer, PhaseShiftingTransformer)
 _ISO_RTO_POLYGONS: dict[str, list] | None = None
 _ISO_RTO_CONFIG_DIR = pathlib.Path(__file__).parent / "config" / "iso-rto-coordinates"
+_CONTEXT_CACHE_KEY = "r2x_sienna_to_plexos_cache"
+
+
+def _get_context_cache(context: PluginContext) -> dict[str, Any]:
+    """Return this plugin's cache stored in the context's supported metadata field."""
+    cache = context.metadata.setdefault(_CONTEXT_CACHE_KEY, {})
+    if not isinstance(cache, dict):
+        msg = f"Plugin context metadata key {_CONTEXT_CACHE_KEY!r} must contain a dictionary"
+        raise TypeError(msg)
+    return cast(dict[str, Any], cache)
 
 
 def clean_interface_name(name: Any) -> str:
@@ -220,7 +230,7 @@ def _ensure_membership(
     child_key = getattr(child_object, "uuid", None) or id(child_object)
     membership_key = (collection, parent_key, child_key)
 
-    membership_cache = context._cache.setdefault("membership_key_cache", set())
+    membership_cache = _get_context_cache(context).setdefault("membership_key_cache", set())
     if membership_key in membership_cache:
         return
 
@@ -239,7 +249,7 @@ def _ensure_membership(
 def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | None, str | None]]:
     """Build a single-pass index: bus_name -> (area_name, zone_name)."""
 
-    cached = context._cache.get("bus_name_to_area_and_zone")
+    cached = _get_context_cache(context).get("bus_name_to_area_and_zone")
     if cached is not None:
         return cached
 
@@ -267,7 +277,7 @@ def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | 
                 zone_name = str(load_zone)
         result[bus.name] = (area_name, zone_name)
 
-    context._cache["bus_name_to_area_and_zone"] = result
+    _get_context_cache(context)["bus_name_to_area_and_zone"] = result
     return result
 
 
@@ -518,7 +528,7 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
                 region_nodes.append(node)
             total_memberships += 1
 
-    context._cache["region_nodes_by_name"] = region_nodes_by_name
+    _get_context_cache(context)["region_nodes_by_name"] = region_nodes_by_name
 
     logger.info("Total {} Region-Node memberships created.", total_memberships)
 
@@ -538,10 +548,14 @@ def ensure_reference_node_memberships(context: PluginContext) -> None:
             return 0.0
 
     regions_by_name = {r.name: r for r in _target_system(context).get_components(PLEXOSRegion)}
-    nodes_by_region = cast(dict[str, list[PLEXOSNode]], context._cache.get("region_nodes_by_name", {}))
+    nodes_by_region = cast(
+        dict[str, list[PLEXOSNode]], _get_context_cache(context).get("region_nodes_by_name", {})
+    )
     if not nodes_by_region:
         ensure_region_node_memberships(context)
-        nodes_by_region = cast(dict[str, list[PLEXOSNode]], context._cache.get("region_nodes_by_name", {}))
+        nodes_by_region = cast(
+            dict[str, list[PLEXOSNode]], _get_context_cache(context).get("region_nodes_by_name", {})
+        )
 
     # If some regions still have no node associations, recover from existing
     # supplemental Region memberships attached to the region endpoint.

@@ -10,7 +10,7 @@ from collections import Counter
 from collections.abc import Mapping
 from datetime import timedelta
 from importlib.resources import files
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from infrasys import Component, SingleTimeSeries
@@ -94,6 +94,7 @@ PLEXOS_NUMBER_MAP = {}
 PLEXOS_NUMBER_USED = set()
 
 P2S_TS_PENDING_CACHE_KEY = "p2s_pending_ts"
+_CONTEXT_CACHE_KEY = "r2x_plexos_to_sienna_cache"
 
 
 def _first_numeric(value: Any) -> float:
@@ -113,8 +114,15 @@ def _first_numeric(value: Any) -> float:
 
 
 def _get_pending_ts_cache(context: PluginContext) -> dict[str, Any]:
-    cache = context._cache.setdefault(P2S_TS_PENDING_CACHE_KEY, {})
-    return cache
+    context_cache = context.metadata.setdefault(_CONTEXT_CACHE_KEY, {})
+    if not isinstance(context_cache, dict):
+        msg = f"Plugin context metadata key {_CONTEXT_CACHE_KEY!r} must contain a dictionary"
+        raise TypeError(msg)
+    cache = context_cache.setdefault(P2S_TS_PENDING_CACHE_KEY, {})
+    if not isinstance(cache, dict):
+        msg = f"Plugin context cache key {P2S_TS_PENDING_CACHE_KEY!r} must contain a dictionary"
+        raise TypeError(msg)
+    return cast(dict[str, Any], cache)
 
 
 def _pending_key_for_source(component: Any) -> str:

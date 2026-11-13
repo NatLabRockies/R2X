@@ -12,7 +12,6 @@ from r2x_plexos.models import (
 )
 from r2x_sienna.models import (
     ACBus,
-    HydroTurbine,
     MinMax,
     ThermalStandard,
     UpDown,
@@ -27,14 +26,15 @@ from r2x_sienna.models.enums import (
     ThermalFuels,
 )
 from r2x_sienna_to_plexos import getters
+from sienna_to_plexos_test_utils import make_hydro_turbine, make_store
 
-from r2x_core import DataStore, Ok, PluginConfig, PluginContext, System
+from r2x_core import Ok, PluginConfig, PluginContext, System
 
 
 @pytest.fixture
 def context(tmp_path):
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -43,7 +43,7 @@ def context(tmp_path):
 
 def make_context(tmp_path) -> PluginContext:
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -348,7 +348,7 @@ def test_get_generator_category_thermal_prefers_fuel_over_prime_mover(context):
 def test_get_turbine_pump_load_and_efficiency(context):
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     context.source_system.add_component(bus1)
-    ht = HydroTurbine(
+    ht = make_hydro_turbine(
         name="hydro-turbine-test",
         available=True,
         bus=bus1,
@@ -419,7 +419,7 @@ def test_get_turbine_pump_efficiency_hydropumpturbine_defaults_to_80(monkeypatch
 def test_get_pumped_hydro_category_demotes_zero_pump_load(context):
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     context.source_system.add_component(bus1)
-    ht_zero = HydroTurbine(
+    ht_zero = make_hydro_turbine(
         name="hydro-turbine-zero-pump",
         available=True,
         bus=bus1,
@@ -443,7 +443,7 @@ def test_get_pumped_hydro_category_demotes_zero_pump_load(context):
     )
     assert getters.get_pumped_hydro_category(ht_zero, context).unwrap() == "hydro"
 
-    ht_pumped = HydroTurbine(
+    ht_pumped = make_hydro_turbine(
         name="hydro-turbine-with-pump",
         available=True,
         bus=bus1,
@@ -475,7 +475,7 @@ def test_get_pumped_hydro_category_demotes_zero_pump_load(context):
 def test_get_thermal_forced_outage_rate_defaults(context):
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     context.source_system.add_component(bus1)
-    ht = HydroTurbine(
+    ht = make_hydro_turbine(
         name="hydro-turbine-test",
         available=True,
         bus=bus1,

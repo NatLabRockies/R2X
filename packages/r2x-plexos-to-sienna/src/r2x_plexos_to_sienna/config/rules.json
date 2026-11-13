@@ -173,6 +173,7 @@
       "losses": "get_line_losses"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "eq",
       "values": ["monitored-line"]
@@ -202,6 +203,7 @@
       "loss": "get_hvdc_line_loss"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "eq",
       "values": [
@@ -319,6 +321,7 @@
       "fuel": "get_fuel_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -358,6 +361,7 @@
       "services": "get_device_services"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -394,6 +398,7 @@
       "time_limits": "get_gen_time_limits"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -428,6 +433,7 @@
       "prime_mover_type": "get_prime_mover_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -455,6 +461,7 @@
       "operation_cost": "get_hydro_reservoir_operation_cost"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "in",
       "values": [
@@ -487,6 +494,7 @@
       "power_factor": "get_gen_power_factor"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -517,6 +525,7 @@
       "prime_mover_type": "get_prime_mover_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -546,6 +555,7 @@
       "active_power_losses": "get_gen_active_power_losses"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
