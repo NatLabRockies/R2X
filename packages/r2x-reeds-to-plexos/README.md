@@ -64,6 +64,30 @@ $79/MW PCM default produces $25,280, $25,280, and $4,740.
 > [ReEDS #114](https://github.com/NatLabRockies/r2x-reeds/pull/114) and
 > [R2X #340](https://github.com/NatLabRockies/R2X/pull/340).
 
+## Ramp Rates
+
+Thermal and hydro ReEDS generator `ramp_rate` values are fractions of installed
+generator capacity per minute. Parsed inputs and PCM defaults must preserve this
+fraction through generator splitting. Translation multiplies by the final
+generator capacity exactly once to obtain PLEXOS Max Ramp Up and Max Ramp Down
+in MW/min; no division by 60 is needed.
+
+For example, a `0.05` fraction/min rate produces 16 MW/min on a 320 MW unit and
+3 MW/min on a 60 MW remainder. A populated source rate supplies both directions.
+
+When a source rate is missing, the existing translator defaults have two distinct
+representations:
+
+- `ramp_rate_up` and `ramp_rate_down` are absolute MW/min values and are not scaled.
+- `max_ramp_up_percentage`, despite its name, is a fractional rate per minute
+  (e.g., `0.05`, not `5`) multiplied by capacity. The existing fallback uses this
+  same key for both directions.
+
+Default lookup, precedence, and unresolved-rate behavior are unchanged by this
+unit correction. Previously saved ReEDS systems containing capacity-scaled PCM
+ramp values must be rebuilt from inputs with the corrected r2x-reeds implementation;
+the translator does not guess whether an incoming number is fractional or absolute.
+
 ## Hydro Budget Resolution
 
 Set `hydro_budget_ts` on the translation plugin to control the PLEXOS hydro

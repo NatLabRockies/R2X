@@ -616,7 +616,12 @@ def reserve_requirement(component: ReEDSReserve, context: PluginContext) -> Resu
 def ramp_rate_up_mw_per_minute(
     component: ReEDSGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert fraction/hour ramp rates to the MW/minute required by PLEXOS."""
+    """Convert fractional ramp rates to PLEXOS MW/min using final generator capacity.
+
+    Source ``ramp_rate`` and ``max_ramp_up_percentage`` defaults are fractions of
+    installed capacity per minute. ``ramp_rate_up`` defaults are already MW/min
+    and are returned without scaling.
+    """
     ramp_rate = getattr(component, "ramp_rate", None)
     technology = getattr(component, "technology", "")
     capacity = getattr(component, "capacity", 0.0)
@@ -633,17 +638,22 @@ def ramp_rate_up_mw_per_minute(
                     or _get_defaults(technology, "average_capacity_MW")
                     or 0.0
                 )
-            return Ok(float(default_ramp_up) * float(capacity) / 60.0)
+            return Ok(float(default_ramp_up) * float(capacity))
         return Ok(0.0)
 
-    return Ok(float(ramp_rate) * float(capacity) / 60.0)
+    return Ok(float(ramp_rate) * float(capacity))
 
 
 @getter
 def ramp_rate_down_mw_per_minute(
     component: ReEDSGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert fraction/hour ramp rates to the MW/minute required by PLEXOS."""
+    """Convert fractional ramp rates to PLEXOS MW/min using final generator capacity.
+
+    Source ``ramp_rate`` and ``max_ramp_up_percentage`` defaults are fractions of
+    installed capacity per minute. ``ramp_rate_down`` defaults are already MW/min
+    and are returned without scaling.
+    """
     ramp_rate = getattr(component, "ramp_rate", None)
     technology = getattr(component, "technology", "")
     capacity = getattr(component, "capacity", 0.0)
@@ -660,10 +670,10 @@ def ramp_rate_down_mw_per_minute(
                     or _get_defaults(technology, "average_capacity_MW")
                     or 0.0
                 )
-            return Ok(float(default_ramp_down) * float(capacity) / 60.0)
+            return Ok(float(default_ramp_down) * float(capacity))
         return Ok(0.0)
 
-    return Ok(float(ramp_rate) * float(capacity) / 60.0)
+    return Ok(float(ramp_rate) * float(capacity))
 
 
 @getter
