@@ -333,7 +333,7 @@ def test_absolute_directional_ramp_defaults_are_not_capacity_scaled(tmp_path, mo
     assert getters.ramp_rate_down_mw_per_minute(generator, context).unwrap() == 20.0
 
 
-def test_unresolved_ramp_defaults_keep_existing_zero_behavior(tmp_path, monkeypatch):
+def test_unresolved_ramp_defaults_use_one_fraction_per_minute(tmp_path, monkeypatch):
     context = make_context(tmp_path)
     generator = ReEDSThermalGenerator(
         name="GEN",
@@ -344,8 +344,8 @@ def test_unresolved_ramp_defaults_keep_existing_zero_behavior(tmp_path, monkeypa
         fuel_type="gas",
     )
     monkeypatch.setattr(getters, "_get_defaults", lambda *_args: 0.0)
-    assert getters.ramp_rate_up_mw_per_minute(generator, context).unwrap() == 0.0
-    assert getters.ramp_rate_down_mw_per_minute(generator, context).unwrap() == 0.0
+    assert getters.ramp_rate_up_mw_per_minute(generator, context).unwrap() == 320.0
+    assert getters.ramp_rate_down_mw_per_minute(generator, context).unwrap() == 320.0
 
 
 def test_gen_startup_cost_scales_default_per_mw_cost_by_capacity(tmp_path, monkeypatch):
