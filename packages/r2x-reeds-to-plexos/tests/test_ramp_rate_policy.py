@@ -164,6 +164,42 @@ def test_direct_getters_warn_once_and_do_not_reuse_stale_values(thermal, ramp_me
     assert len([message for message in ramp_messages if "using configured fallback" in message]) == 1
 
 
+@pytest.mark.parametrize(
+    "ramp_getter",
+    ["ramp_rate_up_mw_per_minute", getters.ramp_rate_up_mw_per_minute],
+    ids=["registered-name", "function"],
+)
+def test_preflight_supports_named_ramp_getters_and_unnamed_callables(thermal, ramp_getter):
+    class UnnamedGetter:
+        def __call__(self, component, context):
+            return getters.ramp_rate_up_mw_per_minute(component, context)
+
+    unrelated_getter = UnnamedGetter()
+    assert not hasattr(unrelated_getter, "__name__")
+    source = System(name="callable-getters", auto_add_composed_components=True)
+    source.add_component(thermal)
+    rules = (
+        Rule(
+            source_type="ReEDSThermalGenerator",
+            target_type="PLEXOSGenerator",
+            version=1,
+            getters={"max_ramp_up": ramp_getter},
+        ),
+        Rule(
+            source_type="ReEDSThermalGenerator",
+            target_type="PLEXOSGenerator",
+            version=1,
+            getters={"other_field": unrelated_getter},
+        ),
+    )
+    context = make_context(0.2, source_system=source, rules=rules)
+
+    getters.prepare_generator_ramp_rates(context)
+
+    assert ramp_values(thermal, context) == (20.0, 20.0)
+    assert f"generator_ramp_rates:{thermal.uuid}" in context.metadata
+
+
 def test_preflight_obeys_rules_filters_deduplicates_and_caches(
     thermal, region, rules, monkeypatch, ramp_messages
 ):

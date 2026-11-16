@@ -711,7 +711,7 @@ def prepare_generator_ramp_rates(context: PluginContext) -> None:
     ramp_getter_names = {"ramp_rate_up_mw_per_minute", "ramp_rate_down_mw_per_minute"}
     for rule in context.rules:
         if rule.system != "source" or not any(
-            (value if isinstance(value, str) else value.__name__) in ramp_getter_names
+            (value if isinstance(value, str) else getattr(value, "__name__", None)) in ramp_getter_names
             for value in rule.getters.values()
         ):
             continue
