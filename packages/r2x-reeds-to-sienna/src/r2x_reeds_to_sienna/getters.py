@@ -636,13 +636,11 @@ def get_default_time_at_status(
 def thermal_ramp_limits(
     component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[UpDown | None, ValueError]:
-    """Convert ramp_rate (fraction/min) to device-base per-unit/min for Sienna.
+    """Convert ramp_rate (fraction/hour) to per-unit/min for Sienna ramp_limits.
 
     Falls back to ``max_ramp_up_percentage`` from defaults.json (fraction of capacity
-    per minute) when the source field is not populated. Convert to MW/min using
-    final generator capacity, then normalize to the same device base.
-    Returns None when the source field is not populated and the default is zero.
-    An explicitly supplied zero source rate remains a zero ramp limit.
+    per hour) when the source field is not populated. Returns None only if both the
+    source field and the default are zero.
     """
     ramp_rate = getattr(component, "ramp_rate", None)
     capacity = float(getattr(component, "capacity", 0.0) or 0.0)
@@ -651,7 +649,7 @@ def thermal_ramp_limits(
         ramp_rate = _get_defaults(technology, "max_ramp_up_percentage")
         if not ramp_rate:
             return Ok(None)
-    ramp_mw_per_min = float(ramp_rate) * capacity
+    ramp_mw_per_min = float(ramp_rate) * capacity / 60.0
     ramp_per_unit_per_min = _to_device_base(ramp_mw_per_min, capacity)
     return Ok(UpDown(up=ramp_per_unit_per_min, down=ramp_per_unit_per_min))
 
@@ -963,18 +961,17 @@ def hydro_active_power_limits(
 
 @getter
 def hydro_ramp_limits(component: ReEDSHydroGenerator, context: PluginContext) -> Result[UpDown, ValueError]:
-    """Convert ramp_rate (fraction/min) to device-base per-unit/min for Sienna.
+    """Convert ramp_rate (fraction/hour) to per-unit/min for Sienna ramp_limits.
 
     Falls back to ``max_ramp_up_percentage`` from defaults.json when the source
-    field is not populated. Both rates are fractions of installed capacity per
-    minute; convert to MW/min, then normalize to the final generator capacity.
+    field is not populated.
     """
     cap = float(getattr(component, "capacity", 0.0) or 0.0)
     ramp_rate = getattr(component, "ramp_rate", None)
     if ramp_rate is None:
         technology = getattr(component, "technology", "")
         ramp_rate = _get_defaults(technology, "max_ramp_up_percentage") or 0.0
-    ramp_limit = _to_device_base(cap * float(ramp_rate), cap)
+    ramp_limit = _to_device_base(cap * float(ramp_rate) / 60.0, cap)
     return Ok(UpDown(up=ramp_limit, down=ramp_limit))
 
 
