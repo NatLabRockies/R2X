@@ -41,6 +41,7 @@ translation.run(run_upgrader=True)
 - **`case_name`** (str): Name of the case (used for output file naming).
 - **`solve_year`** (int, optional): The solve year for the ReEDS data. Default is `2030`.
 - **`weather_year`** (int, optional): The weather year for time series data. Default is `2012`.
+- **`missing_ramp_rate_fraction_per_minute`** (float or None, optional): Ramp rate in fraction of capacity per minute to be applied to generators with missing ramp rates. `None` causes the translation to fail explicitly on any missing ramp rates. Default is `1`.
 
 ## Translation Rules
 
