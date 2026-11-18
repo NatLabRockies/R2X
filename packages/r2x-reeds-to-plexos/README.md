@@ -1,50 +1,68 @@
-# r2x-reeds-to-plexos
+<img src="../../docs/src/assets/r2x-logo-full-square.svg" alt="R2X framework logo" align="left" width="220px" height="220px" hspace="10"/>
+<img align="left" alt="" width="0" height="220px" hspace="10"/>
 
-Translate ReEDS systems into PLEXOS models.
+#### r2x-reeds-to-plexos
+<p><small>Translate parsed ReEDS systems into PLEXOS models.</small></p>
 
-## Overview
+[![PyPI](https://img.shields.io/pypi/v/r2x-reeds-to-plexos.svg)](https://pypi.org/project/r2x-reeds-to-plexos/) [![Python](https://img.shields.io/pypi/pyversions/r2x-reeds-to-plexos.svg)](https://pypi.org/project/r2x-reeds-to-plexos/) [![Docs](https://img.shields.io/badge/docs-guides-0079c2?style=flat-square)](https://natlabrockies.github.io/R2X/how-to/reeds-to-plexos/) [![License](https://img.shields.io/pypi/l/r2x-reeds-to-plexos.svg)](../../LICENSE.txt)
 
-This package provides a translation plugin to convert ReEDS run outputs into PLEXOS XML format. The translation applies mapping rules and getters to transform ReEDS components (generators, transmission lines, regions, etc.) into their PLEXOS equivalents.
+<br clear="left">
 
-## Usage
+`r2x-reeds-to-plexos` applies component mapping rules and attaches time series to a parsed
+ReEDS system. The public `reeds_to_plexos(system, config)` function returns
+a target system; the PLEXOS exporter writes native output files. Parsing,
+translation, and export are separate steps.
 
-### Basic Example
+## Install
 
-```python
-from r2x_reeds_to_plexos.translation import ReedsToPlexosTranslation
+In an activated Python environment supported by this package:
 
-from r2x_core.logger import setup_logging
-
-# Define level of printing to show progress
-setup_logging(level="DEBUG")
-
-# Initialize the translation
-translation = ReedsToPlexosTranslation(
-    run_path="/path/to/reeds/run",
-    output_folder="/path/to/output",
-    case_name="my_case",
-    solve_year=2030,
-    weather_year=2012
-)
-
-# Run the translation
-translation.run()
-
-# Run with upgrader (if needed to upgrade ReEDS data format)
-translation.run(run_upgrader=True)
+```bash
+python -m pip install r2x-reeds-to-plexos
+python -m pip check
 ```
 
-### Parameters
+For a CLI-managed environment, use `r2x install r2x-reeds-to-plexos` instead. See
+[installation](https://natlabrockies.github.io/R2X/getting-started/installation/)
+for runtime selection and plugin discovery.
 
-- **`run_path`** (str): Path to the ReEDS run folder containing the input data.
-- **`output_folder`** (str): Path to the directory where output files will be saved.
-- **`case_name`** (str): Name of the case (used for output file naming).
-- **`solve_year`** (int, optional): The solve year for the ReEDS data. Default is `2030`.
-- **`weather_year`** (int, optional): The weather year for time series data. Default is `2012`.
+## Verify the configuration
 
-## Translation Rules
+This example runs without model input files. It checks the public configuration
+and the packaged mapping rules before you prepare a full translation:
 
-Translation rules are defined in `config/rules.json`. These rules specify how ReEDS components are mapped to PLEXOS components, including field mappings, getters, and filters.
+```pycon
+>>> import json
+>>> from importlib.resources import files
+>>> from r2x_reeds_to_plexos.plugin_config import ReedsToPlexosConfig
+>>> config = ReedsToPlexosConfig()
+>>> assert config.hydro_budget_ts == 'daily'
+>>> assert "r2x_reeds.models" in config.models
+>>> rules = json.loads(files("r2x_reeds_to_plexos.config").joinpath("rules.json").read_text())
+>>> assert isinstance(rules, list) and len(rules) > 0
+```
+
+Continue with the [complete ReEDS → PLEXOS workflow](https://natlabrockies.github.io/R2X/how-to/reeds-to-plexos/)
+for input requirements, parsing, translation, and export. A translation requires
+real source components and their companion time-series files; configuration
+validation alone does not validate a model.
+
+<span id="basic-example"></span>
+<span id="define-level-of-printing-to-show-progress"></span>
+<span id="initialize-the-translation"></span>
+<span id="overview"></span>
+<span id="parameters"></span>
+<span id="run-the-translation"></span>
+<span id="run-with-upgrader-if-needed-to-upgrade-reeds-data-format"></span>
+<span id="translation-rules"></span>
+<span id="usage"></span>
+
+## Mapping and API
+
+- [Function and configuration reference](https://natlabrockies.github.io/R2X/reference/python-api/#reeds_to_plexos)
+- [Property mappings](https://natlabrockies.github.io/R2X/reference/reeds-to-plexos-properties/)
+- [Translation source](src/r2x_reeds_to_plexos/translation.py) and [packaged rules](src/r2x_reeds_to_plexos/config/rules.json)
+- [Troubleshooting](https://natlabrockies.github.io/R2X/troubleshooting/)
 
 ## Startup Costs
 
