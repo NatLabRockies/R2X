@@ -6,6 +6,8 @@ import json
 import math
 from importlib.resources import files
 
+import pytest
+
 from r2x_core import DataStore, PluginConfig, PluginContext, Rule, System, apply_rules_to_context
 
 
@@ -113,7 +115,8 @@ def test_reeds_generators_translate_to_plexos_types(tmp_path) -> None:
     assert {"THERM1", "VRE1", "HYDRO1"} <= names
 
 
-def test_import_generators_translate_with_time_series(tmp_path) -> None:
+@pytest.mark.parametrize("category", ["imports", "exports"])
+def test_trade_generators_translate_with_time_series(tmp_path, category) -> None:
     from datetime import datetime, timedelta
 
     from infrasys.time_series_models import SingleTimeSeries
@@ -126,10 +129,10 @@ def test_import_generators_translate_with_time_series(tmp_path) -> None:
     region = ReEDSRegion(name="p1", transmission_region="Z1")
     context.source_system.add_component(region)
     generator = ReEDSGenerator(
-        name="can-imports_init-1_p1",
-        category="imports",
+        name=f"can-{category}_init-1_p1",
+        category=category,
         region=region,
-        technology="can-imports",
+        technology=f"can-{category}",
         capacity=50.0,
     )
     context.source_system.add_component(generator)
@@ -151,6 +154,7 @@ def test_import_generators_translate_with_time_series(tmp_path) -> None:
 
     target_generator = next(context.target_system.get_components(PLEXOSGenerator))
     assert target_generator.name == generator.name
+    assert target_generator.ext["r2x_category"] == category
     assert context.target_system.has_time_series(target_generator, name="hydro_budget")
 
 

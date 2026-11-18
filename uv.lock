@@ -1040,7 +1040,7 @@ wheels = [
 
 [[package]]
 name = "r2x-plexos-to-sienna"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/r2x-plexos-to-sienna" }
 dependencies = [
     { name = "r2x-plexos" },

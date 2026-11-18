@@ -241,6 +241,37 @@ def test_basic_getters_return_values(tmp_path):
     )
 
 
+def test_ramp_rate_getters_convert_fraction_hour_to_mw_minute(tmp_path):
+    context = make_context(tmp_path)
+    objs = setup_systems(context)
+
+    assert getters.ramp_rate_up_mw_per_minute(objs["thermal"], context).unwrap() == 50.0 / 60.0
+    assert getters.ramp_rate_down_mw_per_minute(objs["thermal"], context).unwrap() == 50.0 / 60.0
+    assert getters.ramp_rate_up_mw_per_minute(objs["hydro"], context).unwrap() == 40.0 / 60.0
+    assert getters.ramp_rate_down_mw_per_minute(objs["hydro"], context).unwrap() == 40.0 / 60.0
+
+
+def test_ramp_rate_getters_convert_percentage_defaults_but_keep_absolute_defaults(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    objs = setup_systems(context)
+    objs["thermal"].ramp_rate = None
+
+    def percentage_defaults(_technology, key):
+        return {"ramp_rate_up": 0.0, "ramp_rate_down": 0.0, "max_ramp_up_percentage": 0.05}.get(key, 0.0)
+
+    monkeypatch.setattr(getters, "_get_defaults", percentage_defaults)
+    assert getters.ramp_rate_up_mw_per_minute(objs["thermal"], context).unwrap() == 50.0 * 0.05 / 60.0
+    assert getters.ramp_rate_down_mw_per_minute(objs["thermal"], context).unwrap() == 50.0 * 0.05 / 60.0
+
+    monkeypatch.setattr(
+        getters,
+        "_get_defaults",
+        lambda _technology, key: 30.0 if key in {"ramp_rate_up", "ramp_rate_down"} else 0.0,
+    )
+    assert getters.ramp_rate_up_mw_per_minute(objs["thermal"], context).unwrap() == 30.0
+    assert getters.ramp_rate_down_mw_per_minute(objs["thermal"], context).unwrap() == 30.0
+
+
 def test_gen_startup_cost_scales_default_per_mw_cost_by_capacity(tmp_path, monkeypatch):
     context = make_context(tmp_path)
     objs = setup_systems(context)

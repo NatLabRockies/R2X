@@ -11,6 +11,7 @@ from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose
 from r2x_reeds_to_plexos.plugin_config import ReedsToPlexosConfig
 
 from .getters_utils import (
+    attach_fuels_to_generators,
     attach_region_load_time_series,
     attach_reserve_time_series,
     attach_time_series_to_generators,
@@ -53,5 +54,15 @@ def reeds_to_plexos(system: System, config: ReedsToPlexosConfig) -> System:
     attach_time_series_to_generators(context)
     attach_region_load_time_series(context)
     attach_time_series_to_purchasers(context)
+    if config.use_fuel_objects:
+        from r2x_plexos.models import PLEXOSFuel
+        from r2x_plexos.utils_mappings import PLEXOS_TYPE_MAP_INVERTED
+
+        if PLEXOSFuel not in PLEXOS_TYPE_MAP_INVERTED:
+            raise ValueError(
+                "use_fuel_objects requires an r2x-plexos exporter with Fuel support; "
+                "upgrade r2x-plexos or disable use_fuel_objects."
+            )
+        attach_fuels_to_generators(context)
 
     return context.target_system

@@ -613,10 +613,10 @@ def reserve_requirement(component: ReEDSReserve, context: PluginContext) -> Resu
 
 
 @getter
-def ramp_rate_up_mw_per_hour(
-    component: ReEDSThermalGenerator, context: PluginContext
+def ramp_rate_up_mw_per_minute(
+    component: ReEDSGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert ramp rate from fraction/hour to MW/hour for PLEXOS."""
+    """Convert fraction/hour ramp rates to the MW/minute required by PLEXOS."""
     ramp_rate = getattr(component, "ramp_rate", None)
     technology = getattr(component, "technology", "")
     capacity = getattr(component, "capacity", 0.0)
@@ -633,17 +633,17 @@ def ramp_rate_up_mw_per_hour(
                     or _get_defaults(technology, "average_capacity_MW")
                     or 0.0
                 )
-            return Ok(float(default_ramp_up) * float(capacity))
+            return Ok(float(default_ramp_up) * float(capacity) / 60.0)
         return Ok(0.0)
 
-    return Ok(float(ramp_rate) * float(capacity))
+    return Ok(float(ramp_rate) * float(capacity) / 60.0)
 
 
 @getter
-def ramp_rate_down_mw_per_hour(
-    component: ReEDSThermalGenerator, context: PluginContext
+def ramp_rate_down_mw_per_minute(
+    component: ReEDSGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert ramp rate from fraction/hour to MW/hour for PLEXOS."""
+    """Convert fraction/hour ramp rates to the MW/minute required by PLEXOS."""
     ramp_rate = getattr(component, "ramp_rate", None)
     technology = getattr(component, "technology", "")
     capacity = getattr(component, "capacity", 0.0)
@@ -660,10 +660,10 @@ def ramp_rate_down_mw_per_hour(
                     or _get_defaults(technology, "average_capacity_MW")
                     or 0.0
                 )
-            return Ok(float(default_ramp_down) * float(capacity))
+            return Ok(float(default_ramp_down) * float(capacity) / 60.0)
         return Ok(0.0)
 
-    return Ok(float(ramp_rate) * float(capacity))
+    return Ok(float(ramp_rate) * float(capacity) / 60.0)
 
 
 @getter
