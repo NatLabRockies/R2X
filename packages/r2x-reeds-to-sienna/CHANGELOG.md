@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-sienna-v0.2.2...r2x-reeds-to-sienna-v0.2.3) (2026-11-18)
+
+
+### Documentation
+
+* align central guides and workspace translator documentation ([#344](https://github.com/NatLabRockies/R2X/issues/344)) ([164dea0](https://github.com/NatLabRockies/R2X/commit/164dea0ccef556bba69c14327e9e11a1bc43f327))
+
 ## [0.2.2](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-sienna-v0.2.1...r2x-reeds-to-sienna-v0.2.2) (2026-10-15)
 
 
