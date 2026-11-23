@@ -281,7 +281,7 @@ def test_rules_have_required_fields() -> None:
 def test_rule_outputs_match_sienna_model_fields() -> None:
     """Ensure each rule supplies valid target fields and all required fields."""
     rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
-    rules_data = json.loads(rules_path.read_text())
+    rules_data = json.loads(rules_path.read_text(encoding="utf-8"))
     problems = []
 
     for rule in rules_data:
