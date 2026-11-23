@@ -306,14 +306,15 @@
       "category": "category",
       "uuid": "uuid",
       "x": "reactance",
-      "r": "resistance",
-      "α": "ac_fixed_shift_angle"
+      "r": "resistance"
     },
     "getters": {
       "arc": "get_line_arc",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
+      "α": "get_trf_phase_angle",
+      "base_power": "get_trf_base_power",
       "control_objective": "get_trf_control_objective",
       "phase_angle_limits": "get_trf_phase_angle_limits"
     },
@@ -479,7 +480,8 @@
       "category": "hydro-pumped-storage",
       "initial_level": 0.5,
       "outflow": 0.0,
-      "intake_elevation": 0.0
+      "intake_elevation": 0.0,
+      "level_data_type": "ENERGY"
     },
     "field_map": {
       "initial_level": "initial_level",

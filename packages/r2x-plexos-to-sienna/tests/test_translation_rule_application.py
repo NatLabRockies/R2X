@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from importlib.resources import files
 
 import pytest
@@ -405,7 +406,7 @@ def test_plexos_transformers_translate_to_sienna_models(tmp_path, category: str,
         reactance=0.1,
         resistance=0.01,
         ac_tap_ratio=1.0,
-        ac_fixed_shift_angle=0.25,
+        ac_fixed_shift_angle=30.0,
         ac_line_charging_susceptance=0.02,
     )
     context.source_system.add_component(transformer)
@@ -434,9 +435,12 @@ def test_plexos_transformers_translate_to_sienna_models(tmp_path, category: str,
     translated = context.target_system.get_component(getattr(sienna_models, target_name), "XFMR1")
     assert translated.primary_shunt.real == 0.0
     assert translated.primary_shunt.imag == 0.02
+    assert translated.base_power == 100.0
     if target_name == "PhaseShiftingTransformer":
-        assert translated.phase_angle_limits.min == 0.25
-        assert translated.phase_angle_limits.max == 0.25
+        expected_angle = math.radians(30.0)
+        assert getattr(translated, chr(0x03B1)) == pytest.approx(expected_angle)
+        assert translated.phase_angle_limits.min == pytest.approx(expected_angle)
+        assert translated.phase_angle_limits.max == pytest.approx(expected_angle)
 
 
 def test_plexos_storage_translates_to_hydro_reservoir(tmp_path) -> None:
@@ -464,6 +468,7 @@ def test_plexos_storage_translates_to_hydro_reservoir(tmp_path) -> None:
     assert reservoir.storage_level_limits.min == 10_000.0
     assert reservoir.storage_level_limits.max == 100_000.0
     assert reservoir.initial_level == 0.4
+    assert reservoir.level_data_type.value == "ENERGY"
     assert reservoir.inflow == 5.0
     assert reservoir.outflow == 0.0
     assert reservoir.intake_elevation == 0.0

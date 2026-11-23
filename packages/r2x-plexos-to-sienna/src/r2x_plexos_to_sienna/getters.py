@@ -40,6 +40,7 @@ from r2x_sienna.models import (
     Area,
     EnergyReservoirStorage,
     HydroDispatch,
+    HydroReservoir,
     HydroTurbine,
     LoadZone,
     PowerLoad,
@@ -136,6 +137,8 @@ def _get_target_types_for_source(component: Any) -> list[type[Component]]:
         ]
     if isinstance(component, PLEXOSBattery):
         return [EnergyReservoirStorage]
+    if isinstance(component, PLEXOSStorage):
+        return [HydroReservoir]
     if isinstance(component, PLEXOSRegion):
         return [PowerLoad]
     if isinstance(component, PLEXOSNode):
@@ -228,7 +231,26 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
                 and isinstance(target_component, PowerLoad)
                 and source_ts.name in {"max_active_power", "load", "fixed_load"}
             )
-            target_name = "max_active_power" if load else source_ts.name
+            hydro_reservoir = isinstance(source_component, PLEXOSStorage) and isinstance(
+                target_component, HydroReservoir
+            )
+            target_name = source_ts.name
+            if load:
+                target_name = "max_active_power"
+            elif hydro_reservoir and source_ts.name == "natural_inflow":
+                target_name = "inflow"
+                if context.target_system.has_time_series(
+                    target_component,
+                    name=source_ts.name,
+                    time_series_type=SingleTimeSeries,
+                    **features,
+                ):
+                    context.target_system.remove_time_series(
+                        target_component,
+                        name=source_ts.name,
+                        time_series_type=SingleTimeSeries,
+                        **features,
+                    )
             data = source_ts.data
             normalization = None
             if load:
@@ -1420,10 +1442,21 @@ def get_trf_primary_shunt(component: PLEXOSTransformer, context: PluginContext) 
     return Ok(Complex(real=0.0, imag=susceptance))
 
 
+def _get_trf_phase_angle_radians(component: PLEXOSTransformer) -> float:
+    angle_degrees = float(getattr(component, "ac_fixed_shift_angle", 0.0) or 0.0)
+    return math.radians(angle_degrees)
+
+
+@getter
+def get_trf_phase_angle(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
+    """Convert the fixed PLEXOS phase-shift angle from degrees to radians."""
+    return Ok(_get_trf_phase_angle_radians(component))
+
+
 @getter
 def get_trf_phase_angle_limits(component: PLEXOSTransformer, context: PluginContext) -> Result[MinMax, Any]:
     """Constrain the phase-shifting transformer to its fixed PLEXOS angle."""
-    angle = float(getattr(component, "ac_fixed_shift_angle", 0.0) or 0.0)
+    angle = _get_trf_phase_angle_radians(component)
     return Ok(MinMax(min=angle, max=angle))
 
 

@@ -18,6 +18,7 @@ from r2x_plexos.models import (
     PLEXOSPurchaser,
     PLEXOSRegion,
     PLEXOSReserve,
+    PLEXOSStorage,
     PLEXOSZone,
 )
 from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
@@ -27,6 +28,7 @@ from r2x_sienna.models import (
     Area,
     EnergyReservoirStorage,
     HydroDispatch,
+    HydroReservoir,
     LoadZone,
     PowerLoad,
     RenewableNonDispatch,
@@ -328,6 +330,33 @@ def test_plexos_to_sienna_translates_battery():
     assert pytest.approx(0.5) == bat.initial_storage_capacity_level
     assert bat.bus is not None
     assert bat.bus.name == "NODE1"
+
+
+def test_plexos_hydro_natural_inflow_time_series_translates_to_inflow():
+    source = _build_source_system()
+    storage = PLEXOSStorage(
+        name="RESERVOIR1",
+        category="pumped-hydro",
+        natural_inflow=5.0,
+    )
+    source.add_component(storage)
+    source.add_time_series(
+        SingleTimeSeries(
+            name="natural_inflow",
+            data=np.array([4.0, 6.0]),
+            resolution=timedelta(hours=1),
+            initial_timestamp=datetime(2026, 1, 1),
+        ),
+        storage,
+    )
+
+    result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
+
+    reservoir = result.get_component(HydroReservoir, "RESERVOIR1")
+    inflow_profiles = result.list_time_series(reservoir, name="inflow")
+    assert len(inflow_profiles) == 1
+    np.testing.assert_array_equal(inflow_profiles[0].data, [4.0, 6.0])
+    assert result.list_time_series(reservoir, name="natural_inflow") == []
 
 
 def test_plexos_to_sienna_translates_reserve():
