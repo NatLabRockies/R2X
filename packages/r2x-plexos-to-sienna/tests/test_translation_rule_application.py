@@ -461,8 +461,8 @@ def test_plexos_storage_translates_to_hydro_reservoir(tmp_path) -> None:
     apply_rules_to_context(context)
 
     reservoir = context.target_system.get_component(HydroReservoir, "RESERVOIR1")
-    assert reservoir.storage_level_limits.min == 10.0
-    assert reservoir.storage_level_limits.max == 100.0
+    assert reservoir.storage_level_limits.min == 10_000.0
+    assert reservoir.storage_level_limits.max == 100_000.0
     assert reservoir.initial_level == 0.4
     assert reservoir.inflow == 5.0
     assert reservoir.outflow == 0.0

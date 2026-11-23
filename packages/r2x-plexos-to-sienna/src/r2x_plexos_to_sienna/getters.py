@@ -1265,12 +1265,12 @@ def get_storage_level_limits(
     """Get the storage level limits.
 
     For PLEXOSBattery: returns fractions [0, 1] (Sienna convention for batteries).
-    For PLEXOSStorage (hydro): returns absolute MWh limits from min/max_volume.
+    For PLEXOSStorage (hydro): converts min/max_volume from GWh to MWh.
     """
     if hasattr(component, "capacity") and not hasattr(component, "max_volume"):
         return Ok(MinMax(min=0.0, max=1.0))
-    min_vol = float(getattr(component, "min_volume", 0.0) or 0.0)
-    max_vol = float(getattr(component, "max_volume", 0.0) or 0.0)
+    min_vol = float(getattr(component, "min_volume", 0.0) or 0.0) * 1000.0
+    max_vol = float(getattr(component, "max_volume", 0.0) or 0.0) * 1000.0
     return Ok(MinMax(min=min_vol, max=max_vol))
 
 

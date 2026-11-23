@@ -151,6 +151,9 @@
       "values": [
         "monitored-line",
         "two-terminal-hvdc-line",
+        "two-terminal-generic-hvdc-line",
+        "two-terminal-lcc-line",
+        "two-terminal-vsc-line",
         "lcc",
         "b2b"
       ],
@@ -217,6 +220,9 @@
       "op": "in",
       "values": [
         "two-terminal-hvdc-line",
+        "two-terminal-generic-hvdc-line",
+        "two-terminal-lcc-line",
+        "two-terminal-vsc-line",
         "lcc",
         "b2b"
       ]

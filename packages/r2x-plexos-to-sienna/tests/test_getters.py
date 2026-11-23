@@ -643,8 +643,8 @@ def test_hydro_storage_getters(tmp_path) -> None:
     assert getters.get_initial_storage_capacity_level(storage, context).unwrap() == 0.0
 
     limits = getters.get_storage_level_limits(storage, context).unwrap()
-    assert limits.min == 100.0
-    assert limits.max == 1000.0
+    assert limits.min == 100_000.0
+    assert limits.max == 1_000_000.0
 
 
 def test_line_getters(tmp_path) -> None:
