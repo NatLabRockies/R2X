@@ -5,6 +5,22 @@ from __future__ import annotations
 import json
 from importlib.resources import files
 
+import pytest
+from r2x_plexos.models import PLEXOSLine, PLEXOSTransformer
+
+from r2x_core import RuleFilter
+
+
+def _matching_targets(source_type: str, component: PLEXOSLine | PLEXOSTransformer) -> list[str]:
+    rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
+    rules_data = json.loads(rules_path.read_text())
+    return [
+        rule["target_type"]
+        for rule in rules_data
+        if rule["source_type"] == source_type
+        and (rule.get("filter") is None or RuleFilter.model_validate(rule["filter"]).matches(component))
+    ]
+
 
 def test_rules_json_exists_and_loads() -> None:
     """Ensure the packaged rules file is present and valid JSON."""
@@ -197,6 +213,44 @@ def test_has_transformer_rules() -> None:
         and rule.get("target_type") == "PhaseShiftingTransformer"
         for rule in rules_data
     ), "Missing PLEXOSTransformer -> PhaseShiftingTransformer rule"
+
+
+@pytest.mark.parametrize(
+    ("category", "expected_target"),
+    [
+        ("line", "Line"),
+        ("other-line", "Line"),
+        ("monitored-line", "MonitoredLine"),
+        ("two-terminal-hvdc-line", "TwoTerminalGenericHVDCLine"),
+        ("lcc", "TwoTerminalGenericHVDCLine"),
+        ("b2b", "TwoTerminalGenericHVDCLine"),
+        (None, "Line"),
+    ],
+)
+def test_plexos_line_categories_match_exactly_one_rule(category: str | None, expected_target: str) -> None:
+    """Every PLEXOS line category selects only its specific rule or the fallback."""
+    line = PLEXOSLine(name="LINE1", category=category)
+
+    assert _matching_targets("PLEXOSLine", line) == [expected_target]
+
+
+@pytest.mark.parametrize(
+    ("category", "expected_target"),
+    [
+        ("transformer-2w", "Transformer2W"),
+        ("other-transformer", "Transformer2W"),
+        ("tap-transformer", "TapTransformer"),
+        ("phase-shifting-transformer", "PhaseShiftingTransformer"),
+        (None, "Transformer2W"),
+    ],
+)
+def test_plexos_transformer_categories_match_exactly_one_rule(
+    category: str | None, expected_target: str
+) -> None:
+    """Every transformer category selects only its specific rule or the fallback."""
+    transformer = PLEXOSTransformer(name="TRANSFORMER1", category=category)
+
+    assert _matching_targets("PLEXOSTransformer", transformer) == [expected_target]
 
 
 def test_has_interface_rule() -> None:
