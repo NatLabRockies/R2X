@@ -838,36 +838,8 @@ def _attach_generator_time_series(
             **metadata.features,
         ):
             if ts.name == "max_active_power":
-                max_mw = 0.0
-                limits = getattr(source_gen, "active_power_limits", None)
-                if limits is not None:
-                    max_val = limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
-                    if max_val is not None:
-                        mag = get_magnitude(max_val)
-                        raw = (
-                            float(mag)
-                            if mag is not None
-                            else float(max_val)
-                            if isinstance(max_val, int | float)
-                            else None
-                        )
-                        if raw is not None:
-                            max_mw = abs(raw) * resolve_base_power(source_gen)
-                else:
-                    # active_power_limits absent (e.g. RenewableDispatch) — use rating
-                    rating = getattr(source_gen, "rating", None)
-                    if rating is not None:
-                        mag = get_magnitude(rating)
-                        raw = (
-                            float(mag)
-                            if mag is not None
-                            else float(rating)
-                            if isinstance(rating, int | float)
-                            else None
-                        )
-                        if raw is not None:
-                            max_mw = abs(raw) * resolve_base_power(source_gen)
-                if max_mw > 0.0:
+                max_mw = _get_generator_capacity_mw(source_gen)
+                if max_mw is not None and max_mw > 0.0:
                     data = data * max_mw
             fresh_ts = SingleTimeSeries.from_array(
                 data=data,
@@ -1976,24 +1948,17 @@ def get_pumped_hydro_generator_units(
     return Ok(0)
 
 
-@getter
-def get_max_capacity(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract maximum capacity in MW from rating, active_power_limits, or max_active_power.
-
-    When rating is available, max_capacity must match rating exactly.
-    """
-
+def _get_generator_capacity_mw(source_component: object) -> float | None:
     rating = getattr(source_component, "rating", None)
     rating_value = get_magnitude(rating)
     if rating_value is not None:
-        capacity = abs(float(rating_value) * resolve_base_power(source_component))
-        return Ok(round(capacity, 2))
+        return abs(float(rating_value) * resolve_base_power(source_component))
 
     limits = getattr(source_component, "active_power_limits", None)
     if isinstance(limits, dict):
         max_value = limits.get("max")
         if isinstance(max_value, int | float):
-            return Ok(round(abs(float(max_value)), 2))
+            return abs(float(max_value))
 
     try:
         value = sienna_get_max_active_power(source_component)
@@ -2001,8 +1966,20 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
         value = None
 
     if value is not None:
-        return Ok(round(abs(float(value)), 2))
+        return abs(float(value))
 
+    return None
+
+
+@getter
+def get_max_capacity(source_component: object, context: PluginContext) -> Result[float, ValueError]:
+    """Extract maximum capacity in MW from rating, active_power_limits, or max_active_power.
+
+    When rating is available, max_capacity must match rating exactly.
+    """
+    capacity = _get_generator_capacity_mw(source_component)
+    if capacity is not None:
+        return Ok(round(capacity, 2))
     return Err(ValueError("active_power_limits or rating missing"))
 
 

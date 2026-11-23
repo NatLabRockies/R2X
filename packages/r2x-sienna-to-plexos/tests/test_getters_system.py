@@ -288,6 +288,39 @@ def test_attach_generator_time_series_scales_and_attaches(tmp_path, monkeypatch)
     assert list(attached[0].data) == [1.0, 2.0]
 
 
+def test_attach_renewable_time_series_uses_exported_capacity_once(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    source_gen = types.SimpleNamespace(
+        name="RENEWABLE_TS",
+        active_power_limits={"max": 98.08237},
+        rating=0.9808237,
+        base_power=100.0,
+    )
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = lambda _component, **_kwargs: [
+        types.SimpleNamespace(
+            name="max_active_power",
+            data=[0.995, 0.5],
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(hours=1),
+        )
+    ]
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters._attach_generator_time_series(context, "RENEWABLE_TS", PLEXOSGenerator(name="RENEWABLE_TS"))
+
+    assert list(attached[0].data) == pytest.approx([97.59195815, 49.041185])
+
+
 def test_attach_region_node_load_time_series_aggregates_loads(tmp_path, monkeypatch):
     context = make_context(tmp_path)
     context.source_system = System(name="source")
