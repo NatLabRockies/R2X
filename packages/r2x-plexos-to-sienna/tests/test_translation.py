@@ -13,6 +13,7 @@ from r2x_plexos.models import (
     PLEXOSBattery,
     PLEXOSGenerator,
     PLEXOSInterface,
+    PLEXOSLine,
     PLEXOSMembership,
     PLEXOSNode,
     PLEXOSPurchaser,
@@ -34,6 +35,7 @@ from r2x_sienna.models import (
     RenewableNonDispatch,
     ThermalStandard,
     TransmissionInterface,
+    TwoTerminalGenericHVDCLine,
     VariableReserve,
 )
 
@@ -357,6 +359,49 @@ def test_plexos_hydro_natural_inflow_time_series_translates_to_inflow():
     assert len(inflow_profiles) == 1
     np.testing.assert_array_equal(inflow_profiles[0].data, [4.0, 6.0])
     assert result.list_time_series(reservoir, name="natural_inflow") == []
+
+
+def test_plexos_hvdc_flow_limits_translate_to_sienna_base(tmp_path):
+    source = _build_source_system()
+    source.base_power = 200.0
+    node2 = PLEXOSNode(name="NODE_2", voltage=115.0)
+    source.add_component(node2)
+    region = next(source.get_components(PLEXOSRegion))
+    region_membership = PLEXOSMembership(
+        collection=CollectionEnum.Region,
+        parent_object=node2,
+        child_object=region,
+    )
+    source.add_supplemental_attribute(region, region_membership)
+    source.add_supplemental_attribute(node2, region_membership)
+    nodes = {node.name: node for node in source.get_components(PLEXOSNode)}
+    line = PLEXOSLine(
+        name="HVDC1",
+        category="two-terminal-generic-hvdc-line",
+        min_flow=-50.0,
+        max_flow=100.0,
+    )
+    source.add_component(line)
+    for collection, node_name in (
+        (CollectionEnum.NodeFrom, "NODE1"),
+        (CollectionEnum.NodeTo, "NODE_2"),
+    ):
+        source.add_supplemental_attribute(
+            line,
+            PLEXOSMembership(
+                collection=collection,
+                parent_object=line,
+                child_object=nodes[node_name],
+            ),
+        )
+
+    result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
+
+    translated = result.get_component(TwoTerminalGenericHVDCLine, "HVDC1")
+    assert translated.active_power_limits_from.min == pytest.approx(-0.25)
+    assert translated.active_power_limits_from.max == pytest.approx(0.5)
+    assert translated.active_power_limits_to.min == pytest.approx(-0.25)
+    assert translated.active_power_limits_to.max == pytest.approx(0.5)
 
 
 def test_plexos_to_sienna_translates_reserve():

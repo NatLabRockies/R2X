@@ -829,20 +829,34 @@ def get_line_losses(component: PLEXOSLine, context: PluginContext) -> Result[flo
     return Ok(_first_numeric(value))
 
 
+def _get_system_base_power(context: PluginContext) -> float:
+    value = getattr(context.source_system, "base_power", None)
+    try:
+        base_power = float(value) if value is not None else 100.0
+    except (TypeError, ValueError):
+        return 100.0
+    return base_power if base_power > 0.0 else 100.0
+
+
+def _get_hvdc_active_power_limits(component: PLEXOSLine, context: PluginContext) -> MinMax:
+    base_power = _get_system_base_power(context)
+    min_flow_value = getattr(component, "min_flow", None)
+    max_flow_value = getattr(component, "max_flow", None)
+    min_flow = _first_numeric(min_flow_value) if min_flow_value is not None else 0.0
+    max_flow = _first_numeric(max_flow_value) if max_flow_value is not None else 0.0
+    return MinMax(min=min_flow / base_power, max=max_flow / base_power)
+
+
 @getter
 def get_active_power_limits_from(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
-    """Get the active power limits (min, max) at the 'from' end of an HVDC line."""
-    min_limit = getattr(component, "min_active_power_from", 0.0)
-    max_limit = getattr(component, "max_active_power_from", 0.0)
-    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+    """Convert PLEXOS HVDC flow limits from MW to per-unit at the 'from' end."""
+    return Ok(_get_hvdc_active_power_limits(component, context))
 
 
 @getter
 def get_active_power_limits_to(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
-    """Get the active power limits (min, max) at the 'to' end of an HVDC line."""
-    min_limit = getattr(component, "min_active_power_to", 0.0)
-    max_limit = getattr(component, "max_active_power_to", 0.0)
-    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+    """Convert PLEXOS HVDC flow limits from MW to per-unit at the 'to' end."""
+    return Ok(_get_hvdc_active_power_limits(component, context))
 
 
 @getter
