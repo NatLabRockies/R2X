@@ -398,15 +398,19 @@ def _classify_generator_category(category: str | None) -> str:
     Resolves canonical slugs exactly, then falls back to substring keyword
     matching on descriptive names. Unmatched categories default to ``thermal``.
     """
+    return _classify_generator_category_with_fallback(category)[0]
+
+
+def _classify_generator_category_with_fallback(category: str | None) -> tuple[str, bool]:
     key = (category or "").strip().casefold()
     if not key:
-        return "thermal"
+        return "thermal", True
     if key in _GENERATOR_FAMILY_BY_SLUG:
-        return _GENERATOR_FAMILY_BY_SLUG[key]
+        return _GENERATOR_FAMILY_BY_SLUG[key], False
     for keyword, family in _GENERATOR_FAMILY_KEYWORDS:
         if keyword in key:
-            return family
-    return "thermal"
+            return family, False
+    return "thermal", True
 
 
 def _get_prime_mover_type(category: str) -> PrimeMoversType:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -91,6 +92,25 @@ def test_plexos_to_sienna_returns_system():
 
     assert isinstance(result, System)
     assert result.name == "Sienna"
+
+
+def test_plexos_to_sienna_warns_once_with_fallback_category_counts(caplog: pytest.LogCaptureFixture):
+    source = _build_source_system()
+    generator = next(source.get_components(PLEXOSGenerator))
+    generator.category = "-"
+    source.add_component(PLEXOSGenerator(name="GEN2", category="-", max_capacity=100.0, units=1))
+    source.add_component(PLEXOSGenerator(name="GEN3", category="unknown", max_capacity=100.0, units=1))
+    with caplog.at_level(logging.WARNING, logger="r2x_plexos_to_sienna.translation"):
+        plexos_to_sienna(source, config=PlexosToSiennaConfig())
+
+    warnings = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "r2x_plexos_to_sienna.translation" and record.levelno >= logging.WARNING
+    ]
+    assert len(warnings) == 1
+    assert "'-' (2 generators)" in warnings[0]
+    assert "'unknown' (1 generator)" in warnings[0]
 
 
 def test_plexos_to_sienna_translates_zone():
