@@ -7,6 +7,7 @@ from importlib.resources import files
 
 import pytest
 from r2x_plexos.models import PLEXOSLine, PLEXOSTransformer
+from r2x_sienna import models as sienna_models
 
 from r2x_core import RuleFilter
 
@@ -275,6 +276,37 @@ def test_rules_have_required_fields() -> None:
         assert "version" in rule, f"Rule {i} missing version"
         # Either field_map or getters should be present
         assert "field_map" in rule or "getters" in rule, f"Rule {i} missing field_map and getters"
+
+
+def test_rule_outputs_match_sienna_model_fields() -> None:
+    """Ensure each rule supplies valid target fields and all required fields."""
+    rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
+    rules_data = json.loads(rules_path.read_text())
+    problems = []
+
+    for rule in rules_data:
+        output_fields = (
+            set(rule.get("field_map", {})) | set(rule.get("getters", {})) | set(rule.get("defaults", {}))
+        )
+        target_types = rule["target_type"]
+        if not isinstance(target_types, list):
+            target_types = [target_types]
+
+        for target_type in target_types:
+            target_model = getattr(sienna_models, target_type)
+            unknown_fields = output_fields - set(target_model.model_fields)
+            missing_fields = {
+                field_name
+                for field_name, model_field in target_model.model_fields.items()
+                if model_field.is_required() and field_name not in output_fields
+            }
+            if unknown_fields or missing_fields:
+                problems.append(
+                    f"{rule['source_type']} -> {target_type}: "
+                    f"unknown={sorted(unknown_fields)}, missing={sorted(missing_fields)}"
+                )
+
+    assert not problems, "\n".join(problems)
 
 
 def test_filter_rules_have_valid_structure() -> None:

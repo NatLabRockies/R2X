@@ -243,8 +243,7 @@
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
       "base_power": "get_trf_base_power",
-      "winding_group_number": "get_trf_winding_group_number",
-      "control_objective": "get_trf_control_objective"
+      "winding_group_number": "get_trf_winding_group_number"
     },
     "filter": {
       "field": "category",
@@ -305,11 +304,12 @@
       "α": "ac_fixed_shift_angle"
     },
     "getters": {
+      "arc": "get_line_arc",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
-      "winding_group_number": "get_trf_winding_group_number",
-      "control_objective": "get_trf_control_objective"
+      "control_objective": "get_trf_control_objective",
+      "phase_angle_limits": "get_trf_phase_angle_limits"
     },
     "filter": {
       "field": "category",
@@ -471,16 +471,19 @@
   {
     "defaults": {
       "category": "hydro-pumped-storage",
-      "initial_level": 0.5
+      "initial_level": 0.5,
+      "outflow": 0.0,
+      "intake_elevation": 0.0
     },
     "field_map": {
       "initial_level": "initial_level",
+      "inflow": "natural_inflow",
       "category": "category",
       "name": "name",
       "uuid": "uuid"
     },
     "getters": {
-      "bus": "get_gen_bus",
+      "storage_level_limits": "get_storage_level_limits",
       "services": "get_device_services",
       "operation_cost": "get_hydro_reservoir_operation_cost"
     },

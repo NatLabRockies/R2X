@@ -702,8 +702,8 @@ def is_slack_bus(component: PLEXOSNode, context: PluginContext) -> Result[ACBusT
 
 
 @getter
-def get_line_arc(component: PLEXOSLine, context: PluginContext) -> Result[Arc, Any]:
-    """Get the arc of a line by querying PlexosDB for node memberships and matching to ACBus objects."""
+def get_line_arc(component: PLEXOSLine | PLEXOSTransformer, context: PluginContext) -> Result[Arc, Any]:
+    """Get a line or transformer's arc from node memberships and matching ACBus objects."""
     if context.source_system is None or context.target_system is None:
         raise ValueError("Source and target systems must be set to get line arc")
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
@@ -855,7 +855,7 @@ def get_gen_active_power(component: PLEXOSGenerator, context: PluginContext) -> 
 
 @getter
 def get_device_services(
-    component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext
+    component: PLEXOSGenerator | PLEXOSBattery | PLEXOSStorage, context: PluginContext
 ) -> Result[list[Any], Any]:
     """
     Get the services provided by a device (generator, battery, etc.), returning VariableReserve objects from the target system.
@@ -937,7 +937,7 @@ def get_hydro_gen_operation_cost(
 
 @getter
 def get_hydro_reservoir_operation_cost(
-    component: PLEXOSGenerator, context: PluginContext
+    component: PLEXOSGenerator | PLEXOSStorage, context: PluginContext
 ) -> Result[HydroReservoirCost, ValueError]:
     """Return zeroed hydro reservoir operation cost."""
     return Ok(HydroReservoirCost(level_shortage_cost=0.0, spillage_cost=0.0, level_surplus_cost=0.0))
@@ -1259,7 +1259,9 @@ def get_storage_capacity(component: PLEXOSGenerator, context: PluginContext) -> 
 
 
 @getter
-def get_storage_level_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[MinMax, Any]:
+def get_storage_level_limits(
+    component: PLEXOSGenerator | PLEXOSStorage, context: PluginContext
+) -> Result[MinMax, Any]:
     """Get the storage level limits.
 
     For PLEXOSBattery: returns fractions [0, 1] (Sienna convention for batteries).
@@ -1412,16 +1414,17 @@ def get_trf_reactive_power_flow(component: PLEXOSTransformer, context: PluginCon
 
 
 @getter
-def get_trf_primary_shunt(
-    component: PLEXOSTransformer, context: PluginContext
-) -> Result[Complex | float | None, Any]:
-    """Get the primary shunt admittance of the transformer (complex or None)."""
-    value = getattr(component, "primary_shunt", None)
-    if value is None:
-        return Ok(None)
-    if isinstance(value, Complex):
-        return Ok(value)
-    return Ok(Complex(real=0.0, imag=0.0))
+def get_trf_primary_shunt(component: PLEXOSTransformer, context: PluginContext) -> Result[Complex, Any]:
+    """Map transformer line-charging susceptance to the Sienna primary shunt."""
+    susceptance = float(getattr(component, "ac_line_charging_susceptance", 0.0) or 0.0)
+    return Ok(Complex(real=0.0, imag=susceptance))
+
+
+@getter
+def get_trf_phase_angle_limits(component: PLEXOSTransformer, context: PluginContext) -> Result[MinMax, Any]:
+    """Constrain the phase-shifting transformer to its fixed PLEXOS angle."""
+    angle = float(getattr(component, "ac_fixed_shift_angle", 0.0) or 0.0)
+    return Ok(MinMax(min=angle, max=angle))
 
 
 @getter

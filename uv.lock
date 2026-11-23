@@ -1027,15 +1027,15 @@ wheels = [
 
 [[package]]
 name = "r2x-plexos"
-version = "0.3.2"
+version = "0.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "plexosdb" },
     { name = "r2x-core" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/92/70/c429322f126a4242b11a8132c51fc2df558b9873bf979dce1f58ab91edeb/r2x_plexos-0.3.2.tar.gz", hash = "sha256:ef45797f44703d275932d8fef19a59a62cdac8638608cbf4476805f3c1ddd611", size = 114172, upload-time = "2026-08-13T01:35:59.131Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/82/364d88cc27528868de254cbc3c06f748cf67da4feea9a4015467df84b212/r2x_plexos-0.3.3.tar.gz", hash = "sha256:12ab9c17ff5af13a5f9e3add270ea7000a7311c3a66ff4b46d274890cfa186a0", size = 115305, upload-time = "2026-09-16T18:01:52.769Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/96/1e/76f7c9eb2f43a0d1f226c078a1bf1c16fd97af5bf6b6ea5fb94fea98f799/r2x_plexos-0.3.2-py3-none-any.whl", hash = "sha256:bca269bb78f33ef19cf23274d1d446b205eb5be07926e869d11e8e3c000a7c2d", size = 131938, upload-time = "2026-08-13T01:35:57.902Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/8a/9041bcf7f2ab293b4d613add32eff76584e8953976ca399738b027ef1784/r2x_plexos-0.3.3-py3-none-any.whl", hash = "sha256:d133929ed3436c9137efa924f6d20a0c3af044b42c33a3c6fe83bc099dfe4342", size = 133065, upload-time = "2026-09-16T18:01:51.224Z" },
 ]
 
 [[package]]
@@ -1049,8 +1049,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", specifier = ">=0.3.0,<1.0.0" },
-    { name = "r2x-sienna", specifier = ">=0.2.0,<1.0.0" },
+    { name = "r2x-plexos", specifier = ">=0.3.3,<1.0.0" },
+    { name = "r2x-sienna", specifier = ">=0.5.0,<1.0.0" },
 ]
 
 [[package]]
@@ -1097,14 +1097,14 @@ requires-dist = [
 
 [[package]]
 name = "r2x-sienna"
-version = "0.4.2"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "r2x-core" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f6/67/ee27fc295a130eaa40d403246c46f34581cd9fc064d10505d781fb6c6122/r2x_sienna-0.4.2.tar.gz", hash = "sha256:edf3c69180d165fdf97f0129ae6f8166dcb7e40b3ee6585e6bff3d272af4b582", size = 59199, upload-time = "2026-08-11T22:22:29.556Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b0/4c/de43ef6bf8e310fedfa3bbd0d742d3255a972be889c1ce1b9ce1c93ab0d2/r2x_sienna-0.5.0.tar.gz", hash = "sha256:2af80421aef56b36741f84f68781473bb669140d03afa201ed18beeeb8b2190f", size = 64881, upload-time = "2026-09-15T23:24:17.389Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/50/af7baf27d076626d8b7dc88f68c2b99e6a9de3a688e067b65fcdca89a61b/r2x_sienna-0.4.2-py3-none-any.whl", hash = "sha256:acbce041f9bd47a11fdfb3de7565070d96bdda004fd9364c8af691560d99750b", size = 68568, upload-time = "2026-08-11T22:22:28.424Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/5e/878ab321ced43feec22dee9a27313aef669b4cd0d1038b4663f79f274c77/r2x_sienna-0.5.0-py3-none-any.whl", hash = "sha256:86319226dc2ab68fe7b220572e3e683b77d8e8ea2adbd10e95d2643c47990717", size = 73952, upload-time = "2026-09-15T23:24:16.135Z" },
 ]
 
 [[package]]
