@@ -40,6 +40,7 @@ from r2x_sienna.models import (
     Area,
     EnergyReservoirStorage,
     HydroDispatch,
+    HydroReservoir,
     HydroTurbine,
     LoadZone,
     PowerLoad,
@@ -136,6 +137,8 @@ def _get_target_types_for_source(component: Any) -> list[type[Component]]:
         ]
     if isinstance(component, PLEXOSBattery):
         return [EnergyReservoirStorage]
+    if isinstance(component, PLEXOSStorage):
+        return [HydroReservoir]
     if isinstance(component, PLEXOSRegion):
         return [PowerLoad]
     if isinstance(component, PLEXOSNode):
@@ -246,9 +249,28 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
                 and str(source_ts.name).strip().lower().replace("-", "_").replace(" ", "_")
                 in {"requirement", "min_provision"}
             )
-            target_name = (
-                "max_active_power" if load else "requirement" if reserve_requirement else source_ts.name
+            hydro_reservoir = isinstance(source_component, PLEXOSStorage) and isinstance(
+                target_component, HydroReservoir
             )
+            target_name = source_ts.name
+            if load:
+                target_name = "max_active_power"
+            elif reserve_requirement:
+                target_name = "requirement"
+            elif hydro_reservoir and source_ts.name == "natural_inflow":
+                target_name = "inflow"
+                if context.target_system.has_time_series(
+                    target_component,
+                    name=source_ts.name,
+                    time_series_type=SingleTimeSeries,
+                    **features,
+                ):
+                    context.target_system.remove_time_series(
+                        target_component,
+                        name=source_ts.name,
+                        time_series_type=SingleTimeSeries,
+                        **features,
+                    )
             data = source_ts.data
             normalization = None
             if load:
@@ -546,15 +568,19 @@ def _classify_generator_category(category: str | None) -> str:
     Resolves canonical slugs exactly, then falls back to substring keyword
     matching on descriptive names. Unmatched categories default to ``thermal``.
     """
+    return _classify_generator_category_with_fallback(category)[0]
+
+
+def _classify_generator_category_with_fallback(category: str | None) -> tuple[str, bool]:
     key = (category or "").strip().casefold()
     if not key:
-        return "thermal"
+        return "thermal", True
     if key in _GENERATOR_FAMILY_BY_SLUG:
-        return _GENERATOR_FAMILY_BY_SLUG[key]
+        return _GENERATOR_FAMILY_BY_SLUG[key], False
     for keyword, family in _GENERATOR_FAMILY_KEYWORDS:
         if keyword in key:
-            return family
-    return "thermal"
+            return family, False
+    return "thermal", True
 
 
 def _get_prime_mover_type(category: str) -> PrimeMoversType:
@@ -846,8 +872,8 @@ def is_slack_bus(component: PLEXOSNode, context: PluginContext) -> Result[ACBusT
 
 
 @getter
-def get_line_arc(component: PLEXOSLine, context: PluginContext) -> Result[Arc, Any]:
-    """Get the arc of a line by querying PlexosDB for node memberships and matching to ACBus objects."""
+def get_line_arc(component: PLEXOSLine | PLEXOSTransformer, context: PluginContext) -> Result[Arc, Any]:
+    """Get a line or transformer's arc from node memberships and matching ACBus objects."""
     if context.source_system is None or context.target_system is None:
         raise ValueError("Source and target systems must be set to get line arc")
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
@@ -951,20 +977,34 @@ def get_line_losses(component: PLEXOSLine, context: PluginContext) -> Result[flo
     return Ok(_first_numeric(value))
 
 
+def _get_system_base_power(context: PluginContext) -> float:
+    value = getattr(context.source_system, "base_power", None)
+    try:
+        base_power = float(value) if value is not None else 100.0
+    except (TypeError, ValueError):
+        return 100.0
+    return base_power if base_power > 0.0 else 100.0
+
+
+def _get_hvdc_active_power_limits(component: PLEXOSLine, context: PluginContext) -> MinMax:
+    base_power = _get_system_base_power(context)
+    min_flow_value = getattr(component, "min_flow", None)
+    max_flow_value = getattr(component, "max_flow", None)
+    min_flow = _first_numeric(min_flow_value) if min_flow_value is not None else 0.0
+    max_flow = _first_numeric(max_flow_value) if max_flow_value is not None else 0.0
+    return MinMax(min=min_flow / base_power, max=max_flow / base_power)
+
+
 @getter
 def get_active_power_limits_from(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
-    """Get the active power limits (min, max) at the 'from' end of an HVDC line."""
-    min_limit = getattr(component, "min_active_power_from", 0.0)
-    max_limit = getattr(component, "max_active_power_from", 0.0)
-    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+    """Convert PLEXOS HVDC flow limits from MW to per-unit at the 'from' end."""
+    return Ok(_get_hvdc_active_power_limits(component, context))
 
 
 @getter
 def get_active_power_limits_to(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
-    """Get the active power limits (min, max) at the 'to' end of an HVDC line."""
-    min_limit = getattr(component, "min_active_power_to", 0.0)
-    max_limit = getattr(component, "max_active_power_to", 0.0)
-    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+    """Convert PLEXOS HVDC flow limits from MW to per-unit at the 'to' end."""
+    return Ok(_get_hvdc_active_power_limits(component, context))
 
 
 @getter
@@ -999,7 +1039,7 @@ def get_gen_active_power(component: PLEXOSGenerator, context: PluginContext) -> 
 
 @getter
 def get_device_services(
-    component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext
+    component: PLEXOSGenerator | PLEXOSBattery | PLEXOSStorage, context: PluginContext
 ) -> Result[list[Any], Any]:
     """
     Get the services provided by a device (generator, battery, etc.), returning VariableReserve objects from the target system.
@@ -1081,7 +1121,7 @@ def get_hydro_gen_operation_cost(
 
 @getter
 def get_hydro_reservoir_operation_cost(
-    component: PLEXOSGenerator, context: PluginContext
+    component: PLEXOSGenerator | PLEXOSStorage, context: PluginContext
 ) -> Result[HydroReservoirCost, ValueError]:
     """Return zeroed hydro reservoir operation cost."""
     return Ok(HydroReservoirCost(level_shortage_cost=0.0, spillage_cost=0.0, level_surplus_cost=0.0))
@@ -1403,16 +1443,18 @@ def get_storage_capacity(component: PLEXOSGenerator, context: PluginContext) -> 
 
 
 @getter
-def get_storage_level_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[MinMax, Any]:
+def get_storage_level_limits(
+    component: PLEXOSGenerator | PLEXOSStorage, context: PluginContext
+) -> Result[MinMax, Any]:
     """Get the storage level limits.
 
     For PLEXOSBattery: returns fractions [0, 1] (Sienna convention for batteries).
-    For PLEXOSStorage (hydro): returns absolute MWh limits from min/max_volume.
+    For PLEXOSStorage (hydro): converts min/max_volume from GWh to MWh.
     """
     if hasattr(component, "capacity") and not hasattr(component, "max_volume"):
         return Ok(MinMax(min=0.0, max=1.0))
-    min_vol = float(getattr(component, "min_volume", 0.0) or 0.0)
-    max_vol = float(getattr(component, "max_volume", 0.0) or 0.0)
+    min_vol = float(getattr(component, "min_volume", 0.0) or 0.0) * 1000.0
+    max_vol = float(getattr(component, "max_volume", 0.0) or 0.0) * 1000.0
     return Ok(MinMax(min=min_vol, max=max_vol))
 
 
@@ -1556,16 +1598,28 @@ def get_trf_reactive_power_flow(component: PLEXOSTransformer, context: PluginCon
 
 
 @getter
-def get_trf_primary_shunt(
-    component: PLEXOSTransformer, context: PluginContext
-) -> Result[Complex | float | None, Any]:
-    """Get the primary shunt admittance of the transformer (complex or None)."""
-    value = getattr(component, "primary_shunt", None)
-    if value is None:
-        return Ok(None)
-    if isinstance(value, Complex):
-        return Ok(value)
-    return Ok(Complex(real=0.0, imag=0.0))
+def get_trf_primary_shunt(component: PLEXOSTransformer, context: PluginContext) -> Result[Complex, Any]:
+    """Map transformer line-charging susceptance to the Sienna primary shunt."""
+    susceptance = float(getattr(component, "ac_line_charging_susceptance", 0.0) or 0.0)
+    return Ok(Complex(real=0.0, imag=susceptance))
+
+
+def _get_trf_phase_angle_radians(component: PLEXOSTransformer) -> float:
+    angle_degrees = float(getattr(component, "ac_fixed_shift_angle", 0.0) or 0.0)
+    return math.radians(angle_degrees)
+
+
+@getter
+def get_trf_phase_angle(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
+    """Convert the fixed PLEXOS phase-shift angle from degrees to radians."""
+    return Ok(_get_trf_phase_angle_radians(component))
+
+
+@getter
+def get_trf_phase_angle_limits(component: PLEXOSTransformer, context: PluginContext) -> Result[MinMax, Any]:
+    """Constrain the phase-shifting transformer to its fixed PLEXOS angle."""
+    angle = _get_trf_phase_angle_radians(component)
+    return Ok(MinMax(min=angle, max=angle))
 
 
 @getter

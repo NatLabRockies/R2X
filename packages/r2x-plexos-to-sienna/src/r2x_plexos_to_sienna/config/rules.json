@@ -145,6 +145,20 @@
       "reactive_power_flow": "get_reactive_power_flow",
       "angle_limits": "get_line_angle_limits"
     },
+    "filter": {
+      "field": "category",
+      "op": "not_in",
+      "values": [
+        "monitored-line",
+        "two-terminal-hvdc-line",
+        "two-terminal-generic-hvdc-line",
+        "two-terminal-lcc-line",
+        "two-terminal-vsc-line",
+        "lcc",
+        "b2b"
+      ],
+      "on_missing": "include"
+    },
     "source_type": "PLEXOSLine",
     "target_type": "Line",
     "version": 1
@@ -203,9 +217,12 @@
     },
     "filter": {
       "field": "category",
-      "op": "eq",
+      "op": "in",
       "values": [
         "two-terminal-hvdc-line",
+        "two-terminal-generic-hvdc-line",
+        "two-terminal-lcc-line",
+        "two-terminal-vsc-line",
         "lcc",
         "b2b"
       ]
@@ -232,8 +249,16 @@
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
       "base_power": "get_trf_base_power",
-      "winding_group_number": "get_trf_winding_group_number",
-      "control_objective": "get_trf_control_objective"
+      "winding_group_number": "get_trf_winding_group_number"
+    },
+    "filter": {
+      "field": "category",
+      "op": "not_in",
+      "values": [
+        "tap-transformer",
+        "phase-shifting-transformer"
+      ],
+      "on_missing": "include"
     },
     "source_type": "PLEXOSTransformer",
     "target_type": "Transformer2W",
@@ -261,6 +286,11 @@
       "winding_group_number": "get_trf_winding_group_number",
       "control_objective": "get_trf_control_objective"
     },
+    "filter": {
+      "field": "category",
+      "op": "eq",
+      "values": ["tap-transformer"]
+    },
     "source_type": "PLEXOSTransformer",
     "target_type": "TapTransformer",
     "version": 2
@@ -276,15 +306,22 @@
       "category": "category",
       "uuid": "uuid",
       "x": "reactance",
-      "r": "resistance",
-      "α": "ac_fixed_shift_angle"
+      "r": "resistance"
     },
     "getters": {
+      "arc": "get_line_arc",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
-      "winding_group_number": "get_trf_winding_group_number",
-      "control_objective": "get_trf_control_objective"
+      "α": "get_trf_phase_angle",
+      "base_power": "get_trf_base_power",
+      "control_objective": "get_trf_control_objective",
+      "phase_angle_limits": "get_trf_phase_angle_limits"
+    },
+    "filter": {
+      "field": "category",
+      "op": "eq",
+      "values": ["phase-shifting-transformer"]
     },
     "source_type": "PLEXOSTransformer",
     "target_type": "PhaseShiftingTransformer",
@@ -441,16 +478,20 @@
   {
     "defaults": {
       "category": "hydro-pumped-storage",
-      "initial_level": 0.5
+      "initial_level": 0.5,
+      "outflow": 0.0,
+      "intake_elevation": 0.0,
+      "level_data_type": "ENERGY"
     },
     "field_map": {
       "initial_level": "initial_level",
+      "inflow": "natural_inflow",
       "category": "category",
       "name": "name",
       "uuid": "uuid"
     },
     "getters": {
-      "bus": "get_gen_bus",
+      "storage_level_limits": "get_storage_level_limits",
       "services": "get_device_services",
       "operation_cost": "get_hydro_reservoir_operation_cost"
     },

@@ -403,7 +403,6 @@ def test_membership_head_tail_storage_generator(context, monkeypatch):
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
     storage_head = PLEXOSStorage(name="hydro1_Reservoir_head")
