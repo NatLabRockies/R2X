@@ -180,10 +180,63 @@ def test_get_line_angle_limits_tuple_and_default():
 def test_get_line_flow_limits_with_and_without_max():
     line = cast(PLEXOSLine, types.SimpleNamespace(min_flow=-50.0, max_flow=150.0))
     result = cast(Result[Any, Any], get_line_flow_limits(line, None)).value
-    assert result.from_to == 150.0 and result.to_from == -50.0
+    assert result.from_to == 1.5 and result.to_from == -0.5
     line = cast(PLEXOSLine, types.SimpleNamespace(min_flow=-50.0, max_flow=None))
     result = cast(Result[Any, Any], get_line_flow_limits(line, None)).value
-    assert result.from_to == 100.0 and result.to_from == -50.0
+    assert result.from_to == 1.0 and result.to_from == -0.5
+
+
+def test_branch_and_network_power_getters_convert_to_per_unit():
+    context = cast(
+        PluginContext,
+        types.SimpleNamespace(target_system=types.SimpleNamespace(base_power=200.0)),
+    )
+    line = cast(
+        PLEXOSLine,
+        types.SimpleNamespace(max_flow=100.0, min_flow=-50.0, fixed_flow=40.0),
+    )
+
+    assert getters.get_line_rating(line, context).unwrap() == 0.5
+    assert getters.get_line_active_power_flow(line, context).unwrap() == 0.2
+    limits = getters.get_line_flow_limits(line, context).unwrap()
+    assert limits.from_to == 0.5
+    assert limits.to_from == -0.25
+
+    hvdc = cast(
+        PLEXOSLine,
+        types.SimpleNamespace(
+            min_reactive_power_from=-20.0,
+            max_reactive_power_from=40.0,
+            min_reactive_power_to=-10.0,
+            max_reactive_power_to=30.0,
+        ),
+    )
+    limits_from = getters.get_reactive_power_limits_from(hvdc, context).unwrap()
+    limits_to = getters.get_reactive_power_limits_to(hvdc, context).unwrap()
+    assert (limits_from.min, limits_from.max) == (-0.1, 0.2)
+    assert (limits_to.min, limits_to.max) == (-0.05, 0.15)
+
+    interface = cast(PLEXOSInterface, types.SimpleNamespace(min_flow=-200.0, max_flow=100.0))
+    interface_limits = getters.get_interface_active_power_flow_limits(interface, context).unwrap()
+    assert (interface_limits.min, interface_limits.max) == (-1.0, 0.5)
+
+    region = cast(
+        PLEXOSRegion,
+        types.SimpleNamespace(load=300.0, peak_reactive_power=100.0),
+    )
+    assert getters.get_region_peak_active_power(region, context).unwrap() == 1.5
+    assert getters.get_region_peak_reactive_power(region, context).unwrap() == 0.5
+
+    zone = cast(
+        PLEXOSZone,
+        types.SimpleNamespace(peak_active_power=300.0, peak_reactive_power=100.0),
+    )
+    assert getters.get_zone_peak_active_power(zone, context).unwrap() == 1.5
+    assert getters.get_zone_peak_reactive_power(zone, context).unwrap() == 0.5
+
+    transformer = cast(PLEXOSTransformer, types.SimpleNamespace(rating=100.0, base_power=200.0))
+    assert getters.get_trf_rating(transformer, context).unwrap() == 0.5
+    assert getters.get_trf_base_power(transformer, context).unwrap() == 200.0
 
 
 def test_get_line_losses_with_values():
@@ -323,7 +376,7 @@ def test_region_getters(tmp_path) -> None:
     region = PLEXOSRegion(name="REGION1", load=300.0)
 
     # Area getters
-    assert getters.get_region_peak_active_power(region, context).unwrap() == 300.0
+    assert getters.get_region_peak_active_power(region, context).unwrap() == 3.0
     assert getters.get_region_peak_reactive_power(region, context).unwrap() == 0.0
     assert getters.get_region_load_response(region, context).unwrap() == 0.0
 
@@ -702,8 +755,8 @@ def test_line_getters(tmp_path) -> None:
     assert angle_limits.max == 90.0
 
     flow_limits = getters.get_line_flow_limits(line, context).unwrap()
-    assert flow_limits.from_to == 100.0
-    assert flow_limits.to_from == -100.0
+    assert flow_limits.from_to == 1.0
+    assert flow_limits.to_from == -1.0
 
     susceptance = getters.get_line_susceptance(line, context).unwrap()
     assert susceptance.from_to == 0.001
@@ -814,8 +867,8 @@ def test_interface_getters(tmp_path) -> None:
     )
 
     flow_limits = getters.get_interface_active_power_flow_limits(interface, context).unwrap()
-    assert flow_limits.min == -200.0
-    assert flow_limits.max == 200.0
+    assert flow_limits.min == -2.0
+    assert flow_limits.max == 2.0
 
 
 def test_transformer_getters(tmp_path) -> None:

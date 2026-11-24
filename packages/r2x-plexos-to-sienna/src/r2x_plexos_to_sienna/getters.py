@@ -762,14 +762,14 @@ def get_load_base_power(component: PLEXOSRegion, context: PluginContext) -> Resu
 def get_zone_peak_active_power(component: PLEXOSZone, context: PluginContext) -> Result[float, Any]:
     """Get the peak active power for a zone."""
     value = getattr(component, "peak_active_power", 0.0)
-    return Ok(float(value))
+    return Ok(_to_per_unit_power(value, _get_target_system_base_power(context)))
 
 
 @getter
 def get_zone_peak_reactive_power(component: PLEXOSZone, context: PluginContext) -> Result[float, Any]:
     """Get the peak reactive power for a zone."""
     value = getattr(component, "peak_reactive_power", 0.0)
-    return Ok(float(value))
+    return Ok(_to_per_unit_power(value, _get_target_system_base_power(context)))
 
 
 @getter
@@ -979,14 +979,31 @@ def get_line_flow_limits(component: PLEXOSLine, context: PluginContext) -> Resul
     """Get the flow limits (from_to, to_from) of a line as a FromTo_ToFrom namedtuple."""
     min_flow = getattr(component, "min_flow", -100.0)
     max_flow = getattr(component, "max_flow", None)
-    if max_flow is not None:
-        if hasattr(max_flow, "values") and max_flow.values:
-            max_flow = float(max_flow.values[0])
-        else:
-            max_flow = float(max_flow)
-    else:
+    base_power = _get_target_system_base_power(context)
+    if min_flow is None:
+        min_flow = -100.0
+    if max_flow is None:
         max_flow = 100.0
-    return Ok(FromTo_ToFrom(from_to=max_flow, to_from=min_flow))
+    return Ok(
+        FromTo_ToFrom(
+            from_to=_to_per_unit_power(max_flow, base_power),
+            to_from=_to_per_unit_power(min_flow, base_power),
+        )
+    )
+
+
+@getter
+def get_line_rating(component: PLEXOSLine, context: PluginContext) -> Result[float, Any]:
+    """Convert the PLEXOS line rating from MW to per-unit on the system base."""
+    max_flow = getattr(component, "max_flow", None)
+    return Ok(_to_per_unit_power(max_flow, _get_target_system_base_power(context)))
+
+
+@getter
+def get_line_active_power_flow(component: PLEXOSLine, context: PluginContext) -> Result[float, Any]:
+    """Convert fixed PLEXOS line flow from MW to per-unit on the system base."""
+    fixed_flow = getattr(component, "fixed_flow", None)
+    return Ok(_to_per_unit_power(fixed_flow, _get_target_system_base_power(context)))
 
 
 @getter
@@ -997,12 +1014,19 @@ def get_line_losses(component: PLEXOSLine, context: PluginContext) -> Result[flo
 
 
 def _get_target_system_base_power(context: PluginContext) -> float:
-    value = getattr(context.target_system, "base_power", None)
+    target_system = getattr(context, "target_system", None)
+    value = getattr(target_system, "base_power", None)
     try:
         base_power = float(value) if value is not None else 100.0
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 100.0
-    return base_power if base_power > 0.0 else 100.0
+    return base_power if math.isfinite(base_power) and base_power > 0.0 else 100.0
+
+
+def _to_per_unit_power(value: Any, base_power: float, default: float = 0.0) -> float:
+    """Convert a scalar or PLEXOS banded power value from MW/Mvar to per-unit."""
+    value = default if value is None else value
+    return _first_numeric(value) / base_power
 
 
 def _get_hvdc_active_power_limits(component: PLEXOSLine, context: PluginContext) -> MinMax:
@@ -1028,18 +1052,30 @@ def get_active_power_limits_to(component: PLEXOSLine, context: PluginContext) ->
 
 @getter
 def get_reactive_power_limits_from(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
-    """Get the reactive power limits (min, max) at the 'from' end of an HVDC line."""
+    """Convert reactive power limits at the 'from' end of an HVDC line to per-unit."""
     min_limit = getattr(component, "min_reactive_power_from", 0.0)
     max_limit = getattr(component, "max_reactive_power_from", 0.0)
-    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+    base_power = _get_target_system_base_power(context)
+    return Ok(
+        MinMax(
+            min=_to_per_unit_power(min_limit, base_power),
+            max=_to_per_unit_power(max_limit, base_power),
+        )
+    )
 
 
 @getter
 def get_reactive_power_limits_to(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
-    """Get the reactive power limits (min, max) at the 'to' end of an HVDC line."""
+    """Convert reactive power limits at the 'to' end of an HVDC line to per-unit."""
     min_limit = getattr(component, "min_reactive_power_to", 0.0)
     max_limit = getattr(component, "max_reactive_power_to", 0.0)
-    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+    base_power = _get_target_system_base_power(context)
+    return Ok(
+        MinMax(
+            min=_to_per_unit_power(min_limit, base_power),
+            max=_to_per_unit_power(max_limit, base_power),
+        )
+    )
 
 
 @getter
@@ -1414,13 +1450,23 @@ def get_fuel_type(component: PLEXOSGenerator, context: PluginContext) -> Result[
 @getter
 def get_region_peak_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the peak active power in the area (use 'load' as proxy)."""
-    return Ok(float(getattr(component, "load", 0.0)))
+    return Ok(
+        _to_per_unit_power(
+            getattr(component, "load", 0.0),
+            _get_target_system_base_power(context),
+        )
+    )
 
 
 @getter
 def get_region_peak_reactive_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the peak reactive power in the area (no direct field, default to 0.0)."""
-    return Ok(float(getattr(component, "peak_reactive_power", 0.0)))
+    return Ok(
+        _to_per_unit_power(
+            getattr(component, "peak_reactive_power", 0.0),
+            _get_target_system_base_power(context),
+        )
+    )
 
 
 @getter
@@ -1586,10 +1632,16 @@ def get_reserve_requirement(component: PLEXOSGenerator, context: PluginContext) 
 def get_interface_active_power_flow_limits(
     component: PLEXOSInterface, context: PluginContext
 ) -> Result[MinMax, Any]:
-    """Get the min/max active power flow limits for a TransmissionInterface."""
+    """Convert interface flow limits from MW to per-unit on the system base."""
     min_flow = float(getattr(component, "min_flow", 0.0))
     max_flow = float(getattr(component, "max_flow", 0.0))
-    return Ok(MinMax(min=min_flow, max=max_flow))
+    base_power = _get_target_system_base_power(context)
+    return Ok(
+        MinMax(
+            min=_to_per_unit_power(min_flow, base_power),
+            max=_to_per_unit_power(max_flow, base_power),
+        )
+    )
 
 
 @getter
@@ -1644,7 +1696,23 @@ def get_trf_phase_angle_limits(component: PLEXOSTransformer, context: PluginCont
 @getter
 def get_trf_base_power(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
     """Get the base power of the transformer."""
-    return Ok(getattr(component, "base_power", 100.0))
+    return Ok(_get_transformer_base_power(component))
+
+
+def _get_transformer_base_power(component: PLEXOSTransformer) -> float:
+    value = getattr(component, "base_power", None)
+    try:
+        base_power = float(value) if value is not None else 100.0
+    except (TypeError, ValueError, OverflowError):
+        return 100.0
+    return base_power if math.isfinite(base_power) and base_power > 0.0 else 100.0
+
+
+@getter
+def get_trf_rating(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
+    """Convert the transformer rating from MW to per-unit on its base power."""
+    rating = getattr(component, "rating", None)
+    return Ok(_to_per_unit_power(rating, _get_transformer_base_power(component)))
 
 
 @getter

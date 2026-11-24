@@ -32,7 +32,9 @@ from r2x_sienna.models import (
     EnergyReservoirStorage,
     HydroDispatch,
     HydroReservoir,
+    Line,
     LoadZone,
+    MonitoredLine,
     PowerLoad,
     RenewableDispatch,
     RenewableNonDispatch,
@@ -142,6 +144,47 @@ def test_plexos_to_sienna_translates_node_to_bus():
     assert bus.area is result.get_component(Area, "REGION1")
 
 
+@pytest.mark.parametrize(
+    ("category", "target_type"),
+    [("line", Line), ("monitored-line", MonitoredLine)],
+)
+def test_plexos_line_power_fields_are_normalized(category, target_type):
+    source = _build_source_system()
+    node2 = PLEXOSNode(name="NODE_2", voltage=115.0)
+    source.add_component(node2)
+    line = PLEXOSLine(
+        name="LINE1",
+        category=category,
+        fixed_flow=25.0,
+        min_flow=-100.0,
+        max_flow=100.0,
+        resistance=0.01,
+        reactance=0.1,
+    )
+    source.add_component(line)
+    nodes = {node.name: node for node in source.get_components(PLEXOSNode)}
+    for collection, node_name in (
+        (CollectionEnum.NodeFrom, "NODE1"),
+        (CollectionEnum.NodeTo, "NODE_2"),
+    ):
+        source.add_supplemental_attribute(
+            line,
+            PLEXOSMembership(
+                collection=collection,
+                parent_object=line,
+                child_object=nodes[node_name],
+            ),
+        )
+
+    result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
+    translated = result.get_component(target_type, "LINE1")
+    assert translated.rating == pytest.approx(1.0)
+    assert translated.active_power_flow == pytest.approx(0.25)
+    if category == "monitored-line":
+        assert translated.flow_limits.from_to == pytest.approx(1.0)
+        assert translated.flow_limits.to_from == pytest.approx(-1.0)
+
+
 def test_plexos_to_sienna_translates_region_to_area():
     source = _build_source_system()
     result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
@@ -149,7 +192,7 @@ def test_plexos_to_sienna_translates_region_to_area():
     areas = list(result.get_components(Area))
     assert len(areas) == 1
     assert areas[0].name == "REGION1"
-    assert areas[0].peak_active_power == 200.0
+    assert areas[0].peak_active_power == 2.0
 
 
 def test_plexos_to_sienna_translates_region_to_load():
@@ -434,6 +477,7 @@ def test_plexos_hvdc_flow_limits_translate_to_sienna_base(tmp_path):
     line = PLEXOSLine(
         name="HVDC1",
         category="two-terminal-generic-hvdc-line",
+        fixed_flow=40.0,
         min_flow=-50.0,
         max_flow=100.0,
     )
@@ -454,6 +498,7 @@ def test_plexos_hvdc_flow_limits_translate_to_sienna_base(tmp_path):
     result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
 
     translated = result.get_component(TwoTerminalGenericHVDCLine, "HVDC1")
+    assert translated.active_power_flow == pytest.approx(0.4)
     assert translated.active_power_limits_from.min == pytest.approx(-0.5)
     assert translated.active_power_limits_from.max == pytest.approx(1.0)
     assert translated.active_power_limits_to.min == pytest.approx(-0.5)
@@ -532,4 +577,5 @@ def test_plexos_to_sienna_translates_interface():
     interfaces = list(result.get_components(TransmissionInterface))
     assert len(interfaces) == 1
     assert interfaces[0].name == "IF1"
-    assert interfaces[0].active_power_flow_limits.max == 200.0
+    assert interfaces[0].active_power_flow_limits.max == 2.0
+    assert interfaces[0].active_power_flow_limits.min == -2.0

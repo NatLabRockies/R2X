@@ -108,7 +108,7 @@ def test_plexos_region_translates_to_area(tmp_path) -> None:
     assert len(areas) == 1
     area = areas[0]
     assert area.name == "REGION1"
-    assert area.peak_active_power == 300.0
+    assert area.peak_active_power == 3.0
     assert area.load_response == 0.0
 
 
@@ -436,6 +436,7 @@ def test_plexos_transformers_translate_to_sienna_models(tmp_path, category: str,
     assert translated.primary_shunt.real == 0.0
     assert translated.primary_shunt.imag == 0.02
     assert translated.base_power == 100.0
+    assert translated.rating == pytest.approx(1.0)
     if target_name == "PhaseShiftingTransformer":
         expected_angle = math.radians(30.0)
         assert getattr(translated, chr(0x03B1)) == pytest.approx(expected_angle)
@@ -518,7 +519,7 @@ def test_plexos_interface_translates_to_transmission_interface(tmp_path) -> None
     assert len(interfaces) == 1
     interface = interfaces[0]
     assert interface.name == "IFACE1"
-    assert interface.active_power_flow_limits.max == 200.0
+    assert interface.active_power_flow_limits.max == 2.0
 
 
 def test_multiple_nodes_create_multiple_buses(tmp_path) -> None:

@@ -130,8 +130,6 @@
       "reactive_power_flow": 0.0
     },
     "field_map": {
-      "active_power_flow": "fixed_flow",
-      "rating": "max_flow",
       "name": "name",
       "uuid": "uuid",
       "x": "reactance",
@@ -142,6 +140,8 @@
       "b": "get_line_susceptance",
       "g": "get_line_conductance",
       "arc": "get_line_arc",
+      "active_power_flow": "get_line_active_power_flow",
+      "rating": "get_line_rating",
       "reactive_power_flow": "get_reactive_power_flow",
       "angle_limits": "get_line_angle_limits"
     },
@@ -169,8 +169,6 @@
       "reactive_power_flow": 0.0
     },
     "field_map": {
-      "active_power_flow": "fixed_flow",
-      "rating": "max_flow",
       "name": "name",
       "uuid": "uuid",
       "x": "reactance",
@@ -181,6 +179,8 @@
       "b": "get_line_susceptance",
       "g": "get_line_conductance",
       "arc": "get_line_arc",
+      "active_power_flow": "get_line_active_power_flow",
+      "rating": "get_line_rating",
       "reactive_power_flow": "get_reactive_power_flow",
       "angle_limits": "get_line_angle_limits",
       "flow_limits": "get_line_flow_limits",
@@ -200,7 +200,6 @@
       "category": "two-terminal-hvdc-line"
     },
     "field_map": {
-      "active_power_flow": "fixed_flow",
       "category": "category",
       "name": "name",
       "uuid": "uuid",
@@ -209,6 +208,7 @@
     },
     "getters": {
       "arc": "get_line_arc",
+      "active_power_flow": "get_line_active_power_flow",
       "active_power_limits_from": "get_active_power_limits_from",
       "active_power_limits_to": "get_active_power_limits_to",
       "reactive_power_limits_from": "get_reactive_power_limits_from",
@@ -237,7 +237,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "category": "category",
       "uuid": "uuid",
       "x": "reactance",
@@ -245,6 +244,7 @@
     },
     "getters": {
       "arc": "get_line_arc",
+      "rating": "get_trf_rating",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
@@ -270,7 +270,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "tap": "ac_tap_ratio",
       "category": "category",
       "uuid": "uuid",
@@ -279,6 +278,7 @@
     },
     "getters": {
       "arc": "get_line_arc",
+      "rating": "get_trf_rating",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
@@ -301,7 +301,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "tap": "ac_tap_ratio",
       "category": "category",
       "uuid": "uuid",
@@ -310,6 +309,7 @@
     },
     "getters": {
       "arc": "get_line_arc",
+      "rating": "get_trf_rating",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
