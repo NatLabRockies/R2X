@@ -23,7 +23,7 @@ from r2x_plexos.models import (
     PLEXOSStorage,
     PLEXOSZone,
 )
-from r2x_plexos_to_sienna import getters as plexos_getters
+from r2x_plexos_to_sienna import utils as plexos_utils
 from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
 from r2x_plexos_to_sienna.translation import plexos_to_sienna
 from r2x_sienna.models import (
@@ -142,6 +142,14 @@ def test_plexos_to_sienna_translates_node_to_bus():
     assert bus.number == 123456
     assert bus.base_voltage.magnitude == 115.0
     assert bus.area is result.get_component(Area, "REGION1")
+
+
+def test_separate_translations_assign_node_numbers_independently():
+    first = plexos_to_sienna(_build_source_system("FIRST_BUS"), config=PlexosToSiennaConfig())
+    second = plexos_to_sienna(_build_source_system("SECOND_BUS"), config=PlexosToSiennaConfig())
+
+    assert first.get_component(ACBus, "FIRST_BUS").number == 100101
+    assert second.get_component(ACBus, "SECOND_BUS").number == 100101
 
 
 @pytest.mark.parametrize(
@@ -399,13 +407,13 @@ def test_plexos_renewable_max_active_power_is_normalized(category, monkeypatch):
         generator,
     )
     scaling_calls = []
-    set_scaling = plexos_getters.set_time_series_scaling_factor_multiplier
+    set_scaling = plexos_utils.set_time_series_scaling_factor_multiplier
 
     def record_scaling(system, component, name, function_name):
         scaling_calls.append((system, component, name, function_name))
         set_scaling(system, component, name, function_name)
 
-    monkeypatch.setattr(plexos_getters, "set_time_series_scaling_factor_multiplier", record_scaling)
+    monkeypatch.setattr(plexos_utils, "set_time_series_scaling_factor_multiplier", record_scaling)
 
     result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
 
@@ -539,13 +547,13 @@ def test_plexos_reserve_requirement_is_normalized(series_name, monkeypatch):
             scenario=scenario,
         )
     scaling_calls = []
-    set_scaling = plexos_getters.set_time_series_scaling_factor_multiplier
+    set_scaling = plexos_utils.set_time_series_scaling_factor_multiplier
 
     def record_scaling(system, component, name, function_name):
         scaling_calls.append((system, component, name, function_name))
         set_scaling(system, component, name, function_name)
 
-    monkeypatch.setattr(plexos_getters, "set_time_series_scaling_factor_multiplier", record_scaling)
+    monkeypatch.setattr(plexos_utils, "set_time_series_scaling_factor_multiplier", record_scaling)
 
     result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
 

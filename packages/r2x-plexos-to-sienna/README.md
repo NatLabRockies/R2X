@@ -65,6 +65,9 @@ validation alone does not validate a model.
 
 ## Mapping and API
 
+Bus numbers are unique within each translation. The `extract_number_from_name(name, context)`
+helper requires a `PluginContext`; reuse the same context to keep assignments consistent.
+
 - [Function and configuration reference](https://natlabrockies.github.io/R2X/reference/python-api/#plexos_to_sienna)
 - [Property mappings](https://natlabrockies.github.io/R2X/reference/plexos-to-sienna-properties/)
 - [Translation source](src/r2x_plexos_to_sienna/translation.py) and [packaged rules](src/r2x_plexos_to_sienna/config/rules.json)

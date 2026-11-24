@@ -3,20 +3,12 @@
 from __future__ import annotations
 
 import itertools
-import json
 import math
-import re
-from collections import Counter
 from collections.abc import Mapping
-from datetime import timedelta
-from importlib.resources import files
 from typing import Any
 
-import numpy as np
-from infrasys import Component, SingleTimeSeries
-from infrasys.cost_curves import CostCurve, FuelCurve, UnitSystem
+from infrasys.cost_curves import CostCurve, FuelCurve
 from infrasys.function_data import PiecewiseStepData
-from infrasys.normalization import NormalizationByValue
 from infrasys.value_curves import AverageRateCurve, InputOutputCurve, LinearCurve
 from loguru import logger
 from plexosdb import CollectionEnum
@@ -33,22 +25,11 @@ from r2x_plexos.models import (
     PLEXOSTransformer,
     PLEXOSZone,
 )
-from r2x_sienna.exporter import set_time_series_scaling_factor_multiplier
 from r2x_sienna.models import (
     ACBus,
     Arc,
     Area,
-    EnergyReservoirStorage,
-    HydroDispatch,
-    HydroReservoir,
-    HydroTurbine,
     LoadZone,
-    PowerLoad,
-    RenewableDispatch,
-    RenewableNonDispatch,
-    SynchronousCondenser,
-    ThermalMultiStart,
-    ThermalStandard,
     VariableReserve,
 )
 from r2x_sienna.models.costs import (
@@ -59,7 +40,6 @@ from r2x_sienna.models.costs import (
 )
 from r2x_sienna.models.enums import (
     ACBusTypes,
-    PrimeMoversType,
     ReserveDirection,
     ReserveType,
     StorageTechs,
@@ -74,553 +54,27 @@ from r2x_sienna.models.named_tuples import (
     MinMax,
     UpDown,
 )
-from r2x_sienna.units import get_magnitude
 
-from r2x_core import Ok, PluginContext, Result, replace_single_time_series
+from r2x_core import Ok, PluginContext, Result
 from r2x_core.getters import getter
 
-from .mappings import (
-    _FUEL_KEYWORDS,
-    _GENERATOR_FAMILY_BY_SLUG,
-    _GENERATOR_FAMILY_KEYWORDS,
-    _PRIME_MOVER_KEYWORDS,
+from .constants import NATURAL_UNITS
+from .utils import (
+    _classify_generator_category,
+    _first_numeric,
+    _get_fuel_type,
+    _get_hvdc_active_power_limits,
+    _get_prime_mover_type,
+    _get_target_component_by_name,
+    _get_target_system_base_power,
+    _get_transformer_base_power,
+    _get_trf_phase_angle_radians,
+    _sync_time_series_for_source,
+    _to_per_unit_power,
 )
-
-# Type-safe constant for power units
-NATURAL_UNITS: UnitSystem = UnitSystem.NATURAL_UNITS
-
-PLEXOS_NUMBER_BASE = 100100
-PLEXOS_NUMBER_COUNTER = PLEXOS_NUMBER_BASE
-PLEXOS_NUMBER_MAP: dict[str, int] = {}
-PLEXOS_NUMBER_USED: set[int] = set()
-
-P2S_TS_PENDING_CACHE_KEY = "p2s_pending_ts"
-
-
-def _first_numeric(value: Any) -> float:
-    """Extract a scalar float, using the first PLEXOS band for mappings."""
-    if isinstance(value, Mapping):
-        value = value.get(1, next(iter(value.values()), 0.0))
-        return float(value)
-
-    values = getattr(value, "values", None)
-    if values is not None:
-        values_any: Any = values() if callable(values) else values
-        try:
-            return float(values_any[0])
-        except (IndexError, KeyError, TypeError):
-            pass
-    return float(value)
-
-
-def _get_pending_ts_cache(context: PluginContext) -> dict[str, Any]:
-    cache = context._cache.setdefault(P2S_TS_PENDING_CACHE_KEY, {})
-    return cache
-
-
-def _pending_key_for_source(component: Any) -> str:
-    name = getattr(component, "name", "") or ""
-    cls_name = type(component).__name__
-    return f"{cls_name}:{name}"
-
-
-def _get_target_types_for_source(component: Any) -> list[type[Component]]:
-    if isinstance(component, PLEXOSGenerator):
-        return [
-            ThermalStandard,
-            ThermalMultiStart,
-            HydroDispatch,
-            HydroTurbine,
-            RenewableDispatch,
-            RenewableNonDispatch,
-            SynchronousCondenser,
-        ]
-    if isinstance(component, PLEXOSBattery):
-        return [EnergyReservoirStorage]
-    if isinstance(component, PLEXOSStorage):
-        return [HydroReservoir]
-    if isinstance(component, PLEXOSRegion):
-        return [PowerLoad]
-    if isinstance(component, PLEXOSNode):
-        return [PowerLoad]
-    if isinstance(component, PLEXOSPurchaser):
-        return [PowerLoad]
-    if isinstance(component, PLEXOSReserve):
-        return [VariableReserve]
-    return []
-
-
-def _get_targets_by_name(context: PluginContext, source_component: Any) -> list[Any]:
-    if context.target_system is None:
-        return []
-
-    if isinstance(source_component, PLEXOSNode) and context.source_system is not None:
-        region_names = {
-            membership.child_object.name
-            for membership in context.source_system.get_supplemental_attributes_with_component(
-                source_component
-            )
-            if getattr(membership, "collection", None) == CollectionEnum.Region
-            and getattr(getattr(membership, "child_object", None), "name", None)
-        }
-        return [
-            load
-            for load in context.target_system.get_components(PowerLoad)
-            if getattr(load, "name", None) in region_names
-        ]
-
-    name = getattr(source_component, "name", None)
-    if not name:
-        return []
-    targets: list[Any] = []
-    for target_type in _get_target_types_for_source(source_component):
-        targets.extend(
-            component
-            for component in context.target_system.get_components(target_type)
-            if getattr(component, "name", None) == name
-        )
-    return targets
-
-
-def _get_hydro_budget_values(ts: SingleTimeSeries, capacity: float) -> np.ndarray:
-    """Distribute period energy limits in GWh over represented hours as capacity factors."""
-    if ts.resolution != timedelta(hours=1):
-        raise ValueError("PLEXOS hydro energy limits must be expanded to hourly time series")
-    if capacity <= 0:
-        raise ValueError("Hydro budget conversion requires a positive generator capacity")
-
-    if ts.name not in {
-        "max_energy_day",
-        "max_energy_week",
-        "max_energy_month",
-        "max_energy_year",
-    }:
-        raise ValueError(f"Hydro budget conversion is not supported for {ts.name}")
-    timestamps = (ts.initial_timestamp + index * ts.resolution for index in range(len(ts.data)))
-    if ts.name == "max_energy_day":
-        periods = [time.date() for time in timestamps]
-    elif ts.name == "max_energy_month":
-        periods = [(time.year, time.month) for time in timestamps]
-    elif ts.name == "max_energy_week":
-        # PLEXOS weeks are consecutive horizon intervals, not ISO calendar weeks.
-        periods = [index // (7 * 24) for index in range(len(ts.data))]
-    else:
-        periods = [time.year for time in timestamps]
-
-    # Divide by represented hours so partial periods at either horizon edge preserve their budgets.
-    counts = Counter(periods)
-    hours = np.array([counts[period] for period in periods])
-
-    return np.asarray(ts.data) * 1000.0 / (capacity * hours)
-
-
-def _attach_source_time_series_if_target_exists(source_component: Any, context: PluginContext) -> bool:
-    if context.source_system is None or context.target_system is None:
-        return True
-    if not context.source_system.time_series.has_time_series(source_component):
-        return True
-
-    metadata_list = list(context.source_system.time_series.list_time_series_metadata(source_component))
-    if not metadata_list:
-        return True
-
-    targets = _get_targets_by_name(context, source_component)
-    if not targets:
-        return False
-
-    for metadata in metadata_list:
-        features = getattr(metadata, "features", {}) or {}
-        ts_list = context.source_system.list_time_series(source_component, name=metadata.name, **features)
-        if not ts_list:
-            continue
-
-        source_ts = ts_list[0]
-        if not isinstance(source_ts, SingleTimeSeries):
-            continue
-        for target_component in targets:
-            load = (
-                isinstance(source_component, (PLEXOSRegion, PLEXOSNode, PLEXOSPurchaser))
-                and isinstance(target_component, PowerLoad)
-                and source_ts.name in {"max_active_power", "load", "fixed_load"}
-            )
-            reserve_requirement = (
-                isinstance(source_component, PLEXOSReserve)
-                and isinstance(target_component, VariableReserve)
-                and str(source_ts.name).strip().lower().replace("-", "_").replace(" ", "_")
-                in {"requirement", "min_provision"}
-            )
-            hydro_reservoir = isinstance(source_component, PLEXOSStorage) and isinstance(
-                target_component, HydroReservoir
-            )
-            target_name = source_ts.name
-            if load:
-                target_name = "max_active_power"
-            elif reserve_requirement:
-                target_name = "requirement"
-            elif hydro_reservoir and source_ts.name == "natural_inflow":
-                target_name = "inflow"
-                if context.target_system.has_time_series(
-                    target_component,
-                    name=source_ts.name,
-                    time_series_type=SingleTimeSeries,
-                    **features,
-                ):
-                    context.target_system.remove_time_series(
-                        target_component,
-                        name=source_ts.name,
-                        time_series_type=SingleTimeSeries,
-                        **features,
-                    )
-            data = source_ts.data
-            normalization = None
-            if load:
-                capacity = get_magnitude(target_component.max_active_power) * get_magnitude(
-                    target_component.base_power
-                )
-                if capacity <= 0 and np.any(data):
-                    raise ValueError(f"Load profile requires a positive maximum for {target_component.name}")
-                normalization = NormalizationByValue(value=capacity or 1.0)
-            hydro = isinstance(source_component, PLEXOSGenerator) and (
-                isinstance(target_component, HydroDispatch)
-                or (
-                    isinstance(target_component, RenewableNonDispatch)
-                    and target_component.prime_mover_type == PrimeMoversType.HY
-                )
-            )
-            if hydro:
-                capacity = _first_numeric(source_component.max_capacity)
-                budget_names = {
-                    "max_energy_day",
-                    "max_energy_week",
-                    "max_energy_month",
-                    "max_energy_year",
-                }
-                if isinstance(target_component, HydroDispatch) and source_ts.name in budget_names:
-                    periods = {
-                        item.name
-                        for item in metadata_list
-                        if item.name in budget_names and (getattr(item, "features", {}) or {}) == features
-                    }
-                    if len(periods) > 1:
-                        raise ValueError(
-                            f"Multiple hydro budget periods are not supported for {source_component.name}"
-                        )
-                    data = _get_hydro_budget_values(source_ts, capacity)
-                    target_name = "hydro_budget"
-                elif source_ts.name in {"max_active_power", "max_energy_hour", "fixed_load"}:
-                    if capacity <= 0:
-                        raise ValueError("Hydro power normalization requires a positive generator capacity")
-                    target_name = "max_active_power"
-                    normalization = NormalizationByValue(value=capacity)
-            if context.target_system.has_time_series(
-                target_component,
-                name=target_name,
-                time_series_type=SingleTimeSeries,
-                **features,
-            ):
-                continue
-            target_ts = SingleTimeSeries.from_array(
-                data=data,
-                name=target_name,
-                initial_timestamp=source_ts.initial_timestamp,
-                resolution=source_ts.resolution,
-                normalization=normalization,
-            )
-            try:
-                context.target_system.add_time_series(target_ts, target_component, **features)
-            except Exception:
-                logger.debug(
-                    "Failed attaching time series '{}' to '{}'",
-                    source_ts.name,
-                    getattr(target_component, "name", "<unknown>"),
-                )
-                continue
-            if (hydro or load) and target_name == "max_active_power":
-                set_time_series_scaling_factor_multiplier(
-                    context.target_system, target_component, target_name, "get_max_active_power"
-                )
-    return True
-
-
-def normalize_renewable_max_active_power_time_series(context: PluginContext) -> None:
-    """Normalize renewable MW profiles for PowerSystems scaling."""
-    source_system = context.source_system
-    target_system = context.target_system
-    if source_system is None or target_system is None:
-        return
-
-    renewable_targets_by_name: dict[str, list[RenewableDispatch | RenewableNonDispatch]] = {}
-    for target_type in (RenewableDispatch, RenewableNonDispatch):
-        for target_generator in target_system.get_components(target_type):
-            renewable_targets_by_name.setdefault(target_generator.name, []).append(target_generator)
-
-    for source_generator in source_system.get_components(PLEXOSGenerator):
-        for target_generator in renewable_targets_by_name.get(source_generator.name, []):
-            if (
-                isinstance(target_generator, RenewableNonDispatch)
-                and target_generator.prime_mover_type == PrimeMoversType.HY
-            ):
-                continue
-
-            metadata_records = target_system.list_time_series_metadata(
-                target_generator,
-                name="max_active_power",
-                time_series_type=SingleTimeSeries,
-            )
-            if not metadata_records:
-                continue
-
-            capacity = _first_numeric(source_generator.max_capacity)
-            if capacity <= 0.0:
-                has_nonzero_values = any(
-                    np.any(
-                        target_system.get_time_series(
-                            target_generator,
-                            name="max_active_power",
-                            time_series_type=SingleTimeSeries,
-                            **metadata.features,
-                        ).data_array
-                    )
-                    for metadata in metadata_records
-                )
-                if has_nonzero_values:
-                    raise ValueError(
-                        f"Renewable power normalization requires a positive capacity for "
-                        f"{target_generator.name}"
-                    )
-                capacity = 1.0
-
-            for metadata in metadata_records:
-                profile = target_system.get_time_series(
-                    target_generator,
-                    name="max_active_power",
-                    time_series_type=SingleTimeSeries,
-                    **metadata.features,
-                )
-                normalized_profile = SingleTimeSeries.from_array(
-                    data=profile.data_array,
-                    name=profile.name,
-                    initial_timestamp=profile.initial_timestamp,
-                    resolution=profile.resolution,
-                    normalization=NormalizationByValue(value=capacity),
-                )
-                replace_single_time_series(
-                    target_system,
-                    target_generator,
-                    normalized_profile,
-                    **metadata.features,
-                )
-
-            set_time_series_scaling_factor_multiplier(
-                target_system,
-                target_generator,
-                "max_active_power",
-                "get_max_active_power",
-            )
-
-
-def normalize_reserve_requirement_time_series(context: PluginContext) -> None:
-    """Normalize reserve MW profiles and their static requirement for PowerSystems scaling."""
-    system = context.target_system
-    if system is None:
-        return
-
-    for reserve in system.get_components(VariableReserve):
-        metadata_records = system.list_time_series_metadata(
-            reserve,
-            name="requirement",
-            time_series_type=SingleTimeSeries,
-        )
-        if not metadata_records:
-            continue
-
-        profiles = [
-            (
-                system.get_time_series(
-                    reserve,
-                    name="requirement",
-                    time_series_type=SingleTimeSeries,
-                    **metadata.features,
-                ),
-                metadata.features,
-            )
-            for metadata in metadata_records
-        ]
-        peak_requirement = max(float(np.max(profile.data_array)) for profile, _ in profiles)
-        if peak_requirement <= 0.0:
-            reserve.requirement = 0.0
-            logger.warning(
-                "Cannot normalize requirement time series for {} without a positive MW basis",
-                reserve.name,
-            )
-            continue
-
-        system_base = system.base_power
-        if system_base is None or system_base <= 0.0:
-            raise ValueError("Reserve normalization requires a positive system base power")
-        reserve.requirement = peak_requirement / system_base
-
-        for profile, features in profiles:
-            normalized_profile = SingleTimeSeries.from_array(
-                data=profile.data_array,
-                name=profile.name,
-                initial_timestamp=profile.initial_timestamp,
-                resolution=profile.resolution,
-                normalization=NormalizationByValue(value=peak_requirement),
-            )
-            replace_single_time_series(system, reserve, normalized_profile, **features)
-
-        set_time_series_scaling_factor_multiplier(system, reserve, "requirement", "get_requirement")
-
-
-def attach_constant_load_time_series(context: PluginContext) -> None:
-    """Represent scalar source demand on existing load timelines."""
-    system = context.target_system
-    if context.source_system is None or system is None:
-        return
-    scalar_loads = {}
-    profiled_loads = set()
-    for source in context.source_system.iter_all_components():
-        if not isinstance(source, (PLEXOSRegion, PLEXOSNode, PLEXOSPurchaser)):
-            continue
-        targets = _get_targets_by_name(context, source)
-        if isinstance(source, (PLEXOSRegion, PLEXOSPurchaser)):
-            scalar_loads.update((load.name, load) for load in targets)
-        if any(
-            metadata.name in {"max_active_power", "load", "fixed_load"}
-            for metadata in context.source_system.list_time_series_metadata(source)
-        ):
-            profiled_loads.update(load.name for load in targets)
-    loads = [load for name, load in scalar_loads.items() if name not in profiled_loads]
-    if not loads:
-        return
-    timelines = {}
-    for load in system.get_components(PowerLoad):
-        for metadata in system.list_time_series_metadata(load, name="max_active_power"):
-            features = dict(metadata.features)
-            key = tuple(sorted((name, repr(value)) for name, value in features.items()))
-            if key not in timelines:
-                reference = system.get_time_series(load, name="max_active_power", **features)
-                timelines[key] = (reference, features)
-
-    for reference, features in timelines.values():
-        for load in loads:
-            if system.has_time_series(load, name="max_active_power", **features):
-                continue
-            maximum = get_magnitude(load.max_active_power)
-            demand = get_magnitude(load.active_power)
-            profile = SingleTimeSeries.from_array(
-                data=np.full(len(reference.data), demand),
-                name="max_active_power",
-                initial_timestamp=reference.initial_timestamp,
-                resolution=reference.resolution,
-                normalization=NormalizationByValue(value=maximum or 1.0),
-            )
-            system.add_time_series(profile, load, **features)
-            set_time_series_scaling_factor_multiplier(
-                system, load, "max_active_power", "get_max_active_power"
-            )
-
-
-def _sync_time_series_for_source(source_component: Any, context: PluginContext) -> None:
-    pending = _get_pending_ts_cache(context)
-
-    # Try flushing pending entries first so previous components can be attached as soon as targets exist.
-    for key, pending_source in list(pending.items()):
-        if _attach_source_time_series_if_target_exists(pending_source, context):
-            pending.pop(key, None)
-
-    if not _attach_source_time_series_if_target_exists(source_component, context):
-        pending[_pending_key_for_source(source_component)] = source_component
-
-
-def _reserve_plexos_number(value: Any) -> int | None:
-    try:
-        candidate = int(value)
-    except (TypeError, ValueError, OverflowError):
-        return None
-
-    if candidate <= 0 or candidate in PLEXOS_NUMBER_USED:
-        return None
-
-    PLEXOS_NUMBER_USED.add(candidate)
-    return candidate
-
-
-def _next_plexos_number() -> int:
-    global PLEXOS_NUMBER_COUNTER
-
-    while True:
-        PLEXOS_NUMBER_COUNTER += 1
-        candidate = _reserve_plexos_number(PLEXOS_NUMBER_COUNTER)
-        if candidate is not None:
-            return candidate
-
-
-def extract_number_from_name(name: str) -> int:
-    """Return the first positive, unused digit group, or a unique generated number."""
-    if name in PLEXOS_NUMBER_MAP:
-        return PLEXOS_NUMBER_MAP[name]
-
-    for match in re.finditer(r"(\d+)", name):
-        candidate = _reserve_plexos_number(match.group(1))
-        if candidate is not None:
-            PLEXOS_NUMBER_MAP[name] = candidate
-            return candidate
-
-    candidate = _next_plexos_number()
-    PLEXOS_NUMBER_MAP[name] = candidate
-    return candidate
-
-
-def _classify_generator_category(category: str | None) -> str:
-    """Return the Sienna generator technology family for a PLEXOS category.
-
-    Resolves canonical slugs exactly, then falls back to substring keyword
-    matching on descriptive names. Unmatched categories default to ``thermal``.
-    """
-    return _classify_generator_category_with_fallback(category)[0]
-
-
-def _classify_generator_category_with_fallback(category: str | None) -> tuple[str, bool]:
-    key = (category or "").strip().casefold()
-    if not key:
-        return "thermal", True
-    if key in _GENERATOR_FAMILY_BY_SLUG:
-        return _GENERATOR_FAMILY_BY_SLUG[key], False
-    for keyword, family in _GENERATOR_FAMILY_KEYWORDS:
-        if keyword in key:
-            return family, False
-    return "thermal", True
-
-
-def _get_prime_mover_type(category: str) -> PrimeMoversType:
-    defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults = json.load(f)
-    mapping = defaults.get("prime_mover_types", {})
-    if category in mapping:
-        return getattr(PrimeMoversType, mapping[category], PrimeMoversType.OT)
-    key = (category or "").strip().casefold()
-    for keyword, code in _PRIME_MOVER_KEYWORDS:
-        if keyword in key:
-            return getattr(PrimeMoversType, code, PrimeMoversType.OT)
-    return PrimeMoversType.OT
-
-
-def _get_fuel_type(category: str) -> ThermalFuels:
-    """Map a generator category to a ThermalFuels enum value via defaults.json."""
-    defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults = json.load(f)
-    mapping = defaults.get("fuel_types", {})
-    if category in mapping:
-        return getattr(ThermalFuels, mapping[category], ThermalFuels.NATURAL_GAS)
-    key = (category or "").strip().casefold()
-    for keyword, name in _FUEL_KEYWORDS:
-        if keyword in key:
-            return getattr(ThermalFuels, name, ThermalFuels.NATURAL_GAS)
-    return ThermalFuels.NATURAL_GAS
+from .utils import (
+    get_plexos_node_number as _get_plexos_node_number,
+)
 
 
 @getter
@@ -647,8 +101,7 @@ def get_load_bus(component: PLEXOSRegion, context: PluginContext) -> Result[ACBu
             node_name = m.parent_object.name
             break
     if node_name:
-        acbuses = list(context.target_system.get_components(ACBus))
-        bus = next((b for b in acbuses if getattr(b, "name", None) == node_name), None)
+        bus = _get_target_component_by_name(context.target_system, ACBus, node_name)
         return Ok(bus)
     return Ok(None)
 
@@ -674,14 +127,7 @@ def get_purchaser_bus(component: PLEXOSPurchaser, context: PluginContext) -> Res
     if node_name is None:
         return Ok(None)
 
-    bus = next(
-        (
-            candidate
-            for candidate in context.target_system.get_components(ACBus)
-            if getattr(candidate, "name", None) == node_name
-        ),
-        None,
-    )
+    bus = _get_target_component_by_name(context.target_system, ACBus, node_name)
     return Ok(bus)
 
 
@@ -797,8 +243,7 @@ def get_node_area(component: PLEXOSNode, context: PluginContext) -> Result[Any, 
             area_name = m.child_object.name
             break
     if area_name:
-        areas = list(context.target_system.get_components(Area))
-        area_obj = next((a for a in areas if getattr(a, "name", None) == area_name), None)
+        area_obj = _get_target_component_by_name(context.target_system, Area, area_name)
         if area_obj:
             return Ok(area_obj)
     value = getattr(component, "area", None)
@@ -823,8 +268,7 @@ def get_node_zone(component: PLEXOSNode, context: PluginContext) -> Result[Any, 
             zone_name = m.child_object.name
             break
     if zone_name:
-        zones = list(context.target_system.get_components(LoadZone))
-        zone_obj = next((z for z in zones if getattr(z, "name", None) == zone_name), None)
+        zone_obj = _get_target_component_by_name(context.target_system, LoadZone, zone_name)
         if zone_obj:
             return Ok(zone_obj)
     value = getattr(component, "zone", None)
@@ -857,21 +301,7 @@ def get_node_ext(component: PLEXOSNode, context: PluginContext) -> Result[dict[s
 @getter
 def get_node_number(component: PLEXOSNode, context: PluginContext) -> Result[int, Any]:
     """Return a unique positive node number from Number, the name, or a counter."""
-    name = getattr(component, "name", None)
-    name = str(name) if name else None
-    if name is not None and name in PLEXOS_NUMBER_MAP:
-        return Ok(PLEXOS_NUMBER_MAP[name])
-
-    number = _reserve_plexos_number(getattr(component, "number", None))
-    if number is not None:
-        if name is not None:
-            PLEXOS_NUMBER_MAP[name] = number
-        return Ok(number)
-
-    if name is not None:
-        return Ok(extract_number_from_name(name))
-
-    return Ok(_next_plexos_number())
+    return Ok(_get_plexos_node_number(component, context))
 
 
 @getter
@@ -914,16 +344,15 @@ def get_line_arc(component: PLEXOSLine | PLEXOSTransformer, context: PluginConte
     arc_name = f"{from_node}-{to_node}"
 
     # Reuse existing Arc if one with the same name already exists in the target system
-    existing_arcs = list(context.target_system.get_components(Arc))
-    existing_arc = next((a for a in existing_arcs if getattr(a, "name", None) == arc_name), None)
+    existing_arc = _get_target_component_by_name(context.target_system, Arc, arc_name)
     if existing_arc is not None:
         return Ok(existing_arc)
 
-    acbuses = list(context.target_system.get_components(ACBus))
-    from_bus = next((bus for bus in acbuses if getattr(bus, "name", None) == from_node), None)
-    to_bus = next((bus for bus in acbuses if getattr(bus, "name", None) == to_node), None)
+    from_bus = _get_target_component_by_name(context.target_system, ACBus, from_node)
+    to_bus = _get_target_component_by_name(context.target_system, ACBus, to_node)
 
     if from_bus is None or to_bus is None:
+        acbuses = list(context.target_system.get_components(ACBus))
         raise ValueError(
             f"Could not find ACBus for names: {from_node}, {to_node}. "
             f"Available: {[bus.name for bus in acbuses]}"
@@ -1013,31 +442,6 @@ def get_line_losses(component: PLEXOSLine, context: PluginContext) -> Result[flo
     return Ok(_first_numeric(value))
 
 
-def _get_target_system_base_power(context: PluginContext) -> float:
-    target_system = getattr(context, "target_system", None)
-    value = getattr(target_system, "base_power", None)
-    try:
-        base_power = float(value) if value is not None else 100.0
-    except (TypeError, ValueError, OverflowError):
-        return 100.0
-    return base_power if math.isfinite(base_power) and base_power > 0.0 else 100.0
-
-
-def _to_per_unit_power(value: Any, base_power: float, default: float = 0.0) -> float:
-    """Convert a scalar or PLEXOS banded power value from MW/Mvar to per-unit."""
-    value = default if value is None else value
-    return _first_numeric(value) / base_power
-
-
-def _get_hvdc_active_power_limits(component: PLEXOSLine, context: PluginContext) -> MinMax:
-    base_power = _get_target_system_base_power(context)
-    min_flow_value = getattr(component, "min_flow", None)
-    max_flow_value = getattr(component, "max_flow", None)
-    min_flow = _first_numeric(min_flow_value) if min_flow_value is not None else 0.0
-    max_flow = _first_numeric(max_flow_value) if max_flow_value is not None else 0.0
-    return MinMax(min=min_flow / base_power, max=max_flow / base_power)
-
-
 @getter
 def get_active_power_limits_from(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
     """Convert PLEXOS HVDC flow limits from MW to per-unit at the 'from' end."""
@@ -1104,22 +508,34 @@ def get_device_services(
     services = []
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     valid_collections = {CollectionEnum.Generators, CollectionEnum.Batteries}
-    variable_reserves = list(context.target_system.get_components(VariableReserve))
     for m in memberships:
         if hasattr(m, "collection") and m.collection in valid_collections and hasattr(m, "parent_object"):
             reserve_obj = m.parent_object
             reserve_uuid = getattr(reserve_obj, "uuid", None)
             reserve_name = getattr(reserve_obj, "name", None)
-            match = next(
-                (
-                    vr
-                    for vr in variable_reserves
-                    if (
-                        getattr(vr, "uuid", None) == reserve_uuid or getattr(vr, "name", None) == reserve_name
-                    )
-                ),
-                None,
-            )
+            match = None
+            if reserve_name:
+                candidate = _get_target_component_by_name(
+                    context.target_system, VariableReserve, reserve_name
+                )
+                if (
+                    candidate is not None
+                    and reserve_uuid is not None
+                    and getattr(candidate, "uuid", None) == reserve_uuid
+                ):
+                    match = candidate
+            if match is None:
+                match = next(
+                    (
+                        reserve
+                        for reserve in context.target_system.get_components(VariableReserve)
+                        if (
+                            getattr(reserve, "uuid", None) == reserve_uuid
+                            or getattr(reserve, "name", None) == reserve_name
+                        )
+                    ),
+                    None,
+                )
             if match and match not in services:
                 services.append(match)
     return Ok(services)
@@ -1154,8 +570,7 @@ def get_gen_bus(
     if not bus_name:
         return Ok(None)
 
-    acbuses = list(context.target_system.get_components(ACBus))
-    bus = next((b for b in acbuses if getattr(b, "name", None) == bus_name), None)
+    bus = _get_target_component_by_name(context.target_system, ACBus, bus_name)
     return Ok(bus)
 
 
@@ -1675,11 +1090,6 @@ def get_trf_primary_shunt(component: PLEXOSTransformer, context: PluginContext) 
     return Ok(Complex(real=0.0, imag=susceptance))
 
 
-def _get_trf_phase_angle_radians(component: PLEXOSTransformer) -> float:
-    angle_degrees = float(getattr(component, "ac_fixed_shift_angle", 0.0) or 0.0)
-    return math.radians(angle_degrees)
-
-
 @getter
 def get_trf_phase_angle(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
     """Convert the fixed PLEXOS phase-shift angle from degrees to radians."""
@@ -1697,15 +1107,6 @@ def get_trf_phase_angle_limits(component: PLEXOSTransformer, context: PluginCont
 def get_trf_base_power(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
     """Get the base power of the transformer."""
     return Ok(_get_transformer_base_power(component))
-
-
-def _get_transformer_base_power(component: PLEXOSTransformer) -> float:
-    value = getattr(component, "base_power", None)
-    try:
-        base_power = float(value) if value is not None else 100.0
-    except (TypeError, ValueError, OverflowError):
-        return 100.0
-    return base_power if math.isfinite(base_power) and base_power > 0.0 else 100.0
 
 
 @getter

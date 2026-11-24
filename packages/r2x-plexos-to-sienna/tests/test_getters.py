@@ -6,6 +6,7 @@ import types
 from typing import Any, cast
 
 import pytest
+from infrasys.exceptions import ISOperationNotAllowed
 from infrasys.value_curves import AverageRateCurve
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
@@ -21,9 +22,8 @@ from r2x_plexos.models import (
     PLEXOSTransformer,
     PLEXOSZone,
 )
-from r2x_plexos_to_sienna import getters
+from r2x_plexos_to_sienna import getters, utils
 from r2x_plexos_to_sienna.getters import (
-    extract_number_from_name,
     get_base_voltage,
     get_device_services,
     get_gen_start_types,
@@ -41,6 +41,7 @@ from r2x_plexos_to_sienna.getters import (
     get_reserve_type,
     get_trf_primary_shunt,
 )
+from r2x_plexos_to_sienna.utils import extract_number_from_name
 from r2x_sienna.models import ACBus, Area
 from r2x_sienna.models.enums import (
     ACBusTypes,
@@ -54,47 +55,92 @@ from r2x_sienna.units import Voltage
 from r2x_core import DataStore, PluginConfig, PluginContext, Result, System
 
 
-def test_extract_number_from_name_digits_and_dummy():
-    assert extract_number_from_name("p126_OSW") == 126
-    assert extract_number_from_name("bus") == 100101
-    assert extract_number_from_name("bus") == 100101
-    assert extract_number_from_name("anotherbus") == 100102
+@pytest.fixture
+def node_context():
+    return PluginContext(config=PluginConfig())
 
 
-def test_get_node_number_with_number():
+def test_extract_number_from_name_digits_and_dummy(node_context):
+    assert extract_number_from_name("p126_OSW", node_context) == 126
+    assert extract_number_from_name("bus", node_context) == 100101
+    assert extract_number_from_name("bus", node_context) == 100101
+    assert extract_number_from_name("anotherbus", node_context) == 100102
+
+
+def test_get_node_number_with_number(node_context):
     node = cast(PLEXOSNode, types.SimpleNamespace(number=42))
-    result = cast(Result[int, Any], get_node_number(node, None))
+    result = cast(Result[int, Any], get_node_number(node, node_context))
     assert result.value == 42
 
 
-def test_get_node_number_with_name():
+def test_get_node_number_with_name(node_context):
     node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name="p123"))
-    result = cast(Result[int, Any], get_node_number(node, None))
+    result = cast(Result[int, Any], get_node_number(node, node_context))
     assert result.value == 123
 
 
 @pytest.mark.parametrize("number", [0, -1])
-def test_get_node_number_ignores_nonpositive_numbers(number):
+def test_get_node_number_ignores_nonpositive_numbers(number, node_context):
     node = cast(PLEXOSNode, types.SimpleNamespace(number=number, name="NODE_0_123456"))
-    result = cast(Result[int, Any], get_node_number(node, None))
+    result = cast(Result[int, Any], get_node_number(node, node_context))
     assert result.value == 123456
 
 
-def test_get_node_number_reserves_explicit_numbers_and_uses_next_name_group():
+def test_get_node_number_reserves_explicit_numbers_and_uses_next_name_group(node_context):
     first_node = cast(PLEXOSNode, types.SimpleNamespace(number=42, name="EXPLICIT"))
     duplicate_node = cast(PLEXOSNode, types.SimpleNamespace(number=42, name="NODE_42_43"))
 
-    assert cast(Result[int, Any], get_node_number(first_node, None)).value == 42
-    assert 42 in getters.PLEXOS_NUMBER_USED
-    assert cast(Result[int, Any], get_node_number(duplicate_node, None)).value == 43
-    assert cast(Result[int, Any], get_node_number(duplicate_node, None)).value == 43
+    assert cast(Result[int, Any], get_node_number(first_node, node_context)).value == 42
+    assert cast(Result[int, Any], get_node_number(duplicate_node, node_context)).value == 43
+    assert cast(Result[int, Any], get_node_number(duplicate_node, node_context)).value == 43
 
 
-def test_get_node_number_default():
+def test_get_node_number_default(node_context):
     first_node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name=None))
     second_node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name=None))
-    assert cast(Result[int, Any], get_node_number(first_node, None)).value == 100101
-    assert cast(Result[int, Any], get_node_number(second_node, None)).value == 100102
+    assert cast(Result[int, Any], get_node_number(first_node, node_context)).value == 100101
+    assert cast(Result[int, Any], get_node_number(second_node, node_context)).value == 100102
+
+
+def test_node_number_state_is_isolated_between_contexts(node_context):
+    other_context = PluginContext(config=PluginConfig())
+    reserved = cast(PLEXOSNode, types.SimpleNamespace(number=100101, name="reserved"))
+    unnamed = cast(PLEXOSNode, types.SimpleNamespace(number=None, name=None))
+    assert get_node_number(reserved, node_context).unwrap() == 100101
+    assert get_node_number(unnamed, node_context).unwrap() == 100102
+    assert get_node_number(unnamed, other_context).unwrap() == 100101
+    assert get_node_number(reserved, other_context).unwrap() == 100102
+    assert get_node_number(reserved, node_context).unwrap() == 100101
+
+
+def test_target_component_lookup_uses_index_and_preserves_duplicate_order():
+    first_bus = cast(ACBus, types.SimpleNamespace(name="NODE1"))
+    second_bus = cast(ACBus, types.SimpleNamespace(name="NODE1"))
+
+    class IndexedSystem:
+        def get_component(self, component_type, name):
+            assert component_type is ACBus
+            assert name == "NODE1"
+            return first_bus
+
+        def get_components(self, component_type):
+            pytest.fail("Unique indexed lookups should not scan all components")
+
+    indexed_system = cast(System, IndexedSystem())
+    assert utils._get_target_component_by_name(indexed_system, ACBus, "NODE1") is first_bus
+
+    class DuplicateSystem:
+        def get_component(self, component_type, name):
+            raise ISOperationNotAllowed("duplicate component names")
+
+        def get_components(self, component_type):
+            return iter((first_bus, second_bus))
+
+    duplicate_system = cast(System, DuplicateSystem())
+    assert utils._get_target_components_by_name(duplicate_system, ACBus, "NODE1") == [
+        first_bus,
+        second_bus,
+    ]
 
 
 def test_get_base_voltage_all_branches():
@@ -112,7 +158,10 @@ def test_get_base_voltage_all_branches():
 def test_get_node_area_and_zone_membership():
     # Area
     dummy_area = types.SimpleNamespace(name="A")
-    dummy_target = types.SimpleNamespace(get_components=lambda t: [dummy_area])
+    dummy_target = types.SimpleNamespace(
+        get_component=lambda component_type, name: dummy_area,
+        get_components=lambda component_type: [dummy_area],
+    )
     dummy_membership = types.SimpleNamespace(
         collection=getters.CollectionEnum.Region, child_object=types.SimpleNamespace(name="A")
     )
@@ -131,7 +180,10 @@ def test_get_node_area_and_zone_membership():
 
     # Zone
     dummy_zone = types.SimpleNamespace(name="Z")
-    dummy_target = types.SimpleNamespace(get_components=lambda t: [dummy_zone])
+    dummy_target = types.SimpleNamespace(
+        get_component=lambda component_type, name: dummy_zone,
+        get_components=lambda component_type: [dummy_zone],
+    )
     dummy_membership = types.SimpleNamespace(
         collection=getters.CollectionEnum.Zone, child_object=types.SimpleNamespace(name="Z")
     )
@@ -323,10 +375,41 @@ def test_get_device_services_empty():
     assert result.value == []
 
 
-def test_node_number_getter_no_number():
-    assert extract_number_from_name("bus") == 100101
-    assert extract_number_from_name("anotherbus") == 100102
-    assert extract_number_from_name("bus") == 100101
+def test_get_device_services_uses_index_for_matching_reserve_uuid():
+    source_reserve = types.SimpleNamespace(name="SPIN1", uuid="reserve-1")
+    target_reserve = types.SimpleNamespace(name="SPIN1", uuid="reserve-1")
+    membership = types.SimpleNamespace(
+        collection=getters.CollectionEnum.Generators,
+        parent_object=source_reserve,
+    )
+
+    class IndexedSystem:
+        def get_component(self, component_type, name):
+            assert component_type is getters.VariableReserve
+            assert name == "SPIN1"
+            return target_reserve
+
+        def get_components(self, component_type):
+            pytest.fail("Matching reserve UUID should use indexed lookup")
+
+    ctx = cast(
+        PluginContext,
+        types.SimpleNamespace(
+            source_system=types.SimpleNamespace(
+                get_supplemental_attributes_with_component=lambda component: [membership]
+            ),
+            target_system=cast(System, IndexedSystem()),
+        ),
+    )
+    component = cast(PLEXOSGenerator, types.SimpleNamespace())
+    result = cast(Result[list[Any], Any], get_device_services(component, ctx))
+    assert result.value == [target_reserve]
+
+
+def test_node_number_getter_no_number(node_context):
+    assert extract_number_from_name("bus", node_context) == 100101
+    assert extract_number_from_name("anotherbus", node_context) == 100102
+    assert extract_number_from_name("bus", node_context) == 100101
 
 
 def make_context(tmp_path):
@@ -623,7 +706,7 @@ def test_pv_category_getters(tmp_path, category: str) -> None:
 )
 def test_classify_generator_category(category: str, expected_family: str) -> None:
     """Generator categories classify to the expected Sienna technology family."""
-    assert getters._classify_generator_category(category) == expected_family
+    assert utils._classify_generator_category(category) == expected_family
 
 
 def test_storage_getters(tmp_path) -> None:
@@ -1045,7 +1128,7 @@ def test_area_getter(tmp_path) -> None:
     _ = PLEXOSNode(name="NODE1", voltage=115.0)
 
 
-def test_plexos_node_translates_to_acbus():
+def test_plexos_node_translates_to_acbus(node_context):
     test_cases = [
         ("p126", 126),
         ("p126_OSW", 100101),
@@ -1059,5 +1142,5 @@ def test_plexos_node_translates_to_acbus():
         ("p126_OSW2", 2),
     ]
     for name, expected in test_cases:
-        result = getters.extract_number_from_name(name)
+        result = utils.extract_number_from_name(name, node_context)
         assert result == expected, f"Failed for {name}: got {result}, expected {expected}"

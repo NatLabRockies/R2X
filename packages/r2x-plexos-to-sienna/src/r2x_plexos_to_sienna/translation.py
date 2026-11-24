@@ -18,14 +18,14 @@ from r2x_plexos.models import (
 )
 
 from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
-from r2x_plexos_to_sienna.getters import (
+from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
+from r2x_plexos_to_sienna.utils import (
     _classify_generator_category_with_fallback,
     _sync_time_series_for_source,
     attach_constant_load_time_series,
     normalize_renewable_max_active_power_time_series,
     normalize_reserve_requirement_time_series,
 )
-from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
 
 logger = logging.getLogger(__name__)
 
