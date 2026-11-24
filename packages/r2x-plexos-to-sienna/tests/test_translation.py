@@ -252,13 +252,27 @@ def test_plexos_generator_time_series_attaches_to_sienna_generator():
 
 
 @pytest.mark.parametrize(
-    ("name", "values", "hours"),
+    ("name", "values", "hours", "initial_timestamp", "expected_values"),
     [
-        ("max_energy_day", [2.4, 1.2], [24, 24]),
-        ("max_energy_month", [74.4, 1.2], [744, 24]),
+        ("max_energy_day", [2.4, 1.2], [24, 24], datetime(2012, 1, 1), [1.0, 0.5]),
+        ("max_energy_month", [74.4, 1.2], [744, 24], datetime(2012, 1, 1), [1.0, 0.5]),
+        (
+            "max_energy_week",
+            [2.4, 1.2],
+            [168, 48],
+            datetime(2012, 1, 1),
+            [2.4 * 1000 / (100 * 168), 1.2 * 1000 / (100 * 48)],
+        ),
+        ("max_energy_year", [2.4, 1.2], [24, 24], datetime(2012, 12, 31), [1.0, 0.5]),
     ],
 )
-def test_plexos_hydro_energy_limits_translate_to_budget(name, values, hours):
+def test_plexos_hydro_energy_limits_translate_to_budget(
+    name,
+    values,
+    hours,
+    initial_timestamp,
+    expected_values,
+):
     source = _build_source_system()
     generator = next(source.get_components(PLEXOSGenerator))
     generator.category = "hyded"
@@ -267,7 +281,7 @@ def test_plexos_hydro_energy_limits_translate_to_budget(name, values, hours):
             name=name,
             data=np.repeat(values, hours),
             resolution=timedelta(hours=1),
-            initial_timestamp=datetime(2012, 1, 1),
+            initial_timestamp=initial_timestamp,
         ),
         generator,
     )
@@ -276,7 +290,7 @@ def test_plexos_hydro_energy_limits_translate_to_budget(name, values, hours):
 
     hydro = result.get_component(HydroDispatch, "GEN1")
     profile = result.get_time_series(hydro, name="hydro_budget")
-    np.testing.assert_allclose(profile.data, np.repeat([1.0, 0.5], hours))
+    np.testing.assert_allclose(profile.data, np.repeat(expected_values, hours))
 
 
 def test_plexos_nondispatchable_hydro_translates_to_fixed_output():

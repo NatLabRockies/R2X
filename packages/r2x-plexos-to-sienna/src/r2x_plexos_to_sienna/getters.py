@@ -186,13 +186,25 @@ def _get_hydro_budget_values(ts: SingleTimeSeries, capacity: float) -> np.ndarra
     if capacity <= 0:
         raise ValueError("Hydro budget conversion requires a positive generator capacity")
 
-    if ts.name not in {"max_energy_day", "max_energy_month"}:
+    if ts.name not in {
+        "max_energy_day",
+        "max_energy_week",
+        "max_energy_month",
+        "max_energy_year",
+    }:
         raise ValueError(f"Hydro budget conversion is not supported for {ts.name}")
     timestamps = (ts.initial_timestamp + index * ts.resolution for index in range(len(ts.data)))
-    periods = [
-        (time.year, time.month) if ts.name == "max_energy_month" else time.date() for time in timestamps
-    ]
-    # A horizon can end partway through a month, whose supplied budget must still be preserved.
+    if ts.name == "max_energy_day":
+        periods = [time.date() for time in timestamps]
+    elif ts.name == "max_energy_month":
+        periods = [(time.year, time.month) for time in timestamps]
+    elif ts.name == "max_energy_week":
+        # PLEXOS weeks are consecutive horizon intervals, not ISO calendar weeks.
+        periods = [index // (7 * 24) for index in range(len(ts.data))]
+    else:
+        periods = [time.year for time in timestamps]
+
+    # Divide by represented hours so partial periods at either horizon edge preserve their budgets.
     counts = Counter(periods)
     hours = np.array([counts[period] for period in periods])
 
