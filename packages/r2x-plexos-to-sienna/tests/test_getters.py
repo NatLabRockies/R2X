@@ -219,15 +219,18 @@ def test_get_reserve_type_and_direction():
 
 
 def test_get_trf_primary_shunt():
-    node = cast(PLEXOSTransformer, types.SimpleNamespace(primary_shunt=None))
-    result = cast(Result[Any, Any], get_trf_primary_shunt(node, None))
-    assert result.value is None
-    node = cast(PLEXOSTransformer, types.SimpleNamespace(primary_shunt=getters.Complex(real=1.0, imag=2.0)))
-    result = cast(Result[Any, Any], get_trf_primary_shunt(node, None))
-    assert result.value.real == 1.0
-    node = cast(PLEXOSTransformer, types.SimpleNamespace(primary_shunt=5.0))
-    result_val = cast(Result[Any, Any], get_trf_primary_shunt(node, None)).value
-    assert result_val.real == 0.0 and result_val.imag == 0.0
+    transformer = cast(
+        PLEXOSTransformer,
+        types.SimpleNamespace(ac_line_charging_susceptance=2.0),
+    )
+    primary_shunt = cast(Result[Any, Any], get_trf_primary_shunt(transformer, None)).value
+    assert primary_shunt.real == 0.0
+    assert primary_shunt.imag == 2.0
+
+    transformer = cast(PLEXOSTransformer, types.SimpleNamespace(ac_line_charging_susceptance=0.0))
+    primary_shunt = cast(Result[Any, Any], get_trf_primary_shunt(transformer, None)).value
+    assert primary_shunt.real == 0.0
+    assert primary_shunt.imag == 0.0
 
 
 def test_get_node_ext():
@@ -640,8 +643,8 @@ def test_hydro_storage_getters(tmp_path) -> None:
     assert getters.get_initial_storage_capacity_level(storage, context).unwrap() == 0.0
 
     limits = getters.get_storage_level_limits(storage, context).unwrap()
-    assert limits.min == 100.0
-    assert limits.max == 1000.0
+    assert limits.min == 100_000.0
+    assert limits.max == 1_000_000.0
 
 
 def test_line_getters(tmp_path) -> None:
@@ -808,11 +811,15 @@ def test_transformer_getters(tmp_path) -> None:
         rating=100.0,
         reactance=0.1,
         resistance=0.01,
+        ac_line_charging_susceptance=0.025,
     )
 
     assert getters.get_trf_active_power_flow(transformer, context).unwrap() == 0.0
     assert getters.get_trf_reactive_power_flow(transformer, context).unwrap() == 0.0
     assert getters.get_trf_base_power(transformer, context).unwrap() == 100.0
+    primary_shunt = getters.get_trf_primary_shunt(transformer, context).unwrap()
+    assert primary_shunt.real == 0.0
+    assert primary_shunt.imag == 0.025
 
 
 def test_transformer_arc_getter(tmp_path) -> None:
@@ -854,7 +861,7 @@ def test_transformer_arc_getter(tmp_path) -> None:
     context.target_system.add_component(bus1)
     context.target_system.add_component(bus2)
 
-    # Test getter - note: should use get_transformer_arc, not get_line_arc
+    # Test that line-arc lookup also handles transformer memberships.
     arc = getters.get_line_arc(xfmr, context).unwrap()
     assert arc is not None
     assert arc.from_to.name == "NODE1"
