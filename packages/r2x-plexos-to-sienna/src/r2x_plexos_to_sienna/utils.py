@@ -601,9 +601,9 @@ def _get_prime_mover_type(category: str) -> PrimeMoversType:
     with defaults_path.open() as f:
         defaults = json.load(f)
     mapping = defaults.get("prime_mover_types", {})
-    if category in mapping:
-        return getattr(PrimeMoversType, mapping[category], PrimeMoversType.OT)
     key = (category or "").strip().casefold()
+    if key in mapping:
+        return getattr(PrimeMoversType, mapping[key], PrimeMoversType.OT)
     for keyword, code in _PRIME_MOVER_KEYWORDS:
         if keyword in key:
             return getattr(PrimeMoversType, code, PrimeMoversType.OT)
@@ -616,9 +616,9 @@ def _get_fuel_type(category: str) -> ThermalFuels:
     with defaults_path.open() as f:
         defaults = json.load(f)
     mapping = defaults.get("fuel_types", {})
-    if category in mapping:
-        return getattr(ThermalFuels, mapping[category], ThermalFuels.NATURAL_GAS)
     key = (category or "").strip().casefold()
+    if key in mapping:
+        return getattr(ThermalFuels, mapping[key], ThermalFuels.NATURAL_GAS)
     for keyword, name in _FUEL_KEYWORDS:
         if keyword in key:
             return getattr(ThermalFuels, name, ThermalFuels.NATURAL_GAS)

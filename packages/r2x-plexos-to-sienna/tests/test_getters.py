@@ -49,6 +49,7 @@ from r2x_sienna.models.enums import (
     ReserveDirection,
     ReserveType,
     StorageTechs,
+    ThermalFuels,
 )
 from r2x_sienna.units import Voltage
 
@@ -648,6 +649,39 @@ def test_prime_mover_type_mapping(tmp_path) -> None:
         gen = PLEXOSGenerator(name=f"GEN_{category}", category=category, max_capacity=50.0)
         result = getters.get_prime_mover_type(gen, context).unwrap()
         assert result == expected_type, f"Category {category} should map to {expected_type}, got {result}"
+
+
+@pytest.mark.parametrize(
+    ("category", "expected"),
+    [
+        ("gas-cc-ccs_max", PrimeMoversType.CC),
+        (" GAS-CC-CCS_MAX ", PrimeMoversType.CC),
+        ("beccs_max", PrimeMoversType.ST),
+        ("battery_4", PrimeMoversType.BA),
+        ("hydnpd", PrimeMoversType.HY),
+        ("wind-ofs_12", PrimeMoversType.WS),
+        ("WIND-OFS", PrimeMoversType.WS),
+        ("egs_nearfield", PrimeMoversType.BT),
+    ],
+)
+def test_prime_mover_known_technology_variants(node_context, category, expected):
+    gen = PLEXOSGenerator(name="GEN", category=category, max_capacity=50.0)
+    assert get_prime_mover_type(gen, node_context).unwrap() == expected
+
+
+@pytest.mark.parametrize(
+    ("category", "expected"),
+    [
+        ("beccs_max", ThermalFuels.OTHER_BIOMASS_SOLIDS),
+        (" BECCS_MAX ", ThermalFuels.OTHER_BIOMASS_SOLIDS),
+        ("geohydro_pflash_1", ThermalFuels.GEOTHERMAL),
+        ("egs_nearfield", ThermalFuels.GEOTHERMAL),
+        ("other", ThermalFuels.OTHER),
+    ],
+)
+def test_fuel_known_technology_variants(node_context, category, expected):
+    gen = PLEXOSGenerator(name="GEN", category=category, max_capacity=50.0)
+    assert getters.get_fuel_type(gen, node_context).unwrap() == expected
 
 
 def test_prime_mover_type_unknown(tmp_path) -> None:

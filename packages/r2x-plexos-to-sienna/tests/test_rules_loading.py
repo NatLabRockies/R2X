@@ -352,3 +352,12 @@ def test_prime_mover_mappings_exist() -> None:
 
     for category in expected_categories:
         assert category in prime_movers, f"Missing prime mover mapping for {category}"
+
+
+def test_default_technology_mappings_use_sienna_enums() -> None:
+    from r2x_sienna.models.enums import PrimeMoversType, ThermalFuels
+
+    defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
+    defaults = json.loads(defaults_path.read_text())
+    assert set(defaults["prime_mover_types"].values()) <= set(PrimeMoversType.__members__)
+    assert set(defaults["fuel_types"].values()) <= set(ThermalFuels.__members__)
