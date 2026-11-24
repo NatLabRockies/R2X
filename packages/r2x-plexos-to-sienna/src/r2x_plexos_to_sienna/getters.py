@@ -75,7 +75,7 @@ from r2x_sienna.models.named_tuples import (
 )
 from r2x_sienna.units import get_magnitude
 
-from r2x_core import Ok, PluginContext, Result
+from r2x_core import Ok, PluginContext, Result, replace_single_time_series
 from r2x_core.getters import getter
 
 from .mappings import (
@@ -228,7 +228,19 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
                 and isinstance(target_component, PowerLoad)
                 and source_ts.name in {"max_active_power", "load", "fixed_load"}
             )
-            target_name = "max_active_power" if load else source_ts.name
+            reserve_requirement = (
+                isinstance(source_component, PLEXOSReserve)
+                and isinstance(target_component, VariableReserve)
+                and str(source_ts.name).strip().lower().replace("-", "_").replace(" ", "_")
+                in {"requirement", "min_provision"}
+            )
+            target_name = (
+                "max_active_power"
+                if load
+                else "requirement"
+                if reserve_requirement
+                else source_ts.name
+            )
             data = source_ts.data
             normalization = None
             if load:
@@ -298,6 +310,134 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
                     context.target_system, target_component, target_name, "get_max_active_power"
                 )
     return True
+
+
+def normalize_renewable_max_active_power_time_series(context: PluginContext) -> None:
+    """Normalize renewable MW profiles for PowerSystems scaling."""
+    source_system = context.source_system
+    target_system = context.target_system
+    if source_system is None or target_system is None:
+        return
+
+    for source_generator in source_system.get_components(PLEXOSGenerator):
+        for target_generator in _get_targets_by_name(context, source_generator):
+            if not isinstance(target_generator, (RenewableDispatch, RenewableNonDispatch)):
+                continue
+            if (
+                isinstance(target_generator, RenewableNonDispatch)
+                and target_generator.prime_mover_type == PrimeMoversType.HY
+            ):
+                continue
+
+            metadata_records = target_system.list_time_series_metadata(
+                target_generator,
+                name="max_active_power",
+                time_series_type=SingleTimeSeries,
+            )
+            if not metadata_records:
+                continue
+
+            capacity = _first_numeric(source_generator.max_capacity)
+            if capacity <= 0.0:
+                has_nonzero_values = any(
+                    np.any(
+                        target_system.get_time_series(
+                            target_generator,
+                            name="max_active_power",
+                            time_series_type=SingleTimeSeries,
+                            **metadata.features,
+                        ).data_array
+                    )
+                    for metadata in metadata_records
+                )
+                if has_nonzero_values:
+                    raise ValueError(
+                        f"Renewable power normalization requires a positive capacity for "
+                        f"{target_generator.name}"
+                    )
+                capacity = 1.0
+
+            for metadata in metadata_records:
+                profile = target_system.get_time_series(
+                    target_generator,
+                    name="max_active_power",
+                    time_series_type=SingleTimeSeries,
+                    **metadata.features,
+                )
+                normalized_profile = SingleTimeSeries.from_array(
+                    data=profile.data_array,
+                    name=profile.name,
+                    initial_timestamp=profile.initial_timestamp,
+                    resolution=profile.resolution,
+                    normalization=NormalizationByValue(value=capacity),
+                )
+                replace_single_time_series(
+                    target_system,
+                    target_generator,
+                    normalized_profile,
+                    **metadata.features,
+                )
+
+            set_time_series_scaling_factor_multiplier(
+                target_system,
+                target_generator,
+                "max_active_power",
+                "get_max_active_power",
+            )
+
+
+def normalize_reserve_requirement_time_series(context: PluginContext) -> None:
+    """Normalize reserve MW profiles and their static requirement for PowerSystems scaling."""
+    system = context.target_system
+    if system is None:
+        return
+
+    for reserve in system.get_components(VariableReserve):
+        metadata_records = system.list_time_series_metadata(
+            reserve,
+            name="requirement",
+            time_series_type=SingleTimeSeries,
+        )
+        if not metadata_records:
+            continue
+
+        profiles = [
+            (
+                system.get_time_series(
+                    reserve,
+                    name="requirement",
+                    time_series_type=SingleTimeSeries,
+                    **metadata.features,
+                ),
+                metadata.features,
+            )
+            for metadata in metadata_records
+        ]
+        peak_requirement = max(float(np.max(profile.data_array)) for profile, _ in profiles)
+        if peak_requirement <= 0.0:
+            reserve.requirement = 0.0
+            logger.warning(
+                "Cannot normalize requirement time series for {} without a positive MW basis",
+                reserve.name,
+            )
+            continue
+
+        system_base = system.base_power
+        if system_base is None or system_base <= 0.0:
+            raise ValueError("Reserve normalization requires a positive system base power")
+        reserve.requirement = peak_requirement / system_base
+
+        for profile, features in profiles:
+            normalized_profile = SingleTimeSeries.from_array(
+                data=profile.data_array,
+                name=profile.name,
+                initial_timestamp=profile.initial_timestamp,
+                resolution=profile.resolution,
+                normalization=NormalizationByValue(value=peak_requirement),
+            )
+            replace_single_time_series(system, reserve, normalized_profile, **features)
+
+        set_time_series_scaling_factor_multiplier(system, reserve, "requirement", "get_requirement")
 
 
 def attach_constant_load_time_series(context: PluginContext) -> None:

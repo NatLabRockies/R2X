@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import pytest
 from infrasys import SingleTimeSeries
+from infrasys.normalization import NormalizationByValue
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
     PLEXOSBattery,
@@ -19,6 +20,7 @@ from r2x_plexos.models import (
     PLEXOSReserve,
     PLEXOSZone,
 )
+from r2x_plexos_to_sienna import getters as plexos_getters
 from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
 from r2x_plexos_to_sienna.translation import plexos_to_sienna
 from r2x_sienna.models import (
@@ -28,6 +30,7 @@ from r2x_sienna.models import (
     HydroDispatch,
     LoadZone,
     PowerLoad,
+    RenewableDispatch,
     RenewableNonDispatch,
     ThermalStandard,
     TransmissionInterface,
@@ -297,6 +300,44 @@ def test_plexos_nondispatchable_hydro_translates_to_fixed_output():
     np.testing.assert_allclose(profile.data, [0.4, 0.6])
 
 
+@pytest.mark.parametrize("category", ["wind-ons", "pv"])
+def test_plexos_renewable_max_active_power_is_normalized(category, monkeypatch):
+    source = _build_source_system()
+    generator = source.get_component(PLEXOSGenerator, "GEN1")
+    generator.category = category
+    generator.max_capacity = 160.9
+    source_values = np.array([30.92, 36.54, 45.74])
+    source.add_time_series(
+        SingleTimeSeries(
+            name="max_active_power",
+            data=source_values,
+            resolution=timedelta(hours=1),
+            initial_timestamp=datetime(2026, 1, 1),
+        ),
+        generator,
+    )
+    scaling_calls = []
+    set_scaling = plexos_getters.set_time_series_scaling_factor_multiplier
+
+    def record_scaling(system, component, name, function_name):
+        scaling_calls.append((system, component, name, function_name))
+        set_scaling(system, component, name, function_name)
+
+    monkeypatch.setattr(plexos_getters, "set_time_series_scaling_factor_multiplier", record_scaling)
+
+    result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
+
+    renewable = result.get_component(RenewableDispatch, "GEN1")
+    profile = result.get_time_series(renewable, name="max_active_power")
+    (metadata,) = result.list_time_series_metadata(renewable, name="max_active_power")
+    assert isinstance(metadata.normalization, NormalizationByValue)
+    assert metadata.normalization.value == pytest.approx(160.9)
+    np.testing.assert_allclose(profile.data_array, source_values / 160.9)
+    np.testing.assert_allclose(profile.data_array * renewable.rating * renewable.base_power, source_values)
+    assert result.base_power == 100.0
+    assert scaling_calls == [(result, renewable, "max_active_power", "get_max_active_power")]
+
+
 def test_plexos_to_sienna_translates_battery():
     source = _build_source_system()
     result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
@@ -318,6 +359,57 @@ def test_plexos_to_sienna_translates_reserve():
     assert len(reserves) == 1
     assert reserves[0].name == "SPIN1"
     assert reserves[0].time_frame == 300.0
+
+
+@pytest.mark.parametrize("series_name", ["requirement", "min_provision"])
+def test_plexos_reserve_requirement_is_normalized(series_name, monkeypatch):
+    source = _build_source_system()
+    reserve = source.get_component(PLEXOSReserve, "SPIN1")
+    source_profiles = {
+        "base": np.array([2359.3, 2295.3]),
+        "stress": np.array([4782.0, 2500.0]),
+    }
+    for scenario, values in source_profiles.items():
+        source.add_time_series(
+            SingleTimeSeries(
+                name=series_name,
+                data=values,
+                resolution=timedelta(hours=1),
+                initial_timestamp=datetime(2026, 1, 1),
+            ),
+            reserve,
+            scenario=scenario,
+        )
+    scaling_calls = []
+    set_scaling = plexos_getters.set_time_series_scaling_factor_multiplier
+
+    def record_scaling(system, component, name, function_name):
+        scaling_calls.append((system, component, name, function_name))
+        set_scaling(system, component, name, function_name)
+
+    monkeypatch.setattr(plexos_getters, "set_time_series_scaling_factor_multiplier", record_scaling)
+
+    result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
+
+    target_reserve = result.get_component(VariableReserve, "SPIN1")
+    peak_requirement = 4782.0
+    assert target_reserve.requirement == pytest.approx(peak_requirement / 100.0)
+    assert result.base_power == 100.0
+    for scenario, values in source_profiles.items():
+        profile = result.get_time_series(target_reserve, name="requirement", scenario=scenario)
+        (metadata,) = result.list_time_series_metadata(
+            target_reserve,
+            name="requirement",
+            scenario=scenario,
+        )
+        assert isinstance(metadata.normalization, NormalizationByValue)
+        assert metadata.normalization.value == pytest.approx(peak_requirement)
+        np.testing.assert_allclose(profile.data_array, values / peak_requirement)
+        np.testing.assert_allclose(
+            profile.data_array * target_reserve.requirement * result.base_power,
+            values,
+        )
+    assert scaling_calls == [(result, target_reserve, "requirement", "get_requirement")]
 
 
 def test_plexos_to_sienna_translates_interface():
