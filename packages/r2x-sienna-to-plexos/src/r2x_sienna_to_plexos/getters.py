@@ -2477,36 +2477,66 @@ def _has_explicit_side_reservoir_for_base(
     return False
 
 
+def _get_reservoir_storage_side_skip_reason(
+    source_component: HydroReservoir,
+    context: PluginContext,
+    side: str,
+) -> str | None:
+    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
+        return (
+            f"Skipping {side.lower()} storage conversion for reservoir "
+            f"'{source_component.name}': no HydroPumpTurbine association"
+        )
+
+    suffix_location = _get_reservoir_name_suffix_location(source_component)
+    if side == "HEAD":
+        if suffix_location == "TAIL":
+            return (
+                f"Skipping head storage conversion for reservoir '{source_component.name}': "
+                "name indicates tail reservoir"
+            )
+        if suffix_location is None and _has_explicit_side_reservoir_for_base(
+            source_component, context, side="HEAD"
+        ):
+            return (
+                f"Skipping head storage conversion for reservoir '{source_component.name}': "
+                "explicit head reservoir already exists for this plant"
+            )
+    else:
+        if suffix_location == "HEAD":
+            return (
+                f"Skipping tail storage conversion for reservoir '{source_component.name}': "
+                "name indicates head reservoir"
+            )
+        if suffix_location is None and _has_explicit_side_reservoir_for_base(
+            source_component, context, side="TAIL"
+        ):
+            return (
+                f"Skipping tail storage conversion for reservoir '{source_component.name}': "
+                "explicit tail reservoir already exists for this plant"
+            )
+
+    return None
+
+
+@getter
+def should_create_head_storage(source_component: HydroReservoir, context: PluginContext) -> Result[bool, Any]:
+    return Ok(_get_reservoir_storage_side_skip_reason(source_component, context, "HEAD") is None)
+
+
+@getter
+def should_create_tail_storage(source_component: HydroReservoir, context: PluginContext) -> Result[bool, Any]:
+    return Ok(_get_reservoir_storage_side_skip_reason(source_component, context, "TAIL") is None)
+
+
 @getter
 def get_head_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the head reservoir (appends _head), using plant_name from ext if available."""
-    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
-        return Err(
-            ValueError(
-                f"Skipping head storage conversion for reservoir '{source_component.name}': no HydroPumpTurbine association"
-            )
-        )
-
-    # Only explicit suffixes gate conversion. Unsuffixed reservoirs are expanded
-    # into both _head and _tail storages.
-    suffix_location = _get_reservoir_name_suffix_location(source_component)
-    if suffix_location == "TAIL":
-        return Err(
-            ValueError(
-                f"Skipping head storage conversion for reservoir '{source_component.name}': name indicates tail reservoir"
-            )
-        )
-
-    if suffix_location is None and _has_explicit_side_reservoir_for_base(
-        source_component, context, side="HEAD"
-    ):
-        return Err(
-            ValueError(
-                f"Skipping head storage conversion for reservoir '{source_component.name}': explicit head reservoir already exists for this plant"
-            )
-        )
+    skip_reason = _get_reservoir_storage_side_skip_reason(source_component, context, "HEAD")
+    if skip_reason is not None:
+        return Err(ValueError(skip_reason))
 
     base = _get_reservoir_storage_base_name(source_component)
     return Ok(f"{base}_head")
@@ -2528,31 +2558,9 @@ def get_tail_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the tail reservoir (appends _tail), using plant_name from ext if available."""
-    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
-        return Err(
-            ValueError(
-                f"Skipping tail storage conversion for reservoir '{source_component.name}': no HydroPumpTurbine association"
-            )
-        )
-
-    # Only explicit suffixes gate conversion. Unsuffixed reservoirs are expanded
-    # into both _head and _tail storages.
-    suffix_location = _get_reservoir_name_suffix_location(source_component)
-    if suffix_location == "HEAD":
-        return Err(
-            ValueError(
-                f"Skipping tail storage conversion for reservoir '{source_component.name}': name indicates head reservoir"
-            )
-        )
-
-    if suffix_location is None and _has_explicit_side_reservoir_for_base(
-        source_component, context, side="TAIL"
-    ):
-        return Err(
-            ValueError(
-                f"Skipping tail storage conversion for reservoir '{source_component.name}': explicit tail reservoir already exists for this plant"
-            )
-        )
+    skip_reason = _get_reservoir_storage_side_skip_reason(source_component, context, "TAIL")
+    if skip_reason is not None:
+        return Err(ValueError(skip_reason))
 
     base = _get_reservoir_storage_base_name(source_component)
     return Ok(f"{base}_tail")
