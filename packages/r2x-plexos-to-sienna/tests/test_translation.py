@@ -45,11 +45,11 @@ from r2x_sienna.models import (
 from r2x_core import System
 
 
-def _build_source_system():
+def _build_source_system(node_name: str = "NODE1"):
     """Build a minimal PLEXOS source system with topology and components."""
     source = System(name="plexos-source", auto_add_composed_components=True)
 
-    node = PLEXOSNode(name="NODE1", voltage=115.0, is_slack_bus=0)
+    node = PLEXOSNode(name=node_name, voltage=115.0, is_slack_bus=0)
     source.add_component(node)
 
     region = PLEXOSRegion(name="REGION1", load=200.0)
@@ -130,13 +130,14 @@ def test_plexos_to_sienna_translates_zone():
 
 
 def test_plexos_to_sienna_translates_node_to_bus():
-    source = _build_source_system()
+    source = _build_source_system(node_name="NODE_0_123456")
     result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
 
     buses = list(result.get_components(ACBus))
-    assert any(b.name == "NODE1" for b in buses)
+    assert any(b.name == "NODE_0_123456" for b in buses)
 
-    bus = next(b for b in buses if b.name == "NODE1")
+    bus = next(b for b in buses if b.name == "NODE_0_123456")
+    assert bus.number == 123456
     assert bus.base_voltage.magnitude == 115.0
     assert bus.area is result.get_component(Area, "REGION1")
 

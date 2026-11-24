@@ -73,10 +73,28 @@ def test_get_node_number_with_name():
     assert result.value == 123
 
 
-def test_get_node_number_default():
-    node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name=None))
+@pytest.mark.parametrize("number", [0, -1])
+def test_get_node_number_ignores_nonpositive_numbers(number):
+    node = cast(PLEXOSNode, types.SimpleNamespace(number=number, name="NODE_0_123456"))
     result = cast(Result[int, Any], get_node_number(node, None))
-    assert result.value == 1
+    assert result.value == 123456
+
+
+def test_get_node_number_reserves_explicit_numbers_and_uses_next_name_group():
+    first_node = cast(PLEXOSNode, types.SimpleNamespace(number=42, name="EXPLICIT"))
+    duplicate_node = cast(PLEXOSNode, types.SimpleNamespace(number=42, name="NODE_42_43"))
+
+    assert cast(Result[int, Any], get_node_number(first_node, None)).value == 42
+    assert 42 in getters.PLEXOS_NUMBER_USED
+    assert cast(Result[int, Any], get_node_number(duplicate_node, None)).value == 43
+    assert cast(Result[int, Any], get_node_number(duplicate_node, None)).value == 43
+
+
+def test_get_node_number_default():
+    first_node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name=None))
+    second_node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name=None))
+    assert cast(Result[int, Any], get_node_number(first_node, None)).value == 100101
+    assert cast(Result[int, Any], get_node_number(second_node, None)).value == 100102
 
 
 def test_get_base_voltage_all_branches():
@@ -977,15 +995,15 @@ def test_area_getter(tmp_path) -> None:
 def test_plexos_node_translates_to_acbus():
     test_cases = [
         ("p126", 126),
-        ("p126_OSW", 1260),
+        ("p126_OSW", 100101),
         ("p1", 1),
         ("p100", 100),
-        ("bus", 100101),
-        ("anotherbus", 100102),
-        ("bus", 100101),
+        ("bus", 100102),
+        ("anotherbus", 100103),
+        ("bus", 100102),
         ("foo123bar", 123),
-        ("no_digits_here", 100103),
-        ("p126_OSW2", 12600),
+        ("no_digits_here", 100104),
+        ("p126_OSW2", 2),
     ]
     for name, expected in test_cases:
         result = getters.extract_number_from_name(name)

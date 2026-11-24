@@ -91,8 +91,8 @@ NATURAL_UNITS: UnitSystem = UnitSystem.NATURAL_UNITS
 
 PLEXOS_NUMBER_BASE = 100100
 PLEXOS_NUMBER_COUNTER = PLEXOS_NUMBER_BASE
-PLEXOS_NUMBER_MAP = {}
-PLEXOS_NUMBER_USED = set()
+PLEXOS_NUMBER_MAP: dict[str, int] = {}
+PLEXOS_NUMBER_USED: set[int] = set()
 
 P2S_TS_PENDING_CACHE_KEY = "p2s_pending_ts"
 
@@ -534,35 +534,43 @@ def _sync_time_series_for_source(source_component: Any, context: PluginContext) 
         pending[_pending_key_for_source(source_component)] = source_component
 
 
-def extract_number_from_name(name: str) -> int:
-    """
-    Extract the first group of digits from a string like 'p126_OSW' or 'ACKRLNTC_9_1363'.
-    Ensure the returned number is unique for each name.
-    If no digits are found, assign a unique dummy number >= 100101.
-    """
-    global PLEXOS_NUMBER_COUNTER, PLEXOS_NUMBER_MAP, PLEXOS_NUMBER_USED
+def _reserve_plexos_number(value: Any) -> int | None:
+    try:
+        candidate = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
-    if name in PLEXOS_NUMBER_MAP:
-        return PLEXOS_NUMBER_MAP[name]
+    if candidate <= 0 or candidate in PLEXOS_NUMBER_USED:
+        return None
 
-    match = re.search(r"(\d+)", name)
-    if match:
-        base_number = int(match.group(1))
-        candidate = base_number
-        # Ensure uniqueness
-        while candidate in PLEXOS_NUMBER_USED:
-            # Try appending a digit or incrementing
-            candidate = candidate * 10
-        PLEXOS_NUMBER_MAP[name] = candidate
-        PLEXOS_NUMBER_USED.add(candidate)
-        return candidate
+    PLEXOS_NUMBER_USED.add(candidate)
+    return candidate
+
+
+def _next_plexos_number() -> int:
+    global PLEXOS_NUMBER_COUNTER
 
     while True:
         PLEXOS_NUMBER_COUNTER += 1
-        if PLEXOS_NUMBER_COUNTER not in PLEXOS_NUMBER_USED:
-            PLEXOS_NUMBER_MAP[name] = PLEXOS_NUMBER_COUNTER
-            PLEXOS_NUMBER_USED.add(PLEXOS_NUMBER_COUNTER)
-            return PLEXOS_NUMBER_COUNTER
+        candidate = _reserve_plexos_number(PLEXOS_NUMBER_COUNTER)
+        if candidate is not None:
+            return candidate
+
+
+def extract_number_from_name(name: str) -> int:
+    """Return the first positive, unused digit group, or a unique generated number."""
+    if name in PLEXOS_NUMBER_MAP:
+        return PLEXOS_NUMBER_MAP[name]
+
+    for match in re.finditer(r"(\d+)", name):
+        candidate = _reserve_plexos_number(match.group(1))
+        if candidate is not None:
+            PLEXOS_NUMBER_MAP[name] = candidate
+            return candidate
+
+    candidate = _next_plexos_number()
+    PLEXOS_NUMBER_MAP[name] = candidate
+    return candidate
 
 
 def _classify_generator_category(category: str | None) -> str:
@@ -848,14 +856,22 @@ def get_node_ext(component: PLEXOSNode, context: PluginContext) -> Result[dict[s
 
 @getter
 def get_node_number(component: PLEXOSNode, context: PluginContext) -> Result[int, Any]:
-    """Assign node number from attribute, or extract from name if not present."""
-    if hasattr(component, "number") and component.number is not None:
-        return Ok(int(component.number))
-    if hasattr(component, "name") and component.name:
-        extracted = extract_number_from_name(component.name)
-        if extracted is not None:
-            return Ok(extracted)
-    return Ok(1)
+    """Return a unique positive node number from Number, the name, or a counter."""
+    name = getattr(component, "name", None)
+    name = str(name) if name else None
+    if name is not None and name in PLEXOS_NUMBER_MAP:
+        return Ok(PLEXOS_NUMBER_MAP[name])
+
+    number = _reserve_plexos_number(getattr(component, "number", None))
+    if number is not None:
+        if name is not None:
+            PLEXOS_NUMBER_MAP[name] = number
+        return Ok(number)
+
+    if name is not None:
+        return Ok(extract_number_from_name(name))
+
+    return Ok(_next_plexos_number())
 
 
 @getter
