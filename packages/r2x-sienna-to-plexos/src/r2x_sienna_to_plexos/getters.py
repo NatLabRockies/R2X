@@ -838,7 +838,7 @@ def _attach_generator_time_series(
             **metadata.features,
         ):
             if ts.name == "max_active_power":
-                max_mw = _get_generator_capacity_mw(source_gen)
+                max_mw = _get_max_active_power_time_series_capacity_mw(source_gen)
                 if max_mw is not None and max_mw > 0.0:
                     data = data * max_mw
             fresh_ts = SingleTimeSeries.from_array(
@@ -1957,8 +1957,11 @@ def _get_generator_capacity_mw(source_component: object) -> float | None:
     limits = getattr(source_component, "active_power_limits", None)
     if isinstance(limits, dict):
         max_value = limits.get("max")
-        if isinstance(max_value, int | float):
-            return abs(float(max_value))
+        magnitude = get_magnitude(max_value)
+        if magnitude is None and isinstance(max_value, int | float):
+            magnitude = float(max_value)
+        if magnitude is not None:
+            return abs(float(magnitude) * resolve_base_power(source_component))
 
     try:
         value = sienna_get_max_active_power(source_component)
@@ -1969,6 +1972,18 @@ def _get_generator_capacity_mw(source_component: object) -> float | None:
         return abs(float(value))
 
     return None
+
+
+def _get_max_active_power_time_series_capacity_mw(source_component: object) -> float | None:
+    if isinstance(source_component, (ThermalStandard, ThermalMultiStart, HydroDispatch)):
+        try:
+            value = sienna_get_max_active_power(source_component)
+        except (TypeError, NotImplementedError, AttributeError, KeyError):
+            value = None
+        if value is not None:
+            return abs(float(value))
+
+    return _get_generator_capacity_mw(source_component)
 
 
 @getter

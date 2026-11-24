@@ -453,10 +453,14 @@ def test_plexos_hvdc_flow_limits_translate_to_sienna_base(tmp_path):
     result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
 
     translated = result.get_component(TwoTerminalGenericHVDCLine, "HVDC1")
-    assert translated.active_power_limits_from.min == pytest.approx(-0.25)
-    assert translated.active_power_limits_from.max == pytest.approx(0.5)
-    assert translated.active_power_limits_to.min == pytest.approx(-0.25)
-    assert translated.active_power_limits_to.max == pytest.approx(0.5)
+    assert translated.active_power_limits_from.min == pytest.approx(-0.5)
+    assert translated.active_power_limits_from.max == pytest.approx(1.0)
+    assert translated.active_power_limits_to.min == pytest.approx(-0.5)
+    assert translated.active_power_limits_to.max == pytest.approx(1.0)
+    assert translated.active_power_limits_from.min * result.base_power == pytest.approx(-50.0)
+    assert translated.active_power_limits_from.max * result.base_power == pytest.approx(100.0)
+    assert translated.active_power_limits_to.min * result.base_power == pytest.approx(-50.0)
+    assert translated.active_power_limits_to.max * result.base_power == pytest.approx(100.0)
 
 
 def test_plexos_to_sienna_translates_reserve():

@@ -980,8 +980,8 @@ def get_line_losses(component: PLEXOSLine, context: PluginContext) -> Result[flo
     return Ok(_first_numeric(value))
 
 
-def _get_system_base_power(context: PluginContext) -> float:
-    value = getattr(context.source_system, "base_power", None)
+def _get_target_system_base_power(context: PluginContext) -> float:
+    value = getattr(context.target_system, "base_power", None)
     try:
         base_power = float(value) if value is not None else 100.0
     except (TypeError, ValueError):
@@ -990,7 +990,7 @@ def _get_system_base_power(context: PluginContext) -> float:
 
 
 def _get_hvdc_active_power_limits(component: PLEXOSLine, context: PluginContext) -> MinMax:
-    base_power = _get_system_base_power(context)
+    base_power = _get_target_system_base_power(context)
     min_flow_value = getattr(component, "min_flow", None)
     max_flow_value = getattr(component, "max_flow", None)
     min_flow = _first_numeric(min_flow_value) if min_flow_value is not None else 0.0
