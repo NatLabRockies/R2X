@@ -349,10 +349,13 @@ def normalize_renewable_max_active_power_time_series(context: PluginContext) -> 
     if source_system is None or target_system is None:
         return
 
+    renewable_targets_by_name: dict[str, list[RenewableDispatch | RenewableNonDispatch]] = {}
+    for target_type in (RenewableDispatch, RenewableNonDispatch):
+        for target_generator in target_system.get_components(target_type):
+            renewable_targets_by_name.setdefault(target_generator.name, []).append(target_generator)
+
     for source_generator in source_system.get_components(PLEXOSGenerator):
-        for target_generator in _get_targets_by_name(context, source_generator):
-            if not isinstance(target_generator, (RenewableDispatch, RenewableNonDispatch)):
-                continue
+        for target_generator in renewable_targets_by_name.get(source_generator.name, []):
             if (
                 isinstance(target_generator, RenewableNonDispatch)
                 and target_generator.prime_mover_type == PrimeMoversType.HY
