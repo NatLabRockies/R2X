@@ -247,11 +247,7 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
                 in {"requirement", "min_provision"}
             )
             target_name = (
-                "max_active_power"
-                if load
-                else "requirement"
-                if reserve_requirement
-                else source_ts.name
+                "max_active_power" if load else "requirement" if reserve_requirement else source_ts.name
             )
             data = source_ts.data
             normalization = None
