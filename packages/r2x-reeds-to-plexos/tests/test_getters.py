@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from r2x_plexos.models import PLEXOSLine, PLEXOSNode, PLEXOSReserve, PLEXOSStorage, PLEXOSZone
 from r2x_reeds.models import (
     FromTo_ToFrom,
@@ -242,14 +243,14 @@ def test_basic_getters_return_values(tmp_path):
     )
 
 
-def test_ramp_rate_getters_convert_fraction_hour_to_mw_minute(tmp_path):
+def test_ramp_rate_getters_convert_fraction_per_minute_to_mw_per_minute(tmp_path):
     context = make_context(tmp_path)
     objs = setup_systems(context)
 
-    assert getters.ramp_rate_up_mw_per_minute(objs["thermal"], context).unwrap() == 50.0 / 60.0
-    assert getters.ramp_rate_down_mw_per_minute(objs["thermal"], context).unwrap() == 50.0 / 60.0
-    assert getters.ramp_rate_up_mw_per_minute(objs["hydro"], context).unwrap() == 40.0 / 60.0
-    assert getters.ramp_rate_down_mw_per_minute(objs["hydro"], context).unwrap() == 40.0 / 60.0
+    assert getters.ramp_rate_up_mw_per_minute(objs["thermal"], context).unwrap() == 50.0
+    assert getters.ramp_rate_down_mw_per_minute(objs["thermal"], context).unwrap() == 50.0
+    assert getters.ramp_rate_up_mw_per_minute(objs["hydro"], context).unwrap() == 40.0
+    assert getters.ramp_rate_down_mw_per_minute(objs["hydro"], context).unwrap() == 40.0
 
 
 def test_ramp_rate_getters_convert_percentage_defaults_but_keep_absolute_defaults(tmp_path, monkeypatch):
@@ -261,8 +262,8 @@ def test_ramp_rate_getters_convert_percentage_defaults_but_keep_absolute_default
         return {"ramp_rate_up": 0.0, "ramp_rate_down": 0.0, "max_ramp_up_percentage": 0.05}.get(key, 0.0)
 
     monkeypatch.setattr(getters, "_get_defaults", percentage_defaults)
-    assert getters.ramp_rate_up_mw_per_minute(objs["thermal"], context).unwrap() == 50.0 * 0.05 / 60.0
-    assert getters.ramp_rate_down_mw_per_minute(objs["thermal"], context).unwrap() == 50.0 * 0.05 / 60.0
+    assert getters.ramp_rate_up_mw_per_minute(objs["thermal"], context).unwrap() == 50.0 * 0.05
+    assert getters.ramp_rate_down_mw_per_minute(objs["thermal"], context).unwrap() == 50.0 * 0.05
 
     monkeypatch.setattr(
         getters,
@@ -271,6 +272,81 @@ def test_ramp_rate_getters_convert_percentage_defaults_but_keep_absolute_default
     )
     assert getters.ramp_rate_up_mw_per_minute(objs["thermal"], context).unwrap() == 30.0
     assert getters.ramp_rate_down_mw_per_minute(objs["thermal"], context).unwrap() == 30.0
+
+
+@pytest.mark.parametrize("generator_type", [ReEDSThermalGenerator, ReEDSHydroGenerator])
+@pytest.mark.parametrize("capacity", [60.0, 320.0])
+@pytest.mark.parametrize("source_rate", [None, 0.08], ids=["default", "explicit"])
+def test_ramp_fraction_scales_once_and_explicit_source_takes_precedence(
+    tmp_path,
+    monkeypatch,
+    generator_type,
+    capacity,
+    source_rate,
+):
+    context = make_context(tmp_path)
+    fields = (
+        {"heat_rate": 9.0, "fuel_type": "gas"}
+        if generator_type is ReEDSThermalGenerator
+        else {
+            "is_dispatchable": True,
+        }
+    )
+    generator = generator_type(
+        name="GEN",
+        region=ReEDSRegion(name="p1"),
+        technology="test",
+        capacity=capacity,
+        ramp_rate=source_rate,
+        **fields,
+    )
+    monkeypatch.setattr(
+        getters,
+        "_get_defaults",
+        lambda _technology, key: {"max_ramp_up_percentage": 0.05}.get(key, 0.0),
+    )
+    expected = capacity * (0.05 if source_rate is None else source_rate)
+    assert getters.ramp_rate_up_mw_per_minute(generator, context).unwrap() == pytest.approx(expected)
+    assert getters.ramp_rate_down_mw_per_minute(generator, context).unwrap() == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("capacity", [60.0, 320.0])
+def test_absolute_directional_ramp_defaults_are_not_capacity_scaled(tmp_path, monkeypatch, capacity):
+    context = make_context(tmp_path)
+    generator = ReEDSThermalGenerator(
+        name="GEN",
+        region=ReEDSRegion(name="p1"),
+        technology="test",
+        capacity=capacity,
+        heat_rate=9.0,
+        fuel_type="gas",
+    )
+    monkeypatch.setattr(
+        getters,
+        "_get_defaults",
+        lambda _technology, key: {
+            "ramp_rate_up": 30.0,
+            "ramp_rate_down": 20.0,
+            "max_ramp_up_percentage": 0.05,
+        }.get(key, 0.0),
+    )
+    assert getters.ramp_rate_up_mw_per_minute(generator, context).unwrap() == 30.0
+    assert getters.ramp_rate_down_mw_per_minute(generator, context).unwrap() == 20.0
+
+
+def test_unresolved_ramp_defaults_use_one_fraction_per_minute(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    generator = ReEDSThermalGenerator(
+        name="GEN",
+        region=ReEDSRegion(name="p1"),
+        technology="unmatched",
+        capacity=320.0,
+        heat_rate=9.0,
+        fuel_type="gas",
+    )
+    monkeypatch.setattr(getters, "_get_defaults", lambda *_args: 0.0)
+    assert getters.ramp_rate_up_mw_per_minute(generator, context).unwrap() == 320.0
+    assert getters.ramp_rate_down_mw_per_minute(generator, context).unwrap() == 320.0
 
 
 def test_gen_startup_cost_scales_default_per_mw_cost_by_capacity(tmp_path, monkeypatch):

@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import json
+import math
+from dataclasses import dataclass
 from importlib.resources import files
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from plexosdb import CollectionEnum
+from r2x_reeds.models import ReEDSGenerator
 
 from r2x_core import Err, Ok, Result
 from r2x_core.getters import getter
+from r2x_core.utils import evaluate_rule_filter, iter_components, resolve_component_type
 
 if TYPE_CHECKING:
     from r2x_plexos.models import PLEXOSLine, PLEXOSNode
     from r2x_reeds.models import (
-        ReEDSGenerator,
         ReEDSHydroGenerator,
         ReEDSInterface,
         ReEDSRegion,
@@ -612,58 +615,175 @@ def reserve_requirement(component: ReEDSReserve, context: PluginContext) -> Resu
     return Ok(value)
 
 
+@dataclass(frozen=True)
+class _ResolvedGeneratorRampRates:
+    up: float
+    down: float
+    fallback_directions: tuple[str, ...] = ()
+
+
+def _resolve_generator_ramp_rates(
+    component: ReEDSGenerator,
+    context: PluginContext,
+) -> Result[_ResolvedGeneratorRampRates, ValueError]:
+    capacity = float(component.capacity)
+    if not math.isfinite(capacity) or capacity < 0.0:
+        return Err(ValueError(f"Invalid capacity {capacity!r} for generator {component.name!r}"))
+
+    def checked(value: float, description: str) -> float:
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"Invalid {description} {value!r} for generator {component.name!r}")
+        return value
+
+    try:
+        ramp_rate = getattr(component, "ramp_rate", None)
+        if ramp_rate is not None:
+            value = checked(float(ramp_rate), "source ramp rate") * capacity
+            value = checked(value, "ramp limit")
+            return Ok(_ResolvedGeneratorRampRates(up=value, down=value))
+
+        fraction: float | None = None
+        fallback = getattr(context.config, "missing_ramp_rate_fraction_per_minute", 1.0)
+        values: dict[str, float] = {}
+        fallback_directions: list[str] = []
+        for direction in ("up", "down"):
+            absolute = checked(
+                _get_defaults(component.technology, f"ramp_rate_{direction}"),
+                f"default ramp {direction}",
+            )
+            if absolute > 0.0:
+                values[direction] = absolute
+                continue
+            if fraction is None:
+                fraction = checked(
+                    _get_defaults(component.technology, "max_ramp_up_percentage"), "default fraction"
+                )
+            if fraction > 0.0:
+                values[direction] = checked(fraction * capacity, "ramp limit")
+            elif fallback is not None:
+                value = checked(float(fallback), "fallback fraction")
+                values[direction] = checked(value * capacity, "ramp limit")
+                fallback_directions.append(direction)
+            else:
+                raise ValueError(
+                    f"Generator {component.name!r} (technology={component.technology!r}, "
+                    f"capacity={capacity} MW) has no source ramp rate or usable {direction} default; "
+                    "missing_ramp_rate_fraction_per_minute is null"
+                )
+    except ValueError as exc:
+        return Err(exc)
+
+    return Ok(
+        _ResolvedGeneratorRampRates(
+            up=values["up"], down=values["down"], fallback_directions=tuple(fallback_directions)
+        )
+    )
+
+
+def _record_generator_ramp_rates(
+    component: ReEDSGenerator,
+    context: PluginContext,
+    rates: _ResolvedGeneratorRampRates,
+) -> None:
+    warning_key = f"generator_ramp_warning:{component.uuid}"
+    if rates.fallback_directions and warning_key not in context.metadata:
+        logger.warning(
+            "Missing ramp rate for generator {!r}, technology={!r}, capacity={} MW; "
+            "using configured fallback {} fraction/min for {}: up={} MW/min, down={} MW/min",
+            component.name,
+            component.technology,
+            component.capacity,
+            getattr(context.config, "missing_ramp_rate_fraction_per_minute", 1.0),
+            ", ".join(rates.fallback_directions),
+            rates.up,
+            rates.down,
+        )
+        context.metadata[warning_key] = True
+
+
+def prepare_generator_ramp_rates(context: PluginContext) -> None:
+    """Resolve limits for generators selected by rules that apply ramp getters."""
+    if context.source_system is None:
+        raise ValueError("Source system is required to resolve generator ramp rates")
+    if not context.rules:
+        raise ValueError("Translation rules are required to select generators with ramp limits")
+    candidates: dict[str, ReEDSGenerator] = {}
+    ramp_getter_names = {"ramp_rate_up_mw_per_minute", "ramp_rate_down_mw_per_minute"}
+    for rule in context.rules:
+        if rule.system != "source" or not any(
+            (value if isinstance(value, str) else getattr(value, "__name__", None)) in ramp_getter_names
+            for value in rule.getters.values()
+        ):
+            continue
+        source_type = resolve_component_type(rule.get_source_types()[0], context=context).unwrap_or_raise()
+        if not isinstance(source_type, type) or not issubclass(source_type, ReEDSGenerator):
+            raise ValueError(f"Ramp getter rule {rule} must select ReEDS generators")
+        for component in iter_components(context.source_system, class_type=source_type):
+            if not isinstance(component, ReEDSGenerator):
+                raise ValueError(f"Ramp getter rule {rule} selected a non-generator {component.name!r}")
+            if rule.filter is not None and not evaluate_rule_filter(
+                component, rule_filter=rule.filter, context=context
+            ):
+                continue
+            candidates[str(component.uuid)] = component
+    resolved: list[tuple[ReEDSGenerator, _ResolvedGeneratorRampRates]] = []
+    errors: list[str] = []
+    for component in candidates.values():
+        result = _resolve_generator_ramp_rates(component, context)
+        if result.is_err():
+            errors.append(str(result.unwrap_err()))
+        else:
+            resolved.append((component, result.unwrap()))
+    if errors:
+        message = "Cannot translate generator ramp rates: " + "; ".join(errors)
+        logger.error(message)
+        raise ValueError(message)
+    for component, rates in resolved:
+        context.metadata[f"generator_ramp_rates:{component.uuid}"] = rates
+        _record_generator_ramp_rates(component, context, rates)
+
+
+def _generator_ramp_value(
+    component: ReEDSGenerator,
+    context: PluginContext,
+    direction: str,
+) -> Result[float, ValueError]:
+    rates = context.metadata.get(f"generator_ramp_rates:{component.uuid}")
+    if not isinstance(rates, _ResolvedGeneratorRampRates):
+        result = _resolve_generator_ramp_rates(component, context)
+        if result.is_err():
+            error = result.unwrap_err()
+            logger.error("Failed to resolve generator ramp rate: {}", error)
+            return Err(error)
+        rates = result.unwrap()
+        _record_generator_ramp_rates(component, context, rates)
+    return Ok(rates.up if direction == "up" else rates.down)
+
+
 @getter
 def ramp_rate_up_mw_per_minute(
     component: ReEDSGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert fraction/hour ramp rates to the MW/minute required by PLEXOS."""
-    ramp_rate = getattr(component, "ramp_rate", None)
-    technology = getattr(component, "technology", "")
-    capacity = getattr(component, "capacity", 0.0)
+    """Convert fractional ramp rates to PLEXOS MW/min using final generator capacity.
 
-    if ramp_rate is None:
-        default_ramp_up = _get_defaults(technology, "ramp_rate_up")
-        if default_ramp_up is not None and default_ramp_up > 0.0:
-            return Ok(float(default_ramp_up))
-        default_ramp_up = _get_defaults(technology, "max_ramp_up_percentage")
-        if default_ramp_up is not None and default_ramp_up > 0.0:
-            if capacity == 0.0:
-                capacity = (
-                    _get_defaults(technology, "capacity_MW")
-                    or _get_defaults(technology, "average_capacity_MW")
-                    or 0.0
-                )
-            return Ok(float(default_ramp_up) * float(capacity) / 60.0)
-        return Ok(0.0)
-
-    return Ok(float(ramp_rate) * float(capacity) / 60.0)
+    Source ``ramp_rate`` and ``max_ramp_up_percentage`` defaults are fractions of
+    installed capacity per minute. ``ramp_rate_up`` defaults are already MW/min
+    and are returned without scaling.
+    """
+    return _generator_ramp_value(component, context, "up")
 
 
 @getter
 def ramp_rate_down_mw_per_minute(
     component: ReEDSGenerator, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Convert fraction/hour ramp rates to the MW/minute required by PLEXOS."""
-    ramp_rate = getattr(component, "ramp_rate", None)
-    technology = getattr(component, "technology", "")
-    capacity = getattr(component, "capacity", 0.0)
+    """Convert fractional ramp rates to PLEXOS MW/min using final generator capacity.
 
-    if ramp_rate is None:
-        default_ramp_down = _get_defaults(technology, "ramp_rate_down")
-        if default_ramp_down is not None and default_ramp_down > 0.0:
-            return Ok(float(default_ramp_down))
-        default_ramp_down = _get_defaults(technology, "max_ramp_up_percentage")
-        if default_ramp_down is not None and default_ramp_down > 0.0:
-            if capacity == 0.0:
-                capacity = (
-                    _get_defaults(technology, "capacity_MW")
-                    or _get_defaults(technology, "average_capacity_MW")
-                    or 0.0
-                )
-            return Ok(float(default_ramp_down) * float(capacity) / 60.0)
-        return Ok(0.0)
-
-    return Ok(float(ramp_rate) * float(capacity) / 60.0)
+    Source ``ramp_rate`` and ``max_ramp_up_percentage`` defaults are fractions of
+    installed capacity per minute. ``ramp_rate_down`` defaults are already MW/min
+    and are returned without scaling.
+    """
+    return _generator_ramp_value(component, context, "down")
 
 
 @getter
