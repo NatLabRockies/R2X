@@ -89,6 +89,7 @@ r2x-sienna-to-plexos = { workspace = true }
 r2x-plexos-to-sienna = { workspace = true }
 r2x-reeds-to-plexos = { workspace = true }
 r2x-reeds-to-sienna = { workspace = true }
+r2x-reeds = { git = "https://github.com/NatLabRockies/r2x-reeds.git", rev = "26a45fe009badc5b1aa8ce1f6fdc2bcd6a90b41d" }
 
 [tool.uv.workspace]
 members = ["packages/*"]

@@ -10,6 +10,7 @@ from infrasys.utils.sqlite import create_in_memory_db
 from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
 from r2x_reeds_to_plexos.plugin_config import ReedsToPlexosConfig
 
+from .getters import prepare_generator_ramp_rates
 from .getters_utils import (
     attach_fuels_to_generators,
     attach_region_load_time_series,
@@ -35,6 +36,7 @@ def reeds_to_plexos(system: System, config: ReedsToPlexosConfig) -> System:
     rules_path = files("r2x_reeds_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     context.rules = tuple(rules)
+    prepare_generator_ramp_rates(context)
 
     assert context.source_system is not None, "source_system must be set"
     tmp_ts_dir = context.source_system.get_time_series_directory()
