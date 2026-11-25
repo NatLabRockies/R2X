@@ -17,6 +17,11 @@ uv run pytest --cov --cov-report=xml
 uv run prek run --show-diff-on-failure --color=always --all-files --hook-stage pre-push
 ```
 
+The workspace pins `r2x-reeds` to a revision compatible with the current
+`r2x-core` typed-source API. When updating this pin, preserve the fraction/minute
+ramp-rate contract and run the pre-push checks; older ReEDS revisions import the
+removed `r2x_core.create_component` API and fail during test collection.
+
 The CI workflow also builds wheels and installs each workspace package outside
 the uv workspace. Preserve package metadata, entry points, and this smoke-test
 coverage when changing a package.

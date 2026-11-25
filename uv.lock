@@ -1052,7 +1052,7 @@ requires-dist = [
 [[package]]
 name = "r2x-reeds"
 version = "0.9.3"
-source = { git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=26a45fe009badc5b1aa8ce1f6fdc2bcd6a90b41d#26a45fe009badc5b1aa8ce1f6fdc2bcd6a90b41d" }
+source = { git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=7918b81a9f90410bd4e4ece8cfd89e04946eefab#7918b81a9f90410bd4e4ece8cfd89e04946eefab" }
 dependencies = [
     { name = "r2x-core" },
 ]
@@ -1069,7 +1069,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "r2x-plexos", specifier = ">=0.3.0,<1.0.0" },
-    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=26a45fe009badc5b1aa8ce1f6fdc2bcd6a90b41d" },
+    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=7918b81a9f90410bd4e4ece8cfd89e04946eefab" },
 ]
 
 [[package]]
@@ -1085,8 +1085,8 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "r2x-core", git = "https://github.com/NatLabRockies/r2x-core.git?rev=main" },
+    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=7918b81a9f90410bd4e4ece8cfd89e04946eefab" },
     { name = "r2x-sienna", git = "https://github.com/NatLabRockies/r2x-sienna.git?branch=main" },
-    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=26a45fe009badc5b1aa8ce1f6fdc2bcd6a90b41d" },
 ]
 
 [[package]]
