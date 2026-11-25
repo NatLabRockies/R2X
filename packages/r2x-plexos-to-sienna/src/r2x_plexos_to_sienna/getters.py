@@ -134,7 +134,7 @@ def get_purchaser_bus(component: PLEXOSPurchaser, context: PluginContext) -> Res
 @getter
 def get_purchaser_active_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
     """Get the purchaser's fixed demand on its device base."""
-    return Ok(float(component.fixed_load) / get_purchaser_base_power(component, context).unwrap())
+    return Ok(float(component.fixed_load) / _get_purchaser_base_power(component))
 
 
 @getter
@@ -147,14 +147,14 @@ def get_purchaser_available(component: PLEXOSPurchaser, context: PluginContext) 
 def get_purchaser_max_active_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
     """Get the maximum purchaser load on its device base."""
     maximum = max(component.max_load, component.fixed_load)
-    return Ok(float(maximum) / get_purchaser_base_power(component, context).unwrap())
+    return Ok(float(maximum) / _get_purchaser_base_power(component))
 
 
 @getter
 def get_purchaser_reactive_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
     """Get the purchaser's reactive power, defaulting to zero."""
     value = float(getattr(component, "reactive_power", 0.0) or 0.0)
-    return Ok(value / get_purchaser_base_power(component, context).unwrap())
+    return Ok(value / _get_purchaser_base_power(component))
 
 
 @getter
@@ -163,45 +163,57 @@ def get_purchaser_max_reactive_power(
 ) -> Result[float, Any]:
     """Get the purchaser's maximum reactive power, defaulting to zero."""
     value = float(getattr(component, "max_reactive_power", 0.0) or 0.0)
-    return Ok(value / get_purchaser_base_power(component, context).unwrap())
+    return Ok(value / _get_purchaser_base_power(component))
+
+
+def _get_purchaser_base_power(component: PLEXOSPurchaser) -> float:
+    return getattr(component, "base_power", 100.0) or 100.0
 
 
 @getter
 def get_purchaser_base_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
     """Get the purchaser's base power, defaulting to 100 MW."""
-    return Ok(getattr(component, "base_power", 100.0) or 100.0)
+    return Ok(_get_purchaser_base_power(component))
 
 
 @getter
 def get_load_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get regional demand on the load device base."""
-    return Ok(float(component.load) / get_load_base_power(component, context).unwrap())
+    return Ok(_get_load_active_power(component))
 
 
 @getter
 def get_load_reactive_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the reactive power of load at the bus (if available)."""
     value = float(getattr(component, "reactive_power", 0.0))
-    return Ok(value / get_load_base_power(component, context).unwrap())
+    return Ok(value / _get_load_base_power(component))
 
 
 @getter
 def get_load_max_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the regional load peak on the device base."""
-    return get_load_active_power(component, context)
+    return Ok(_get_load_active_power(component))
 
 
 @getter
 def get_load_max_reactive_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the maximum reactive power demand of the load at the bus (if available)."""
     value = float(getattr(component, "max_reactive_power", 0.0))
-    return Ok(value / get_load_base_power(component, context).unwrap())
+    return Ok(value / _get_load_base_power(component))
+
+
+def _get_load_base_power(component: PLEXOSRegion) -> float:
+    return getattr(component, "base_power", 100.0)
+
+
+def _get_load_active_power(component: PLEXOSRegion) -> float:
+    return float(component.load) / _get_load_base_power(component)
 
 
 @getter
 def get_load_base_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the base power of the load at the bus (if available)."""
-    return Ok(getattr(component, "base_power", 100.0))
+    return Ok(_get_load_base_power(component))
 
 
 @getter
@@ -489,11 +501,25 @@ def get_hvdc_line_loss(component: PLEXOSLine, context: PluginContext) -> Result[
     return Ok(LinearCurve(loss_incr))
 
 
+def _get_gen_base_power(component: PLEXOSGenerator | PLEXOSBattery) -> float:
+    for field_name in ("base_power", "max_capacity", "max_power"):
+        value = getattr(component, field_name, None)
+        if value is None:
+            continue
+        try:
+            base_power = float(value)
+        except (TypeError, ValueError):
+            continue
+        if base_power > 0.0:
+            return base_power
+    return 100.0
+
+
 @getter
 def get_gen_active_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the active power of a generator on its device base."""
     value = getattr(component, "max_capacity", 0.0)
-    return Ok(float(value) / get_gen_base_power(component, context).unwrap())
+    return Ok(float(value) / _get_gen_base_power(component))
 
 
 @getter
@@ -616,7 +642,7 @@ def get_renewable_operation_cost(
 def get_gen_reactive_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the reactive power of a generator on its device base."""
     value = getattr(component, "reactive_power", 0.0)
-    return Ok(float(value) / get_gen_base_power(component, context).unwrap())
+    return Ok(float(value) / _get_gen_base_power(component))
 
 
 @getter
@@ -632,7 +658,7 @@ def get_gen_start_types(component: PLEXOSGenerator, context: PluginContext) -> R
 def get_gen_rating(component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext) -> Result[float, Any]:
     """Get the generator or battery rating on its device base."""
     value = component.max_power if isinstance(component, PLEXOSBattery) else component.max_capacity
-    return Ok(float(value) / get_gen_base_power(component, context).unwrap())
+    return Ok(float(value) / _get_gen_base_power(component))
 
 
 @getter
@@ -640,17 +666,7 @@ def get_gen_base_power(
     component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext
 ) -> Result[float, Any]:
     """Use a positive equipment base/rating, or the standard 100 MVA fallback."""
-    for field_name in ("base_power", "max_capacity", "max_power"):
-        value = getattr(component, field_name, None)
-        if value is None:
-            continue
-        try:
-            base_power = float(value)
-        except (TypeError, ValueError):
-            continue
-        if base_power > 0.0:
-            return Ok(base_power)
-    return Ok(100.0)
+    return Ok(_get_gen_base_power(component))
 
 
 @getter
@@ -666,28 +682,15 @@ def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginConte
         factor = float(getattr(component, "min_stable_factor", 0.0) or 0.0)
         if factor > 0.0:
             min_stable = factor / 100.0 * max_cap
-    base_power = get_gen_base_power(component, context).unwrap()
+    base_power = _get_gen_base_power(component)
     return Ok(MinMax(min=min_stable / base_power, max=max_cap / base_power))
-
-
-def _per_unit_structured_value(value: MinMax) -> dict[str, Any]:
-    return {"value": {"min": value.min, "max": value.max}, "unit": "pu"}
-
-
-@getter
-def get_gen_active_power_limits_per_unit(
-    component: PLEXOSGenerator, context: PluginContext
-) -> Result[dict[str, Any], Any]:
-    """Get already-normalized active power limits in the core's serialized per-unit form."""
-    limits = get_gen_active_power_limits(component, context).unwrap()
-    return Ok(_per_unit_structured_value(limits))
 
 
 @getter
 def get_gen_active_power_losses(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the online active power losses on the device base."""
     value = getattr(component, "active_power_losses", 0.0)
-    return Ok(float(value) / get_gen_base_power(component, context).unwrap())
+    return Ok(float(value) / _get_gen_base_power(component))
 
 
 @getter
@@ -702,17 +705,8 @@ def get_gen_must_run(component: PLEXOSGenerator, context: PluginContext) -> Resu
 def get_gen_reactive_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[Any, Any]:
     """Get the reactive power limits of a generator on its device base."""
     value = getattr(component, "reactive_power_limits", MinMax(min=0.0, max=0.0))
-    base_power = get_gen_base_power(component, context).unwrap()
+    base_power = _get_gen_base_power(component)
     return Ok(MinMax(min=value.min / base_power, max=value.max / base_power))
-
-
-@getter
-def get_gen_reactive_power_limits_per_unit(
-    component: PLEXOSGenerator, context: PluginContext
-) -> Result[dict[str, Any], Any]:
-    """Get already-normalized reactive power limits in the core's serialized per-unit form."""
-    limits = get_gen_reactive_power_limits(component, context).unwrap()
-    return Ok(_per_unit_structured_value(limits))
 
 
 @getter
@@ -940,7 +934,7 @@ def get_storage_capacity(component: PLEXOSGenerator, context: PluginContext) -> 
     """
     if hasattr(component, "capacity") and not hasattr(component, "max_volume"):
         capacity = float(getattr(component, "capacity", 0.0) or 0.0)
-        return Ok(capacity / get_gen_base_power(component, context).unwrap())
+        return Ok(capacity / _get_gen_base_power(component))
     return Ok(float(getattr(component, "max_volume", 0.0) or 0.0))
 
 
@@ -971,7 +965,7 @@ def get_storage_charge_power_limits(
     """
     if hasattr(component, "max_power") and not hasattr(component, "max_release"):
         power = float(getattr(component, "max_power", 0.0) or 0.0)
-        return Ok(MinMax(min=0.0, max=power / get_gen_base_power(component, context).unwrap()))
+        return Ok(MinMax(min=0.0, max=power / _get_gen_base_power(component)))
     return Ok(MinMax(min=0.0, max=float(getattr(component, "max_release", 0.0) or 0.0)))
 
 
@@ -986,26 +980,8 @@ def get_storage_discharge_power_limits(
     """
     if hasattr(component, "max_power") and not hasattr(component, "max_release"):
         power = float(getattr(component, "max_power", 0.0) or 0.0)
-        return Ok(MinMax(min=0.0, max=power / get_gen_base_power(component, context).unwrap()))
+        return Ok(MinMax(min=0.0, max=power / _get_gen_base_power(component)))
     return Ok(MinMax(min=0.0, max=float(getattr(component, "max_release", 0.0) or 0.0)))
-
-
-@getter
-def get_storage_charge_power_limits_per_unit(
-    component: PLEXOSGenerator, context: PluginContext
-) -> Result[dict[str, Any], Any]:
-    """Get already-normalized charge limits in the core's serialized per-unit form."""
-    limits = get_storage_charge_power_limits(component, context).unwrap()
-    return Ok(_per_unit_structured_value(limits))
-
-
-@getter
-def get_storage_discharge_power_limits_per_unit(
-    component: PLEXOSGenerator, context: PluginContext
-) -> Result[dict[str, Any], Any]:
-    """Get already-normalized discharge limits in the core's serialized per-unit form."""
-    limits = get_storage_discharge_power_limits(component, context).unwrap()
-    return Ok(_per_unit_structured_value(limits))
 
 
 @getter
