@@ -18,6 +18,23 @@
   },
   {
     "defaults": {
+      "category": "area"
+    },
+    "field_map": {
+      "name": "name",
+      "category": "category"
+    },
+    "getters": {
+      "peak_active_power": "get_region_peak_active_power",
+      "peak_reactive_power": "get_region_peak_reactive_power",
+      "load_response" : "get_region_load_response"
+    },
+    "source_type": "PLEXOSRegion",
+    "target_type": "Area",
+    "version": 2
+  },
+  {
+    "defaults": {
       "category": "node"
     },
     "field_map": {
@@ -86,23 +103,6 @@
   },
   {
     "defaults": {
-      "category": "area"
-    },
-    "field_map": {
-      "name": "name",
-      "category": "category"
-    },
-    "getters": {
-      "peak_active_power": "get_region_peak_active_power",
-      "peak_reactive_power": "get_region_peak_reactive_power",
-      "load_response" : "get_region_load_response"
-    },
-    "source_type": "PLEXOSRegion",
-    "target_type": "Area",
-    "version": 2
-  },
-  {
-    "defaults": {
       "category": "variable-reserve"
     },
     "field_map": {
@@ -130,8 +130,6 @@
       "reactive_power_flow": 0.0
     },
     "field_map": {
-      "active_power_flow": "fixed_flow",
-      "rating": "max_flow",
       "name": "name",
       "uuid": "uuid",
       "x": "reactance",
@@ -142,8 +140,25 @@
       "b": "get_line_susceptance",
       "g": "get_line_conductance",
       "arc": "get_line_arc",
+      "active_power_flow": "get_line_active_power_flow",
+      "rating": "get_line_rating",
       "reactive_power_flow": "get_reactive_power_flow",
       "angle_limits": "get_line_angle_limits"
+    },
+    "filter": {
+      "kind": "field",
+      "field": "category",
+      "op": "not_in",
+      "values": [
+        "monitored-line",
+        "two-terminal-hvdc-line",
+        "two-terminal-generic-hvdc-line",
+        "two-terminal-lcc-line",
+        "two-terminal-vsc-line",
+        "lcc",
+        "b2b"
+      ],
+      "on_missing": "include"
     },
     "source_type": "PLEXOSLine",
     "target_type": "Line",
@@ -155,8 +170,6 @@
       "reactive_power_flow": 0.0
     },
     "field_map": {
-      "active_power_flow": "fixed_flow",
-      "rating": "max_flow",
       "name": "name",
       "uuid": "uuid",
       "x": "reactance",
@@ -167,12 +180,15 @@
       "b": "get_line_susceptance",
       "g": "get_line_conductance",
       "arc": "get_line_arc",
+      "active_power_flow": "get_line_active_power_flow",
+      "rating": "get_line_rating",
       "reactive_power_flow": "get_reactive_power_flow",
       "angle_limits": "get_line_angle_limits",
       "flow_limits": "get_line_flow_limits",
       "losses": "get_line_losses"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "eq",
       "values": ["monitored-line"]
@@ -186,7 +202,6 @@
       "category": "two-terminal-hvdc-line"
     },
     "field_map": {
-      "active_power_flow": "fixed_flow",
       "category": "category",
       "name": "name",
       "uuid": "uuid",
@@ -195,6 +210,7 @@
     },
     "getters": {
       "arc": "get_line_arc",
+      "active_power_flow": "get_line_active_power_flow",
       "active_power_limits_from": "get_active_power_limits_from",
       "active_power_limits_to": "get_active_power_limits_to",
       "reactive_power_limits_from": "get_reactive_power_limits_from",
@@ -202,10 +218,14 @@
       "loss": "get_hvdc_line_loss"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
-      "op": "eq",
+      "op": "in",
       "values": [
         "two-terminal-hvdc-line",
+        "two-terminal-generic-hvdc-line",
+        "two-terminal-lcc-line",
+        "two-terminal-vsc-line",
         "lcc",
         "b2b"
       ]
@@ -220,7 +240,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "category": "category",
       "uuid": "uuid",
       "x": "reactance",
@@ -228,12 +247,22 @@
     },
     "getters": {
       "arc": "get_line_arc",
+      "rating": "get_trf_rating",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
       "base_power": "get_trf_base_power",
-      "winding_group_number": "get_trf_winding_group_number",
-      "control_objective": "get_trf_control_objective"
+      "winding_group_number": "get_trf_winding_group_number"
+    },
+    "filter": {
+      "kind": "field",
+      "field": "category",
+      "op": "not_in",
+      "values": [
+        "tap-transformer",
+        "phase-shifting-transformer"
+      ],
+      "on_missing": "include"
     },
     "source_type": "PLEXOSTransformer",
     "target_type": "Transformer2W",
@@ -245,7 +274,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "tap": "ac_tap_ratio",
       "category": "category",
       "uuid": "uuid",
@@ -254,12 +282,19 @@
     },
     "getters": {
       "arc": "get_line_arc",
+      "rating": "get_trf_rating",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
       "base_power": "get_trf_base_power",
       "winding_group_number": "get_trf_winding_group_number",
       "control_objective": "get_trf_control_objective"
+    },
+    "filter": {
+      "kind": "field",
+      "field": "category",
+      "op": "eq",
+      "values": ["tap-transformer"]
     },
     "source_type": "PLEXOSTransformer",
     "target_type": "TapTransformer",
@@ -271,20 +306,28 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "tap": "ac_tap_ratio",
       "category": "category",
       "uuid": "uuid",
       "x": "reactance",
-      "r": "resistance",
-      "α": "ac_fixed_shift_angle"
+      "r": "resistance"
     },
     "getters": {
+      "arc": "get_line_arc",
+      "rating": "get_trf_rating",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
-      "winding_group_number": "get_trf_winding_group_number",
-      "control_objective": "get_trf_control_objective"
+      "α": "get_trf_phase_angle",
+      "base_power": "get_trf_base_power",
+      "control_objective": "get_trf_control_objective",
+      "phase_angle_limits": "get_trf_phase_angle_limits"
+    },
+    "filter": {
+      "kind": "field",
+      "field": "category",
+      "op": "eq",
+      "values": ["phase-shifting-transformer"]
     },
     "source_type": "PLEXOSTransformer",
     "target_type": "PhaseShiftingTransformer",
@@ -297,13 +340,13 @@
     "field_map": {
       "name": "name",
       "uuid": "uuid",
-      "rating": "rating",
       "category": "category"
     },
     "getters": {
       "bus": "get_gen_bus",
       "active_power": "get_gen_active_power",
       "reactive_power": "get_gen_reactive_power",
+      "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
       "active_power_limits": "get_gen_active_power_limits",
       "reactive_power_limits": "get_gen_reactive_power_limits",
@@ -319,6 +362,7 @@
       "fuel": "get_fuel_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -335,7 +379,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "uuid": "uuid",
       "category": "category"
     },
@@ -359,6 +402,7 @@
       "services": "get_device_services"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -375,7 +419,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "category": "category",
       "uuid": "uuid"
     },
@@ -383,6 +426,7 @@
       "bus": "get_gen_bus",
       "active_power": "get_gen_active_power",
       "reactive_power": "get_gen_reactive_power",
+      "rating": "get_gen_rating",
       "prime_mover_type": "get_prime_mover_type",
       "active_power_limits": "get_gen_active_power_limits",
       "reactive_power_limits": "get_gen_reactive_power_limits",
@@ -395,6 +439,7 @@
       "time_limits": "get_gen_time_limits"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -411,7 +456,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "category": "category",
       "uuid": "uuid"
     },
@@ -419,6 +463,7 @@
       "bus": "get_gen_bus",
       "active_power": "get_gen_active_power",
       "reactive_power": "get_gen_reactive_power",
+      "rating": "get_gen_rating",
       "active_power_limits": "get_gen_active_power_limits",
       "reactive_power_limits": "get_gen_reactive_power_limits",
       "base_power": "get_gen_base_power",
@@ -429,6 +474,7 @@
       "prime_mover_type": "get_prime_mover_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -442,20 +488,25 @@
   {
     "defaults": {
       "category": "hydro-pumped-storage",
-      "initial_level": 0.5
+      "initial_level": 0.5,
+      "outflow": 0.0,
+      "intake_elevation": 0.0,
+      "level_data_type": "ENERGY"
     },
     "field_map": {
       "initial_level": "initial_level",
+      "inflow": "natural_inflow",
       "category": "category",
       "name": "name",
       "uuid": "uuid"
     },
     "getters": {
-      "bus": "get_gen_bus",
+      "storage_level_limits": "get_storage_level_limits",
       "services": "get_device_services",
       "operation_cost": "get_hydro_reservoir_operation_cost"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "in",
       "values": [
@@ -473,7 +524,6 @@
     "field_map": {
       "name": "name",
       "category": "category",
-      "rating": "rating",
       "uuid": "uuid"
     },
     "getters": {
@@ -481,6 +531,7 @@
       "operation_cost": "get_renewable_operation_cost",
       "active_power": "get_gen_active_power",
       "reactive_power": "get_gen_reactive_power",
+      "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
       "reactive_power_limits": "get_gen_reactive_power_limits",
       "prime_mover_type": "get_prime_mover_type",
@@ -488,6 +539,7 @@
       "power_factor": "get_gen_power_factor"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -505,19 +557,20 @@
     "field_map": {
       "name": "name",
       "category": "category",
-      "rating": "rating",
       "uuid": "uuid"
     },
     "getters": {
       "bus": "get_gen_bus",
       "active_power": "get_gen_active_power",
       "reactive_power": "get_gen_reactive_power",
+      "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
       "services": "get_device_services",
       "power_factor": "get_gen_power_factor",
       "prime_mover_type": "get_prime_mover_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -535,7 +588,6 @@
     "field_map": {
       "name": "name",
       "category": "category",
-      "rating": "rating",
       "uuid": "uuid"
     },
     "getters": {
@@ -548,6 +600,7 @@
       "active_power_losses": "get_gen_active_power_losses"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [

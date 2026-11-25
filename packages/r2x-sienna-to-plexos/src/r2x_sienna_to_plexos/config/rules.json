@@ -641,6 +641,13 @@
       "natural_inflow": "get_storage_natural_inflow",
       "ext": "get_component_ext"
     },
+    "filter": {
+      "getter": "should_create_head_storage",
+      "op": "eq",
+      "values": [
+        true
+      ]
+    },
     "source_type": "HydroReservoir",
     "target_type": "PLEXOSStorage",
     "version": 1
@@ -659,6 +666,13 @@
       "max_volume": "get_storage_max_volume",
       "natural_inflow": "get_storage_natural_inflow",
       "ext": "get_component_ext"
+    },
+    "filter": {
+      "getter": "should_create_tail_storage",
+      "op": "eq",
+      "values": [
+        true
+      ]
     },
     "source_type": "HydroReservoir",
     "target_type": "PLEXOSStorage",

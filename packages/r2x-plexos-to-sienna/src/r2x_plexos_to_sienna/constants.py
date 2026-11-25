@@ -1,4 +1,52 @@
-"""Mappings used by the PLEXOS to Sienna translation."""
+"""Constants and lookup mappings used by PLEXOS-to-Sienna translation."""
+
+from infrasys import Component
+from infrasys.cost_curves import UnitSystem
+from r2x_plexos.models import (
+    PLEXOSBattery,
+    PLEXOSGenerator,
+    PLEXOSNode,
+    PLEXOSPurchaser,
+    PLEXOSRegion,
+    PLEXOSReserve,
+    PLEXOSStorage,
+)
+from r2x_sienna.models import (
+    EnergyReservoirStorage,
+    HydroDispatch,
+    HydroReservoir,
+    HydroTurbine,
+    PowerLoad,
+    RenewableDispatch,
+    RenewableNonDispatch,
+    SynchronousCondenser,
+    ThermalMultiStart,
+    ThermalStandard,
+    VariableReserve,
+)
+
+PLEXOS_NUMBER_BASE = 100100
+P2S_TS_PENDING_CACHE_KEY = "p2s_pending_ts"
+P2S_NODE_NUMBER_CACHE_KEY = "p2s_node_number_state"
+NATURAL_UNITS: UnitSystem = UnitSystem.NATURAL_UNITS
+
+_PLEXOS_TO_SIENNA_TARGET_TYPES: dict[type[Component], tuple[type[Component], ...]] = {
+    PLEXOSGenerator: (
+        ThermalStandard,
+        ThermalMultiStart,
+        HydroDispatch,
+        HydroTurbine,
+        RenewableDispatch,
+        RenewableNonDispatch,
+        SynchronousCondenser,
+    ),
+    PLEXOSBattery: (EnergyReservoirStorage,),
+    PLEXOSStorage: (HydroReservoir,),
+    PLEXOSRegion: (PowerLoad,),
+    PLEXOSNode: (PowerLoad,),
+    PLEXOSPurchaser: (PowerLoad,),
+    PLEXOSReserve: (VariableReserve,),
+}
 
 # Canonical (ReEDS/PLEXOS-style) category slug -> Sienna generator technology family.
 # Preserves the exact legacy classification for models that already use slugs.
@@ -27,17 +75,18 @@ _GENERATOR_FAMILY_BY_SLUG: dict[str, str] = {
     "hydro-d": "hydro-dispatch",
     "hyd": "hydro-dispatch",
     "hyded": "hydro-dispatch",
-    "hydend": "hydro-dispatch",
-    "hydund": "hydro-dispatch",
-    "hydnd": "hydro-dispatch",
-    "hydnpnd": "hydro-dispatch",
-    "hydsnd": "hydro-dispatch",
+    "hydend": "renewable-non-dispatch",
+    "hydund": "renewable-non-dispatch",
+    "hydnd": "renewable-non-dispatch",
+    "hydnpnd": "renewable-non-dispatch",
+    "hydsnd": "renewable-non-dispatch",
     "hydud": "hydro-dispatch",
     "pumped-hydro": "hydro-turbine",
     "egs": "hydro-turbine",
     "egs-nearfield": "hydro-turbine",
     "rtes": "hydro-turbine",
     "renewable-dispatch": "renewable-dispatch",
+    "pv": "renewable-dispatch",
     "upv": "renewable-dispatch",
     "dupv": "renewable-dispatch",
     "pvb": "renewable-dispatch",
@@ -78,6 +127,7 @@ _GENERATOR_FAMILY_KEYWORDS: list[tuple[str, str]] = [
 _PRIME_MOVER_KEYWORDS: list[tuple[str, str]] = [
     ("rooftop", "PVe"),
     ("pvnsg", "PVe"),
+    ("pv", "PVe"),
     ("solar", "PVe"),
     ("photovoltaic", "PVe"),
     ("csp", "CP"),

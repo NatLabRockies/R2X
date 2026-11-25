@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import re
-from importlib.resources import files
+import itertools
+import math
+from collections.abc import Mapping
 from typing import Any
 
-from infrasys import Component, SingleTimeSeries
-from infrasys.cost_curves import CostCurve, FuelCurve, UnitSystem
-from infrasys.value_curves import InputOutputCurve, LinearCurve
+from infrasys.cost_curves import CostCurve, FuelCurve
+from infrasys.function_data import PiecewiseStepData
+from infrasys.value_curves import AverageRateCurve, InputOutputCurve, LinearCurve
 from loguru import logger
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
@@ -29,16 +29,7 @@ from r2x_sienna.models import (
     ACBus,
     Arc,
     Area,
-    EnergyReservoirStorage,
-    HydroDispatch,
-    HydroTurbine,
     LoadZone,
-    PowerLoad,
-    RenewableDispatch,
-    RenewableNonDispatch,
-    SynchronousCondenser,
-    ThermalMultiStart,
-    ThermalStandard,
     VariableReserve,
 )
 from r2x_sienna.models.costs import (
@@ -49,7 +40,6 @@ from r2x_sienna.models.costs import (
 )
 from r2x_sienna.models.enums import (
     ACBusTypes,
-    PrimeMoversType,
     ReserveDirection,
     ReserveType,
     StorageTechs,
@@ -68,245 +58,23 @@ from r2x_sienna.models.named_tuples import (
 from r2x_core import Ok, PluginContext, Result
 from r2x_core.getters import getter
 
-from .mappings import (
-    _FUEL_KEYWORDS,
-    _GENERATOR_FAMILY_BY_SLUG,
-    _GENERATOR_FAMILY_KEYWORDS,
-    _PRIME_MOVER_KEYWORDS,
+from .constants import NATURAL_UNITS
+from .utils import (
+    _classify_generator_category,
+    _first_numeric,
+    _get_fuel_type,
+    _get_hvdc_active_power_limits,
+    _get_prime_mover_type,
+    _get_target_component_by_name,
+    _get_target_system_base_power,
+    _get_transformer_base_power,
+    _get_trf_phase_angle_radians,
+    _sync_time_series_for_source,
+    _to_per_unit_power,
 )
-
-# Type-safe constant for power units
-NATURAL_UNITS: UnitSystem = UnitSystem.NATURAL_UNITS
-
-PLEXOS_NUMBER_BASE = 100100
-PLEXOS_NUMBER_COUNTER = PLEXOS_NUMBER_BASE
-PLEXOS_NUMBER_MAP = {}
-PLEXOS_NUMBER_USED = set()
-
-P2S_TS_PENDING_CACHE_KEY = "p2s_pending_ts"
-
-
-def _first_numeric(value: Any) -> float:
-    """Extract a scalar float from raw values or vector-like wrappers."""
-    values = getattr(value, "values", None)
-    if values is not None:
-        values_any: Any = values
-        try:
-            return float(values_any[0])
-        except Exception:
-            pass
-    return float(value)
-
-
-def _get_pending_ts_cache(context: PluginContext) -> dict[str, Any]:
-    cache = context._cache.setdefault(P2S_TS_PENDING_CACHE_KEY, {})
-    return cache
-
-
-def _pending_key_for_source(component: Any) -> str:
-    name = getattr(component, "name", "") or ""
-    cls_name = type(component).__name__
-    return f"{cls_name}:{name}"
-
-
-def _get_target_types_for_source(component: Any) -> list[type[Component]]:
-    if isinstance(component, PLEXOSGenerator):
-        return [
-            ThermalStandard,
-            ThermalMultiStart,
-            HydroDispatch,
-            HydroTurbine,
-            RenewableDispatch,
-            RenewableNonDispatch,
-            SynchronousCondenser,
-        ]
-    if isinstance(component, PLEXOSBattery):
-        return [EnergyReservoirStorage]
-    if isinstance(component, PLEXOSRegion):
-        return [PowerLoad]
-    if isinstance(component, PLEXOSNode):
-        return [PowerLoad]
-    if isinstance(component, PLEXOSPurchaser):
-        return [PowerLoad]
-    if isinstance(component, PLEXOSReserve):
-        return [VariableReserve]
-    return []
-
-
-def _get_targets_by_name(context: PluginContext, source_component: Any) -> list[Any]:
-    if context.target_system is None:
-        return []
-
-    if isinstance(source_component, PLEXOSNode) and context.source_system is not None:
-        region_names = {
-            membership.child_object.name
-            for membership in context.source_system.get_supplemental_attributes_with_component(
-                source_component
-            )
-            if getattr(membership, "collection", None) == CollectionEnum.Region
-            and getattr(getattr(membership, "child_object", None), "name", None)
-        }
-        return [
-            load
-            for load in context.target_system.get_components(PowerLoad)
-            if getattr(load, "name", None) in region_names
-        ]
-
-    name = getattr(source_component, "name", None)
-    if not name:
-        return []
-    targets: list[Any] = []
-    for target_type in _get_target_types_for_source(source_component):
-        targets.extend(
-            component
-            for component in context.target_system.get_components(target_type)
-            if getattr(component, "name", None) == name
-        )
-    return targets
-
-
-def _attach_source_time_series_if_target_exists(source_component: Any, context: PluginContext) -> bool:
-    if context.source_system is None or context.target_system is None:
-        return True
-    if not context.source_system.time_series.has_time_series(source_component):
-        return True
-
-    metadata_list = list(context.source_system.time_series.list_time_series_metadata(source_component))
-    if not metadata_list:
-        return True
-
-    targets = _get_targets_by_name(context, source_component)
-    if not targets:
-        return False
-
-    for metadata in metadata_list:
-        features = getattr(metadata, "features", {}) or {}
-        ts_list = context.source_system.list_time_series(source_component, name=metadata.name, **features)
-        if not ts_list:
-            continue
-
-        source_ts = ts_list[0]
-        if not isinstance(source_ts, SingleTimeSeries):
-            continue
-        for target_component in targets:
-            target_name = (
-                "active_power"
-                if isinstance(source_component, (PLEXOSNode, PLEXOSPurchaser))
-                and isinstance(target_component, PowerLoad)
-                and source_ts.name in {"load", "fixed_load"}
-                else source_ts.name
-            )
-            target_ts = SingleTimeSeries.from_array(
-                data=source_ts.data,
-                name=target_name,
-                initial_timestamp=source_ts.initial_timestamp,
-                resolution=source_ts.resolution,
-            )
-            if context.target_system.has_time_series(
-                target_component,
-                name=target_name,
-                time_series_type=SingleTimeSeries,
-                **features,
-            ):
-                continue
-            try:
-                context.target_system.add_time_series(target_ts, target_component, **features)
-            except Exception:
-                logger.debug(
-                    "Failed attaching time series '{}' to '{}'",
-                    source_ts.name,
-                    getattr(target_component, "name", "<unknown>"),
-                )
-    return True
-
-
-def _sync_time_series_for_source(source_component: Any, context: PluginContext) -> None:
-    pending = _get_pending_ts_cache(context)
-
-    # Try flushing pending entries first so previous components can be attached as soon as targets exist.
-    for key, pending_source in list(pending.items()):
-        if _attach_source_time_series_if_target_exists(pending_source, context):
-            pending.pop(key, None)
-
-    if not _attach_source_time_series_if_target_exists(source_component, context):
-        pending[_pending_key_for_source(source_component)] = source_component
-
-
-def extract_number_from_name(name: str) -> int:
-    """
-    Extract the first group of digits from a string like 'p126_OSW' or 'ACKRLNTC_9_1363'.
-    Ensure the returned number is unique for each name.
-    If no digits are found, assign a unique dummy number >= 100101.
-    """
-    global PLEXOS_NUMBER_COUNTER, PLEXOS_NUMBER_MAP, PLEXOS_NUMBER_USED
-
-    if name in PLEXOS_NUMBER_MAP:
-        return PLEXOS_NUMBER_MAP[name]
-
-    match = re.search(r"(\d+)", name)
-    if match:
-        base_number = int(match.group(1))
-        candidate = base_number
-        # Ensure uniqueness
-        while candidate in PLEXOS_NUMBER_USED:
-            # Try appending a digit or incrementing
-            candidate = candidate * 10
-        PLEXOS_NUMBER_MAP[name] = candidate
-        PLEXOS_NUMBER_USED.add(candidate)
-        return candidate
-
-    while True:
-        PLEXOS_NUMBER_COUNTER += 1
-        if PLEXOS_NUMBER_COUNTER not in PLEXOS_NUMBER_USED:
-            PLEXOS_NUMBER_MAP[name] = PLEXOS_NUMBER_COUNTER
-            PLEXOS_NUMBER_USED.add(PLEXOS_NUMBER_COUNTER)
-            return PLEXOS_NUMBER_COUNTER
-
-
-def _classify_generator_category(category: str | None) -> str:
-    """Return the Sienna generator technology family for a PLEXOS category.
-
-    Resolves canonical slugs exactly, then falls back to substring keyword
-    matching on descriptive names. Unmatched categories default to ``thermal``.
-    """
-    key = (category or "").strip().casefold()
-    if not key:
-        return "thermal"
-    if key in _GENERATOR_FAMILY_BY_SLUG:
-        return _GENERATOR_FAMILY_BY_SLUG[key]
-    for keyword, family in _GENERATOR_FAMILY_KEYWORDS:
-        if keyword in key:
-            return family
-    return "thermal"
-
-
-def _get_prime_mover_type(category: str) -> PrimeMoversType:
-    defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults = json.load(f)
-    mapping = defaults.get("prime_mover_types", {})
-    if category in mapping:
-        return getattr(PrimeMoversType, mapping[category], PrimeMoversType.OT)
-    key = (category or "").strip().casefold()
-    for keyword, code in _PRIME_MOVER_KEYWORDS:
-        if keyword in key:
-            return getattr(PrimeMoversType, code, PrimeMoversType.OT)
-    return PrimeMoversType.OT
-
-
-def _get_fuel_type(category: str) -> ThermalFuels:
-    """Map a generator category to a ThermalFuels enum value via defaults.json."""
-    defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
-    with defaults_path.open() as f:
-        defaults = json.load(f)
-    mapping = defaults.get("fuel_types", {})
-    if category in mapping:
-        return getattr(ThermalFuels, mapping[category], ThermalFuels.NATURAL_GAS)
-    key = (category or "").strip().casefold()
-    for keyword, name in _FUEL_KEYWORDS:
-        if keyword in key:
-            return getattr(ThermalFuels, name, ThermalFuels.NATURAL_GAS)
-    return ThermalFuels.NATURAL_GAS
+from .utils import (
+    get_plexos_node_number as _get_plexos_node_number,
+)
 
 
 @getter
@@ -333,8 +101,7 @@ def get_load_bus(component: PLEXOSRegion, context: PluginContext) -> Result[ACBu
             node_name = m.parent_object.name
             break
     if node_name:
-        acbuses = list(context.target_system.get_components(ACBus))
-        bus = next((b for b in acbuses if getattr(b, "name", None) == node_name), None)
+        bus = _get_target_component_by_name(context.target_system, ACBus, node_name)
         return Ok(bus)
     return Ok(None)
 
@@ -360,21 +127,14 @@ def get_purchaser_bus(component: PLEXOSPurchaser, context: PluginContext) -> Res
     if node_name is None:
         return Ok(None)
 
-    bus = next(
-        (
-            candidate
-            for candidate in context.target_system.get_components(ACBus)
-            if getattr(candidate, "name", None) == node_name
-        ),
-        None,
-    )
+    bus = _get_target_component_by_name(context.target_system, ACBus, node_name)
     return Ok(bus)
 
 
 @getter
 def get_purchaser_active_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
-    """Get the purchaser's fixed load as Sienna active power."""
-    return Ok(getattr(component, "fixed_load", 0.0))
+    """Get the purchaser's fixed demand on its device base."""
+    return Ok(float(component.fixed_load) / _get_purchaser_base_power(component))
 
 
 @getter
@@ -385,14 +145,16 @@ def get_purchaser_available(component: PLEXOSPurchaser, context: PluginContext) 
 
 @getter
 def get_purchaser_max_active_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
-    """Get the purchaser's maximum load as Sienna maximum active power."""
-    return Ok(getattr(component, "max_load", 0.0))
+    """Get the maximum purchaser load on its device base."""
+    maximum = max(component.max_load, component.fixed_load)
+    return Ok(float(maximum) / _get_purchaser_base_power(component))
 
 
 @getter
 def get_purchaser_reactive_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
     """Get the purchaser's reactive power, defaulting to zero."""
-    return Ok(getattr(component, "reactive_power", 0.0) or 0.0)
+    value = float(getattr(component, "reactive_power", 0.0) or 0.0)
+    return Ok(value / _get_purchaser_base_power(component))
 
 
 @getter
@@ -400,57 +162,72 @@ def get_purchaser_max_reactive_power(
     component: PLEXOSPurchaser, context: PluginContext
 ) -> Result[float, Any]:
     """Get the purchaser's maximum reactive power, defaulting to zero."""
-    return Ok(getattr(component, "max_reactive_power", 0.0) or 0.0)
+    value = float(getattr(component, "max_reactive_power", 0.0) or 0.0)
+    return Ok(value / _get_purchaser_base_power(component))
+
+
+def _get_purchaser_base_power(component: PLEXOSPurchaser) -> float:
+    return getattr(component, "base_power", 100.0) or 100.0
 
 
 @getter
 def get_purchaser_base_power(component: PLEXOSPurchaser, context: PluginContext) -> Result[float, Any]:
     """Get the purchaser's base power, defaulting to 100 MW."""
-    return Ok(getattr(component, "base_power", 100.0) or 100.0)
+    return Ok(_get_purchaser_base_power(component))
 
 
 @getter
 def get_load_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
-    """Get the initial steady-state active power demand of the load in the region."""
-    return Ok(getattr(component, "load", 0.0))
+    """Get regional demand on the load device base."""
+    return Ok(_get_load_active_power(component))
 
 
 @getter
 def get_load_reactive_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the reactive power of load at the bus (if available)."""
-    return Ok(getattr(component, "reactive_power", 0.0))
+    value = float(getattr(component, "reactive_power", 0.0))
+    return Ok(value / _get_load_base_power(component))
 
 
 @getter
 def get_load_max_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
-    """Get the maximum active power demand of the load at the bus (if available)."""
-    return Ok(getattr(component, "max_load", 0.0))
+    """Get the regional load peak on the device base."""
+    return Ok(_get_load_active_power(component))
 
 
 @getter
 def get_load_max_reactive_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the maximum reactive power demand of the load at the bus (if available)."""
-    return Ok(getattr(component, "max_reactive_power", 0.0))
+    value = float(getattr(component, "max_reactive_power", 0.0))
+    return Ok(value / _get_load_base_power(component))
+
+
+def _get_load_base_power(component: PLEXOSRegion) -> float:
+    return getattr(component, "base_power", 100.0)
+
+
+def _get_load_active_power(component: PLEXOSRegion) -> float:
+    return float(component.load) / _get_load_base_power(component)
 
 
 @getter
 def get_load_base_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the base power of the load at the bus (if available)."""
-    return Ok(getattr(component, "base_power", 100.0))
+    return Ok(_get_load_base_power(component))
 
 
 @getter
 def get_zone_peak_active_power(component: PLEXOSZone, context: PluginContext) -> Result[float, Any]:
     """Get the peak active power for a zone."""
     value = getattr(component, "peak_active_power", 0.0)
-    return Ok(float(value))
+    return Ok(_to_per_unit_power(value, _get_target_system_base_power(context)))
 
 
 @getter
 def get_zone_peak_reactive_power(component: PLEXOSZone, context: PluginContext) -> Result[float, Any]:
     """Get the peak reactive power for a zone."""
     value = getattr(component, "peak_reactive_power", 0.0)
-    return Ok(float(value))
+    return Ok(_to_per_unit_power(value, _get_target_system_base_power(context)))
 
 
 @getter
@@ -478,8 +255,7 @@ def get_node_area(component: PLEXOSNode, context: PluginContext) -> Result[Any, 
             area_name = m.child_object.name
             break
     if area_name:
-        areas = list(context.target_system.get_components(Area))
-        area_obj = next((a for a in areas if getattr(a, "name", None) == area_name), None)
+        area_obj = _get_target_component_by_name(context.target_system, Area, area_name)
         if area_obj:
             return Ok(area_obj)
     value = getattr(component, "area", None)
@@ -504,8 +280,7 @@ def get_node_zone(component: PLEXOSNode, context: PluginContext) -> Result[Any, 
             zone_name = m.child_object.name
             break
     if zone_name:
-        zones = list(context.target_system.get_components(LoadZone))
-        zone_obj = next((z for z in zones if getattr(z, "name", None) == zone_name), None)
+        zone_obj = _get_target_component_by_name(context.target_system, LoadZone, zone_name)
         if zone_obj:
             return Ok(zone_obj)
     value = getattr(component, "zone", None)
@@ -537,14 +312,8 @@ def get_node_ext(component: PLEXOSNode, context: PluginContext) -> Result[dict[s
 
 @getter
 def get_node_number(component: PLEXOSNode, context: PluginContext) -> Result[int, Any]:
-    """Assign node number from attribute, or extract from name if not present."""
-    if hasattr(component, "number") and component.number is not None:
-        return Ok(int(component.number))
-    if hasattr(component, "name") and component.name:
-        extracted = extract_number_from_name(component.name)
-        if extracted is not None:
-            return Ok(extracted)
-    return Ok(1)
+    """Return a unique positive node number from Number, the name, or a counter."""
+    return Ok(_get_plexos_node_number(component, context))
 
 
 @getter
@@ -564,8 +333,8 @@ def is_slack_bus(component: PLEXOSNode, context: PluginContext) -> Result[ACBusT
 
 
 @getter
-def get_line_arc(component: PLEXOSLine, context: PluginContext) -> Result[Arc, Any]:
-    """Get the arc of a line by querying PlexosDB for node memberships and matching to ACBus objects."""
+def get_line_arc(component: PLEXOSLine | PLEXOSTransformer, context: PluginContext) -> Result[Arc, Any]:
+    """Get a line or transformer's arc from node memberships and matching ACBus objects."""
     if context.source_system is None or context.target_system is None:
         raise ValueError("Source and target systems must be set to get line arc")
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
@@ -587,16 +356,15 @@ def get_line_arc(component: PLEXOSLine, context: PluginContext) -> Result[Arc, A
     arc_name = f"{from_node}-{to_node}"
 
     # Reuse existing Arc if one with the same name already exists in the target system
-    existing_arcs = list(context.target_system.get_components(Arc))
-    existing_arc = next((a for a in existing_arcs if getattr(a, "name", None) == arc_name), None)
+    existing_arc = _get_target_component_by_name(context.target_system, Arc, arc_name)
     if existing_arc is not None:
         return Ok(existing_arc)
 
-    acbuses = list(context.target_system.get_components(ACBus))
-    from_bus = next((bus for bus in acbuses if getattr(bus, "name", None) == from_node), None)
-    to_bus = next((bus for bus in acbuses if getattr(bus, "name", None) == to_node), None)
+    from_bus = _get_target_component_by_name(context.target_system, ACBus, from_node)
+    to_bus = _get_target_component_by_name(context.target_system, ACBus, to_node)
 
     if from_bus is None or to_bus is None:
+        acbuses = list(context.target_system.get_components(ACBus))
         raise ValueError(
             f"Could not find ACBus for names: {from_node}, {to_node}. "
             f"Available: {[bus.name for bus in acbuses]}"
@@ -652,14 +420,31 @@ def get_line_flow_limits(component: PLEXOSLine, context: PluginContext) -> Resul
     """Get the flow limits (from_to, to_from) of a line as a FromTo_ToFrom namedtuple."""
     min_flow = getattr(component, "min_flow", -100.0)
     max_flow = getattr(component, "max_flow", None)
-    if max_flow is not None:
-        if hasattr(max_flow, "values") and max_flow.values:
-            max_flow = float(max_flow.values[0])
-        else:
-            max_flow = float(max_flow)
-    else:
+    base_power = _get_target_system_base_power(context)
+    if min_flow is None:
+        min_flow = -100.0
+    if max_flow is None:
         max_flow = 100.0
-    return Ok(FromTo_ToFrom(from_to=max_flow, to_from=min_flow))
+    return Ok(
+        FromTo_ToFrom(
+            from_to=_to_per_unit_power(max_flow, base_power),
+            to_from=_to_per_unit_power(min_flow, base_power),
+        )
+    )
+
+
+@getter
+def get_line_rating(component: PLEXOSLine, context: PluginContext) -> Result[float, Any]:
+    """Convert the PLEXOS line rating from MW to per-unit on the system base."""
+    max_flow = getattr(component, "max_flow", None)
+    return Ok(_to_per_unit_power(max_flow, _get_target_system_base_power(context)))
+
+
+@getter
+def get_line_active_power_flow(component: PLEXOSLine, context: PluginContext) -> Result[float, Any]:
+    """Convert fixed PLEXOS line flow from MW to per-unit on the system base."""
+    fixed_flow = getattr(component, "fixed_flow", None)
+    return Ok(_to_per_unit_power(fixed_flow, _get_target_system_base_power(context)))
 
 
 @getter
@@ -671,34 +456,42 @@ def get_line_losses(component: PLEXOSLine, context: PluginContext) -> Result[flo
 
 @getter
 def get_active_power_limits_from(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
-    """Get the active power limits (min, max) at the 'from' end of an HVDC line."""
-    min_limit = getattr(component, "min_active_power_from", 0.0)
-    max_limit = getattr(component, "max_active_power_from", 0.0)
-    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+    """Convert PLEXOS HVDC flow limits from MW to per-unit at the 'from' end."""
+    return Ok(_get_hvdc_active_power_limits(component, context))
 
 
 @getter
 def get_active_power_limits_to(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
-    """Get the active power limits (min, max) at the 'to' end of an HVDC line."""
-    min_limit = getattr(component, "min_active_power_to", 0.0)
-    max_limit = getattr(component, "max_active_power_to", 0.0)
-    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+    """Convert PLEXOS HVDC flow limits from MW to per-unit at the 'to' end."""
+    return Ok(_get_hvdc_active_power_limits(component, context))
 
 
 @getter
 def get_reactive_power_limits_from(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
-    """Get the reactive power limits (min, max) at the 'from' end of an HVDC line."""
+    """Convert reactive power limits at the 'from' end of an HVDC line to per-unit."""
     min_limit = getattr(component, "min_reactive_power_from", 0.0)
     max_limit = getattr(component, "max_reactive_power_from", 0.0)
-    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+    base_power = _get_target_system_base_power(context)
+    return Ok(
+        MinMax(
+            min=_to_per_unit_power(min_limit, base_power),
+            max=_to_per_unit_power(max_limit, base_power),
+        )
+    )
 
 
 @getter
 def get_reactive_power_limits_to(component: PLEXOSLine, context: PluginContext) -> Result[MinMax, Any]:
-    """Get the reactive power limits (min, max) at the 'to' end of an HVDC line."""
+    """Convert reactive power limits at the 'to' end of an HVDC line to per-unit."""
     min_limit = getattr(component, "min_reactive_power_to", 0.0)
     max_limit = getattr(component, "max_reactive_power_to", 0.0)
-    return Ok(MinMax(min=float(min_limit), max=float(max_limit)))
+    base_power = _get_target_system_base_power(context)
+    return Ok(
+        MinMax(
+            min=_to_per_unit_power(min_limit, base_power),
+            max=_to_per_unit_power(max_limit, base_power),
+        )
+    )
 
 
 @getter
@@ -708,16 +501,30 @@ def get_hvdc_line_loss(component: PLEXOSLine, context: PluginContext) -> Result[
     return Ok(LinearCurve(loss_incr))
 
 
+def _get_gen_base_power(component: PLEXOSGenerator | PLEXOSBattery) -> float:
+    for field_name in ("base_power", "max_capacity", "max_power"):
+        value = getattr(component, field_name, None)
+        if value is None:
+            continue
+        try:
+            base_power = float(value)
+        except (TypeError, ValueError):
+            continue
+        if base_power > 0.0:
+            return base_power
+    return 100.0
+
+
 @getter
 def get_gen_active_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the active power of a generator."""
+    """Get the active power of a generator on its device base."""
     value = getattr(component, "max_capacity", 0.0)
-    return Ok(float(value))
+    return Ok(float(value) / _get_gen_base_power(component))
 
 
 @getter
 def get_device_services(
-    component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext
+    component: PLEXOSGenerator | PLEXOSBattery | PLEXOSStorage, context: PluginContext
 ) -> Result[list[Any], Any]:
     """
     Get the services provided by a device (generator, battery, etc.), returning VariableReserve objects from the target system.
@@ -727,22 +534,34 @@ def get_device_services(
     services = []
     memberships = context.source_system.get_supplemental_attributes_with_component(component)
     valid_collections = {CollectionEnum.Generators, CollectionEnum.Batteries}
-    variable_reserves = list(context.target_system.get_components(VariableReserve))
     for m in memberships:
         if hasattr(m, "collection") and m.collection in valid_collections and hasattr(m, "parent_object"):
             reserve_obj = m.parent_object
             reserve_uuid = getattr(reserve_obj, "uuid", None)
             reserve_name = getattr(reserve_obj, "name", None)
-            match = next(
-                (
-                    vr
-                    for vr in variable_reserves
-                    if (
-                        getattr(vr, "uuid", None) == reserve_uuid or getattr(vr, "name", None) == reserve_name
-                    )
-                ),
-                None,
-            )
+            match = None
+            if reserve_name:
+                candidate = _get_target_component_by_name(
+                    context.target_system, VariableReserve, reserve_name
+                )
+                if (
+                    candidate is not None
+                    and reserve_uuid is not None
+                    and getattr(candidate, "uuid", None) == reserve_uuid
+                ):
+                    match = candidate
+            if match is None:
+                match = next(
+                    (
+                        reserve
+                        for reserve in context.target_system.get_components(VariableReserve)
+                        if (
+                            getattr(reserve, "uuid", None) == reserve_uuid
+                            or getattr(reserve, "name", None) == reserve_name
+                        )
+                    ),
+                    None,
+                )
             if match and match not in services:
                 services.append(match)
     return Ok(services)
@@ -777,8 +596,7 @@ def get_gen_bus(
     if not bus_name:
         return Ok(None)
 
-    acbuses = list(context.target_system.get_components(ACBus))
-    bus = next((b for b in acbuses if getattr(b, "name", None) == bus_name), None)
+    bus = _get_target_component_by_name(context.target_system, ACBus, bus_name)
     return Ok(bus)
 
 
@@ -799,7 +617,7 @@ def get_hydro_gen_operation_cost(
 
 @getter
 def get_hydro_reservoir_operation_cost(
-    component: PLEXOSGenerator, context: PluginContext
+    component: PLEXOSGenerator | PLEXOSStorage, context: PluginContext
 ) -> Result[HydroReservoirCost, ValueError]:
     """Return zeroed hydro reservoir operation cost."""
     return Ok(HydroReservoirCost(level_shortage_cost=0.0, spillage_cost=0.0, level_surplus_cost=0.0))
@@ -822,9 +640,9 @@ def get_renewable_operation_cost(
 
 @getter
 def get_gen_reactive_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the reactive power of a generator."""
+    """Get the reactive power of a generator on its device base."""
     value = getattr(component, "reactive_power", 0.0)
-    return Ok(float(value))
+    return Ok(float(value) / _get_gen_base_power(component))
 
 
 @getter
@@ -837,22 +655,23 @@ def get_gen_start_types(component: PLEXOSGenerator, context: PluginContext) -> R
 
 
 @getter
-def get_gen_rating(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the rating of a generator."""
-    value = getattr(component, "max_capacity", 0.0)
-    return Ok(float(value))
+def get_gen_rating(component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext) -> Result[float, Any]:
+    """Get the generator or battery rating on its device base."""
+    value = component.max_power if isinstance(component, PLEXOSBattery) else component.max_capacity
+    return Ok(float(value) / _get_gen_base_power(component))
 
 
 @getter
-def get_gen_base_power(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the base power of a generator."""
-    value = getattr(component, "base_power", 0.0)
-    return Ok(float(value))
+def get_gen_base_power(
+    component: PLEXOSGenerator | PLEXOSBattery, context: PluginContext
+) -> Result[float, Any]:
+    """Use a positive equipment base/rating, or the standard 100 MVA fallback."""
+    return Ok(_get_gen_base_power(component))
 
 
 @getter
 def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[MinMax, Any]:
-    """Get active power limits using min_stable_level (MW) as min and max_capacity (MW) as max.
+    """Get device-base limits from min_stable_level and max_capacity in MW.
 
     If ``min_stable_level`` is zero but ``min_stable_factor`` (% of max_capacity) is set,
     the factor takes precedence.
@@ -863,28 +682,31 @@ def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginConte
         factor = float(getattr(component, "min_stable_factor", 0.0) or 0.0)
         if factor > 0.0:
             min_stable = factor / 100.0 * max_cap
-    return Ok(MinMax(min=min_stable, max=max_cap))
+    base_power = _get_gen_base_power(component)
+    return Ok(MinMax(min=min_stable / base_power, max=max_cap / base_power))
 
 
 @getter
 def get_gen_active_power_losses(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
-    """Get the active power losses incurred by having the unit online."""
+    """Get the online active power losses on the device base."""
     value = getattr(component, "active_power_losses", 0.0)
-    return Ok(float(value))
+    return Ok(float(value) / _get_gen_base_power(component))
 
 
 @getter
 def get_gen_must_run(component: PLEXOSGenerator, context: PluginContext) -> Result[bool, Any]:
-    """Get the must-run status of a generator."""
-    value = getattr(component, "must_run", True)
-    return Ok(bool(value))
+    """Map must-run units to a whole-generator commitment requirement."""
+    if 0 < component.must_run_units < component.units:
+        raise ValueError(f"Partial must-run units cannot be represented for {component.name}")
+    return Ok(component.must_run_units > 0)
 
 
 @getter
 def get_gen_reactive_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[Any, Any]:
-    """Get the reactive power limits of a generator."""
+    """Get the reactive power limits of a generator on its device base."""
     value = getattr(component, "reactive_power_limits", MinMax(min=0.0, max=0.0))
-    return Ok(value)
+    base_power = _get_gen_base_power(component)
+    return Ok(MinMax(min=value.min / base_power, max=value.max / base_power))
 
 
 @getter
@@ -939,18 +761,108 @@ def get_time_at_status(component: PLEXOSGenerator, context: PluginContext) -> Re
 def get_thermal_operation_cost(
     component: PLEXOSGenerator, context: PluginContext
 ) -> Result[ThermalGenerationCost, ValueError]:
-    """Build thermal operation cost from heat_rate, fuel_price, vom_charge, and start_cost."""
-    heat_rate = float(getattr(component, "heat_rate", 0.0) or 0.0)
-    fuel_price = float(getattr(component, "fuel_price", 0.0) or 0.0)
-    vom_charge = float(getattr(component, "vom_charge", 0.0) or 0.0)
-    start_cost = float(getattr(component, "start_cost", 0.0) or 0.0)
+    """Build thermal cost, preserving banded heat rates as a piecewise curve."""
+    heat_rate_value = getattr(component, "heat_rate", 0.0) or 0.0
+    if isinstance(heat_rate_value, Mapping):
+        band_rate_items = sorted(heat_rate_value.items(), key=lambda item: int(item[0]))
+        band_ids = [int(band) for band, rate in band_rate_items if rate is not None]
+        band_rates = [float(rate) for _, rate in band_rate_items if rate is not None]
+    else:
+        band_ids = []
+        band_rates = []
+
+    if len(band_rates) > 1:
+        min_output = _first_numeric(getattr(component, "min_stable_level", 0.0) or 0.0)
+        max_output = _first_numeric(getattr(component, "max_capacity", 0.0) or 0.0)
+        if min_output == 0.0:
+            factor = _first_numeric(getattr(component, "min_stable_factor", 0.0) or 0.0)
+            if factor > 0.0:
+                min_output = factor / 100.0 * max_output
+        if max_output > min_output:
+            load_point_value = getattr(component, "load_point", None)
+            has_explicit_load_points = (
+                bool(load_point_value)
+                if isinstance(load_point_value, Mapping)
+                else load_point_value not in (None, 0)
+            )
+            load_points_by_band: dict[int, float] = {}
+            if isinstance(load_point_value, Mapping) and has_explicit_load_points:
+                try:
+                    load_points_by_band = {
+                        int(band): float(point)
+                        for band, point in load_point_value.items()
+                        if point is not None
+                    }
+                except (TypeError, ValueError, OverflowError):
+                    load_points_by_band = {}
+            elif has_explicit_load_points and len(band_ids) == 1:
+                try:
+                    load_points_by_band[band_ids[0]] = float(load_point_value)
+                except (TypeError, ValueError, OverflowError):
+                    load_points_by_band = {}
+
+            x_coords = [min_output, *(load_points_by_band.get(band, math.nan) for band in band_ids)]
+            valid_load_points = (
+                has_explicit_load_points
+                and len(load_points_by_band) == len(band_ids)
+                and set(load_points_by_band) == set(band_ids)
+                and all(math.isfinite(point) for point in x_coords)
+                and x_coords[0] <= x_coords[1]
+                and all(left < right for left, right in itertools.pairwise(x_coords[1:]))
+                and x_coords[-1] <= max_output
+            )
+
+            if not valid_load_points and has_explicit_load_points:
+                logger.warning(
+                    "{} has invalid load-point breakpoints for its heat-rate bands; using band 1",
+                    component.name,
+                )
+            elif not has_explicit_load_points:
+                x_coords = [
+                    min_output + (max_output - min_output) * index / len(band_rates)
+                    for index in range(len(band_rates) + 1)
+                ]
+                logger.warning(
+                    "{} has {} heat-rate bands without explicit capacity breakpoints; "
+                    "assuming equal-width bands between {} and {} MW",
+                    component.name,
+                    len(band_rates),
+                    min_output,
+                    max_output,
+                )
+
+            if valid_load_points or not has_explicit_load_points:
+                initial_input = min_output * band_rates[0]
+                if x_coords[0] == x_coords[1]:
+                    # The first band's fuel input is already represented by initial_input.
+                    x_coords = x_coords[1:]
+                    band_rates = band_rates[1:]
+                value_curve = AverageRateCurve(
+                    function_data=PiecewiseStepData(x_coords=x_coords, y_coords=band_rates),
+                    initial_input=initial_input,
+                )
+            else:
+                value_curve = LinearCurve(band_rates[0])
+        else:
+            value_curve = LinearCurve(band_rates[0])
+            logger.warning(
+                "{} has banded heat rates but invalid output limits; using band 1",
+                component.name,
+            )
+    else:
+        heat_rate = band_rates[0] if band_rates else _first_numeric(heat_rate_value)
+        value_curve = LinearCurve(heat_rate)
+
+    fuel_price = _first_numeric(getattr(component, "fuel_price", 0.0) or 0.0)
+    vom_charge = _first_numeric(getattr(component, "vom_charge", 0.0) or 0.0)
+    start_cost = _first_numeric(getattr(component, "start_cost", 0.0) or 0.0)
     return Ok(
         ThermalGenerationCost(
             fixed=0.0,
             shut_down=0.0,
             start_up=start_cost,
             variable=FuelCurve(
-                value_curve=LinearCurve(heat_rate),
+                value_curve=value_curve,
                 power_units=NATURAL_UNITS,
                 fuel_cost=fuel_price,
                 vom_cost=LinearCurve(vom_charge),
@@ -969,13 +881,23 @@ def get_fuel_type(component: PLEXOSGenerator, context: PluginContext) -> Result[
 @getter
 def get_region_peak_active_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the peak active power in the area (use 'load' as proxy)."""
-    return Ok(float(getattr(component, "load", 0.0)))
+    return Ok(
+        _to_per_unit_power(
+            getattr(component, "load", 0.0),
+            _get_target_system_base_power(context),
+        )
+    )
 
 
 @getter
 def get_region_peak_reactive_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the peak reactive power in the area (no direct field, default to 0.0)."""
-    return Ok(float(getattr(component, "peak_reactive_power", 0.0)))
+    return Ok(
+        _to_per_unit_power(
+            getattr(component, "peak_reactive_power", 0.0),
+            _get_target_system_base_power(context),
+        )
+    )
 
 
 @getter
@@ -1007,25 +929,28 @@ def get_initial_storage_capacity_level(
 def get_storage_capacity(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the storage capacity.
 
-    For PLEXOSBattery uses the ``capacity`` field (MWh).
-    For PLEXOSStorage (hydro reservoir) uses ``max_volume`` (MWh).
+    For PLEXOSBattery converts ``capacity`` (MWh) to the device base.
+    For PLEXOSStorage (hydro reservoir) returns ``max_volume`` unchanged in GWh.
     """
     if hasattr(component, "capacity") and not hasattr(component, "max_volume"):
-        return Ok(float(getattr(component, "capacity", 0.0) or 0.0))
+        capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+        return Ok(capacity / _get_gen_base_power(component))
     return Ok(float(getattr(component, "max_volume", 0.0) or 0.0))
 
 
 @getter
-def get_storage_level_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[MinMax, Any]:
+def get_storage_level_limits(
+    component: PLEXOSGenerator | PLEXOSStorage, context: PluginContext
+) -> Result[MinMax, Any]:
     """Get the storage level limits.
 
     For PLEXOSBattery: returns fractions [0, 1] (Sienna convention for batteries).
-    For PLEXOSStorage (hydro): returns absolute MWh limits from min/max_volume.
+    For PLEXOSStorage (hydro): converts min/max_volume from GWh to MWh.
     """
     if hasattr(component, "capacity") and not hasattr(component, "max_volume"):
         return Ok(MinMax(min=0.0, max=1.0))
-    min_vol = float(getattr(component, "min_volume", 0.0) or 0.0)
-    max_vol = float(getattr(component, "max_volume", 0.0) or 0.0)
+    min_vol = float(getattr(component, "min_volume", 0.0) or 0.0) * 1000.0
+    max_vol = float(getattr(component, "max_volume", 0.0) or 0.0) * 1000.0
     return Ok(MinMax(min=min_vol, max=max_vol))
 
 
@@ -1035,10 +960,12 @@ def get_storage_charge_power_limits(
 ) -> Result[MinMax, Any]:
     """Get the input (charge) active power limits.
 
-    For PLEXOSBattery uses ``max_power`` (MW). For PLEXOSStorage uses ``max_release``.
+    For PLEXOSBattery converts ``max_power`` (MW) to the device base.
+    For PLEXOSStorage uses ``max_release``.
     """
     if hasattr(component, "max_power") and not hasattr(component, "max_release"):
-        return Ok(MinMax(min=0.0, max=float(getattr(component, "max_power", 0.0) or 0.0)))
+        power = float(getattr(component, "max_power", 0.0) or 0.0)
+        return Ok(MinMax(min=0.0, max=power / _get_gen_base_power(component)))
     return Ok(MinMax(min=0.0, max=float(getattr(component, "max_release", 0.0) or 0.0)))
 
 
@@ -1048,10 +975,12 @@ def get_storage_discharge_power_limits(
 ) -> Result[MinMax, Any]:
     """Get the output (discharge) active power limits.
 
-    For PLEXOSBattery uses ``max_power`` (MW). For PLEXOSStorage uses ``max_release``.
+    For PLEXOSBattery converts ``max_power`` (MW) to the device base.
+    For PLEXOSStorage uses ``max_release``.
     """
     if hasattr(component, "max_power") and not hasattr(component, "max_release"):
-        return Ok(MinMax(min=0.0, max=float(getattr(component, "max_power", 0.0) or 0.0)))
+        power = float(getattr(component, "max_power", 0.0) or 0.0)
+        return Ok(MinMax(min=0.0, max=power / _get_gen_base_power(component)))
     return Ok(MinMax(min=0.0, max=float(getattr(component, "max_release", 0.0) or 0.0)))
 
 
@@ -1134,10 +1063,16 @@ def get_reserve_requirement(component: PLEXOSGenerator, context: PluginContext) 
 def get_interface_active_power_flow_limits(
     component: PLEXOSInterface, context: PluginContext
 ) -> Result[MinMax, Any]:
-    """Get the min/max active power flow limits for a TransmissionInterface."""
+    """Convert interface flow limits from MW to per-unit on the system base."""
     min_flow = float(getattr(component, "min_flow", 0.0))
     max_flow = float(getattr(component, "max_flow", 0.0))
-    return Ok(MinMax(min=min_flow, max=max_flow))
+    base_power = _get_target_system_base_power(context)
+    return Ok(
+        MinMax(
+            min=_to_per_unit_power(min_flow, base_power),
+            max=_to_per_unit_power(max_flow, base_power),
+        )
+    )
 
 
 @getter
@@ -1165,22 +1100,36 @@ def get_trf_reactive_power_flow(component: PLEXOSTransformer, context: PluginCon
 
 
 @getter
-def get_trf_primary_shunt(
-    component: PLEXOSTransformer, context: PluginContext
-) -> Result[Complex | float | None, Any]:
-    """Get the primary shunt admittance of the transformer (complex or None)."""
-    value = getattr(component, "primary_shunt", None)
-    if value is None:
-        return Ok(None)
-    if isinstance(value, Complex):
-        return Ok(value)
-    return Ok(Complex(real=0.0, imag=0.0))
+def get_trf_primary_shunt(component: PLEXOSTransformer, context: PluginContext) -> Result[Complex, Any]:
+    """Map transformer line-charging susceptance to the Sienna primary shunt."""
+    susceptance = float(getattr(component, "ac_line_charging_susceptance", 0.0) or 0.0)
+    return Ok(Complex(real=0.0, imag=susceptance))
+
+
+@getter
+def get_trf_phase_angle(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
+    """Convert the fixed PLEXOS phase-shift angle from degrees to radians."""
+    return Ok(_get_trf_phase_angle_radians(component))
+
+
+@getter
+def get_trf_phase_angle_limits(component: PLEXOSTransformer, context: PluginContext) -> Result[MinMax, Any]:
+    """Constrain the phase-shifting transformer to its fixed PLEXOS angle."""
+    angle = _get_trf_phase_angle_radians(component)
+    return Ok(MinMax(min=angle, max=angle))
 
 
 @getter
 def get_trf_base_power(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
     """Get the base power of the transformer."""
-    return Ok(getattr(component, "base_power", 100.0))
+    return Ok(_get_transformer_base_power(component))
+
+
+@getter
+def get_trf_rating(component: PLEXOSTransformer, context: PluginContext) -> Result[float, Any]:
+    """Convert the transformer rating from MW to per-unit on its base power."""
+    rating = getattr(component, "rating", None)
+    return Ok(_to_per_unit_power(rating, _get_transformer_base_power(component)))
 
 
 @getter

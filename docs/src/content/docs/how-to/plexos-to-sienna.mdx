@@ -41,90 +41,86 @@ For field-by-field mappings, see [PLEXOS to Sienna property mappings](/R2X/refer
 
 ## Setup
 
-Use Python 3.11–3.13 and uv. From this repository checkout, replace the
-editable package paths below with your local parser and exporter checkouts.
-These commands update the workspace environment and lockfile:
-
-First, install the dependencies pinned by this checkout:
+Complete [installation](/R2X/getting-started/installation/) in a Python 3.11–3.13
+virtual environment, then install the published translator and its parser/exporter
+dependencies:
 
 ```bash
-uv sync
+python -m pip install r2x-plexos-to-sienna
+python -m pip check
 ```
 
-Add your source parser checkout so the script can read the native input model:
+Use compatible versions of the source and target packages. You do not need to
+modify this repository's lockfile or add editable checkouts to run a translation.
+For a runnable exercise without external model data, start with the
+[Python translation tutorial](/R2X/tutorials/python-translation/).
 
-```bash
-uv add --editable /path/to/r2x-plexos
-```
+<span id="example-script"></span>
 
-Add the target parser/exporter checkout, then verify that the command completes
-before running the Python example:
+## Run the translation
 
-```bash
-uv add --editable /path/to/r2x-sienna
-```
-
-## Example script
-
-Replace the model paths and years with your input data. A successful run writes
+Start a fresh Python console for this workflow. Replace the model paths and years
+with your input data before entering the session below. A successful run writes
 the target model and time-series files to the configured results directory.
 `run()` executes the plugin lifecycle and raises an error if a hook fails.
 
-```python
-from pathlib import Path
+```pycon
+>>> from pathlib import Path
 
-from plexosdb import PlexosDB
-from plexosdb.enums import ClassEnum
-from r2x_plexos import PLEXOSConfig, PLEXOSParser
-from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
-from r2x_plexos_to_sienna.translation import plexos_to_sienna
-from r2x_sienna.exporter import SiennaExporter
-from r2x_sienna.plugin_config import SiennaConfig
+>>> from plexosdb import PlexosDB
+>>> from plexosdb.enums import ClassEnum
+>>> from r2x_plexos import PLEXOSConfig, PLEXOSParser
+>>> from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
+>>> from r2x_plexos_to_sienna.translation import plexos_to_sienna
+>>> from r2x_sienna.exporter import SiennaExporter
+>>> from r2x_sienna.plugin_config import SiennaExporterConfig
 
-from r2x_core import DataFile, DataStore, PluginContext
-from r2x_core.logger import setup_logging
+>>> from r2x_core import DataFile, DataStore, PluginContext
+>>> from r2x_core.logger import setup_logging
 
-setup_logging(verbosity=2)
+>>> setup_logging(verbosity=2)
 
-case_name = "20241018_2023system_EI_ba"
-folder_path = Path(f"/path/to/{case_name}")
-model_year = 2012
+>>> case_name = "20241018_2023system_EI_ba"
+>>> folder_path = Path(f"/path/to/{case_name}")
+>>> model_year = 2012
 
-# PLEXOS PARSER
-xml_path = folder_path / "20241018_2023system_EI_ba.xml"
-db = PlexosDB.from_xml(xml_path)
-# Examining first the models in the plexos run would be helpful when trying
-# to translate from PLEXOS to Sienna
-model_names = db.list_objects_by_class(ClassEnum.Model)
-model_name = model_names[0] if model_names else "Base"
+>>> # PLEXOS PARSER
+>>> xml_path = folder_path / "20241018_2023system_EI_ba.xml"
+>>> db = PlexosDB.from_xml(xml_path)
+>>> # Examining first the models in the plexos run would be helpful when trying
+>>> # to translate from PLEXOS to Sienna
+>>> model_names = db.list_objects_by_class(ClassEnum.Model)
+>>> model_name = model_names[0] if model_names else "Base"
 
-plexos_config = PLEXOSConfig(
-    model_name=model_name,
-    horizon_year=model_year,
-    models=("r2x_plexos.models", "r2x_sienna.models"),
-)
-data_file = DataFile(name="xml_file", fpath=xml_path)
-store = DataStore(path=folder_path)
-store.add_data([data_file])
+>>> plexos_config = PLEXOSConfig(
+...     model_name=model_name,
+...     horizon_year=model_year,
+...     models=("r2x_plexos.models", "r2x_sienna.models"),
+... )
+>>> data_file = DataFile(name="xml_file", fpath=xml_path)
+>>> store = DataStore(path=folder_path)
+>>> store.add_data([data_file])
 
-context = PluginContext(config=plexos_config, store=store)
-parser = PLEXOSParser.from_context(context)
-plexos_sys_result = parser.run()
-plexos_sys = plexos_sys_result.system
+>>> context = PluginContext(config=plexos_config, store=store)
+>>> parser = PLEXOSParser.from_context(context)
+>>> plexos_sys_result = parser.run()
+>>> plexos_sys = plexos_sys_result.system
 
-sienna_sys = plexos_to_sienna(plexos_sys, PlexosToSiennaConfig())
+>>> sienna_sys = plexos_to_sienna(plexos_sys, PlexosToSiennaConfig())
+>>> assert len(list(sienna_sys.iter_all_components())) > 0
 
-# Sienna Exporter
-results_dir = folder_path / "results"
-results_dir.mkdir(exist_ok=True)
-output_file = str(results_dir / f"{case_name}.json")
-sienna_config = SiennaConfig(system_name=case_name, model_year=model_year, output_path=output_file)
+>>> # Sienna Exporter
+>>> results_dir = folder_path / "results"
+>>> results_dir.mkdir(exist_ok=True)
+>>> output_file = str(results_dir / f"{case_name}.json")
+>>> sienna_config = SiennaExporterConfig(output_path=output_file)
 
-exporter_context = PluginContext(
-    config=sienna_config,
-    system=sienna_sys,
-)
-exporter = SiennaExporter.from_context(exporter_context)
+>>> exporter_context = PluginContext(
+...     config=sienna_config,
+...     system=sienna_sys,
+... )
+>>> exporter = SiennaExporter.from_context(exporter_context)
 
-exporter.run()
+>>> export_result = exporter.run()
+>>> assert Path(output_file).is_file()
 ```
