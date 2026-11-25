@@ -670,6 +670,19 @@ def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginConte
     return Ok(MinMax(min=min_stable / base_power, max=max_cap / base_power))
 
 
+def _per_unit_structured_value(value: MinMax) -> dict[str, Any]:
+    return {"value": {"min": value.min, "max": value.max}, "unit": "pu"}
+
+
+@getter
+def get_gen_active_power_limits_per_unit(
+    component: PLEXOSGenerator, context: PluginContext
+) -> Result[dict[str, Any], Any]:
+    """Get already-normalized active power limits in the core's serialized per-unit form."""
+    limits = get_gen_active_power_limits(component, context).unwrap()
+    return Ok(_per_unit_structured_value(limits))
+
+
 @getter
 def get_gen_active_power_losses(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
     """Get the online active power losses on the device base."""
@@ -691,6 +704,15 @@ def get_gen_reactive_power_limits(component: PLEXOSGenerator, context: PluginCon
     value = getattr(component, "reactive_power_limits", MinMax(min=0.0, max=0.0))
     base_power = get_gen_base_power(component, context).unwrap()
     return Ok(MinMax(min=value.min / base_power, max=value.max / base_power))
+
+
+@getter
+def get_gen_reactive_power_limits_per_unit(
+    component: PLEXOSGenerator, context: PluginContext
+) -> Result[dict[str, Any], Any]:
+    """Get already-normalized reactive power limits in the core's serialized per-unit form."""
+    limits = get_gen_reactive_power_limits(component, context).unwrap()
+    return Ok(_per_unit_structured_value(limits))
 
 
 @getter
@@ -966,6 +988,24 @@ def get_storage_discharge_power_limits(
         power = float(getattr(component, "max_power", 0.0) or 0.0)
         return Ok(MinMax(min=0.0, max=power / get_gen_base_power(component, context).unwrap()))
     return Ok(MinMax(min=0.0, max=float(getattr(component, "max_release", 0.0) or 0.0)))
+
+
+@getter
+def get_storage_charge_power_limits_per_unit(
+    component: PLEXOSGenerator, context: PluginContext
+) -> Result[dict[str, Any], Any]:
+    """Get already-normalized charge limits in the core's serialized per-unit form."""
+    limits = get_storage_charge_power_limits(component, context).unwrap()
+    return Ok(_per_unit_structured_value(limits))
+
+
+@getter
+def get_storage_discharge_power_limits_per_unit(
+    component: PLEXOSGenerator, context: PluginContext
+) -> Result[dict[str, Any], Any]:
+    """Get already-normalized discharge limits in the core's serialized per-unit form."""
+    limits = get_storage_discharge_power_limits(component, context).unwrap()
+    return Ok(_per_unit_structured_value(limits))
 
 
 @getter

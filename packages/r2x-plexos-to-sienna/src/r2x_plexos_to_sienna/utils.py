@@ -79,7 +79,7 @@ def _first_numeric(value: Any) -> float:
 
 
 def _get_pending_ts_cache(context: PluginContext) -> dict[str, Any]:
-    cache = context._cache.setdefault(P2S_TS_PENDING_CACHE_KEY, {})
+    cache = context.metadata.setdefault(P2S_TS_PENDING_CACHE_KEY, {})
     return cache
 
 
@@ -548,10 +548,10 @@ def extract_number_from_name(name: str, context: PluginContext) -> int:
 
 
 def _get_node_number_state(context: PluginContext) -> _NodeNumberState:
-    state = context._cache.get(P2S_NODE_NUMBER_CACHE_KEY)
+    state = context.metadata.get(P2S_NODE_NUMBER_CACHE_KEY)
     if state is None:
         state = _NodeNumberState()
-        context._cache[P2S_NODE_NUMBER_CACHE_KEY] = state
+        context.metadata[P2S_NODE_NUMBER_CACHE_KEY] = state
     return state
 
 

@@ -146,6 +146,7 @@
       "angle_limits": "get_line_angle_limits"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "not_in",
       "values": [
@@ -187,6 +188,7 @@
       "losses": "get_line_losses"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "eq",
       "values": ["monitored-line"]
@@ -216,6 +218,7 @@
       "loss": "get_hvdc_line_loss"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "in",
       "values": [
@@ -252,6 +255,7 @@
       "winding_group_number": "get_trf_winding_group_number"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "not_in",
       "values": [
@@ -287,6 +291,7 @@
       "control_objective": "get_trf_control_objective"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "eq",
       "values": ["tap-transformer"]
@@ -319,6 +324,7 @@
       "phase_angle_limits": "get_trf_phase_angle_limits"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "eq",
       "values": ["phase-shifting-transformer"]
@@ -356,6 +362,7 @@
       "fuel": "get_fuel_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -382,7 +389,7 @@
       "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
       "active_power_limits": "get_gen_active_power_limits",
-      "reactive_power_limits": "get_gen_reactive_power_limits",
+      "reactive_power_limits": "get_gen_reactive_power_limits_per_unit",
       "must_run": "get_gen_must_run",
       "prime_mover_type": "get_prime_mover_type",
       "status": "get_gen_status",
@@ -395,6 +402,7 @@
       "services": "get_device_services"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -420,8 +428,8 @@
       "reactive_power": "get_gen_reactive_power",
       "rating": "get_gen_rating",
       "prime_mover_type": "get_prime_mover_type",
-      "active_power_limits": "get_gen_active_power_limits",
-      "reactive_power_limits": "get_gen_reactive_power_limits",
+      "active_power_limits": "get_gen_active_power_limits_per_unit",
+      "reactive_power_limits": "get_gen_reactive_power_limits_per_unit",
       "base_power": "get_gen_base_power",
       "time_at_status": "get_time_at_status",
       "status": "get_gen_status",
@@ -431,6 +439,7 @@
       "time_limits": "get_gen_time_limits"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -455,8 +464,8 @@
       "active_power": "get_gen_active_power",
       "reactive_power": "get_gen_reactive_power",
       "rating": "get_gen_rating",
-      "active_power_limits": "get_gen_active_power_limits",
-      "reactive_power_limits": "get_gen_reactive_power_limits",
+      "active_power_limits": "get_gen_active_power_limits_per_unit",
+      "reactive_power_limits": "get_gen_reactive_power_limits_per_unit",
       "base_power": "get_gen_base_power",
       "services": "get_device_services",
       "operation_cost": "get_hydro_gen_operation_cost",
@@ -465,6 +474,7 @@
       "prime_mover_type": "get_prime_mover_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -496,6 +506,7 @@
       "operation_cost": "get_hydro_reservoir_operation_cost"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "in",
       "values": [
@@ -522,12 +533,13 @@
       "reactive_power": "get_gen_reactive_power",
       "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
-      "reactive_power_limits": "get_gen_reactive_power_limits",
+      "reactive_power_limits": "get_gen_reactive_power_limits_per_unit",
       "prime_mover_type": "get_prime_mover_type",
       "services": "get_device_services",
       "power_factor": "get_gen_power_factor"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -558,6 +570,7 @@
       "prime_mover_type": "get_prime_mover_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -583,10 +596,11 @@
       "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
       "services": "get_device_services",
-      "reactive_power_limits": "get_gen_reactive_power_limits",
+      "reactive_power_limits": "get_gen_reactive_power_limits_per_unit",
       "active_power_losses": "get_gen_active_power_losses"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -634,8 +648,8 @@
       "rating": "get_gen_rating",
       "services": "get_device_services",
       "active_power":"get_gen_active_power",
-      "input_active_power_limits": "get_storage_charge_power_limits",
-      "output_active_power_limits": "get_storage_discharge_power_limits",
+      "input_active_power_limits": "get_storage_charge_power_limits_per_unit",
+      "output_active_power_limits": "get_storage_discharge_power_limits_per_unit",
       "efficiency": "get_storage_efficiency",
       "reactive_power": "get_gen_reactive_power",
       "base_power": "get_gen_base_power",
