@@ -1,0 +1,77 @@
+---
+title: Translate a small system in Python
+description: Build two ReEDS regions, translate them to Sienna, and check the resulting buses and load.
+---
+
+This exercise isolates the translation step from file parsing and export. You
+will build two ReEDS regions and one demand component using public models, call
+the registered translation function, and check the resulting Sienna components.
+No downloaded study or licensed software is needed. The small graph has no lines,
+generators, or time series and is not a simulation-ready power system.
+
+## Prepare the environment
+
+Follow [installation](/R2X/getting-started/installation/) to activate a supported
+Python virtual environment. Install the translator and check dependencies:
+
+```bash
+python -m pip install r2x-reeds-to-sienna
+python -m pip check
+```
+
+Start Python in that environment and enter the following in a fresh session.
+Each `>>>` starts an input; `...` continues that input. Copy the input without
+its prompts when saving it as a Python script.
+
+## Build the source graph
+
+Import the shared system, source models, target models, and the public function:
+
+```pycon
+>>> from r2x_core import System
+>>> from r2x_reeds.models import ReEDSDemand, ReEDSRegion
+>>> from r2x_reeds_to_sienna.plugin_config import ReEDSToSiennaConfig
+>>> from r2x_reeds_to_sienna.translation import reeds_to_sienna
+>>> from r2x_sienna.models import ACBus, PowerLoad
+>>> source = System(name="two-region-demo", auto_add_composed_components=True)
+>>> north = ReEDSRegion(name="north")
+>>> south = ReEDSRegion(name="south")
+>>> source.add_components(north, south)
+>>> source.add_component(ReEDSDemand(name="north-load", region=north, max_active_power=500.0))
+```
+
+The regions provide the topology references for the demand. The translator
+maps those regions into buses and the demand into a target load. Keeping the
+source graph small makes it possible to assert exact counts rather than infer
+success from a log message.
+
+## Translate and inspect
+
+Continue in the same session:
+
+```pycon
+>>> target = reeds_to_sienna(source, ReEDSToSiennaConfig())
+>>> assert target is not source
+>>> assert target.name == "Sienna"
+>>> assert target.base_power == 100.0
+>>> buses = list(target.get_components(ACBus))
+>>> loads = list(target.get_components(PowerLoad))
+>>> assert len(buses) == 2
+>>> assert len(loads) == 1
+>>> len(buses), len(loads)
+(2, 1)
+```
+
+The assertions check the target type's component graph and system base. They
+establish the mapping behavior for this fixture; they do not establish that an
+arbitrary source study is complete. With actual model data, inspect capacities,
+units, time-series normalization, and topology as well.
+
+## Continue with a native model
+
+Use the [ReEDS to Sienna workflow](/R2X/how-to/reeds-to-sienna/) to replace the
+hand-built graph with a parsed ReEDS run and export the target. The
+[property reference](/R2X/reference/reeds-to-sienna-properties/) explains the
+individual mappings, and the [API reference](/R2X/reference/python-api/#reeds_to_sienna)
+links to the implementation. For the complete parse/export lifecycle using a
+public Sienna dataset, follow the [CLI tutorial](/R2X/tutorials/getting-started/).

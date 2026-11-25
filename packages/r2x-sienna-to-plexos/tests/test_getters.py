@@ -798,7 +798,6 @@ def test_get_component_rating_hydro_turbine(context):
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
     assert getters.get_generator_rating(ht, context).unwrap() == 22500.0

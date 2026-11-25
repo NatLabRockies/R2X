@@ -177,9 +177,10 @@ def test_hydro_reservoir_without_suffix_translates_to_head_and_tail_storage(tmp_
 
     context, rules = make_context_and_rules(tmp_path)
     context.source_system = System(name="source", auto_add_composed_components=True)
-    context.source_system.add_component(
-        HydroReservoir(
-            name="EI_Reservoir",
+
+    def make_reservoir(name):
+        return HydroReservoir(
+            name=name,
             available=True,
             storage_level_limits=MinMax(min=0.0, max=1000.0),
             initial_level=0.5,
@@ -193,22 +194,27 @@ def test_hydro_reservoir_without_suffix_translates_to_head_and_tail_storage(tmp_
             level_data_type=ReservoirDataType.USABLE_VOLUME,
             category="hydro_reservoir",
         )
-    )
+
+    context.source_system.add_component(make_reservoir("UNLINKED_Reservoir"))
+    context.source_system.add_component(make_reservoir("EI_Reservoir"))
     context.target_system = System(name="target", auto_add_composed_components=True)
-    context.rules = rules
+    context.rules = [
+        rule for rule in rules if rule.source_type == "HydroReservoir" and rule.target_type == "PLEXOSStorage"
+    ]
 
     monkeypatch.setattr(
         getters_module,
         "_reservoir_has_hydro_pumped_storage_association",
-        lambda _source_component, _context: True,
+        lambda source_component, _context: source_component.name == "EI_Reservoir",
     )
 
     result = apply_rules_to_context(context)
-    assert result.total_rules > 0
+    assert result.successful_rules == 2
+    assert result.failed_rules == 0
+    assert result.total_converted == 2
 
     storages = list(context.target_system.get_components(PLEXOSStorage))
-    assert any(s.name in {"EI_head", "EI_Reservoir_head"} for s in storages)
-    assert any(s.name in {"EI_tail", "EI_Reservoir_tail"} for s in storages)
+    assert {storage.name for storage in storages} == {"EI_Reservoir_head", "EI_Reservoir_tail"}
 
 
 def test_sienna_interface_translates_to_plexos_interface(tmp_path):

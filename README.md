@@ -1,4 +1,5 @@
 <img src="./docs/src/assets/r2x-logo-full-square.svg" alt="R2X framework logo" align="left" width="220px" height="220px" hspace="10"/>
+<img align="left" alt="" width="0" height="220px" hspace="10"/>
 
 #### R2X
 <p><small>Translation plugins for ReEDS, PLEXOS, and Sienna.</small></p>
@@ -14,25 +15,25 @@ shared system, configuration, and rule APIs.
 
 ## Quick Start
 
-Install [r2x-cli](https://github.com/NatLabRockies/r2x-cli#install) and Python
-3.11, 3.12, or 3.13. Install the translation plugin for your workflow:
-
-```bash
-r2x install r2x-reeds-to-plexos
-```
-
-The CLI installs the plugin and its dependencies into its managed environment.
-To manage your own Python environment instead:
+For Python integration, create and activate a supported Python environment, then
+install the translation package for your workflow:
 
 ```bash
 python -m pip install r2x-reeds-to-plexos
+python -m pip check
 ```
+
+For CLI pipelines, install [r2x-cli](https://github.com/NatLabRockies/r2x-cli#install)
+and run `r2x install r2x-reeds-to-plexos` in its managed environment. See
+[Getting started](https://natlabrockies.github.io/R2X/getting-started/installation/)
+for runtime requirements, discovery checks, and your first workflow.
 
 ## Documentation
 
 Use the guide that matches your task:
 
-- [Getting started](https://natlabrockies.github.io/R2X/tutorials/getting-started/): run and inspect your first pipeline.
+- [Installation](https://natlabrockies.github.io/R2X/getting-started/installation/): prerequisites, published packages, and verification.
+- [First CLI pipeline](https://natlabrockies.github.io/R2X/tutorials/getting-started/): run and inspect your first pipeline.
 - [Translation workflows](https://natlabrockies.github.io/R2X/how-to/): parse, translate, and export a model.
 - [Property reference](https://natlabrockies.github.io/R2X/reference/reeds-to-plexos-properties/): inspect mappings and their source rules.
 - [Architecture](https://natlabrockies.github.io/R2X/explanation/architecture/): understand package boundaries.

@@ -6,6 +6,7 @@ import types
 from typing import Any, cast
 
 import pytest
+from infrasys.exceptions import ISOperationNotAllowed
 from infrasys.value_curves import AverageRateCurve
 from plexosdb import CollectionEnum
 from r2x_plexos.models import (
@@ -21,9 +22,8 @@ from r2x_plexos.models import (
     PLEXOSTransformer,
     PLEXOSZone,
 )
-from r2x_plexos_to_sienna import getters
+from r2x_plexos_to_sienna import getters, utils
 from r2x_plexos_to_sienna.getters import (
-    extract_number_from_name,
     get_base_voltage,
     get_device_services,
     get_gen_start_types,
@@ -41,6 +41,7 @@ from r2x_plexos_to_sienna.getters import (
     get_reserve_type,
     get_trf_primary_shunt,
 )
+from r2x_plexos_to_sienna.utils import extract_number_from_name
 from r2x_sienna.models import ACBus, Area
 from r2x_sienna.models.enums import (
     ACBusTypes,
@@ -48,35 +49,99 @@ from r2x_sienna.models.enums import (
     ReserveDirection,
     ReserveType,
     StorageTechs,
+    ThermalFuels,
 )
 from r2x_sienna.units import Voltage
 
 from r2x_core import DataStore, PluginConfig, PluginContext, Result, System
 
 
-def test_extract_number_from_name_digits_and_dummy():
-    assert extract_number_from_name("p126_OSW") == 126
-    assert extract_number_from_name("bus") == 100101
-    assert extract_number_from_name("bus") == 100101
-    assert extract_number_from_name("anotherbus") == 100102
+@pytest.fixture
+def node_context():
+    return PluginContext(config=PluginConfig())
 
 
-def test_get_node_number_with_number():
+def test_extract_number_from_name_digits_and_dummy(node_context):
+    assert extract_number_from_name("p126_OSW", node_context) == 126
+    assert extract_number_from_name("bus", node_context) == 100101
+    assert extract_number_from_name("bus", node_context) == 100101
+    assert extract_number_from_name("anotherbus", node_context) == 100102
+
+
+def test_get_node_number_with_number(node_context):
     node = cast(PLEXOSNode, types.SimpleNamespace(number=42))
-    result = cast(Result[int, Any], get_node_number(node, None))
+    result = cast(Result[int, Any], get_node_number(node, node_context))
     assert result.value == 42
 
 
-def test_get_node_number_with_name():
+def test_get_node_number_with_name(node_context):
     node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name="p123"))
-    result = cast(Result[int, Any], get_node_number(node, None))
+    result = cast(Result[int, Any], get_node_number(node, node_context))
     assert result.value == 123
 
 
-def test_get_node_number_default():
-    node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name=None))
-    result = cast(Result[int, Any], get_node_number(node, None))
-    assert result.value == 1
+@pytest.mark.parametrize("number", [0, -1])
+def test_get_node_number_ignores_nonpositive_numbers(number, node_context):
+    node = cast(PLEXOSNode, types.SimpleNamespace(number=number, name="NODE_0_123456"))
+    result = cast(Result[int, Any], get_node_number(node, node_context))
+    assert result.value == 123456
+
+
+def test_get_node_number_reserves_explicit_numbers_and_uses_next_name_group(node_context):
+    first_node = cast(PLEXOSNode, types.SimpleNamespace(number=42, name="EXPLICIT"))
+    duplicate_node = cast(PLEXOSNode, types.SimpleNamespace(number=42, name="NODE_42_43"))
+
+    assert cast(Result[int, Any], get_node_number(first_node, node_context)).value == 42
+    assert cast(Result[int, Any], get_node_number(duplicate_node, node_context)).value == 43
+    assert cast(Result[int, Any], get_node_number(duplicate_node, node_context)).value == 43
+
+
+def test_get_node_number_default(node_context):
+    first_node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name=None))
+    second_node = cast(PLEXOSNode, types.SimpleNamespace(number=None, name=None))
+    assert cast(Result[int, Any], get_node_number(first_node, node_context)).value == 100101
+    assert cast(Result[int, Any], get_node_number(second_node, node_context)).value == 100102
+
+
+def test_node_number_state_is_isolated_between_contexts(node_context):
+    other_context = PluginContext(config=PluginConfig())
+    reserved = cast(PLEXOSNode, types.SimpleNamespace(number=100101, name="reserved"))
+    unnamed = cast(PLEXOSNode, types.SimpleNamespace(number=None, name=None))
+    assert get_node_number(reserved, node_context).unwrap() == 100101
+    assert get_node_number(unnamed, node_context).unwrap() == 100102
+    assert get_node_number(unnamed, other_context).unwrap() == 100101
+    assert get_node_number(reserved, other_context).unwrap() == 100102
+    assert get_node_number(reserved, node_context).unwrap() == 100101
+
+
+def test_target_component_lookup_uses_index_and_preserves_duplicate_order():
+    first_bus = cast(ACBus, types.SimpleNamespace(name="NODE1"))
+    second_bus = cast(ACBus, types.SimpleNamespace(name="NODE1"))
+
+    class IndexedSystem:
+        def get_component(self, component_type, name):
+            assert component_type is ACBus
+            assert name == "NODE1"
+            return first_bus
+
+        def get_components(self, component_type):
+            pytest.fail("Unique indexed lookups should not scan all components")
+
+    indexed_system = cast(System, IndexedSystem())
+    assert utils._get_target_component_by_name(indexed_system, ACBus, "NODE1") is first_bus
+
+    class DuplicateSystem:
+        def get_component(self, component_type, name):
+            raise ISOperationNotAllowed("duplicate component names")
+
+        def get_components(self, component_type):
+            return iter((first_bus, second_bus))
+
+    duplicate_system = cast(System, DuplicateSystem())
+    assert utils._get_target_components_by_name(duplicate_system, ACBus, "NODE1") == [
+        first_bus,
+        second_bus,
+    ]
 
 
 def test_get_base_voltage_all_branches():
@@ -94,7 +159,10 @@ def test_get_base_voltage_all_branches():
 def test_get_node_area_and_zone_membership():
     # Area
     dummy_area = types.SimpleNamespace(name="A")
-    dummy_target = types.SimpleNamespace(get_components=lambda t: [dummy_area])
+    dummy_target = types.SimpleNamespace(
+        get_component=lambda component_type, name: dummy_area,
+        get_components=lambda component_type: [dummy_area],
+    )
     dummy_membership = types.SimpleNamespace(
         collection=getters.CollectionEnum.Region, child_object=types.SimpleNamespace(name="A")
     )
@@ -113,7 +181,10 @@ def test_get_node_area_and_zone_membership():
 
     # Zone
     dummy_zone = types.SimpleNamespace(name="Z")
-    dummy_target = types.SimpleNamespace(get_components=lambda t: [dummy_zone])
+    dummy_target = types.SimpleNamespace(
+        get_component=lambda component_type, name: dummy_zone,
+        get_components=lambda component_type: [dummy_zone],
+    )
     dummy_membership = types.SimpleNamespace(
         collection=getters.CollectionEnum.Zone, child_object=types.SimpleNamespace(name="Z")
     )
@@ -162,10 +233,63 @@ def test_get_line_angle_limits_tuple_and_default():
 def test_get_line_flow_limits_with_and_without_max():
     line = cast(PLEXOSLine, types.SimpleNamespace(min_flow=-50.0, max_flow=150.0))
     result = cast(Result[Any, Any], get_line_flow_limits(line, None)).value
-    assert result.from_to == 150.0 and result.to_from == -50.0
+    assert result.from_to == 1.5 and result.to_from == -0.5
     line = cast(PLEXOSLine, types.SimpleNamespace(min_flow=-50.0, max_flow=None))
     result = cast(Result[Any, Any], get_line_flow_limits(line, None)).value
-    assert result.from_to == 100.0 and result.to_from == -50.0
+    assert result.from_to == 1.0 and result.to_from == -0.5
+
+
+def test_branch_and_network_power_getters_convert_to_per_unit():
+    context = cast(
+        PluginContext,
+        types.SimpleNamespace(target_system=types.SimpleNamespace(base_power=200.0)),
+    )
+    line = cast(
+        PLEXOSLine,
+        types.SimpleNamespace(max_flow=100.0, min_flow=-50.0, fixed_flow=40.0),
+    )
+
+    assert getters.get_line_rating(line, context).unwrap() == 0.5
+    assert getters.get_line_active_power_flow(line, context).unwrap() == 0.2
+    limits = getters.get_line_flow_limits(line, context).unwrap()
+    assert limits.from_to == 0.5
+    assert limits.to_from == -0.25
+
+    hvdc = cast(
+        PLEXOSLine,
+        types.SimpleNamespace(
+            min_reactive_power_from=-20.0,
+            max_reactive_power_from=40.0,
+            min_reactive_power_to=-10.0,
+            max_reactive_power_to=30.0,
+        ),
+    )
+    limits_from = getters.get_reactive_power_limits_from(hvdc, context).unwrap()
+    limits_to = getters.get_reactive_power_limits_to(hvdc, context).unwrap()
+    assert (limits_from.min, limits_from.max) == (-0.1, 0.2)
+    assert (limits_to.min, limits_to.max) == (-0.05, 0.15)
+
+    interface = cast(PLEXOSInterface, types.SimpleNamespace(min_flow=-200.0, max_flow=100.0))
+    interface_limits = getters.get_interface_active_power_flow_limits(interface, context).unwrap()
+    assert (interface_limits.min, interface_limits.max) == (-1.0, 0.5)
+
+    region = cast(
+        PLEXOSRegion,
+        types.SimpleNamespace(load=300.0, peak_reactive_power=100.0),
+    )
+    assert getters.get_region_peak_active_power(region, context).unwrap() == 1.5
+    assert getters.get_region_peak_reactive_power(region, context).unwrap() == 0.5
+
+    zone = cast(
+        PLEXOSZone,
+        types.SimpleNamespace(peak_active_power=300.0, peak_reactive_power=100.0),
+    )
+    assert getters.get_zone_peak_active_power(zone, context).unwrap() == 1.5
+    assert getters.get_zone_peak_reactive_power(zone, context).unwrap() == 0.5
+
+    transformer = cast(PLEXOSTransformer, types.SimpleNamespace(rating=100.0, base_power=200.0))
+    assert getters.get_trf_rating(transformer, context).unwrap() == 0.5
+    assert getters.get_trf_base_power(transformer, context).unwrap() == 200.0
 
 
 def test_get_line_losses_with_values():
@@ -219,15 +343,18 @@ def test_get_reserve_type_and_direction():
 
 
 def test_get_trf_primary_shunt():
-    node = cast(PLEXOSTransformer, types.SimpleNamespace(primary_shunt=None))
-    result = cast(Result[Any, Any], get_trf_primary_shunt(node, None))
-    assert result.value is None
-    node = cast(PLEXOSTransformer, types.SimpleNamespace(primary_shunt=getters.Complex(real=1.0, imag=2.0)))
-    result = cast(Result[Any, Any], get_trf_primary_shunt(node, None))
-    assert result.value.real == 1.0
-    node = cast(PLEXOSTransformer, types.SimpleNamespace(primary_shunt=5.0))
-    result_val = cast(Result[Any, Any], get_trf_primary_shunt(node, None)).value
-    assert result_val.real == 0.0 and result_val.imag == 0.0
+    transformer = cast(
+        PLEXOSTransformer,
+        types.SimpleNamespace(ac_line_charging_susceptance=2.0),
+    )
+    primary_shunt = cast(Result[Any, Any], get_trf_primary_shunt(transformer, None)).value
+    assert primary_shunt.real == 0.0
+    assert primary_shunt.imag == 2.0
+
+    transformer = cast(PLEXOSTransformer, types.SimpleNamespace(ac_line_charging_susceptance=0.0))
+    primary_shunt = cast(Result[Any, Any], get_trf_primary_shunt(transformer, None)).value
+    assert primary_shunt.real == 0.0
+    assert primary_shunt.imag == 0.0
 
 
 def test_get_node_ext():
@@ -249,16 +376,46 @@ def test_get_device_services_empty():
     assert result.value == []
 
 
-def test_node_number_getter_no_number():
-    assert extract_number_from_name("bus") == 100101
-    assert extract_number_from_name("anotherbus") == 100102
-    assert extract_number_from_name("bus") == 100101
+def test_get_device_services_uses_index_for_matching_reserve_uuid():
+    source_reserve = types.SimpleNamespace(name="SPIN1", uuid="reserve-1")
+    target_reserve = types.SimpleNamespace(name="SPIN1", uuid="reserve-1")
+    membership = types.SimpleNamespace(
+        collection=getters.CollectionEnum.Generators,
+        parent_object=source_reserve,
+    )
+
+    class IndexedSystem:
+        def get_component(self, component_type, name):
+            assert component_type is getters.VariableReserve
+            assert name == "SPIN1"
+            return target_reserve
+
+        def get_components(self, component_type):
+            pytest.fail("Matching reserve UUID should use indexed lookup")
+
+    ctx = cast(
+        PluginContext,
+        types.SimpleNamespace(
+            source_system=types.SimpleNamespace(
+                get_supplemental_attributes_with_component=lambda component: [membership]
+            ),
+            target_system=cast(System, IndexedSystem()),
+        ),
+    )
+    component = cast(PLEXOSGenerator, types.SimpleNamespace())
+    result = cast(Result[list[Any], Any], get_device_services(component, ctx))
+    assert result.value == [target_reserve]
+
+
+def test_node_number_getter_no_number(node_context):
+    assert extract_number_from_name("bus", node_context) == 100101
+    assert extract_number_from_name("anotherbus", node_context) == 100102
+    assert extract_number_from_name("bus", node_context) == 100101
 
 
 def make_context(tmp_path):
     config = PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models", "r2x_plexos_to_sienna.getters"))
     store = DataStore(path=tmp_path)
-    store.configure_upgrades(plugin_config=config)
     return PluginContext(config=config, store=store)
 
 
@@ -303,7 +460,7 @@ def test_region_getters(tmp_path) -> None:
     region = PLEXOSRegion(name="REGION1", load=300.0)
 
     # Area getters
-    assert getters.get_region_peak_active_power(region, context).unwrap() == 300.0
+    assert getters.get_region_peak_active_power(region, context).unwrap() == 3.0
     assert getters.get_region_peak_reactive_power(region, context).unwrap() == 0.0
     assert getters.get_region_load_response(region, context).unwrap() == 0.0
 
@@ -494,6 +651,39 @@ def test_prime_mover_type_mapping(tmp_path) -> None:
         assert result == expected_type, f"Category {category} should map to {expected_type}, got {result}"
 
 
+@pytest.mark.parametrize(
+    ("category", "expected"),
+    [
+        ("gas-cc-ccs_max", PrimeMoversType.CC),
+        (" GAS-CC-CCS_MAX ", PrimeMoversType.CC),
+        ("beccs_max", PrimeMoversType.ST),
+        ("battery_4", PrimeMoversType.BA),
+        ("hydnpd", PrimeMoversType.HY),
+        ("wind-ofs_12", PrimeMoversType.WS),
+        ("WIND-OFS", PrimeMoversType.WS),
+        ("egs_nearfield", PrimeMoversType.BT),
+    ],
+)
+def test_prime_mover_known_technology_variants(node_context, category, expected):
+    gen = PLEXOSGenerator(name="GEN", category=category, max_capacity=50.0)
+    assert get_prime_mover_type(gen, node_context).unwrap() == expected
+
+
+@pytest.mark.parametrize(
+    ("category", "expected"),
+    [
+        ("beccs_max", ThermalFuels.OTHER_BIOMASS_SOLIDS),
+        (" BECCS_MAX ", ThermalFuels.OTHER_BIOMASS_SOLIDS),
+        ("geohydro_pflash_1", ThermalFuels.GEOTHERMAL),
+        ("egs_nearfield", ThermalFuels.GEOTHERMAL),
+        ("other", ThermalFuels.OTHER),
+    ],
+)
+def test_fuel_known_technology_variants(node_context, category, expected):
+    gen = PLEXOSGenerator(name="GEN", category=category, max_capacity=50.0)
+    assert getters.get_fuel_type(gen, node_context).unwrap() == expected
+
+
 def test_prime_mover_type_unknown(tmp_path) -> None:
     """Test prime mover type with unknown category."""
     context = make_context(tmp_path)
@@ -550,7 +740,7 @@ def test_pv_category_getters(tmp_path, category: str) -> None:
 )
 def test_classify_generator_category(category: str, expected_family: str) -> None:
     """Generator categories classify to the expected Sienna technology family."""
-    assert getters._classify_generator_category(category) == expected_family
+    assert utils._classify_generator_category(category) == expected_family
 
 
 def test_storage_getters(tmp_path) -> None:
@@ -641,8 +831,8 @@ def test_hydro_storage_getters(tmp_path) -> None:
     assert getters.get_initial_storage_capacity_level(storage, context).unwrap() == 0.0
 
     limits = getters.get_storage_level_limits(storage, context).unwrap()
-    assert limits.min == 100.0
-    assert limits.max == 1000.0
+    assert limits.min == 100_000.0
+    assert limits.max == 1_000_000.0
 
 
 def test_line_getters(tmp_path) -> None:
@@ -682,8 +872,8 @@ def test_line_getters(tmp_path) -> None:
     assert angle_limits.max == 90.0
 
     flow_limits = getters.get_line_flow_limits(line, context).unwrap()
-    assert flow_limits.from_to == 100.0
-    assert flow_limits.to_from == -100.0
+    assert flow_limits.from_to == 1.0
+    assert flow_limits.to_from == -1.0
 
     susceptance = getters.get_line_susceptance(line, context).unwrap()
     assert susceptance.from_to == 0.001
@@ -794,8 +984,8 @@ def test_interface_getters(tmp_path) -> None:
     )
 
     flow_limits = getters.get_interface_active_power_flow_limits(interface, context).unwrap()
-    assert flow_limits.min == -200.0
-    assert flow_limits.max == 200.0
+    assert flow_limits.min == -2.0
+    assert flow_limits.max == 2.0
 
 
 def test_transformer_getters(tmp_path) -> None:
@@ -809,11 +999,15 @@ def test_transformer_getters(tmp_path) -> None:
         rating=100.0,
         reactance=0.1,
         resistance=0.01,
+        ac_line_charging_susceptance=0.025,
     )
 
     assert getters.get_trf_active_power_flow(transformer, context).unwrap() == 0.0
     assert getters.get_trf_reactive_power_flow(transformer, context).unwrap() == 0.0
     assert getters.get_trf_base_power(transformer, context).unwrap() == 100.0
+    primary_shunt = getters.get_trf_primary_shunt(transformer, context).unwrap()
+    assert primary_shunt.real == 0.0
+    assert primary_shunt.imag == 0.025
 
 
 def test_transformer_arc_getter(tmp_path) -> None:
@@ -855,7 +1049,7 @@ def test_transformer_arc_getter(tmp_path) -> None:
     context.target_system.add_component(bus1)
     context.target_system.add_component(bus2)
 
-    # Test getter - note: should use get_transformer_arc, not get_line_arc
+    # Test that line-arc lookup also handles transformer memberships.
     arc = getters.get_line_arc(xfmr, context).unwrap()
     assert arc is not None
     assert arc.from_to.name == "NODE1"
@@ -968,19 +1162,19 @@ def test_area_getter(tmp_path) -> None:
     _ = PLEXOSNode(name="NODE1", voltage=115.0)
 
 
-def test_plexos_node_translates_to_acbus():
+def test_plexos_node_translates_to_acbus(node_context):
     test_cases = [
         ("p126", 126),
-        ("p126_OSW", 1260),
+        ("p126_OSW", 100101),
         ("p1", 1),
         ("p100", 100),
-        ("bus", 100101),
-        ("anotherbus", 100102),
-        ("bus", 100101),
+        ("bus", 100102),
+        ("anotherbus", 100103),
+        ("bus", 100102),
         ("foo123bar", 123),
-        ("no_digits_here", 100103),
-        ("p126_OSW2", 12600),
+        ("no_digits_here", 100104),
+        ("p126_OSW2", 2),
     ]
     for name, expected in test_cases:
-        result = getters.extract_number_from_name(name)
+        result = utils.extract_number_from_name(name, node_context)
         assert result == expected, f"Failed for {name}: got {result}, expected {expected}"

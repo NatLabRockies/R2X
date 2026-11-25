@@ -5,6 +5,29 @@ from __future__ import annotations
 import json
 from importlib.resources import files
 
+import pytest
+from pydantic import TypeAdapter
+from r2x_plexos.models import PLEXOSLine, PLEXOSTransformer
+from r2x_sienna import models as sienna_models
+
+from r2x_core import Rule, RuleFilter
+
+RULE_FILTER_ADAPTER = TypeAdapter(RuleFilter)
+
+
+def _matching_targets(source_type: str, component: PLEXOSLine | PLEXOSTransformer) -> list[str]:
+    rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
+    rules_data = json.loads(rules_path.read_text())
+    return [
+        rule["target_type"]
+        for rule in rules_data
+        if rule["source_type"] == source_type
+        and (
+            rule.get("filter") is None
+            or RULE_FILTER_ADAPTER.validate_python(rule["filter"]).matches(component)
+        )
+    ]
+
 
 def test_rules_json_exists_and_loads() -> None:
     """Ensure the packaged rules file is present and valid JSON."""
@@ -14,6 +37,7 @@ def test_rules_json_exists_and_loads() -> None:
     rules_data = json.loads(rules_path.read_text())
     assert isinstance(rules_data, list)
     assert len(rules_data) > 0, "Rules list is empty"
+    Rule.from_records(rules_data)
 
 
 def test_defaults_json_exists_and_loads() -> None:
@@ -199,6 +223,47 @@ def test_has_transformer_rules() -> None:
     ), "Missing PLEXOSTransformer -> PhaseShiftingTransformer rule"
 
 
+@pytest.mark.parametrize(
+    ("category", "expected_target"),
+    [
+        ("line", "Line"),
+        ("other-line", "Line"),
+        ("monitored-line", "MonitoredLine"),
+        ("two-terminal-hvdc-line", "TwoTerminalGenericHVDCLine"),
+        ("two-terminal-generic-hvdc-line", "TwoTerminalGenericHVDCLine"),
+        ("two-terminal-lcc-line", "TwoTerminalGenericHVDCLine"),
+        ("two-terminal-vsc-line", "TwoTerminalGenericHVDCLine"),
+        ("lcc", "TwoTerminalGenericHVDCLine"),
+        ("b2b", "TwoTerminalGenericHVDCLine"),
+        (None, "Line"),
+    ],
+)
+def test_plexos_line_categories_match_exactly_one_rule(category: str | None, expected_target: str) -> None:
+    """Every PLEXOS line category selects only its specific rule or the fallback."""
+    line = PLEXOSLine(name="LINE1", category=category)
+
+    assert _matching_targets("PLEXOSLine", line) == [expected_target]
+
+
+@pytest.mark.parametrize(
+    ("category", "expected_target"),
+    [
+        ("transformer-2w", "Transformer2W"),
+        ("other-transformer", "Transformer2W"),
+        ("tap-transformer", "TapTransformer"),
+        ("phase-shifting-transformer", "PhaseShiftingTransformer"),
+        (None, "Transformer2W"),
+    ],
+)
+def test_plexos_transformer_categories_match_exactly_one_rule(
+    category: str | None, expected_target: str
+) -> None:
+    """Every transformer category selects only its specific rule or the fallback."""
+    transformer = PLEXOSTransformer(name="TRANSFORMER1", category=category)
+
+    assert _matching_targets("PLEXOSTransformer", transformer) == [expected_target]
+
+
 def test_has_interface_rule() -> None:
     """Verify PLEXOSInterface maps to TransmissionInterface."""
     rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
@@ -223,6 +288,37 @@ def test_rules_have_required_fields() -> None:
         assert "field_map" in rule or "getters" in rule, f"Rule {i} missing field_map and getters"
 
 
+def test_rule_outputs_match_sienna_model_fields() -> None:
+    """Ensure each rule supplies valid target fields and all required fields."""
+    rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
+    rules_data = json.loads(rules_path.read_text(encoding="utf-8"))
+    problems = []
+
+    for rule in rules_data:
+        output_fields = (
+            set(rule.get("field_map", {})) | set(rule.get("getters", {})) | set(rule.get("defaults", {}))
+        )
+        target_types = rule["target_type"]
+        if not isinstance(target_types, list):
+            target_types = [target_types]
+
+        for target_type in target_types:
+            target_model = getattr(sienna_models, target_type)
+            unknown_fields = output_fields - set(target_model.model_fields)
+            missing_fields = {
+                field_name
+                for field_name, model_field in target_model.model_fields.items()
+                if model_field.is_required() and field_name not in output_fields
+            }
+            if unknown_fields or missing_fields:
+                problems.append(
+                    f"{rule['source_type']} -> {target_type}: "
+                    f"unknown={sorted(unknown_fields)}, missing={sorted(missing_fields)}"
+                )
+
+    assert not problems, "\n".join(problems)
+
+
 def test_filter_rules_have_valid_structure() -> None:
     """Verify rules with filters have valid filter structure."""
     rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
@@ -234,6 +330,11 @@ def test_filter_rules_have_valid_structure() -> None:
             assert "field" in filter_obj or "getter" in filter_obj, (
                 f"Filter in rule {rule.get('name', 'unknown')} missing 'field' or 'getter'"
             )
+            expected_kind = "field" if "field" in filter_obj else "getter"
+            assert filter_obj.get("kind") == expected_kind, (
+                f"Filter in rule {rule.get('name', 'unknown')} must declare kind={expected_kind!r}"
+            )
+            RULE_FILTER_ADAPTER.validate_python(filter_obj)
             assert "op" in filter_obj, f"Filter in rule {rule.get('name', 'unknown')} missing 'op'"
             assert "values" in filter_obj, f"Filter in rule {rule.get('name', 'unknown')} missing 'values'"
             assert isinstance(filter_obj["values"], list), "Filter values must be a list"
@@ -263,3 +364,12 @@ def test_prime_mover_mappings_exist() -> None:
 
     for category in expected_categories:
         assert category in prime_movers, f"Missing prime mover mapping for {category}"
+
+
+def test_default_technology_mappings_use_sienna_enums() -> None:
+    from r2x_sienna.models.enums import PrimeMoversType, ThermalFuels
+
+    defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
+    defaults = json.loads(defaults_path.read_text())
+    assert set(defaults["prime_mover_types"].values()) <= set(PrimeMoversType.__members__)
+    assert set(defaults["fuel_types"].values()) <= set(ThermalFuels.__members__)

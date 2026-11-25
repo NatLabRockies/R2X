@@ -367,7 +367,6 @@ def test_get_turbine_pump_load_and_efficiency(context):
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
     assert getters.get_turbine_pump_load(ht, context).unwrap() == 22500.0
@@ -438,7 +437,6 @@ def test_get_pumped_hydro_category_demotes_zero_pump_load(context):
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
     assert getters.get_pumped_hydro_category(ht_zero, context).unwrap() == "hydro"
@@ -462,7 +460,6 @@ def test_get_pumped_hydro_category_demotes_zero_pump_load(context):
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
     # Non-zero pump load: defer to standard resolution rather than demoting
@@ -494,7 +491,6 @@ def test_get_thermal_forced_outage_rate_defaults(context):
         turbine_type=HydroTurbineType.FRANCIS,
         prime_mover_type=PrimeMoversType.OT,
         conversion_factor=1.0,
-        reservoirs=[],
         category="hydro_turbine",
     )
     assert getters.get_generator_forced_outage_rate(ht, context).unwrap() >= 0.0

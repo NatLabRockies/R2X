@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from importlib.resources import files
 
 import pytest
@@ -12,10 +13,9 @@ from r2x_core import DataStore, PluginConfig, PluginContext, Rule, System, apply
 
 def make_context_and_rules(tmp_path):
     rules_path = files("r2x_plexos_to_sienna.config") / "rules.json"
-    rules = Rule.from_records(json.loads(rules_path.read_text()))
+    rules = Rule.from_records(json.loads(rules_path.read_text(encoding="utf-8")))
     config = PluginConfig(models=("r2x_plexos.models", "r2x_sienna.models", "r2x_plexos_to_sienna.getters"))
     store = DataStore(path=tmp_path)
-    store.configure_upgrades(plugin_config=config)
     context = PluginContext(config=config, store=store)
     return context, rules
 
@@ -115,7 +115,7 @@ def test_plexos_region_translates_to_area(tmp_path) -> None:
     assert len(areas) == 1
     area = areas[0]
     assert area.name == "REGION1"
-    assert area.peak_active_power == 300.0
+    assert area.peak_active_power == 3.0
     assert area.load_response == 0.0
 
 
@@ -391,6 +391,99 @@ def test_plexos_transformer_tap_rule_uses_current_fields(tmp_path, target_type: 
     assert rule.field_map["tap"] == "ac_tap_ratio"
 
 
+@pytest.mark.parametrize(
+    ("category", "target_name"),
+    [
+        ("transformer-2w", "Transformer2W"),
+        ("tap-transformer", "TapTransformer"),
+        ("phase-shifting-transformer", "PhaseShiftingTransformer"),
+    ],
+)
+def test_plexos_transformers_translate_to_sienna_models(tmp_path, category: str, target_name: str) -> None:
+    from plexosdb import CollectionEnum
+    from r2x_plexos.models import PLEXOSMembership, PLEXOSNode, PLEXOSTransformer
+    from r2x_sienna import models as sienna_models
+    from r2x_sienna.models import ACBus, Area
+    from r2x_sienna.units import Voltage
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    transformer = PLEXOSTransformer(
+        name="XFMR1",
+        category=category,
+        rating=100.0,
+        reactance=0.1,
+        resistance=0.01,
+        ac_tap_ratio=1.0,
+        ac_fixed_shift_angle=30.0,
+        ac_line_charging_susceptance=0.02,
+    )
+    context.source_system.add_component(transformer)
+    node_from = PLEXOSNode(name="NODE1")
+    node_to = PLEXOSNode(name="NODE2")
+    for collection, node in (
+        (CollectionEnum.NodeFrom, node_from),
+        (CollectionEnum.NodeTo, node_to),
+    ):
+        context.source_system.add_supplemental_attribute(
+            transformer,
+            PLEXOSMembership(collection=collection, parent_object=transformer, child_object=node),
+        )
+
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    area = Area(name="AREA1", category="area")
+    context.target_system.add_component(area)
+    for number, name in enumerate(("NODE1", "NODE2"), start=1):
+        context.target_system.add_component(
+            ACBus(name=name, area=area, number=number, base_voltage=Voltage(115.0, "kV"))
+        )
+    context.rules = rules
+
+    apply_rules_to_context(context)
+
+    translated = context.target_system.get_component(getattr(sienna_models, target_name), "XFMR1")
+    assert translated.primary_shunt.real == 0.0
+    assert translated.primary_shunt.imag == 0.02
+    assert translated.base_power == 100.0
+    assert translated.rating == pytest.approx(1.0)
+    if target_name == "PhaseShiftingTransformer":
+        expected_angle = math.radians(30.0)
+        assert getattr(translated, chr(0x03B1)) == pytest.approx(expected_angle)
+        assert translated.phase_angle_limits.min == pytest.approx(expected_angle)
+        assert translated.phase_angle_limits.max == pytest.approx(expected_angle)
+
+
+def test_plexos_storage_translates_to_hydro_reservoir(tmp_path) -> None:
+    from r2x_plexos.models import PLEXOSStorage
+    from r2x_sienna.models import HydroReservoir
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    context.source_system.add_component(
+        PLEXOSStorage(
+            name="RESERVOIR1",
+            category="pumped-hydro",
+            initial_level=0.4,
+            min_volume=10.0,
+            max_volume=100.0,
+            natural_inflow=5.0,
+        )
+    )
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    apply_rules_to_context(context)
+
+    reservoir = context.target_system.get_component(HydroReservoir, "RESERVOIR1")
+    assert reservoir.storage_level_limits.min == 10_000.0
+    assert reservoir.storage_level_limits.max == 100_000.0
+    assert reservoir.initial_level == 0.4
+    assert reservoir.level_data_type.value == "ENERGY"
+    assert reservoir.inflow == 5.0
+    assert reservoir.outflow == 0.0
+    assert reservoir.intake_elevation == 0.0
+
+
 def test_plexos_reserve_translates_to_variable_reserve(tmp_path) -> None:
     from r2x_plexos.models import PLEXOSReserve
     from r2x_sienna.models import VariableReserve
@@ -435,7 +528,7 @@ def test_plexos_interface_translates_to_transmission_interface(tmp_path) -> None
     assert len(interfaces) == 1
     interface = interfaces[0]
     assert interface.name == "IFACE1"
-    assert interface.active_power_flow_limits.max == 200.0
+    assert interface.active_power_flow_limits.max == 2.0
 
 
 def test_multiple_nodes_create_multiple_buses(tmp_path) -> None:

@@ -839,36 +839,8 @@ def _attach_generator_time_series(
             **metadata.features,
         ):
             if ts.name == "max_active_power":
-                max_mw = 0.0
-                limits = getattr(source_gen, "active_power_limits", None)
-                if limits is not None:
-                    max_val = limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
-                    if max_val is not None:
-                        mag = get_magnitude(max_val)
-                        raw = (
-                            float(mag)
-                            if mag is not None
-                            else float(max_val)
-                            if isinstance(max_val, int | float)
-                            else None
-                        )
-                        if raw is not None:
-                            max_mw = abs(raw) * resolve_base_power(source_gen)
-                else:
-                    # active_power_limits absent (e.g. RenewableDispatch) — use rating
-                    rating = getattr(source_gen, "rating", None)
-                    if rating is not None:
-                        mag = get_magnitude(rating)
-                        raw = (
-                            float(mag)
-                            if mag is not None
-                            else float(rating)
-                            if isinstance(rating, int | float)
-                            else None
-                        )
-                        if raw is not None:
-                            max_mw = abs(raw) * resolve_base_power(source_gen)
-                if max_mw > 0.0:
+                max_mw = _get_max_active_power_time_series_capacity_mw(source_gen)
+                if max_mw is not None and max_mw > 0.0:
                     data = data * max_mw
             fresh_ts = SingleTimeSeries.from_array(
                 data=data,
@@ -1977,24 +1949,20 @@ def get_pumped_hydro_generator_units(
     return Ok(0)
 
 
-@getter
-def get_max_capacity(source_component: object, context: PluginContext) -> Result[float, ValueError]:
-    """Extract maximum capacity in MW from rating, active_power_limits, or max_active_power.
-
-    When rating is available, max_capacity must match rating exactly.
-    """
-
+def _get_generator_capacity_mw(source_component: object) -> float | None:
     rating = getattr(source_component, "rating", None)
     rating_value = get_magnitude(rating)
     if rating_value is not None:
-        capacity = abs(float(rating_value) * resolve_base_power(source_component))
-        return Ok(round(capacity, 2))
+        return abs(float(rating_value) * resolve_base_power(source_component))
 
     limits = getattr(source_component, "active_power_limits", None)
     if isinstance(limits, dict):
         max_value = limits.get("max")
-        if isinstance(max_value, int | float):
-            return Ok(round(abs(float(max_value)), 2))
+        magnitude = get_magnitude(max_value)
+        if magnitude is None and isinstance(max_value, int | float):
+            magnitude = float(max_value)
+        if magnitude is not None:
+            return abs(float(magnitude) * resolve_base_power(source_component))
 
     try:
         value = sienna_get_max_active_power(source_component)
@@ -2002,8 +1970,32 @@ def get_max_capacity(source_component: object, context: PluginContext) -> Result
         value = None
 
     if value is not None:
-        return Ok(round(abs(float(value)), 2))
+        return abs(float(value))
 
+    return None
+
+
+def _get_max_active_power_time_series_capacity_mw(source_component: object) -> float | None:
+    if isinstance(source_component, (ThermalStandard, ThermalMultiStart, HydroDispatch)):
+        try:
+            value = sienna_get_max_active_power(source_component)
+        except (TypeError, NotImplementedError, AttributeError, KeyError):
+            value = None
+        if value is not None:
+            return abs(float(value))
+
+    return _get_generator_capacity_mw(source_component)
+
+
+@getter
+def get_max_capacity(source_component: object, context: PluginContext) -> Result[float, ValueError]:
+    """Extract maximum capacity in MW from rating, active_power_limits, or max_active_power.
+
+    When rating is available, max_capacity must match rating exactly.
+    """
+    capacity = _get_generator_capacity_mw(source_component)
+    if capacity is not None:
+        return Ok(round(capacity, 2))
     return Err(ValueError("active_power_limits or rating missing"))
 
 
@@ -2486,36 +2478,66 @@ def _has_explicit_side_reservoir_for_base(
     return False
 
 
+def _get_reservoir_storage_side_skip_reason(
+    source_component: HydroReservoir,
+    context: PluginContext,
+    side: str,
+) -> str | None:
+    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
+        return (
+            f"Skipping {side.lower()} storage conversion for reservoir "
+            f"'{source_component.name}': no HydroPumpTurbine association"
+        )
+
+    suffix_location = _get_reservoir_name_suffix_location(source_component)
+    if side == "HEAD":
+        if suffix_location == "TAIL":
+            return (
+                f"Skipping head storage conversion for reservoir '{source_component.name}': "
+                "name indicates tail reservoir"
+            )
+        if suffix_location is None and _has_explicit_side_reservoir_for_base(
+            source_component, context, side="HEAD"
+        ):
+            return (
+                f"Skipping head storage conversion for reservoir '{source_component.name}': "
+                "explicit head reservoir already exists for this plant"
+            )
+    else:
+        if suffix_location == "HEAD":
+            return (
+                f"Skipping tail storage conversion for reservoir '{source_component.name}': "
+                "name indicates head reservoir"
+            )
+        if suffix_location is None and _has_explicit_side_reservoir_for_base(
+            source_component, context, side="TAIL"
+        ):
+            return (
+                f"Skipping tail storage conversion for reservoir '{source_component.name}': "
+                "explicit tail reservoir already exists for this plant"
+            )
+
+    return None
+
+
+@getter
+def should_create_head_storage(source_component: HydroReservoir, context: PluginContext) -> Result[bool, Any]:
+    return Ok(_get_reservoir_storage_side_skip_reason(source_component, context, "HEAD") is None)
+
+
+@getter
+def should_create_tail_storage(source_component: HydroReservoir, context: PluginContext) -> Result[bool, Any]:
+    return Ok(_get_reservoir_storage_side_skip_reason(source_component, context, "TAIL") is None)
+
+
 @getter
 def get_head_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the head reservoir (appends _head), using plant_name from ext if available."""
-    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
-        return Err(
-            ValueError(
-                f"Skipping head storage conversion for reservoir '{source_component.name}': no HydroPumpTurbine association"
-            )
-        )
-
-    # Only explicit suffixes gate conversion. Unsuffixed reservoirs are expanded
-    # into both _head and _tail storages.
-    suffix_location = _get_reservoir_name_suffix_location(source_component)
-    if suffix_location == "TAIL":
-        return Err(
-            ValueError(
-                f"Skipping head storage conversion for reservoir '{source_component.name}': name indicates tail reservoir"
-            )
-        )
-
-    if suffix_location is None and _has_explicit_side_reservoir_for_base(
-        source_component, context, side="HEAD"
-    ):
-        return Err(
-            ValueError(
-                f"Skipping head storage conversion for reservoir '{source_component.name}': explicit head reservoir already exists for this plant"
-            )
-        )
+    skip_reason = _get_reservoir_storage_side_skip_reason(source_component, context, "HEAD")
+    if skip_reason is not None:
+        return Err(ValueError(skip_reason))
 
     base = _get_reservoir_storage_base_name(source_component)
     return Ok(f"{base}_head")
@@ -2537,31 +2559,9 @@ def get_tail_storage_name(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[str, ValueError]:
     """Return the storage name for the tail reservoir (appends _tail), using plant_name from ext if available."""
-    if not _reservoir_has_hydro_pumped_storage_association(source_component, context):
-        return Err(
-            ValueError(
-                f"Skipping tail storage conversion for reservoir '{source_component.name}': no HydroPumpTurbine association"
-            )
-        )
-
-    # Only explicit suffixes gate conversion. Unsuffixed reservoirs are expanded
-    # into both _head and _tail storages.
-    suffix_location = _get_reservoir_name_suffix_location(source_component)
-    if suffix_location == "HEAD":
-        return Err(
-            ValueError(
-                f"Skipping tail storage conversion for reservoir '{source_component.name}': name indicates head reservoir"
-            )
-        )
-
-    if suffix_location is None and _has_explicit_side_reservoir_for_base(
-        source_component, context, side="TAIL"
-    ):
-        return Err(
-            ValueError(
-                f"Skipping tail storage conversion for reservoir '{source_component.name}': explicit tail reservoir already exists for this plant"
-            )
-        )
+    skip_reason = _get_reservoir_storage_side_skip_reason(source_component, context, "TAIL")
+    if skip_reason is not None:
+        return Err(ValueError(skip_reason))
 
     base = _get_reservoir_storage_base_name(source_component)
     return Ok(f"{base}_tail")

@@ -9,32 +9,17 @@ No ReEDS run or licensed PLEXOS installation is needed for this tutorial.
 
 ## Before you start
 
-Install [r2x-cli](https://github.com/NatLabRockies/r2x-cli#install) and [uv](https://docs.astral.sh/uv/getting-started/installation/).
-The commands below use a macOS or Linux shell and `curl`.
-First, confirm that the executable is available and note its version:
+Complete [Prerequisites](/R2X/getting-started/prerequisites/) and
+[Installation](/R2X/getting-started/installation/) first, including the
+`r2x-sienna` installation and plugin discovery checks. The commands below use
+a macOS or Linux shell and `curl`.
 
-```bash
-r2x --version
-```
+This tutorial was executed with r2x-cli 0.1.15, its Python 3.12 runtime,
+r2x-core 0.9.0, and r2x-sienna 0.5.0.
 
-Install the managed Python runtime needed by that CLI binary:
+<span id="create-a-workspace-and-install-the-plugin"></span>
 
-```bash
-r2x python install
-```
-
-Check which Python version and environment the CLI will use before installing plugins:
-
-```bash
-r2x python show
-```
-
-Use the Python version supported by your CLI binary.
-This tutorial was executed with r2x-cli 0.1.15, its Python 3.12 runtime, r2x-core 0.9.0, and r2x-sienna 0.5.0.
-`r2x python install` installs the configured managed Python version when needed.
-Installing a plugin changes the CLI's managed environment and plugin manifest.
-
-## Create a workspace and install the plugin
+## Create a workspace
 
 Create a directory to keep the inputs, configuration and results together.
 Choose another name if `r2x-quickstart/` already exists:
@@ -60,25 +45,6 @@ Check that `pipeline.yaml` exists before continuing:
 ```bash
 ls pipeline.yaml
 ```
-Install the parser and exporter package:
-
-```bash
-r2x install r2x-sienna
-```
-
-Confirm both entry points were discovered:
-
-```bash
-r2x list r2x-sienna
-```
-
-The list includes `sienna-parser` and `sienna-exporter`.
-Inspect the parser's actual configuration options:
-
-```bash
-r2x run sienna-parser --help
-```
-
 ## Download a small model
 
 Create separate directories for downloaded inputs and generated results:

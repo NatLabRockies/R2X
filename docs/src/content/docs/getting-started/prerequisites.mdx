@@ -1,0 +1,33 @@
+---
+title: Prerequisites
+description: Choose a workflow, Python runtime, and input data before installing R2X plugins.
+---
+
+R2X provides translation plugins. Use `r2x-cli` to run pipelines, or install
+published Python packages in your own environment for Python integration.
+
+## Choose your environment
+
+- Translation packages support Python 3.11, 3.12, and 3.13.
+- For CLI pipelines, install [r2x-cli](https://github.com/NatLabRockies/r2x-cli#install)
+  and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+  Use the managed Python version required by your CLI binary.
+- For Python integration, use a virtual environment with a supported Python version.
+- The [first CLI pipeline](/R2X/tutorials/getting-started/) uses a macOS or Linux
+  shell and `curl` to download public example data.
+
+## Choose your inputs
+
+The first pipeline reads and exports a public Sienna model; it needs neither a
+ReEDS run nor a licensed PLEXOS installation. It downloads a JSON model and its
+companion HDF5 file, which must remain together.
+
+For a ReEDS translation, supply a completed run with `inputs_case/` and
+`outputs/` data and use solve and weather years present in that run. For other
+translations, follow the input requirements in the corresponding
+[workflow](/R2X/how-to/).
+
+Choose a workspace for inputs, pipeline configuration, and generated results.
+Keep original inputs and choose fresh output paths when rerunning a pipeline.
+
+Continue to [Installation](/R2X/getting-started/installation/).
