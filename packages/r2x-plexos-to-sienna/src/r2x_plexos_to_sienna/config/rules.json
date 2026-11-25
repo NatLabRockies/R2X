@@ -130,8 +130,6 @@
       "reactive_power_flow": 0.0
     },
     "field_map": {
-      "active_power_flow": "fixed_flow",
-      "rating": "max_flow",
       "name": "name",
       "uuid": "uuid",
       "x": "reactance",
@@ -142,10 +140,13 @@
       "b": "get_line_susceptance",
       "g": "get_line_conductance",
       "arc": "get_line_arc",
+      "active_power_flow": "get_line_active_power_flow",
+      "rating": "get_line_rating",
       "reactive_power_flow": "get_reactive_power_flow",
       "angle_limits": "get_line_angle_limits"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "not_in",
       "values": [
@@ -169,8 +170,6 @@
       "reactive_power_flow": 0.0
     },
     "field_map": {
-      "active_power_flow": "fixed_flow",
-      "rating": "max_flow",
       "name": "name",
       "uuid": "uuid",
       "x": "reactance",
@@ -181,12 +180,15 @@
       "b": "get_line_susceptance",
       "g": "get_line_conductance",
       "arc": "get_line_arc",
+      "active_power_flow": "get_line_active_power_flow",
+      "rating": "get_line_rating",
       "reactive_power_flow": "get_reactive_power_flow",
       "angle_limits": "get_line_angle_limits",
       "flow_limits": "get_line_flow_limits",
       "losses": "get_line_losses"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "eq",
       "values": ["monitored-line"]
@@ -200,7 +202,6 @@
       "category": "two-terminal-hvdc-line"
     },
     "field_map": {
-      "active_power_flow": "fixed_flow",
       "category": "category",
       "name": "name",
       "uuid": "uuid",
@@ -209,6 +210,7 @@
     },
     "getters": {
       "arc": "get_line_arc",
+      "active_power_flow": "get_line_active_power_flow",
       "active_power_limits_from": "get_active_power_limits_from",
       "active_power_limits_to": "get_active_power_limits_to",
       "reactive_power_limits_from": "get_reactive_power_limits_from",
@@ -216,6 +218,7 @@
       "loss": "get_hvdc_line_loss"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "in",
       "values": [
@@ -237,7 +240,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "category": "category",
       "uuid": "uuid",
       "x": "reactance",
@@ -245,6 +247,7 @@
     },
     "getters": {
       "arc": "get_line_arc",
+      "rating": "get_trf_rating",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
@@ -252,6 +255,7 @@
       "winding_group_number": "get_trf_winding_group_number"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "not_in",
       "values": [
@@ -270,7 +274,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "tap": "ac_tap_ratio",
       "category": "category",
       "uuid": "uuid",
@@ -279,6 +282,7 @@
     },
     "getters": {
       "arc": "get_line_arc",
+      "rating": "get_trf_rating",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
@@ -287,6 +291,7 @@
       "control_objective": "get_trf_control_objective"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "eq",
       "values": ["tap-transformer"]
@@ -301,7 +306,6 @@
     },
     "field_map": {
       "name": "name",
-      "rating": "rating",
       "tap": "ac_tap_ratio",
       "category": "category",
       "uuid": "uuid",
@@ -310,6 +314,7 @@
     },
     "getters": {
       "arc": "get_line_arc",
+      "rating": "get_trf_rating",
       "active_power_flow": "get_trf_active_power_flow",
       "reactive_power_flow": "get_trf_reactive_power_flow",
       "primary_shunt": "get_trf_primary_shunt",
@@ -319,6 +324,7 @@
       "phase_angle_limits": "get_trf_phase_angle_limits"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "eq",
       "values": ["phase-shifting-transformer"]
@@ -356,6 +362,7 @@
       "fuel": "get_fuel_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -395,6 +402,7 @@
       "services": "get_device_services"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -431,6 +439,7 @@
       "time_limits": "get_gen_time_limits"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -465,6 +474,7 @@
       "prime_mover_type": "get_prime_mover_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -496,6 +506,7 @@
       "operation_cost": "get_hydro_reservoir_operation_cost"
     },
     "filter": {
+      "kind": "field",
       "field": "category",
       "op": "in",
       "values": [
@@ -528,6 +539,7 @@
       "power_factor": "get_gen_power_factor"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -558,6 +570,7 @@
       "prime_mover_type": "get_prime_mover_type"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [
@@ -587,6 +600,7 @@
       "active_power_losses": "get_gen_active_power_losses"
     },
     "filter": {
+      "kind": "getter",
       "getter": "get_gen_technology_class",
       "op": "eq",
       "values": [

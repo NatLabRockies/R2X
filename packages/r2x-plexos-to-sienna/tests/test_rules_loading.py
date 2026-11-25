@@ -6,10 +6,13 @@ import json
 from importlib.resources import files
 
 import pytest
+from pydantic import TypeAdapter
 from r2x_plexos.models import PLEXOSLine, PLEXOSTransformer
 from r2x_sienna import models as sienna_models
 
-from r2x_core import RuleFilter
+from r2x_core import Rule, RuleFilter
+
+RULE_FILTER_ADAPTER = TypeAdapter(RuleFilter)
 
 
 def _matching_targets(source_type: str, component: PLEXOSLine | PLEXOSTransformer) -> list[str]:
@@ -19,7 +22,10 @@ def _matching_targets(source_type: str, component: PLEXOSLine | PLEXOSTransforme
         rule["target_type"]
         for rule in rules_data
         if rule["source_type"] == source_type
-        and (rule.get("filter") is None or RuleFilter.model_validate(rule["filter"]).matches(component))
+        and (
+            rule.get("filter") is None
+            or RULE_FILTER_ADAPTER.validate_python(rule["filter"]).matches(component)
+        )
     ]
 
 
@@ -31,6 +37,7 @@ def test_rules_json_exists_and_loads() -> None:
     rules_data = json.loads(rules_path.read_text())
     assert isinstance(rules_data, list)
     assert len(rules_data) > 0, "Rules list is empty"
+    Rule.from_records(rules_data)
 
 
 def test_defaults_json_exists_and_loads() -> None:
@@ -323,6 +330,11 @@ def test_filter_rules_have_valid_structure() -> None:
             assert "field" in filter_obj or "getter" in filter_obj, (
                 f"Filter in rule {rule.get('name', 'unknown')} missing 'field' or 'getter'"
             )
+            expected_kind = "field" if "field" in filter_obj else "getter"
+            assert filter_obj.get("kind") == expected_kind, (
+                f"Filter in rule {rule.get('name', 'unknown')} must declare kind={expected_kind!r}"
+            )
+            RULE_FILTER_ADAPTER.validate_python(filter_obj)
             assert "op" in filter_obj, f"Filter in rule {rule.get('name', 'unknown')} missing 'op'"
             assert "values" in filter_obj, f"Filter in rule {rule.get('name', 'unknown')} missing 'values'"
             assert isinstance(filter_obj["values"], list), "Filter values must be a list"
@@ -352,3 +364,12 @@ def test_prime_mover_mappings_exist() -> None:
 
     for category in expected_categories:
         assert category in prime_movers, f"Missing prime mover mapping for {category}"
+
+
+def test_default_technology_mappings_use_sienna_enums() -> None:
+    from r2x_sienna.models.enums import PrimeMoversType, ThermalFuels
+
+    defaults_path = files("r2x_plexos_to_sienna.config") / "defaults.json"
+    defaults = json.loads(defaults_path.read_text())
+    assert set(defaults["prime_mover_types"].values()) <= set(PrimeMoversType.__members__)
+    assert set(defaults["fuel_types"].values()) <= set(ThermalFuels.__members__)

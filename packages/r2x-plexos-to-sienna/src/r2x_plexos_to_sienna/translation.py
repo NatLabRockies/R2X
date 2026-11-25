@@ -13,16 +13,19 @@ from r2x_plexos.models import (
     PLEXOSGenerator,
     PLEXOSNode,
     PLEXOSPurchaser,
+    PLEXOSReserve,
     PLEXOSStorage,
 )
 
 from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose_plugin
-from r2x_plexos_to_sienna.getters import (
+from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
+from r2x_plexos_to_sienna.utils import (
     _classify_generator_category_with_fallback,
     _sync_time_series_for_source,
     attach_constant_load_time_series,
+    normalize_renewable_max_active_power_time_series,
+    normalize_reserve_requirement_time_series,
 )
-from r2x_plexos_to_sienna.plugin_config import PlexosToSiennaConfig
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,7 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
 
     sienna_sys = System(
         name="Sienna",
+        system_base=100.0,
         auto_add_composed_components=True,
         time_series_manager=ts_manager,
     )
@@ -95,9 +99,13 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
         _sync_time_series_for_source(generator, context)
     for battery in context.source_system.get_components(PLEXOSBattery):
         _sync_time_series_for_source(battery, context)
+    for reserve in context.source_system.get_components(PLEXOSReserve):
+        _sync_time_series_for_source(reserve, context)
     for storage in context.source_system.get_components(PLEXOSStorage):
         _sync_time_series_for_source(storage, context)
 
     attach_constant_load_time_series(context)
+    normalize_renewable_max_active_power_time_series(context)
+    normalize_reserve_requirement_time_series(context)
 
     return context.target_system

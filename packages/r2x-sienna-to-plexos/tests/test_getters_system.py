@@ -17,6 +17,7 @@ from r2x_sienna.models import (
     ACBus,
     Area,
     EnergyReservoirStorage,
+    HydroDispatch,
     HydroReservoir,
     HydroTurbine,
     Line,
@@ -258,7 +259,7 @@ def test_attach_generator_time_series_scales_and_attaches(tmp_path, monkeypatch)
     context.source_system = System(name="source")
     context.target_system = System(name="target")
 
-    source_gen = types.SimpleNamespace(name="GEN_TS", active_power_limits={"max": 10.0}, base_power=1.0)
+    source_gen = types.SimpleNamespace(name="GEN_TS", active_power_limits={"max": 10.0}, base_power=10.0)
     monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
     context.source_system.time_series.has_time_series = lambda _component: True
     context.source_system.time_series.list_time_series_metadata = lambda _component: [
@@ -285,7 +286,80 @@ def test_attach_generator_time_series_scales_and_attaches(tmp_path, monkeypatch)
 
     assert len(attached) == 1
     assert attached[0].name == "max_active_power"
-    assert list(attached[0].data) == [1.0, 2.0]
+    assert list(attached[0].data) == [10.0, 20.0]
+
+
+@pytest.mark.parametrize("generator_type", [ThermalStandard, HydroDispatch])
+def test_attach_dispatchable_generator_time_series_uses_sienna_max_active_power(
+    tmp_path, monkeypatch, generator_type
+):
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    source_gen = generator_type.example().model_copy(
+        update={
+            "name": "GEN_DISPATCHABLE",
+            "rating": 1.2,
+            "base_power": 100.0,
+            "active_power_limits": MinMax(min=0.0, max=1.0),
+        }
+    )
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = lambda _component, **_kwargs: [
+        types.SimpleNamespace(
+            name="max_active_power",
+            data=[0.5, 0.25],
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(hours=1),
+        )
+    ]
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters._attach_generator_time_series(
+        context, "GEN_DISPATCHABLE", PLEXOSGenerator(name="GEN_DISPATCHABLE")
+    )
+
+    assert list(attached[0].data) == [50.0, 25.0]
+
+
+def test_attach_renewable_time_series_uses_exported_capacity_once(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+
+    source_gen = types.SimpleNamespace(
+        name="RENEWABLE_TS",
+        active_power_limits={"max": 98.08237},
+        rating=0.9808237,
+        base_power=100.0,
+    )
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="max_active_power", features={})
+    ]
+    context.source_system.list_time_series = lambda _component, **_kwargs: [
+        types.SimpleNamespace(
+            name="max_active_power",
+            data=[0.995, 0.5],
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(hours=1),
+        )
+    ]
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters._attach_generator_time_series(context, "RENEWABLE_TS", PLEXOSGenerator(name="RENEWABLE_TS"))
+
+    assert list(attached[0].data) == pytest.approx([97.59195815, 49.041185])
 
 
 def test_attach_region_node_load_time_series_aggregates_loads(tmp_path, monkeypatch):

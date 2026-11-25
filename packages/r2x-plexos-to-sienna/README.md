@@ -65,6 +65,15 @@ validation alone does not validate a model.
 
 ## Mapping and API
 
+Bus numbers are unique within each translation. The `extract_number_from_name(name, context)`
+helper requires a `PluginContext`; reuse the same context to keep assignments consistent.
+
+The packaged [defaults](src/r2x_plexos_to_sienna/config/defaults.json) map known PLEXOS and
+ReEDS category names to Sienna prime movers and thermal fuels. PLEXOS categories are free-form;
+lookups ignore case and surrounding whitespace. Unknown categories use the existing
+keyword/default fallback. Ambiguous technologies are not assigned new approximate mappings.
+Generator-family selection is separate from these lookups.
+
 - [Function and configuration reference](https://natlabrockies.github.io/R2X/reference/python-api/#plexos_to_sienna)
 - [Property mappings](https://natlabrockies.github.io/R2X/reference/plexos-to-sienna-properties/)
 - [Translation source](src/r2x_plexos_to_sienna/translation.py) and [packaged rules](src/r2x_plexos_to_sienna/config/rules.json)
