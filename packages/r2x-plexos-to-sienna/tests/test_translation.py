@@ -418,6 +418,7 @@ def test_plexos_renewable_max_active_power_is_normalized(category, monkeypatch):
     result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
 
     renewable = result.get_component(RenewableDispatch, "GEN1")
+    assert renewable.reactive_power_limits is None
     profile = result.get_time_series(renewable, name="max_active_power")
     (metadata,) = result.list_time_series_metadata(renewable, name="max_active_power")
     assert isinstance(metadata.normalization, NormalizationByValue)

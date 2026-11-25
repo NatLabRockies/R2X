@@ -533,7 +533,6 @@
       "reactive_power": "get_gen_reactive_power",
       "rating": "get_gen_rating",
       "base_power": "get_gen_base_power",
-      "reactive_power_limits": "get_gen_reactive_power_limits",
       "prime_mover_type": "get_prime_mover_type",
       "services": "get_device_services",
       "power_factor": "get_gen_power_factor"
