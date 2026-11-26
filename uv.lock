@@ -646,16 +646,16 @@ wheels = [
 
 [[package]]
 name = "plexosdb"
-version = "1.6.1"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "loguru" },
     { name = "plexos2duckdb" },
     { name = "pre-commit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/04/79d76def07a3a25c34085e9f5633bca75a1d2d809b5b4882741a6fb28ccd/plexosdb-1.6.1.tar.gz", hash = "sha256:276bff067f937b55ae3070b2151b9eaef9cbd2a2e716595ce6ce68bc6123ae7f", size = 1583051, upload-time = "2026-08-11T01:37:33.042Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/5f/32647d1a43d9bf1a063c0c124c6308b5b682a4c668579995e2763bab3745/plexosdb-1.7.0.tar.gz", hash = "sha256:39b1cb558d2ad9170cb930dc7a8bad2da5a944e6472aebbd6ed2577dc47f35dd", size = 1587182, upload-time = "2026-10-15T17:07:49.841Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/16/6a20209dc60165863e1cb0627b8f85d4dc1c374e1069b8897ef302fc42b3/plexosdb-1.6.1-py3-none-any.whl", hash = "sha256:bcbffedb653447ae41f164fc25bc6a754cbbb2a2194fc55720e4b3f625ad96a4", size = 1592808, upload-time = "2026-08-11T01:37:31.506Z" },
+    { url = "https://files.pythonhosted.org/packages/87/55/c34a28406c42f2cb1886f98b958afd3d79b6ca8c321fe345689fe14a8a29/plexosdb-1.7.0-py3-none-any.whl", hash = "sha256:74c0a3269e40272f404a7d6ac4c2baa4527f55ae80db89de5342c41fd1c1cae7", size = 1596689, upload-time = "2026-10-15T17:07:47.921Z" },
 ]
 
 [[package]]
@@ -986,7 +986,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-core", git = "https://github.com/NatLabRockies/r2x-core.git?rev=main" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
     { name = "r2x-plexos-to-sienna", editable = "packages/r2x-plexos-to-sienna" },
     { name = "r2x-reeds-to-plexos", editable = "packages/r2x-reeds-to-plexos" },
     { name = "r2x-reeds-to-sienna", editable = "packages/r2x-reeds-to-sienna" },
@@ -1001,7 +1001,7 @@ dev = [
     { name = "prek", specifier = ">=0.3.8" },
     { name = "pytest", specifier = ">=8.3.0,<9.0.0" },
     { name = "pytest-cov", specifier = ">=5.0.0,<8.0.0" },
-    { name = "r2x-core", specifier = ">=0.4.2" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
     { name = "ruff", specifier = ">=0.6.8,<0.17.0" },
     { name = "taplo", specifier = ">=0.9.3,<1.0.0" },
     { name = "ty", specifier = ">=0.0.2" },
@@ -1009,8 +1009,8 @@ dev = [
 
 [[package]]
 name = "r2x-core"
-version = "0.9.0"
-source = { git = "https://github.com/NatLabRockies/r2x-core.git?rev=main#d090584fb69d642a0f745bef3491a70c3780d261" }
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h5py" },
     { name = "infrasys" },
@@ -1020,18 +1020,19 @@ dependencies = [
     { name = "pydantic" },
     { name = "rust-ok" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/99/4b/d4742e2d01d7a05b312c4c8547dbc40b07c96ff5573f9a20f629357fbc39/r2x_core-1.0.0.tar.gz", hash = "sha256:7fc70128889f6ba6491a0e35db7e00de992e7d1ab4d08a8c9a775f60b7f218f9", size = 130408, upload-time = "2026-11-26T00:43:08.898Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/18/1665bb1a0d0712d93bd30380b22cced7728eea792964f79e944e9c043e35/r2x_core-1.0.0-py3-none-any.whl", hash = "sha256:04ad6ae6bc9c398648027c98ac0f3cdaf97333b2813b6d7fa3db2f77097419c6", size = 150508, upload-time = "2026-11-26T00:43:07.702Z" },
+]
 
 [[package]]
 name = "r2x-plexos"
 version = "0.3.3"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/NatLabRockies/r2x-plexos.git?branch=main#6427f0e3417455d70b001a1494df6e421cd53dc2" }
 dependencies = [
     { name = "plexosdb" },
+    { name = "polars" },
     { name = "r2x-core" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/66/82/364d88cc27528868de254cbc3c06f748cf67da4feea9a4015467df84b212/r2x_plexos-0.3.3.tar.gz", hash = "sha256:12ab9c17ff5af13a5f9e3add270ea7000a7311c3a66ff4b46d274890cfa186a0", size = 115305, upload-time = "2026-09-16T18:01:52.769Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6b/8a/9041bcf7f2ab293b4d613add32eff76584e8953976ca399738b027ef1784/r2x_plexos-0.3.3-py3-none-any.whl", hash = "sha256:d133929ed3436c9137efa924f6d20a0c3af044b42c33a3c6fe83bc099dfe4342", size = 133065, upload-time = "2026-09-16T18:01:51.224Z" },
 ]
 
 [[package]]
@@ -1039,21 +1040,24 @@ name = "r2x-plexos-to-sienna"
 version = "0.2.2"
 source = { editable = "packages/r2x-plexos-to-sienna" }
 dependencies = [
+    { name = "r2x-core" },
     { name = "r2x-plexos" },
     { name = "r2x-sienna" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", specifier = ">=0.3.3,<1.0.0" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
+    { name = "r2x-plexos", git = "https://github.com/NatLabRockies/r2x-plexos.git?branch=main" },
     { name = "r2x-sienna", git = "https://github.com/NatLabRockies/r2x-sienna.git?branch=main" },
 ]
 
 [[package]]
 name = "r2x-reeds"
 version = "0.9.3"
-source = { git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=7918b81a9f90410bd4e4ece8cfd89e04946eefab#7918b81a9f90410bd4e4ece8cfd89e04946eefab" }
+source = { git = "https://github.com/NatLabRockies/r2x-reeds.git?branch=main#033690d4337d0b203cee4f66b3388b4ff30feee5" }
 dependencies = [
+    { name = "polars" },
     { name = "r2x-core" },
 ]
 
@@ -1062,14 +1066,16 @@ name = "r2x-reeds-to-plexos"
 version = "0.2.1"
 source = { editable = "packages/r2x-reeds-to-plexos" }
 dependencies = [
+    { name = "r2x-core" },
     { name = "r2x-plexos" },
     { name = "r2x-reeds" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", specifier = ">=0.3.0,<1.0.0" },
-    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=7918b81a9f90410bd4e4ece8cfd89e04946eefab" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
+    { name = "r2x-plexos", git = "https://github.com/NatLabRockies/r2x-plexos.git?branch=main" },
+    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?branch=main" },
 ]
 
 [[package]]
@@ -1084,15 +1090,15 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-core", git = "https://github.com/NatLabRockies/r2x-core.git?rev=main" },
-    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=7918b81a9f90410bd4e4ece8cfd89e04946eefab" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
+    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?branch=main" },
     { name = "r2x-sienna", git = "https://github.com/NatLabRockies/r2x-sienna.git?branch=main" },
 ]
 
 [[package]]
 name = "r2x-sienna"
 version = "0.5.0"
-source = { git = "https://github.com/NatLabRockies/r2x-sienna.git?branch=main#dcbd01d9e5a03a832ade7a628645ff95d0c83615" }
+source = { git = "https://github.com/NatLabRockies/r2x-sienna.git?branch=main#9e82d875e8e9c994c9b8f48c16262c6a7776980e" }
 dependencies = [
     { name = "r2x-core" },
 ]
@@ -1102,13 +1108,15 @@ name = "r2x-sienna-to-plexos"
 version = "0.3.0"
 source = { editable = "packages/r2x-sienna-to-plexos" }
 dependencies = [
+    { name = "r2x-core" },
     { name = "r2x-plexos" },
     { name = "r2x-sienna" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", specifier = ">=0.3.3,<1.0.0" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
+    { name = "r2x-plexos", git = "https://github.com/NatLabRockies/r2x-plexos.git?branch=main" },
     { name = "r2x-sienna", git = "https://github.com/NatLabRockies/r2x-sienna.git?branch=main" },
 ]
 
