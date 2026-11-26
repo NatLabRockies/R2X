@@ -219,7 +219,8 @@ def test_reeds_hydro_translates_by_operating_mode(tmp_path) -> None:
     assert hydro.rating == 1.0
     assert hydro.base_power == 100.0
     assert hydro.active_power_limits.max == 1.0
-    assert hydro.ramp_limits.up == pytest.approx(10.0 / 60.0)
+    # ramp_rate is a fraction of capacity per minute: 10 x 100 MW = 1000 MW/min = 10 pu/min.
+    assert hydro.ramp_limits.up == pytest.approx(10.0)
     assert hydro.time_limits.up == 0.0
     assert hydro.time_limits.down == 0.0
     assert hydro.operation_cost.fixed == 0.0

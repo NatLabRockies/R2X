@@ -17,18 +17,9 @@ uv run pytest --cov --cov-report=xml
 uv run prek run --show-diff-on-failure --color=always --all-files --hook-stage pre-push
 ```
 
-The translation packages require `r2x-core>=1.0.0,<2.0.0`. Until compatible
-releases of `r2x-plexos`, `r2x-reeds`, and `r2x-sienna` are published, the
-workspace resolves those model plugins from their `main` branches through
-`[tool.uv.sources]`, and `uv.lock` records the exact commits. Refresh them with:
-
-```bash
-uv lock --upgrade-package r2x-plexos --upgrade-package r2x-reeds --upgrade-package r2x-sienna
-```
-
-The released `r2x-plexos` 0.3.3, `r2x-reeds` 0.9.3, and `r2x-sienna` 0.5.0
-require `r2x-core<1.0.0`, so packages built from this workspace cannot be
-installed from PyPI alone until those plugins publish `r2x-core` 1.x releases.
+The translation packages require `r2x-core>=1.0.0,<2.0.0` and the matching
+model plugin releases (`r2x-plexos>=0.4.0`, `r2x-reeds>=0.10.0`,
+`r2x-sienna>=0.5.1`), all resolved from PyPI.
 
 The CI workflow also builds wheels and installs each workspace package outside
 the uv workspace. Preserve package metadata, entry points, and this smoke-test

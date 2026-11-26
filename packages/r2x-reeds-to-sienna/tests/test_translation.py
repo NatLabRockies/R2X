@@ -154,6 +154,44 @@ def test_reeds_to_sienna_translates_thermal_generator():
     assert any(t.name == "gas-cc_p1" for t in thermals)
 
 
+@pytest.mark.parametrize(("ramp_rate", "expected_fraction"), [(None, 0.05), (0.08, 0.08)])
+def test_reeds_to_sienna_thermal_ramp_is_fraction_of_capacity_per_minute(ramp_rate, expected_fraction):
+    source = _build_source_system()
+    gen = next(source.get_components(ReEDSThermalGenerator))
+    gen.ramp_rate = ramp_rate
+
+    thermal = reeds_to_sienna(source, config=ReEDSToSiennaConfig()).get_component(
+        ThermalStandard, "gas-cc_p1"
+    )
+
+    # gas-cc default is 0.05 fraction/min; 100 MW unit -> 5 MW/min, converted once to the device base.
+    assert thermal.base_power == 100.0
+    assert thermal.ramp_limits.up * thermal.base_power == pytest.approx(expected_fraction * 100.0)
+    assert thermal.ramp_limits.down * thermal.base_power == pytest.approx(expected_fraction * 100.0)
+
+
+def test_reeds_to_sienna_zero_capacity_thermal_translates_without_ramp_limits():
+    source = _build_source_system()
+    region = next(source.get_components(ReEDSRegion))
+    source.add_component(
+        ReEDSThermalGenerator(
+            name="h2-ct_new6_p1",
+            category="h2-ct",
+            region=region,
+            technology="h2-ct",
+            capacity=0.0,
+            heat_rate=9.5,
+            fuel_type="h2",
+        )
+    )
+
+    result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())
+
+    thermal = result.get_component(ThermalStandard, "h2-ct_new6_p1")
+    assert thermal.base_power == 0.0
+    assert thermal.ramp_limits is None
+
+
 def test_reeds_to_sienna_translates_wind_to_renewable_dispatch():
     source = _build_source_system()
     result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())

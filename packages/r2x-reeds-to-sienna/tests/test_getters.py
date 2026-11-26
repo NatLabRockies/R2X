@@ -160,8 +160,9 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.get_thermal_active_power(thermal, context).unwrap() == 1.0
     thermal_ramp_limits = getters.thermal_ramp_limits(thermal, context).unwrap()
     assert thermal_ramp_limits is not None
-    assert thermal_ramp_limits.up == pytest.approx(0.02 / 60.0)
-    assert thermal_ramp_limits.down == pytest.approx(0.02 / 60.0)
+    # MW/min: coal-new default 0.02 fraction/min x 10 MW; r2x-core converts to the device base.
+    assert thermal_ramp_limits.up == pytest.approx(0.2)
+    assert thermal_ramp_limits.down == pytest.approx(0.2)
     assert getters.get_thermal_operation_cost(thermal, context).unwrap() is not None
     assert getters.get_prime_mover(thermal, context).unwrap() == PrimeMoversType.ST
     assert getters.get_fuel_enum(thermal, context).unwrap() == ThermalFuels.COAL
@@ -215,8 +216,8 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert hydro_limits.max == 8.0
     assert hydro_limits.min == 0.0
     ramp_limits = getters.hydro_ramp_limits(hydro, context).unwrap()
-    assert ramp_limits.up == pytest.approx(8.0 * 10.0 / 60.0)
-    assert ramp_limits.down == pytest.approx(8.0 * 10.0 / 60.0)
+    assert ramp_limits.up == pytest.approx(8.0 * 10.0)
+    assert ramp_limits.down == pytest.approx(8.0 * 10.0)
     time_limits = getters.hydro_time_limits(hydro, context).unwrap()
     assert time_limits.up == 0.0
     assert time_limits.down == 0.0

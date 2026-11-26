@@ -397,9 +397,9 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
         region = regions_by_name.get(area_name)
         if region is not None:
             _ensure_membership(context, node, region, CollectionEnum.Region)
-            region_nodes = region_nodes_by_name.setdefault(area_name, [])
-            if node not in region_nodes:
-                region_nodes.append(node)
+            # Each node is visited once; a list membership check here compared pydantic
+            # models pairwise and made this step quadratic in nodes per region.
+            region_nodes_by_name.setdefault(area_name, []).append(node)
             total_memberships += 1
 
     _get_context_cache(context)["region_nodes_by_name"] = region_nodes_by_name
