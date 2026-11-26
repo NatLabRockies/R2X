@@ -28,6 +28,7 @@ pytest_plugins = [
     "fixtures.rules",
     "fixtures.systems",
     "fixtures.time_series",
+    "fixture.plexos_systems",
 ]
 
 # ---------------------------------------------------------------------------

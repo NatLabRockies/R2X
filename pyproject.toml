@@ -103,11 +103,14 @@ plugins = ["pydantic.mypy"]
 mypy_path = ["packages/*"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "packages/r2x-sienna-to-plexos/tests"]
+pythonpath = [
+  "src",
+  "packages/r2x-sienna-to-plexos/tests",
+  "packages/r2x-plexos-to-sienna/tests",
+]
 testpaths = ["tests", "packages"]
 addopts = [
   "--import-mode=importlib",
-  "--cov=packages",
   "--cov-report=term-missing:skip-covered",
   "--cov-report=html",
   "--cov-report=json",
@@ -170,6 +173,7 @@ max-complexity = 10
 
 
 [tool.coverage.run]
+source = ["packages"]
 omit = ["*/tests/*", "*/conftest.py"]
 
 [tool.coverage.report]

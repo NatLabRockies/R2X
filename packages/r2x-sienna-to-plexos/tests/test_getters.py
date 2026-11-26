@@ -459,7 +459,7 @@ def test_get_availability_true(context):
 
 def test_is_slack_bus_true(context):
     bus = ACBus(name="N1", base_voltage=115.0, bustype=ACBusTypes.SLACK, number=1)
-    assert getters.is_slack_bus(bus, context).unwrap() == 1
+    assert getters.is_slack_bus(bus, context).unwrap() == -1
 
 
 def test_get_line_min_flow_max_flow_with_rating(context):

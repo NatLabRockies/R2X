@@ -1291,11 +1291,11 @@ def get_load_participation_factor(
 
 @getter
 def is_slack_bus(source_component: ACBus, context: PluginContext) -> Result[int, ValueError]:
-    """Populate bustype field based on slack bus status."""
+    """Populate PLEXOS "Is Slack Bus" (-1 = Yes, 0 = No) from the Sienna bus type."""
 
     from r2x_sienna.models.enums import ACBusTypes
 
-    value = 1 if source_component.bustype == ACBusTypes.SLACK else 0
+    value = -1 if source_component.bustype == ACBusTypes.SLACK else 0
     return Ok(value)
 
 

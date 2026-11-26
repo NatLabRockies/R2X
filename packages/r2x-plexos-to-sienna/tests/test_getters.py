@@ -51,6 +51,7 @@ from r2x_sienna.models.enums import (
     StorageTechs,
     ThermalFuels,
 )
+from r2x_sienna.models.named_tuples import MinMax
 from r2x_sienna.units import Voltage
 
 from r2x_core import DataStore, PluginConfig, PluginContext, Result, System
@@ -434,9 +435,10 @@ def test_basic_node_getters(tmp_path) -> None:
     assert getters.get_node_angle(node, context).unwrap() == 0.0
     assert getters.is_slack_bus(node, context).unwrap() == ACBusTypes.PQ
 
-    # Test slack bus
-    slack_node = PLEXOSNode(name="SLACK_1", is_slack_bus=1)
-    assert getters.is_slack_bus(slack_node, context).unwrap() == ACBusTypes.SLACK
+    # PLEXOS encodes Yes as -1; 1 is accepted for systems exported by older translators.
+    for flag in (-1, 1):
+        slack_node = PLEXOSNode(name="SLACK_1", is_slack_bus=flag)
+        assert getters.is_slack_bus(slack_node, context).unwrap() == ACBusTypes.SLACK
 
 
 def test_zone_getters(tmp_path) -> None:
@@ -549,10 +551,15 @@ def test_generator_getters(tmp_path) -> None:
     limits = getters.get_gen_active_power_limits(gen, context).unwrap()
     assert limits.min == 0.2
     assert limits.max == 1.0
+    limits_mw = getters.get_gen_active_power_limits_mw(gen, context).unwrap()
+    assert (limits_mw.min, limits_mw.max) == (10.0, 50.0)
 
     reactive_limits = getters.get_gen_reactive_power_limits(gen, context).unwrap()
     assert reactive_limits.min == 0.0
     assert reactive_limits.max == 0.0
+    object.__setattr__(gen, "reactive_power_limits", MinMax(min=-20.0, max=25.0))
+    assert getters.get_gen_reactive_power_limits(gen, context).unwrap() == MinMax(min=-0.4, max=0.5)
+    assert getters.get_gen_reactive_power_limits_mvar(gen, context).unwrap() == MinMax(min=-20.0, max=25.0)
 
     assert getters.get_gen_status(gen, context).unwrap() == 1
     assert getters.get_gen_must_run(gen, context).unwrap() is False
@@ -765,11 +772,12 @@ def test_storage_getters(tmp_path) -> None:
     assert level_limits.min == 0.0
     assert level_limits.max == 1.0  # battery fraction convention
 
+    # MW: the unit-annotated Sienna fields convert to the device base on assignment.
     charge_limits = getters.get_storage_charge_power_limits(battery, context).unwrap()
-    assert charge_limits.max == 1.0
+    assert charge_limits.max == 25.0
 
     discharge_limits = getters.get_storage_discharge_power_limits(battery, context).unwrap()
-    assert discharge_limits.max == 1.0
+    assert discharge_limits.max == 25.0
 
     efficiency = getters.get_storage_efficiency(battery, context).unwrap()
     assert efficiency.input == pytest.approx(0.7)  # charge_efficiency=70 / 100
