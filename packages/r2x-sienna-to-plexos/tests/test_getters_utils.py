@@ -98,9 +98,9 @@ def test_resolve_base_power_variants():
     c.base_power = 5
     assert getters_utils.resolve_base_power(c) == 5.0
     del c.base_power
-    c._system_base = 7
+    c.system_base = 7
     assert getters_utils.resolve_base_power(c) == 7.0
-    del c._system_base
+    del c.system_base
     assert getters_utils.resolve_base_power(c) == 1.0
 
 
@@ -881,10 +881,13 @@ def test_resolve_base_power_with_base_power():
 
 
 def test_resolve_base_power_with_system_base():
-    class Dummy:
-        _system_base = 7.0
+    from r2x_core import System
 
-    assert getters_utils.resolve_base_power(Dummy()) == 7.0
+    system = System(name="s", system_base=100.0)
+    bus = ACBus(name="B", number=1, base_voltage=115.0)
+    system.add_component(bus)
+
+    assert getters_utils.resolve_base_power(bus) == 100.0
 
 
 def test_resolve_base_power_default():
@@ -1718,32 +1721,6 @@ def test_bus_to_area_name_returns_none_when_no_area():
     bus = types.SimpleNamespace(area=None)
     result = getters_utils._bus_to_area_name(bus)
     assert result is None
-
-
-def test_write_descriptions_to_db_records_updates():
-    from r2x_core import System
-
-    sys = System(name="target")
-    gen = PLEXOSGenerator(name="GEN1", ext={"description": "coal"})
-    sys.add_component(gen)
-
-    executed: list = []
-
-    class _MockConn:
-        def executemany(self, sql, params):
-            executed.extend(list(params))
-
-    class MockDB:
-        _db = _MockConn()
-
-        def get_class_id(self, class_enum):
-            return 42
-
-    getters_utils._write_descriptions_to_db(sys, MockDB())
-    # PLEXOSGenerator is in PLEXOS_TYPE_MAP_INVERTED; expect one description update row
-    assert len(executed) == 1
-    assert executed[0][0] == "coal"  # description value
-    assert executed[0][1] == "GEN1"  # component name
 
 
 def test_ensure_zone_consolidation_no_zones_early_return(context):

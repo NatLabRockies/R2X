@@ -1138,48 +1138,34 @@ def _get_general_default(key: str) -> float:
 
 @getter
 def get_component_ext(source_component: object, context: PluginContext) -> Result[dict, ValueError]:
-    """Store the Sienna source type name in ext for downstream use (e.g. time series file naming).
-
-    Also stores ``description`` (prime_mover + fuel) in ext so the r2x_plexos
-    exporter can write it to the ``t_object.description`` column in the output XML.
-    """
-    ext: dict[str, Any] = {"sienna_type": type(source_component).__name__}
-
-    desc_getter = cast(Any, get_generator_description)
-    desc_result = desc_getter(source_component, context)
-    if hasattr(desc_result, "unwrap"):
-        try:
-            desc = desc_result.unwrap()
-            if desc is not None:
-                ext["description"] = desc
-        except Exception:
-            pass
-
-    # Fallback: if no prime_mover/fuel description, use the resolved category (e.g. "biopower",
-    # "natural-gas") so that t_object.description is never left empty for generators.
-    if "description" not in ext:
-        category = _resolve_generator_category(source_component, context)
-        if category is not None:
-            ext["description"] = category
-
-    return Ok(ext)
+    """Store the Sienna source type name in ext for downstream use (e.g. time series file naming)."""
+    return Ok({"sienna_type": type(source_component).__name__})
 
 
-@getter
-def get_region_ext(source_component: Area, context: PluginContext) -> Result[dict, ValueError]:
-    """Return ext with sienna_type and ISO/RTO description for the region."""
+def _region_buses(source_component: Area, context: PluginContext) -> list[Any]:
     area_name = getattr(source_component, "name", "")
     ext_dict = getattr(source_component, "ext", None)
     if isinstance(ext_dict, dict):
         arname = ext_dict.get("ARNAME")
         if arname:
             area_name = str(arname)
+    return _build_area_buses_index(context).get(area_name, [])
 
-    area_buses_index = _build_area_buses_index(context)
+
+@getter
+def get_region_description(source_component: Area, context: PluginContext) -> Result[str | None, ValueError]:
+    """Describe the ISO/RTOs that contain the region's buses."""
+    iso_rto = _resolve_iso_rto_description_for_buses(_region_buses(source_component, context), context)
+    return Ok(f"ISO/RTOs where region belongs to: {iso_rto}" if iso_rto else None)
+
+
+@getter
+def get_region_ext(source_component: Area, context: PluginContext) -> Result[dict, ValueError]:
+    """Return ext with the Sienna load type served by the region."""
     bus_loads_index = _build_bus_to_loads_index(context)
 
     sienna_type = "StandardLoad"
-    for bus in area_buses_index.get(area_name, []):
+    for bus in _region_buses(source_component, context):
         for load in bus_loads_index.get(str(bus.uuid), []):
             sienna_type = type(load).__name__
             break
@@ -1195,13 +1181,7 @@ def get_region_ext(source_component: Area, context: PluginContext) -> Result[dic
                 sienna_type = "PowerLoad"
                 break
 
-    region_buses = area_buses_index.get(area_name, [])
-    iso_rto = _resolve_iso_rto_description_for_buses(region_buses, context)
-
-    result: dict[str, Any] = {"sienna_type": sienna_type}
-    if iso_rto:
-        result["description"] = f"ISO/RTOs where region belongs to: {iso_rto}"
-    return Ok(result)
+    return Ok({"sienna_type": sienna_type})
 
 
 @getter

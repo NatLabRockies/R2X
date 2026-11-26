@@ -397,3 +397,41 @@ def test_source_offer_curves_populate_plexos_fields():
     # pump bid bands from export_offer_curves
     assert gen.pump_bid_price == {1: 40.0, 2: 20.0, 3: 10.0, 4: 5.0}
     assert gen.pump_bid_quantity == {1: 100.0, 2: 5.0, 3: 15.0, 4: 80.0}
+
+
+def test_generator_description_is_exported_to_t_object(tmp_path):
+    from r2x_plexos import PLEXOSConfig, PLEXOSExporter
+
+    from r2x_core import PluginContext
+
+    result = sienna_to_plexos(_build_source_system(), config=SiennaToPlexosConfig())
+    thermal = result.get_component(PLEXOSGenerator, "THERM1")
+    assert thermal.description == "prime_mover: CC, fuel_type: NATURAL_GAS"
+    assert thermal.ext == {"sienna_type": "ThermalStandard"}
+
+    config = PLEXOSConfig(horizon_year=2030, output_path=str(tmp_path))
+    exporter = PLEXOSExporter.from_context(PluginContext(system=result, config=config))
+    exporter.on_export().unwrap()
+
+    rows = exporter.db._db.fetchall("SELECT description FROM t_object WHERE name = ?", ("THERM1",))
+    assert rows == [("prime_mover: CC, fuel_type: NATURAL_GAS",)]
+
+
+def test_region_description_is_exported_to_t_object(tmp_path, monkeypatch):
+    from r2x_plexos import PLEXOSConfig, PLEXOSExporter
+    from r2x_plexos.models import PLEXOSRegion
+    from r2x_sienna_to_plexos import getters
+
+    from r2x_core import PluginContext
+
+    monkeypatch.setattr(getters, "_resolve_iso_rto_description_for_buses", lambda buses, ctx: "ercot")
+    result = sienna_to_plexos(_build_source_system(), config=SiennaToPlexosConfig())
+    region = result.get_component(PLEXOSRegion, "A1")
+    assert region.description == "ISO/RTOs where region belongs to: ercot"
+
+    config = PLEXOSConfig(horizon_year=2030, output_path=str(tmp_path))
+    exporter = PLEXOSExporter.from_context(PluginContext(system=result, config=config))
+    exporter.on_export().unwrap()
+
+    rows = exporter.db._db.fetchall("SELECT description FROM t_object WHERE name = ?", ("A1",))
+    assert ("ISO/RTOs where region belongs to: ercot",) in rows

@@ -73,132 +73,6 @@ def clean_interface_name(name: Any) -> str:
     return str(name or "").replace("\ufffd", "-").strip()
 
 
-def _chunked_setup_target_and_child_tables(
-    tgt_metadata: Any,
-    src_associations: Any,
-    uuid_map: dict,
-) -> tuple[list[tuple], dict[str, str]]:
-    """Chunked drop-in for r2x_core's _setup_target_and_child_tables."""
-    from uuid import UUID as _UUID
-
-    uuid_to_type = {str(uuid): type(comp).__name__ for uuid, comp in uuid_map.items()}
-
-    tgt_metadata.execute("DROP TABLE IF EXISTS target_components")
-    tgt_metadata.execute("CREATE TEMP TABLE target_components (uuid TEXT PRIMARY KEY, type TEXT)")
-    tgt_metadata.executemany("INSERT INTO target_components VALUES (?, ?)", list(uuid_to_type.items()))
-
-    target_uuids = list(uuid_to_type.keys())
-
-    if not target_uuids:
-        tgt_metadata.execute("DROP TABLE IF EXISTS child_mapping")
-        tgt_metadata.execute(
-            "CREATE TEMP TABLE child_mapping (child_uuid TEXT, parent_uuid TEXT, parent_type TEXT)"
-        )
-        return [], uuid_to_type
-
-    _chunk_size = 900
-    child_parent_rows: list[tuple] = []
-    for i in range(0, len(target_uuids), _chunk_size):
-        chunk = target_uuids[i : i + _chunk_size]
-        placeholders = ",".join("?" for _ in chunk)
-        child_parent_rows.extend(
-            src_associations.execute(
-                f"""
-                SELECT component_uuid, attached_component_uuid
-                FROM component_associations
-                WHERE attached_component_uuid IN ({placeholders})
-                """,
-                chunk,
-            ).fetchall()
-        )
-
-    child_remapping = [
-        (child_uuid, parent_uuid, type(uuid_map[_UUID(parent_uuid)]).__name__)
-        for child_uuid, parent_uuid in child_parent_rows
-        if parent_uuid in uuid_to_type
-    ]
-
-    tgt_metadata.execute("DROP TABLE IF EXISTS child_mapping")
-    tgt_metadata.execute(
-        "CREATE TEMP TABLE child_mapping (child_uuid TEXT, parent_uuid TEXT, parent_type TEXT)"
-    )
-    if child_remapping:
-        tgt_metadata.executemany("INSERT INTO child_mapping VALUES (?, ?, ?)", child_remapping)
-
-    return child_remapping, uuid_to_type
-
-
-def _write_descriptions_to_db(system: Any, db: Any) -> None:
-    """Write ext["description"] from each translated component to t_object.description."""
-    from r2x_plexos.exporter import PLEXOS_TYPE_MAP_INVERTED
-
-    updates: list[tuple[str, str, int]] = []
-    for comp_type in system.get_component_types():
-        for comp in system.get_components(comp_type):
-            desc = (getattr(comp, "ext", None) or {}).get("description")
-            if not desc:
-                continue
-            comp_name: str = getattr(comp, "name", "") or ""
-            if not comp_name:
-                continue
-            class_enum = PLEXOS_TYPE_MAP_INVERTED.get(type(comp))
-            if class_enum is None:
-                continue
-            updates.append((str(desc), comp_name, db.get_class_id(class_enum)))
-
-    if updates:
-        db._db.executemany(
-            "UPDATE t_object SET description=? WHERE name=? AND class_id=?",
-            updates,
-        )
-        logger.debug("Wrote description to {} t_object rows", len(updates))
-
-
-def apply_chunking_patch() -> None:
-    """Apply SQLite IN-clause chunking fix to r2x_core.time_series (idempotent).
-
-    r2x_core's _setup_target_and_child_tables issues a single IN-clause query
-    with all target UUIDs, which exceeds SQLite's 999-parameter limit on large
-    systems. This replaces it with a chunked equivalent.
-    """
-    import r2x_core.time_series as _ts
-
-    if cast(Any, _ts)._setup_target_and_child_tables is _chunked_setup_target_and_child_tables:
-        return
-    cast(Any, _ts)._setup_target_and_child_tables = _chunked_setup_target_and_child_tables
-    logger.debug("Applied chunked _setup_target_and_child_tables to r2x_core.time_series")
-
-
-def apply_description_export_patch() -> None:
-    """Wrap PLEXOSExporter.prepare_export to also persist descriptions (idempotent).
-
-    The exporter's bulk object insert omits the description column. This wraps
-    prepare_export so that after objects are inserted, ext["description"] values
-    are written back to t_object.description via a batch UPDATE.
-    """
-    import r2x_plexos.exporter as _exp
-
-    if getattr(cast(Any, _exp.PLEXOSExporter).prepare_export, "_description_patched", False):
-        return
-
-    _original = _exp.PLEXOSExporter.prepare_export
-
-    def _wrapped(self: Any) -> Any:
-        result = _original(self)
-        system = getattr(self, "system", None)
-        db = getattr(self, "db", None)
-        if system is not None and db is not None:
-            try:
-                _write_descriptions_to_db(system, db)
-            except Exception as _err:
-                logger.warning("Could not write descriptions to t_object: {}", _err)
-        return result
-
-    cast(Any, _wrapped)._description_patched = True
-    cast(Any, _exp.PLEXOSExporter).prepare_export = _wrapped
-    logger.debug("Applied description-to-t_object patch to PLEXOSExporter.prepare_export")
-
-
 def _source_system(context: PluginContext) -> Any:
     return cast(Any, context.source_system)
 
@@ -1601,13 +1475,13 @@ def extract_piecewise_segments(points: list[XYCoords]) -> tuple[list[float], lis
 def resolve_base_power(component: Any) -> float:
     """Resolve base power from component.
 
-    Attempts to extract base power from component's base_power or _system_base
+    Attempts to extract base power from component's base_power or system_base
     attributes. Returns 1.0 if neither is available.
 
     Parameters
     ----------
     component : Any
-        Component object with potential base_power or _system_base attribute
+        Component object with potential base_power or system_base attribute
 
     Returns
     -------
@@ -1616,7 +1490,7 @@ def resolve_base_power(component: Any) -> float:
     """
     base = get_magnitude(getattr(component, "base_power", None))
     if base is None:
-        raw = getattr(component, "_system_base", None)
+        raw = getattr(component, "system_base", None)
         if isinstance(raw, int | float):
             base = float(raw)
         elif raw is not None:

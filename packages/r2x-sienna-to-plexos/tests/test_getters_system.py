@@ -1032,21 +1032,24 @@ def test_get_region_ext_basic_no_buses(context):
     context.source_system.add_component(area)
     result = getters.get_region_ext(area, context)
     assert result.is_ok()
-    val = result.unwrap()
-    assert val["sienna_type"] == "StandardLoad"
-    assert "description" not in val
+    assert result.unwrap() == {"sienna_type": "StandardLoad"}
+    assert getters.get_region_description(area, context).unwrap() is None
 
 
-def test_get_region_ext_arname_ext_and_iso_description(context, monkeypatch):
-    """Covers ARNAME branch (line 1074) and iso_rto description path (line 1090)."""
-    monkeypatch.setattr(
-        getters,
-        "_resolve_iso_rto_description_for_buses",
-        lambda buses, ctx: "ercot",
-    )
+def test_get_region_description_uses_arname_buses(context, monkeypatch):
+    seen_buses = []
+
+    def resolve(buses, ctx):
+        seen_buses.extend(buses)
+        return "ercot"
+
+    monkeypatch.setattr(getters, "_resolve_iso_rto_description_for_buses", resolve)
     area = Area(name="TestArea", ext={"ARNAME": "AR_TEST"})
+    bus = ACBus(name="B1", base_voltage=115.0, number=1, area=Area(name="AR_TEST"))
     context.source_system.add_component(area)
-    result = getters.get_region_ext(area, context)
-    assert result.is_ok()
-    val = result.unwrap()
-    assert val.get("description") == "ISO/RTOs where region belongs to: ercot"
+    context.source_system.add_component(bus)
+
+    result = getters.get_region_description(area, context)
+
+    assert result.unwrap() == "ISO/RTOs where region belongs to: ercot"
+    assert [b.name for b in seen_buses] == ["B1"]

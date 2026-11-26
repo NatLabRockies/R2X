@@ -12,8 +12,6 @@ from r2x_core import PluginContext, Rule, System, apply_rules_to_context, expose
 from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
 
 from .getters_utils import (
-    apply_chunking_patch,
-    apply_description_export_patch,
     ensure_battery_node_memberships,
     ensure_deduplicate_lines,
     ensure_generator_node_memberships,
@@ -44,9 +42,6 @@ def sienna_to_plexos(system: System, config: SiennaToPlexosConfig) -> System:
     Returns:
         The translated PLEXOS system.
     """
-    apply_chunking_patch()
-    apply_description_export_patch()
-
     context = PluginContext(source_system=system, config=config)
     rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
