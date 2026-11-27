@@ -61,10 +61,12 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
         permanent=True,
     )
 
+    # Share one database so supplemental attributes persist with time-series metadata.
     sienna_sys = System(
         name="Sienna",
         system_base=100.0,
         auto_add_composed_components=True,
+        con=connection,
         time_series_manager=ts_manager,
     )
     context.target_system = sienna_sys

@@ -157,6 +157,14 @@ def test_sienna_to_plexos_returns_system():
     assert result.name == "PLEXOS"
 
 
+def test_sienna_to_plexos_persists_supplemental_attributes(tmp_path):
+    result = sienna_to_plexos(_build_source_system(), config=SiennaToPlexosConfig())
+    result.to_json(tmp_path / "system.json")
+
+    loaded = System.from_json(tmp_path / "system.json")
+    assert loaded.get_num_supplemental_attributes() == result.get_num_supplemental_attributes()
+
+
 def test_sienna_to_plexos_translates_buses_to_nodes():
     source = _build_source_system()
     result = sienna_to_plexos(source, config=SiennaToPlexosConfig())

@@ -360,9 +360,10 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
             return FakeRulesPath()
 
     class FakeSystem:
-        def __init__(self, name, auto_add_composed_components=True, time_series_manager=None):
+        def __init__(self, name, auto_add_composed_components=True, con=None, time_series_manager=None):
             self.name = name
             self.auto_add_composed_components = auto_add_composed_components
+            self.con = con
             self.time_series_manager = time_series_manager
 
         def get_time_series_directory(self):

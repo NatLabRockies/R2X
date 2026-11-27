@@ -127,6 +127,14 @@ def test_reeds_to_sienna_returns_system():
     assert result.base_power == 100.0
 
 
+def test_reeds_to_sienna_persists_supplemental_attributes(tmp_path):
+    result = reeds_to_sienna(_build_source_system(), config=ReEDSToSiennaConfig())
+    result.to_json(tmp_path / "system.json")
+
+    loaded = System.from_json(tmp_path / "system.json")
+    assert loaded.get_num_supplemental_attributes() == result.get_num_supplemental_attributes()
+
+
 def test_reeds_to_sienna_translates_region_to_bus():
     source = _build_source_system()
     result = reeds_to_sienna(source, config=ReEDSToSiennaConfig())

@@ -103,6 +103,14 @@ def test_plexos_to_sienna_returns_system():
     assert result.name == "Sienna"
 
 
+def test_plexos_to_sienna_persists_supplemental_attributes(tmp_path):
+    result = plexos_to_sienna(_build_source_system(), config=PlexosToSiennaConfig())
+    result.to_json(tmp_path / "system.json")
+
+    loaded = System.from_json(tmp_path / "system.json")
+    assert loaded.get_num_supplemental_attributes() == result.get_num_supplemental_attributes()
+
+
 def test_plexos_to_sienna_warns_once_with_fallback_category_counts(caplog: pytest.LogCaptureFixture):
     source = _build_source_system()
     generator = next(source.get_components(PLEXOSGenerator))
