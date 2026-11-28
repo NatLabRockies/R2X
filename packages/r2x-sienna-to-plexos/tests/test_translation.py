@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
+from infrasys import SingleTimeSeries
 from infrasys.cost_curves import FuelCurve, UnitSystem
 from infrasys.function_data import LinearFunctionData, PiecewiseStepData
 from infrasys.value_curves import IncrementalCurve, InputOutputCurve
@@ -215,6 +218,31 @@ def test_sienna_to_plexos_translates_reserve():
 
     reserves = list(result.get_components(PLEXOSReserve))
     assert any(r.name == "SPIN1" for r in reserves)
+
+
+def test_sienna_to_plexos_translates_reserve_requirement_time_series():
+    source = _build_source_system()
+    source.base_power = 100.0
+    reserve = next(item for item in source.get_components(VariableReserve) if item.name == "SPIN1")
+    source.add_time_series(
+        SingleTimeSeries.from_array(
+            data=[0.1, 0.2],
+            name="requirement",
+            resolution=timedelta(hours=1),
+            initial_timestamp=datetime(2023, 1, 1),
+        ),
+        reserve,
+    )
+
+    result = sienna_to_plexos(source, config=SiennaToPlexosConfig())
+    target_reserve = next(item for item in result.get_components(PLEXOSReserve) if item.name == "SPIN1")
+    time_series = result.list_time_series(target_reserve, name="min_provision")
+
+    assert len(time_series) == 1
+    assert [float(value) for value in time_series[0].data] == [10.0, 20.0]
+    assert [meta.name for meta in result.time_series.list_time_series_metadata(target_reserve)] == [
+        "min_provision"
+    ]
 
 
 def test_sienna_to_plexos_translates_interface():

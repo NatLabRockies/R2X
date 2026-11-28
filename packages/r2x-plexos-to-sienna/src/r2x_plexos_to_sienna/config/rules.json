@@ -39,7 +39,6 @@
     },
     "field_map": {
       "name": "name",
-      "uuid": "uuid",
       "available": "units",
       "category": "category"
     },
@@ -76,6 +75,24 @@
       "base_power" : "get_load_base_power"
     },
     "source_type": "PLEXOSRegion",
+    "target_type": "PowerLoad",
+    "version": 1
+  },
+  {
+    "defaults": {
+      "category": "power-load"
+    },
+    "field_map": {
+      "name": "name",
+      "category": "category"
+    },
+    "getters": {
+      "bus": "get_node_load_bus",
+      "active_power": "get_node_load_active_power",
+      "max_active_power": "get_node_load_active_power",
+      "base_power": "get_node_load_base_power"
+    },
+    "source_type": "PLEXOSNode",
     "target_type": "PowerLoad",
     "version": 1
   },

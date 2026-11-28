@@ -50,8 +50,7 @@ def test_2node_system_translates_topology_and_generation(plexos_2node_complete):
     assert gen.bus.name == "Node1"
     assert gen.active_power_limits.max * gen.base_power == pytest.approx(50.0)
 
-    load = result.get_component(PowerLoad, "Area1")
-    assert load.bus.area.name == "Area1"
+    assert not any(load.name == "Area1" for load in result.get_components(PowerLoad))
 
 
 def test_5bus_system_translates_every_device_family(plexos_5bus_complete):
@@ -151,6 +150,6 @@ def test_5bus_translation_exports_to_complete_sienna_json(plexos_5bus_complete, 
         ("RenewableDispatch", "WindGen"),
         ("EnergyReservoirStorage", "Battery1"),
         ("VariableReserve", "SpinningReserve"),
-        ("PowerLoad", "Area1"),
     } <= exported
+    assert ("PowerLoad", "Area1") not in exported
     assert sum(component_type == "Line" for component_type, _ in exported) == 7

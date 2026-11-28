@@ -660,8 +660,7 @@ def test_build_reservoir_pump_turbine_name_set_skips_non_storage_reservoirs(cont
     assert "should-not-appear" not in names
 
 
-def test_attach_generator_time_series_scales_hydro_budget(tmp_path, monkeypatch):
-    """hydro_budget raw per-unit values must be multiplied by max_active_power."""
+def test_attach_generator_time_series_scales_hydro_budget_to_gwh_and_replaces_raw_copy(tmp_path, monkeypatch):
     context = make_context(tmp_path)
     context.source_system = System(name="source")
     context.target_system = System(name="target")
@@ -673,7 +672,7 @@ def test_attach_generator_time_series_scales_hydro_budget(tmp_path, monkeypatch)
     )
     monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
 
-    raw_values = [10.0, 20.0]  # raw per-unit; after *1.0 MW still 10, 20 MWh
+    raw_values = [10.0, 20.0]
     context.source_system.time_series.has_time_series = lambda _c: True
     context.source_system.time_series.list_time_series_metadata = lambda _c: [
         types.SimpleNamespace(name="hydro_budget", features={})
@@ -687,16 +686,65 @@ def test_attach_generator_time_series_scales_hydro_budget(tmp_path, monkeypatch)
             resolution=timedelta(weeks=1),
         )
     ]
-    context.target_system.has_time_series = lambda *_a, **_kw: False
+    existing_ts = types.SimpleNamespace(
+        name="hydro_budget",
+        data=[10.0, 20.0],
+        initial_timestamp=datetime(2020, 1, 1),
+        resolution=timedelta(weeks=1),
+    )
+    removed = []
+    context.target_system.has_time_series = lambda _c, name=None, **_kw: name == "hydro_budget"
+    context.target_system.list_time_series = lambda *_a, **_kw: [existing_ts]
+    context.target_system.remove_time_series = lambda _c, name=None, **_kw: removed.append(name)
     attached = []
     context.target_system.add_time_series = lambda ts, *_a, **_kw: attached.append(ts)
 
     getters._attach_generator_time_series(context, "HYDRO_TS", PLEXOSGenerator(name="HYDRO_TS"))
 
     assert len(attached) == 1
-    assert attached[0].name == "max_energy_week"
-    # raw 10.0 * 1.0 MW = 10.0, raw 20.0 * 1.0 MW = 20.0
-    assert list(attached[0].data) == [10.0, 20.0]
+    assert removed == ["hydro_budget"]
+    assert attached[0].name == "hydro_budget"
+    assert list(attached[0].data) == [0.01, 0.02]
+
+
+def test_attach_generator_time_series_discards_unscaled_budget_without_capacity(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+    source_gen = types.SimpleNamespace(
+        name="HYDRO_NO_CAPACITY",
+        active_power_limits=None,
+        rating=None,
+    )
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="hydro_budget", features={})
+    ]
+    context.source_system.list_time_series = lambda _component, **_kwargs: [
+        types.SimpleNamespace(
+            name="hydro_budget",
+            data=[1.0, 2.0],
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(weeks=1),
+        )
+    ]
+
+    removed = []
+    context.target_system.has_time_series = lambda _component, name=None, **_kwargs: name == "hydro_budget"
+    context.target_system.remove_time_series = lambda _component, name=None, **_kwargs: removed.append(name)
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters._attach_generator_time_series(
+        context,
+        "HYDRO_NO_CAPACITY",
+        PLEXOSGenerator(name="HYDRO_NO_CAPACITY"),
+    )
+
+    assert removed == ["hydro_budget"]
+    assert attached == []
 
 
 def test_attach_generator_time_series_scales_hydro_budget_hourly(tmp_path, monkeypatch):
@@ -713,7 +761,7 @@ def test_attach_generator_time_series_scales_hydro_budget_hourly(tmp_path, monke
     )
     monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
 
-    # Two weeks of hourly data: all ones → raw weekly sum = 168; scaled = 168 * 1.0
+    # Two weeks of hourly data: all ones → 168 MWh per week = 0.168 GWh.
     two_weeks_ones = [1.0] * 336
     context.source_system.time_series.has_time_series = lambda _c: True
     context.source_system.time_series.list_time_series_metadata = lambda _c: [
@@ -735,10 +783,9 @@ def test_attach_generator_time_series_scales_hydro_budget_hourly(tmp_path, monke
 
     assert len(attached) == 1
     ts = attached[0]
-    assert ts.name == "max_energy_week"
+    assert ts.name == "hydro_budget"
     assert ts.resolution == timedelta(days=7)
-    # Each weekly value = 168 * 1.0 (scaled) * 1.0 MW = 168.0 MWh
-    assert all(abs(v - 168.0) < 1e-6 for v in ts.data)
+    assert all(abs(v - 0.168) < 1e-6 for v in ts.data)
 
 
 def test__ramp_value_to_float_small_value():

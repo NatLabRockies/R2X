@@ -65,6 +65,7 @@ from .utils import (
     _get_fuel_type,
     _get_hvdc_active_power_limits,
     _get_prime_mover_type,
+    _get_region_node_names,
     _get_target_component_by_name,
     _get_target_system_base_power,
     _get_transformer_base_power,
@@ -89,21 +90,11 @@ def get_load_bus(component: PLEXOSRegion, context: PluginContext) -> Result[ACBu
     if context.source_system is None or context.target_system is None:
         return Ok(None)
 
-    memberships = context.source_system.get_supplemental_attributes_with_component(component)
-    node_name = None
-    for m in memberships:
-        if (
-            hasattr(m, "collection")
-            and m.collection == CollectionEnum.Region
-            and hasattr(m, "parent_object")
-            and hasattr(m.parent_object, "name")
-        ):
-            node_name = m.parent_object.name
-            break
-    if node_name:
-        bus = _get_target_component_by_name(context.target_system, ACBus, node_name)
-        return Ok(bus)
-    return Ok(None)
+    node_names = _get_region_node_names(context.source_system, component)
+    if len(node_names) != 1:
+        return Ok(None)
+    node_name = next(iter(node_names))
+    return Ok(_get_target_component_by_name(context.target_system, ACBus, node_name))
 
 
 @getter
@@ -214,6 +205,31 @@ def _get_load_active_power(component: PLEXOSRegion) -> float:
 def get_load_base_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the base power of the load at the bus (if available)."""
     return Ok(_get_load_base_power(component))
+
+
+@getter
+def get_node_load_bus(component: PLEXOSNode, context: PluginContext) -> Result[ACBus | None, Any]:
+    """Get the bus for a node-level PowerLoad."""
+    _sync_time_series_for_source(component, context)
+    if context.target_system is None:
+        return Ok(None)
+    return Ok(_get_target_component_by_name(context.target_system, ACBus, component.name))
+
+
+@getter
+def get_node_load_active_power(component: PLEXOSNode, context: PluginContext) -> Result[float, Any]:
+    """Get node-level demand on the load device base."""
+    return Ok(float(component.load) / _get_node_load_base_power(component))
+
+
+@getter
+def get_node_load_base_power(component: PLEXOSNode, context: PluginContext) -> Result[float, Any]:
+    """Get the node load base power, defaulting to 100 MW."""
+    return Ok(_get_node_load_base_power(component))
+
+
+def _get_node_load_base_power(component: PLEXOSNode) -> float:
+    return float(getattr(component, "base_power", 100.0) or 100.0)
 
 
 @getter

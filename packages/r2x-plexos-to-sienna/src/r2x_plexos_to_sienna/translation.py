@@ -25,6 +25,8 @@ from r2x_plexos_to_sienna.utils import (
     attach_constant_load_time_series,
     normalize_renewable_max_active_power_time_series,
     normalize_reserve_requirement_time_series,
+    prune_region_loads,
+    remove_unused_node_loads,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,6 +94,7 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
         )
 
     apply_rules_to_context(context)
+    prune_region_loads(context)
 
     for node in context.source_system.get_components(PLEXOSNode):
         _sync_time_series_for_source(node, context)
@@ -106,6 +109,7 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
     for storage in context.source_system.get_components(PLEXOSStorage):
         _sync_time_series_for_source(storage, context)
 
+    remove_unused_node_loads(context)
     attach_constant_load_time_series(context)
     normalize_renewable_max_active_power_time_series(context)
     normalize_reserve_requirement_time_series(context)

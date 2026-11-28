@@ -61,7 +61,7 @@ from r2x_sienna.models import (
     TwoTerminalVSCLine,
     VariableReserve,
 )
-from r2x_sienna.models.enums import ReserveType
+from r2x_sienna.models.enums import ReserveType, ReservoirDataType
 from r2x_sienna.models.getters import (
     get_max_active_power as sienna_get_max_active_power,
 )
@@ -742,19 +742,6 @@ def _convert_hydro_budget_time_series(ts: Any, cadence: str) -> tuple[Any, Any]:
     return data, output_resolution
 
 
-def _hydro_budget_series_name_for_resolution(resolution: Any) -> str:
-    """Map hydro-budget output resolution to the PLEXOS max-energy property time-series name."""
-    if not isinstance(resolution, timedelta):
-        return "hydro_budget"
-    if resolution >= timedelta(days=28):
-        return "max_energy_month"
-    if resolution >= timedelta(days=7):
-        return "max_energy_week"
-    if resolution >= timedelta(days=1):
-        return "max_energy_day"
-    return "hydro_budget"
-
-
 def _attach_generator_time_series(
     context: PluginContext,
     generator_name: str,
@@ -800,27 +787,28 @@ def _attach_generator_time_series(
         hydro_budget_cadence = getattr(context.config, "hydro_budget_ts", "weekly")
 
         if ts.name == "hydro_budget":
-            # ts.data holds raw per-unit values; scale to actual MW (same logic as
-            # max_active_power TS) so that weekly sums are in MWh, not dimensionless
-            # units.  Without this, the weekly budget is ~max_active_power-factor too
-            # large (e.g. 955 MWh instead of 76 MWh for an 0.08 MW generator).
-            _max_mw = 0.0
-            _limits = getattr(source_gen, "active_power_limits", None)
-            if _limits is not None:
-                _max_val = _limits.get("max") if isinstance(_limits, dict) else getattr(_limits, "max", None)
-                if _max_val is not None:
-                    _mag = get_magnitude(_max_val)
-                    _raw = (
-                        float(_mag)
-                        if _mag is not None
-                        else float(_max_val)
-                        if isinstance(_max_val, int | float)
-                        else None
+            max_mw = _get_generator_capacity_mw(source_gen)
+            if max_mw is None or max_mw <= 0.0:
+                if target_system.has_time_series(
+                    target_generator,
+                    name="hydro_budget",
+                    time_series_type=SingleTimeSeries,
+                    **metadata.features,
+                ):
+                    target_system.remove_time_series(
+                        target_generator,
+                        name="hydro_budget",
+                        time_series_type=SingleTimeSeries,
+                        **metadata.features,
                     )
-                    if _raw is not None:
-                        _max_mw = abs(_raw) * resolve_base_power(source_gen)
-            if _max_mw > 0.0:
-                data = data * _max_mw
+                logger.warning(
+                    "Cannot convert hydro_budget time series for generator '{}' to GWh: "
+                    "maximum capacity is unavailable; discarded the unscaled series.",
+                    generator_name,
+                )
+                continue
+
+            data = data * max_mw
             ts_for_conversion = types.SimpleNamespace(
                 data=data,
                 resolution=ts.resolution,
@@ -830,26 +818,62 @@ def _attach_generator_time_series(
                 ts_for_conversion,
                 hydro_budget_cadence,
             )
-            target_ts_name = _hydro_budget_series_name_for_resolution(output_resolution)
+            if isinstance(output_resolution, timedelta) and output_resolution >= timedelta(days=1):
+                # Aggregated MW values are MWh; PLEXOS interval energy properties use GWh.
+                data = data / 1000.0
+            target_ts_name = "hydro_budget"
 
-        if not target_system.has_time_series(
+        if ts.name == "max_active_power":
+            max_mw = _get_max_active_power_time_series_capacity_mw(source_gen)
+            if max_mw is not None and max_mw > 0.0:
+                data = data * max_mw
+
+        if target_ts_name == "hydro_budget":
+            existing_series = []
+            if target_system.has_time_series(
+                target_generator,
+                name=target_ts_name,
+                time_series_type=SingleTimeSeries,
+                **metadata.features,
+            ):
+                existing_series = target_system.list_time_series(
+                    target_generator,
+                    name=target_ts_name,
+                    time_series_type=SingleTimeSeries,
+                    **metadata.features,
+                )
+
+            if (
+                len(existing_series) == 1
+                and np.array_equal(np.asarray(existing_series[0].data), data, equal_nan=True)
+                and existing_series[0].resolution == output_resolution
+                and existing_series[0].initial_timestamp == ts.initial_timestamp
+            ):
+                continue
+
+            if existing_series:
+                target_system.remove_time_series(
+                    target_generator,
+                    name=target_ts_name,
+                    time_series_type=SingleTimeSeries,
+                    **metadata.features,
+                )
+        elif target_system.has_time_series(
             target_generator,
             name=target_ts_name,
             time_series_type=SingleTimeSeries,
             **metadata.features,
         ):
-            if ts.name == "max_active_power":
-                max_mw = _get_max_active_power_time_series_capacity_mw(source_gen)
-                if max_mw is not None and max_mw > 0.0:
-                    data = data * max_mw
-            fresh_ts = SingleTimeSeries.from_array(
-                data=data,
-                name=target_ts_name,
-                initial_timestamp=ts.initial_timestamp,
-                resolution=output_resolution,
-            )
-            target_system.add_time_series(fresh_ts, target_generator, **metadata.features)
-            logger.debug("Attached time series {} to generator {}", target_ts_name, generator_name)
+            continue
+
+        fresh_ts = SingleTimeSeries.from_array(
+            data=data,
+            name=target_ts_name,
+            initial_timestamp=ts.initial_timestamp,
+            resolution=output_resolution,
+        )
+        target_system.add_time_series(fresh_ts, target_generator, **metadata.features)
+        logger.debug("Attached time series {} to generator {}", target_ts_name, generator_name)
 
 
 def _has_usable_generator_time_series(source_component: object, context: PluginContext) -> bool:
@@ -2600,7 +2624,14 @@ def get_storage_max_volume(
 def get_storage_natural_inflow(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Return the natural inflow for a storage type."""
+    """Return the natural inflow in MW for an energy-based reservoir."""
+    if source_component.level_data_type != ReservoirDataType.ENERGY:
+        logger.warning(
+            "Cannot translate natural inflow for reservoir '{}' to MW: level_data_type is not ENERGY.",
+            source_component.name,
+        )
+        return Ok(0.0)
+
     value = getattr(source_component, "inflow", None)
     if value is not None:
         return Ok(float(value))

@@ -44,7 +44,7 @@ from r2x_sienna.models.enums import (
 from r2x_sienna.models.named_tuples import (
     MinMax,
 )
-from r2x_sienna.units import get_magnitude
+from r2x_sienna.units import ActivePower, get_magnitude
 
 from r2x_core import PluginContext, System, replace_single_time_series
 
@@ -60,6 +60,7 @@ from .constants import (
 )
 
 TComponent = TypeVar("TComponent", bound=Component)
+_LOAD_PROFILE_NAMES = {"max_active_power", "load", "fixed_load"}
 
 
 def _first_numeric(value: Any) -> float:
@@ -118,28 +119,50 @@ def _get_target_component_by_name(
     return components[0] if components else None
 
 
+def _get_region_node_names(source_system: System, region: PLEXOSRegion) -> set[str]:
+    return {
+        membership.parent_object.name
+        for membership in source_system.get_supplemental_attributes_with_component(region)
+        if getattr(membership, "collection", None) == CollectionEnum.Region
+        and isinstance(getattr(membership, "parent_object", None), PLEXOSNode)
+    }
+
+
+def _has_load_profile(source_system: System, component: Any) -> bool:
+    return any(
+        metadata.name in _LOAD_PROFILE_NAMES
+        for metadata in source_system.list_time_series_metadata(component)
+    )
+
+
+def _has_node_load(source_system: System, node: PLEXOSNode) -> bool:
+    return bool(_first_numeric(node.load)) or _has_load_profile(source_system, node)
+
+
+def _region_has_node_load(source_system: System, region: PLEXOSRegion) -> bool:
+    node_names = _get_region_node_names(source_system, region)
+    return any(
+        node.name in node_names and _has_node_load(source_system, node)
+        for node in source_system.get_components(PLEXOSNode)
+    )
+
+
 def _get_targets_by_name(context: PluginContext, source_component: Any) -> list[Any]:
     if context.target_system is None:
         return []
 
-    if isinstance(source_component, PLEXOSNode) and context.source_system is not None:
-        region_names = {
-            membership.child_object.name
-            for membership in context.source_system.get_supplemental_attributes_with_component(
-                source_component
-            )
-            if getattr(membership, "collection", None) == CollectionEnum.Region
-            and getattr(getattr(membership, "child_object", None), "name", None)
-        }
-        if not region_names:
-            return []
-        if len(region_names) == 1:
-            return _get_target_components_by_name(context.target_system, PowerLoad, next(iter(region_names)))
-        return [
-            load
-            for load in context.target_system.get_components(PowerLoad)
-            if getattr(load, "name", None) in region_names
-        ]
+    if isinstance(source_component, PLEXOSNode):
+        return _get_target_components_by_name(context.target_system, PowerLoad, source_component.name)
+
+    if (
+        isinstance(source_component, PLEXOSRegion)
+        and context.source_system is not None
+        and (
+            len(_get_region_node_names(context.source_system, source_component)) != 1
+            or _region_has_node_load(context.source_system, source_component)
+        )
+    ):
+        return []
 
     name = getattr(source_component, "name", None)
     if not name:
@@ -185,6 +208,15 @@ def _get_hydro_budget_values(ts: SingleTimeSeries, capacity: float) -> np.ndarra
 def _attach_source_time_series_if_target_exists(source_component: Any, context: PluginContext) -> bool:
     if context.source_system is None or context.target_system is None:
         return True
+    if isinstance(source_component, PLEXOSRegion):
+        if len(_get_region_node_names(context.source_system, source_component)) != 1 or _region_has_node_load(
+            context.source_system, source_component
+        ):
+            return True
+        if not bool(_first_numeric(source_component.load)) and not _has_load_profile(
+            context.source_system, source_component
+        ):
+            return True
     if not context.source_system.time_series.has_time_series(source_component):
         return True
 
@@ -246,7 +278,14 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
                     target_component.base_power
                 )
                 if capacity <= 0 and np.any(data):
-                    raise ValueError(f"Load profile requires a positive maximum for {target_component.name}")
+                    profile_peak = float(np.max(data))
+                    base_power = get_magnitude(target_component.base_power)
+                    if profile_peak <= 0 or base_power <= 0:
+                        raise ValueError(
+                            f"Load profile requires a positive maximum for {target_component.name}"
+                        )
+                    target_component.max_active_power = ActivePower(profile_peak / base_power, "MW")
+                    capacity = profile_peak
                 normalization = NormalizationByValue(value=capacity or 1.0)
             hydro = isinstance(source_component, PLEXOSGenerator) and (
                 isinstance(target_component, HydroDispatch)
@@ -452,10 +491,10 @@ def attach_constant_load_time_series(context: PluginContext) -> None:
         if not isinstance(source, (PLEXOSRegion, PLEXOSNode, PLEXOSPurchaser)):
             continue
         targets = _get_targets_by_name(context, source)
-        if isinstance(source, (PLEXOSRegion, PLEXOSPurchaser)):
+        if isinstance(source, (PLEXOSRegion, PLEXOSNode, PLEXOSPurchaser)):
             scalar_loads.update((load.name, load) for load in targets)
         if any(
-            metadata.name in {"max_active_power", "load", "fixed_load"}
+            metadata.name in _LOAD_PROFILE_NAMES
             for metadata in context.source_system.list_time_series_metadata(source)
         ):
             profiled_loads.update(load.name for load in targets)
@@ -488,6 +527,55 @@ def attach_constant_load_time_series(context: PluginContext) -> None:
             set_time_series_scaling_factor_multiplier(
                 system, load, "max_active_power", "get_max_active_power"
             )
+
+
+def prune_region_loads(context: PluginContext) -> None:
+    """Keep region loads only when they have demand and map unambiguously to one bus."""
+    source_system = context.source_system
+    target_system = context.target_system
+    if source_system is None or target_system is None:
+        return
+
+    for region in source_system.get_components(PLEXOSRegion):
+        node_names = _get_region_node_names(source_system, region)
+        has_region_demand = bool(_first_numeric(region.load)) or _has_load_profile(source_system, region)
+        has_node_demand = _region_has_node_load(source_system, region)
+        if len(node_names) == 1 and not has_node_demand and has_region_demand:
+            continue
+
+        if has_region_demand:
+            if has_node_demand:
+                logger.warning(
+                    "Skipping PLEXOS region load '{}' because node-level demand is present; "
+                    "using node loads to avoid duplicate demand",
+                    region.name,
+                )
+            else:
+                logger.warning(
+                    "Skipping PLEXOS region load '{}' because it maps to {} nodes; "
+                    "translate demand on an individual node instead",
+                    region.name,
+                    len(node_names),
+                )
+        load = _get_target_component_by_name(target_system, PowerLoad, region.name)
+        if load is not None:
+            target_system.remove_component(load, cascade_down=False)
+
+
+def remove_unused_node_loads(context: PluginContext) -> None:
+    """Remove node-load targets that have no scalar demand or load profile."""
+    source_system = context.source_system
+    target_system = context.target_system
+    if source_system is None or target_system is None:
+        return
+
+    for node in source_system.get_components(PLEXOSNode):
+        load = _get_target_component_by_name(target_system, PowerLoad, node.name)
+        if load is None:
+            continue
+
+        if not _has_node_load(source_system, node):
+            target_system.remove_component(load, cascade_down=False)
 
 
 def _sync_time_series_for_source(source_component: Any, context: PluginContext) -> None:
