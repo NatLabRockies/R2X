@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.3](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-sienna-v0.2.2...r2x-reeds-to-sienna-v0.2.3) (2026-11-28)
+
+
+### Bug Fixes
+
+* resolve r2x translations to match r2x-core updated codebase ([#357](https://github.com/NatLabRockies/R2X/issues/357)) ([b72e424](https://github.com/NatLabRockies/R2X/commit/b72e424f0db75773c0dfd9efb0a6fd6985772e76))
+
+
+### Documentation
+
+* align central guides and workspace translator documentation ([#344](https://github.com/NatLabRockies/R2X/issues/344)) ([164dea0](https://github.com/NatLabRockies/R2X/commit/164dea0ccef556bba69c14327e9e11a1bc43f327))
+
 ## [0.2.2](https://github.com/NatLabRockies/R2X/compare/r2x-reeds-to-sienna-v0.2.1...r2x-reeds-to-sienna-v0.2.2) (2026-10-15)
 
 
