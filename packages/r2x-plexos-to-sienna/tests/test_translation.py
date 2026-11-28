@@ -290,6 +290,50 @@ def test_plexos_node_profiles_remain_on_each_bus_in_multi_node_region():
         np.testing.assert_allclose(time_series[0].data, [0.5, 1.0])
 
 
+@pytest.mark.parametrize("owner_batch", [500, 1])
+def test_multi_node_region_load_is_distributed_by_load_participation_factor(monkeypatch, owner_batch):
+    from r2x_plexos_to_sienna import utils
+
+    monkeypatch.setattr(utils, "_TIME_SERIES_OWNER_BATCH", owner_batch)
+    source = _build_source_system()
+    region = source.get_component(PLEXOSRegion, "REGION1")
+    region.load = 0.0
+    source.get_component(PLEXOSNode, "NODE1").load_participation_factor = 0.25
+    second_node = PLEXOSNode(name="NODE2", voltage=115.0, load_participation_factor=0.75)
+    source.add_component(second_node)
+    membership = PLEXOSMembership(
+        collection=CollectionEnum.Region,
+        parent_object=second_node,
+        child_object=region,
+    )
+    source.add_supplemental_attribute(region, membership)
+    source.add_supplemental_attribute(second_node, membership)
+    source.add_time_series(
+        SingleTimeSeries(
+            name="load",
+            data=np.array([100.0, 200.0]),
+            resolution=timedelta(hours=1),
+            initial_timestamp=datetime(2026, 1, 1),
+        ),
+        region,
+    )
+
+    result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
+
+    loads = {load.name: load for load in result.get_components(PowerLoad)}
+    assert "REGION1" not in loads
+    series_ids = set()
+    for name, share in {"NODE1": 0.25, "NODE2": 0.75}.items():
+        load = loads[name]
+        assert load.bus.name == name
+        assert load.max_active_power.magnitude == pytest.approx(200.0 * share / 100.0)
+        time_series = result.list_time_series(load, name="max_active_power")
+        assert len(time_series) == 1
+        np.testing.assert_allclose(time_series[0].data, [0.5, 1.0])
+        series_ids.add(time_series[0].uuid)
+    assert len(series_ids) == 1
+
+
 def test_multi_node_region_scalar_demand_is_skipped_in_favor_of_node_loads():
     source = _build_source_system()
     region = source.get_component(PLEXOSRegion, "REGION1")
@@ -534,6 +578,29 @@ def test_plexos_to_sienna_translates_battery():
     assert bat.bus.name == "NODE1"
 
 
+def test_constant_reservoir_inflow_uses_another_component_timeline():
+    """EI pumped-storage reservoirs have only constant zero inflow, so no inflow profile exists."""
+    source = _build_source_system()
+    node = next(source.get_components(PLEXOSNode))
+    source.add_time_series(
+        SingleTimeSeries(
+            name="load",
+            data=np.array([10.0, 20.0, 15.0]),
+            resolution=timedelta(hours=1),
+            initial_timestamp=datetime(2026, 1, 1),
+        ),
+        node,
+    )
+    source.add_component(PLEXOSStorage(name="PLANT_head", category="head", natural_inflow=0.0))
+
+    result = plexos_to_sienna(source, config=PlexosToSiennaConfig())
+
+    reservoir = result.get_component(HydroReservoir, "PLANT_head")
+    inflow = result.get_time_series(reservoir, name="inflow")
+    assert inflow.initial_timestamp == datetime(2026, 1, 1)
+    np.testing.assert_allclose(inflow.data_array, [0.0, 0.0, 0.0])
+
+
 def test_plexos_hydro_natural_inflow_time_series_translates_to_inflow():
     source = _build_source_system()
     storage = PLEXOSStorage(
@@ -557,7 +624,8 @@ def test_plexos_hydro_natural_inflow_time_series_translates_to_inflow():
     reservoir = result.get_component(HydroReservoir, "RESERVOIR1")
     inflow_profiles = result.list_time_series(reservoir, name="inflow")
     assert len(inflow_profiles) == 1
-    np.testing.assert_array_equal(inflow_profiles[0].data, [4.0, 6.0])
+    assert reservoir.inflow == pytest.approx(6.0)
+    np.testing.assert_allclose(inflow_profiles[0].data * reservoir.inflow, [4.0, 6.0])
     assert result.list_time_series(reservoir, name="natural_inflow") == []
 
 

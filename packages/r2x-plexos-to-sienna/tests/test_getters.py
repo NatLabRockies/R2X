@@ -474,6 +474,44 @@ def test_region_getters(tmp_path) -> None:
     assert getters.get_load_max_reactive_power(region, context).unwrap() == 0.0
 
 
+def test_region_load_getters_default_missing_load_to_zero(tmp_path) -> None:
+    """Treat a missing scalar load as zero when the source model bypassed validation."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+    region = PLEXOSRegion.model_construct(name="REGION1", load=None)
+
+    assert getters.get_load_active_power(region, context).unwrap() == 0.0
+    assert getters.get_load_max_active_power(region, context).unwrap() == 0.0
+
+
+def test_prune_region_loads_accepts_missing_region_load(tmp_path) -> None:
+    """Do not fail when a parsed region has no scalar load value."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+    context.source_system.add_component(PLEXOSRegion.model_construct(name="REGION1", load=None))
+
+    utils.prune_region_loads(context)
+
+
+def test_region_node_names_resolve_deserialized_membership_parents() -> None:
+    """Memberships loaded from an artifact hold plain PLEXOSObject copies of their parents."""
+    from r2x_plexos.models import PLEXOSObject
+
+    system = System(name="source")
+    node = PLEXOSNode(name="NODE1")
+    region = PLEXOSRegion(name="REGION1")
+    system.add_components(node, region)
+    parent_copy = PLEXOSObject(name=node.name, uuid=node.uuid)
+    membership = PLEXOSMembership(
+        collection=CollectionEnum.Region, parent_object=parent_copy, child_object=region
+    )
+    system.add_supplemental_attribute(region, membership)
+
+    assert utils._get_region_node_names(system, region) == {"NODE1"}
+
+
 def test_load_bus_getter(tmp_path) -> None:
     """Test get_load_bus getter with membership."""
     context = make_context(tmp_path)

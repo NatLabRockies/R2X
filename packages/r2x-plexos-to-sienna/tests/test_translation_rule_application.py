@@ -453,7 +453,8 @@ def test_plexos_transformers_translate_to_sienna_models(tmp_path, category: str,
         assert translated.phase_angle_limits.max == pytest.approx(expected_angle)
 
 
-def test_plexos_storage_translates_to_hydro_reservoir(tmp_path) -> None:
+@pytest.mark.parametrize("category", ["pumped-hydro", "head", "tail"])
+def test_plexos_storage_translates_to_hydro_reservoir(tmp_path, category) -> None:
     from r2x_plexos.models import PLEXOSStorage
     from r2x_sienna.models import HydroReservoir
 
@@ -462,7 +463,7 @@ def test_plexos_storage_translates_to_hydro_reservoir(tmp_path) -> None:
     context.source_system.add_component(
         PLEXOSStorage(
             name="RESERVOIR1",
-            category="pumped-hydro",
+            category=category,
             initial_level=0.4,
             min_volume=10.0,
             max_volume=100.0,

@@ -52,17 +52,19 @@ from r2x_sienna.models.named_tuples import (
     FromTo_ToFrom,
     InputOutput,
     MinMax,
+    TurbinePump,
     UpDown,
 )
 
 from r2x_core import Ok, PluginContext, Result
 from r2x_core.getters import getter
 
-from .constants import NATURAL_UNITS
+from .constants import NATURAL_UNITS, PSY_INFINITE_TIME
 from .utils import (
     _classify_generator_category,
     _first_numeric,
     _get_fuel_type,
+    _get_generator_storage_names,
     _get_hvdc_active_power_limits,
     _get_prime_mover_type,
     _get_region_node_names,
@@ -198,7 +200,8 @@ def _get_load_base_power(component: PLEXOSRegion) -> float:
 
 
 def _get_load_active_power(component: PLEXOSRegion) -> float:
-    return float(component.load) / _get_load_base_power(component)
+    load = component.load
+    return (0.0 if load is None else float(load)) / _get_load_base_power(component)
 
 
 @getter
@@ -219,7 +222,8 @@ def get_node_load_bus(component: PLEXOSNode, context: PluginContext) -> Result[A
 @getter
 def get_node_load_active_power(component: PLEXOSNode, context: PluginContext) -> Result[float, Any]:
     """Get node-level demand on the load device base."""
-    return Ok(float(component.load) / _get_node_load_base_power(component))
+    load = component.load
+    return Ok((0.0 if load is None else float(load)) / _get_node_load_base_power(component))
 
 
 @getter
@@ -779,8 +783,54 @@ def get_gen_technology_class(component: PLEXOSGenerator, context: PluginContext)
 
     Supports both canonical ReEDS-style slugs and descriptive naming
     conventions (e.g. AEMO ISP "Wind SA", "Black Coal QLD", "Hydro TAS").
+    A pumped-hydro unit with a pump load and both head and tail storages is a
+    HydroPumpTurbine, matching how PowerSystems models pumped storage.
     """
-    return Ok(_classify_generator_category(getattr(component, "category", None)))
+    technology = _classify_generator_category(getattr(component, "category", None))
+    if (
+        technology == "hydro-turbine"
+        and context.source_system is not None
+        and float(getattr(component, "pump_load", 0.0) or 0.0) > 0.0
+        and _get_generator_storage_names(context.source_system, component).keys()
+        == {CollectionEnum.HeadStorage, CollectionEnum.TailStorage}
+    ):
+        return Ok("hydro-pump-turbine")
+    return Ok(technology)
+
+
+@getter
+def get_gen_pump_active_power_limits_mw(
+    component: PLEXOSGenerator, context: PluginContext
+) -> Result[MinMax, Any]:
+    """Get pumping power limits in MW from the PLEXOS Pump Load."""
+    return Ok(MinMax(min=0.0, max=float(getattr(component, "pump_load", 0.0) or 0.0)))
+
+
+@getter
+def get_pump_turbine_time_at_status(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
+    """Hours the pump unit has been in its initial OFF status, from PLEXOS Initial Hours Down.
+
+    PowerSystems starts HydroPumpTurbine OFF and uses INFINITE_TIME (1e4 hours) when the
+    duration is unbounded; PLEXOS uses 1e30 for the same meaning. A finite value is also
+    required because JSON artifacts cannot represent infinity.
+    """
+    hours = float(getattr(component, "initial_hours_down", PSY_INFINITE_TIME) or 0.0)
+    return Ok(min(hours, PSY_INFINITE_TIME))
+
+
+@getter
+def get_pump_turbine_efficiency(
+    component: PLEXOSGenerator, context: PluginContext
+) -> Result[TurbinePump, Any]:
+    """Recover pump efficiency from the PLEXOS Pump Efficiency percentage.
+
+    Sienna-to-PLEXOS writes the squared PowerSystems pump efficiency as a percentage,
+    so the inverse is the square root. PLEXOS has no separate turbine efficiency.
+    """
+    percent = float(getattr(component, "pump_efficiency", 0.0) or 0.0)
+    if percent <= 0.0:
+        raise ValueError(f"Pump efficiency must be positive for {component.name}")
+    return Ok(TurbinePump(turbine=1.0, pump=math.sqrt(min(percent, 100.0) / 100.0)))
 
 
 @getter

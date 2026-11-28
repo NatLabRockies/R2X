@@ -23,8 +23,10 @@ from r2x_plexos_to_sienna.utils import (
     _classify_generator_category_with_fallback,
     _sync_time_series_for_source,
     attach_constant_load_time_series,
+    link_hydro_reservoir_turbines,
     normalize_renewable_max_active_power_time_series,
     normalize_reserve_requirement_time_series,
+    normalize_reservoir_inflow_time_series,
     prune_region_loads,
     remove_unused_node_loads,
 )
@@ -94,6 +96,7 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
         )
 
     apply_rules_to_context(context)
+    link_hydro_reservoir_turbines(context)
     prune_region_loads(context)
 
     for node in context.source_system.get_components(PLEXOSNode):
@@ -113,5 +116,6 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
     attach_constant_load_time_series(context)
     normalize_renewable_max_active_power_time_series(context)
     normalize_reserve_requirement_time_series(context)
+    normalize_reservoir_inflow_time_series(context)
 
     return context.target_system

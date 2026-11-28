@@ -153,3 +153,83 @@ def test_5bus_translation_exports_to_complete_sienna_json(plexos_5bus_complete, 
     } <= exported
     assert ("PowerLoad", "Area1") not in exported
     assert sum(component_type == "Line" for component_type, _ in exported) == 7
+
+
+def test_pumped_hydro_units_attach_to_head_and_tail_reservoirs(plexos_2node_complete, tmp_path):
+    from datetime import datetime, timedelta
+
+    from fixture.plexos_systems import _connect
+    from infrasys import SingleTimeSeries
+    from plexosdb import CollectionEnum
+    from r2x_plexos.models import PLEXOSGenerator, PLEXOSNode, PLEXOSStorage
+    from r2x_sienna.models import HydroPumpTurbine, HydroReservoir
+
+    system = plexos_2node_complete
+    node = system.get_component(PLEXOSNode, "Node2")
+    head = PLEXOSStorage(name="Plant_head", category="head", max_volume=10.0, natural_inflow=8.0)
+    tail = PLEXOSStorage(name="Plant_tail", category="tail", max_volume=10.0)
+    system.add_components(head, tail)
+    system.add_time_series(
+        SingleTimeSeries(
+            name="natural_inflow",
+            data=np.array([4.0, 8.0, 2.0]),
+            resolution=timedelta(hours=1),
+            initial_timestamp=datetime(2026, 1, 1),
+        ),
+        head,
+    )
+    for name in ("Plant_1", "Plant_2"):
+        unit = PLEXOSGenerator(
+            name=name,
+            category="pumped-hydro",
+            max_capacity=40.0,
+            pump_load=30.0,
+            pump_efficiency=81.0,
+            units=1,
+        )
+        system.add_component(unit)
+        _connect(system, unit, node, CollectionEnum.Nodes)
+        _connect(system, unit, head, CollectionEnum.HeadStorage)
+        _connect(system, unit, tail, CollectionEnum.TailStorage)
+
+    result = _translate(system)
+
+    # The CLI hands each step's system to the next through a JSON artifact.
+    artifact = tmp_path / "artifact" / "system.json"
+    artifact.parent.mkdir()
+    result.to_json(artifact)
+    result = type(result).from_json(artifact)
+
+    units = {unit.name: unit for unit in result.get_components(HydroPumpTurbine)}
+    assert set(units) == {"Plant_1", "Plant_2"}
+    unit = units["Plant_1"]
+    assert unit.time_at_status == pytest.approx(1e4)
+    assert unit.bus.name == "Node2"
+    assert unit.efficiency.pump == pytest.approx(0.9)
+    assert unit.active_power_limits_pump.max * unit.base_power == pytest.approx(30.0)
+    head_reservoir = result.get_component(HydroReservoir, "Plant_head")
+    tail_reservoir = result.get_component(HydroReservoir, "Plant_tail")
+    assert {turbine.name for turbine in head_reservoir.downstream_turbines} == set(units)
+    assert {turbine.name for turbine in tail_reservoir.upstream_turbines} == set(units)
+    assert head_reservoir.upstream_turbines == []
+    assert tail_reservoir.downstream_turbines == []
+    assert head_reservoir.inflow == pytest.approx(8.0)
+    head_inflow = result.get_time_series(head_reservoir, name="inflow")
+    np.testing.assert_allclose(head_inflow.data_array * head_reservoir.inflow, [4.0, 8.0, 2.0])
+    np.testing.assert_allclose(
+        result.get_time_series(tail_reservoir, name="inflow").data_array, [0.0, 0.0, 0.0]
+    )
+
+    output = tmp_path / "pumped.json"
+    exporter = SiennaExporter.from_context(
+        PluginContext(system=result, config=SiennaExporterConfig(output_path=str(output)))
+    )
+    exporter.on_export().unwrap()
+    components = json.loads(output.read_text())["data"]["components"]
+    uuids = {
+        component["name"]: component["internal"]["uuid"]["value"]
+        for component in components
+        if component["__metadata__"]["type"] == "HydroPumpTurbine"
+    }
+    exported_head = next(component for component in components if component.get("name") == "Plant_head")
+    assert {reference["value"] for reference in exported_head["downstream_turbines"]} == set(uuids.values())

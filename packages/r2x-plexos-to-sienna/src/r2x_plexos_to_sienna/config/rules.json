@@ -90,6 +90,8 @@
       "bus": "get_node_load_bus",
       "active_power": "get_node_load_active_power",
       "max_active_power": "get_node_load_active_power",
+      "reactive_power": "get_load_reactive_power",
+      "max_reactive_power": "get_load_max_reactive_power",
       "base_power": "get_node_load_base_power"
     },
     "source_type": "PLEXOSNode",
@@ -504,6 +506,44 @@
   },
   {
     "defaults": {
+      "category": "hydro-pump-turbine"
+    },
+    "field_map": {
+      "name": "name",
+      "category": "category",
+      "uuid": "uuid"
+    },
+    "getters": {
+      "bus": "get_gen_bus",
+      "active_power": "get_gen_active_power",
+      "reactive_power": "get_gen_reactive_power",
+      "rating": "get_gen_rating",
+      "active_power_limits": "get_gen_active_power_limits_mw",
+      "active_power_limits_pump": "get_gen_pump_active_power_limits_mw",
+      "reactive_power_limits": "get_gen_reactive_power_limits_mvar",
+      "base_power": "get_gen_base_power",
+      "services": "get_device_services",
+      "operation_cost": "get_hydro_gen_operation_cost",
+      "efficiency": "get_pump_turbine_efficiency",
+      "time_at_status": "get_pump_turbine_time_at_status",
+      "ramp_limits": "get_gen_ramp_limits",
+      "time_limits": "get_gen_time_limits",
+      "prime_mover_type": "get_prime_mover_type"
+    },
+    "filter": {
+      "kind": "getter",
+      "getter": "get_gen_technology_class",
+      "op": "eq",
+      "values": [
+        "hydro-pump-turbine"
+      ]
+    },
+    "source_type": "PLEXOSGenerator",
+    "target_type": "HydroPumpTurbine",
+    "version": 1
+  },
+  {
+    "defaults": {
       "category": "hydro-pumped-storage",
       "initial_level": 0.5,
       "outflow": 0.0,
@@ -527,7 +567,9 @@
       "field": "category",
       "op": "in",
       "values": [
-        "pumped-hydro"
+        "pumped-hydro",
+        "head",
+        "tail"
       ]
     },
     "source_type": "PLEXOSStorage",
