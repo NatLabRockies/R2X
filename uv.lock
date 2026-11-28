@@ -1027,16 +1027,16 @@ wheels = [
 
 [[package]]
 name = "r2x-plexos"
-version = "0.4.0"
+version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "plexosdb" },
     { name = "polars" },
     { name = "r2x-core" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c4/69/6e7cd5ba2a9fa66c00f8ee1eb793f3dc6ff432c9cd6cec657346db0565c4/r2x_plexos-0.4.0.tar.gz", hash = "sha256:b26e8728d6eb46b228ef6810b3e0504e556e62dfab153eac218a4bfc1d10ae82", size = 132926, upload-time = "2026-11-26T19:37:46.291Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/f1/e8ad19276a7b809f4634e3993b50f7568599e62bd8c228bfa89e29a3d484/r2x_plexos-0.4.1.tar.gz", hash = "sha256:6e49f4eafe7e0c43d36596e987837533edc8c59cfd410aafcf64f38c6e9872df", size = 133870, upload-time = "2026-11-28T04:51:31.112Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/ff/aac2ad49c90de7695c3fdd955b57ead24617eff2dda983d8428799e8739c/r2x_plexos-0.4.0-py3-none-any.whl", hash = "sha256:09eb9b7b57cc5cda101502fdfe7c8b101065e2c60b03db3f45a613e9da643582", size = 147851, upload-time = "2026-11-26T19:37:44.854Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/0d/4cf58ef2ea83b7ad3970ebbc672c60cd9688ddf340f21fc18fb5150ed4e8/r2x_plexos-0.4.1-py3-none-any.whl", hash = "sha256:99c6e632aafc35a4999c96c14bddcb7cca30afa55c0a5078cf3f9b333805d0ea", size = 148778, upload-time = "2026-11-28T04:51:29.723Z" },
 ]
 
 [[package]]
@@ -1052,7 +1052,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
-    { name = "r2x-plexos", specifier = ">=0.4.0,<1.0.0" },
+    { name = "r2x-plexos", specifier = ">=0.4.1,<1.0.0" },
     { name = "r2x-sienna", specifier = ">=0.5.1,<1.0.0" },
 ]
 
@@ -1082,7 +1082,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
-    { name = "r2x-plexos", specifier = ">=0.4.0,<1.0.0" },
+    { name = "r2x-plexos", specifier = ">=0.4.1,<1.0.0" },
     { name = "r2x-reeds", specifier = ">=0.10.0,<1.0.0" },
 ]
 
@@ -1128,7 +1128,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
-    { name = "r2x-plexos", specifier = ">=0.4.0,<1.0.0" },
+    { name = "r2x-plexos", specifier = ">=0.4.1,<1.0.0" },
     { name = "r2x-sienna", specifier = ">=0.5.1,<1.0.0" },
 ]
 
