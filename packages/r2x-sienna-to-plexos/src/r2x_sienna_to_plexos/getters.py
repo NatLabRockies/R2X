@@ -61,7 +61,7 @@ from r2x_sienna.models import (
     TwoTerminalVSCLine,
     VariableReserve,
 )
-from r2x_sienna.models.enums import ReserveType
+from r2x_sienna.models.enums import ReserveType, ReservoirDataType
 from r2x_sienna.models.getters import (
     get_max_active_power as sienna_get_max_active_power,
 )
@@ -71,6 +71,7 @@ from r2x_core import Err, Ok, PluginContext, Result
 from r2x_core.getters import getter
 from r2x_sienna_to_plexos.getters_utils import (
     _attach_reservoir_time_series_to_storage,
+    _get_context_cache,
     _resolve_iso_rto_description_for_buses,
     _resolve_iso_rto_for_buses,
     clean_interface_name,
@@ -101,12 +102,12 @@ def _target_system(context: PluginContext) -> Any:
 
 def _get_defaults_data(context: PluginContext) -> dict[str, Any]:
     """Load defaults.json once per plugin context."""
-    cached = context._cache.get("defaults_json")
+    cached = _get_context_cache(context).get("defaults_json")
     if cached is not None:
         return cast(dict[str, Any], cached)
 
     data = _load_defaults_json()
-    context._cache["defaults_json"] = data
+    _get_context_cache(context)["defaults_json"] = data
     return data
 
 
@@ -202,31 +203,31 @@ def _resolve_generator_category(source_component: Any, context: PluginContext) -
 
 def _build_target_storage_name_index(context: PluginContext) -> dict[str, Any]:
     """Build PLEXOSStorage names index, cached."""
-    cached = context._cache.get("target_storage_name_index")
+    cached = _get_context_cache(context).get("target_storage_name_index")
     if cached is not None:
         return cached
     if context.target_system is None:
         return {}
     result = {s.name.lower(): s for s in _target_system(context).get_components(PLEXOSStorage)}
-    context._cache["target_storage_name_index"] = result
+    _get_context_cache(context)["target_storage_name_index"] = result
     return result
 
 
 def _build_source_reserve_name_index(context: PluginContext) -> dict[str, Any]:
     """Build VariableReserve names index, cached."""
-    cached = context._cache.get("source_reserve_name_index")
+    cached = _get_context_cache(context).get("source_reserve_name_index")
     if cached is not None:
         return cached
     if context.source_system is None:
         return {}
     result = {r.name: r for r in _source_system(context).get_components(VariableReserve)}
-    context._cache["source_reserve_name_index"] = result
+    _get_context_cache(context)["source_reserve_name_index"] = result
     return result
 
 
 def _build_source_interface_name_index(context: PluginContext) -> dict[str, Any]:
     """Build TransmissionInterface names index, cached."""
-    cached = context._cache.get("source_interface_name_index")
+    cached = _get_context_cache(context).get("source_interface_name_index")
     if cached is not None:
         return cached
     if context.source_system is None:
@@ -235,19 +236,19 @@ def _build_source_interface_name_index(context: PluginContext) -> dict[str, Any]
     for interface in _source_system(context).get_components(TransmissionInterface):
         result[interface.name] = interface
         result.setdefault(clean_interface_name(interface.name), interface)
-    context._cache["source_interface_name_index"] = result
+    _get_context_cache(context)["source_interface_name_index"] = result
     return result
 
 
 def _build_target_line_name_index(context: PluginContext) -> dict[str, Any]:
     """Build PLEXOSLine names index, cached."""
-    cached = context._cache.get("target_line_name_index")
+    cached = _get_context_cache(context).get("target_line_name_index")
     if cached is not None:
         return cached
     if context.target_system is None:
         return {}
     result = {ln.name: ln for ln in _target_system(context).get_components(PLEXOSLine)}
-    context._cache["target_line_name_index"] = result
+    _get_context_cache(context)["target_line_name_index"] = result
     return result
 
 
@@ -261,7 +262,7 @@ def _reservoir_base_name(name: str) -> str:
 
 def _build_generator_service_index(context: PluginContext) -> dict[str, list[Any]]:
     """Map reserve_name -> list of source generators that provide it."""
-    cached = context._cache.get("generator_service_index")
+    cached = _get_context_cache(context).get("generator_service_index")
     if cached is not None:
         return cached
     index: dict[str, list[Any]] = defaultdict(list)
@@ -272,13 +273,13 @@ def _build_generator_service_index(context: PluginContext) -> dict[str, list[Any
                 if service_name:
                     index[service_name].append(gen)
     result = dict(index)
-    context._cache["generator_service_index"] = result
+    _get_context_cache(context)["generator_service_index"] = result
     return result
 
 
 def _build_battery_service_index(context: PluginContext) -> dict[str, list[Any]]:
     """Map reserve_name -> list of source batteries that provide it."""
-    cached = context._cache.get("battery_service_index")
+    cached = _get_context_cache(context).get("battery_service_index")
     if cached is not None:
         return cached
     index: dict[str, list[Any]] = defaultdict(list)
@@ -288,13 +289,13 @@ def _build_battery_service_index(context: PluginContext) -> dict[str, list[Any]]
             if service_name:
                 index[service_name].append(battery)
     result = dict(index)
-    context._cache["battery_service_index"] = result
+    _get_context_cache(context)["battery_service_index"] = result
     return result
 
 
 def _build_area_buses_index(context: PluginContext) -> dict[str, list[Any]]:
     """Map area_name -> list of ACBus components in that area."""
-    cached = context._cache.get("area_buses_index")
+    cached = _get_context_cache(context).get("area_buses_index")
     if cached is not None:
         return cached
     index: dict[str, list[Any]] = defaultdict(list)
@@ -309,27 +310,27 @@ def _build_area_buses_index(context: PluginContext) -> dict[str, list[Any]]:
         if arname and str(arname) != area_name:
             index[str(arname)].append(bus)
     result = dict(index)
-    context._cache["area_buses_index"] = result
+    _get_context_cache(context)["area_buses_index"] = result
     return result
 
 
 def _build_node_name_index(context: PluginContext) -> dict[str, Any]:
     """Build name->PLEXOSNode index once and cache it."""
-    cached = context._cache.get("node_name_index")
+    cached = _get_context_cache(context).get("node_name_index")
     if cached is not None:
         return cached
     result = {node.name: node for node in _target_system(context).get_components(PLEXOSNode)}
-    context._cache["node_name_index"] = result
+    _get_context_cache(context)["node_name_index"] = result
     return result
 
 
 def _build_bus_name_index(context: PluginContext) -> dict[str, Any]:
     """Build name->ACBus index once and cache it."""
-    cached = context._cache.get("bus_name_index")
+    cached = _get_context_cache(context).get("bus_name_index")
     if cached is not None:
         return cached
     result = {bus.name: bus for bus in _source_system(context).get_components(ACBus)}
-    context._cache["bus_name_index"] = result
+    _get_context_cache(context)["bus_name_index"] = result
     return result
 
 
@@ -338,7 +339,7 @@ def _build_area_to_node_index(context: PluginContext) -> dict[str, PLEXOSNode]:
 
     Replaces _lookup_target_node_by_source_area which was O(nodes*buses) per call.
     """
-    cached = context._cache.get("area_to_node_index")
+    cached = _get_context_cache(context).get("area_to_node_index")
     if cached is not None:
         return cached
 
@@ -359,7 +360,7 @@ def _build_area_to_node_index(context: PluginContext) -> dict[str, PLEXOSNode]:
         elif isinstance(bus_area, str):
             index[bus_area] = node
 
-    context._cache["area_to_node_index"] = index
+    _get_context_cache(context)["area_to_node_index"] = index
     return index
 
 
@@ -386,7 +387,7 @@ def _lookup_target_node_by_source_area(
 def _lookup_source_generator(context: PluginContext, gen_name: str) -> Any | None:
     """Find a source generator by name across all Sienna generator types."""
     cache_key = "source_generator_name_index"
-    index = context._cache.get(cache_key)
+    index = _get_context_cache(context).get(cache_key)
     if index is None:
         display_index = _build_generator_display_name_index(context)
         by_orig: dict[str, Any] = {}
@@ -400,7 +401,7 @@ def _lookup_source_generator(context: PluginContext, gen_name: str) -> Any | Non
                 if display_name:
                     by_display.setdefault(display_name, gen)
         index = {**by_orig, **by_display}
-        context._cache[cache_key] = index
+        _get_context_cache(context)[cache_key] = index
     return index.get(gen_name)
 
 
@@ -438,7 +439,7 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
     component are excluded from this index because ``ensure_source_conflicts_resolved``
     will remove them from the target system.
     """
-    cached = context._cache.get("generator_display_name_index")
+    cached = _get_context_cache(context).get("generator_display_name_index")
     if cached is not None:
         return cached
 
@@ -493,43 +494,43 @@ def _build_generator_display_name_index(context: PluginContext) -> dict[str, str
             for i, orig in enumerate(sorted(orig_names), start=1):
                 result[orig] = f"{display}_{i}"
 
-    context._cache["generator_display_name_index"] = result
+    _get_context_cache(context)["generator_display_name_index"] = result
     return result
 
 
 def _lookup_source_battery(context: PluginContext, battery_name: str) -> Any | None:
     """Find a source battery by name."""
     cache_key = "source_battery_name_index"
-    index = context._cache.get(cache_key)
+    index = _get_context_cache(context).get(cache_key)
     if index is None:
         index = {b.name: b for b in _source_system(context).get_components(EnergyReservoirStorage)}
-        context._cache[cache_key] = index
+        _get_context_cache(context)[cache_key] = index
     return index.get(battery_name)
 
 
 def _find_source_line(context: PluginContext, line_name: str) -> Any | None:
     """Find a source line by name across Line, MonitoredLine, and TwoTerminalHVDCLine types."""
     cache_key = "source_line_name_index"
-    index = context._cache.get(cache_key)
+    index = _get_context_cache(context).get(cache_key)
     if index is None:
         index = {}
         for line_type in SOURCE_LINE_TYPES:
             for ln in _source_system(context).get_components(line_type):
                 index[ln.name] = ln
-        context._cache[cache_key] = index
+        _get_context_cache(context)[cache_key] = index
     return index.get(line_name)
 
 
 def _find_source_transformer(context: PluginContext, transformer_name: str) -> Any | None:
     """Find a source transformer by name."""
     cache_key = "source_transformer_name_index"
-    index = context._cache.get(cache_key)
+    index = _get_context_cache(context).get(cache_key)
     if index is None:
         index = {}
         for tf_type in [Transformer2W, TapTransformer, PhaseShiftingTransformer]:
             for tf in _source_system(context).get_components(tf_type):
                 index[tf.name] = tf
-        context._cache[cache_key] = index
+        _get_context_cache(context)[cache_key] = index
     return index.get(transformer_name)
 
 
@@ -741,19 +742,6 @@ def _convert_hydro_budget_time_series(ts: Any, cadence: str) -> tuple[Any, Any]:
     return data, output_resolution
 
 
-def _hydro_budget_series_name_for_resolution(resolution: Any) -> str:
-    """Map hydro-budget output resolution to the PLEXOS max-energy property time-series name."""
-    if not isinstance(resolution, timedelta):
-        return "hydro_budget"
-    if resolution >= timedelta(days=28):
-        return "max_energy_month"
-    if resolution >= timedelta(days=7):
-        return "max_energy_week"
-    if resolution >= timedelta(days=1):
-        return "max_energy_day"
-    return "hydro_budget"
-
-
 def _attach_generator_time_series(
     context: PluginContext,
     generator_name: str,
@@ -799,27 +787,28 @@ def _attach_generator_time_series(
         hydro_budget_cadence = getattr(context.config, "hydro_budget_ts", "weekly")
 
         if ts.name == "hydro_budget":
-            # ts.data holds raw per-unit values; scale to actual MW (same logic as
-            # max_active_power TS) so that weekly sums are in MWh, not dimensionless
-            # units.  Without this, the weekly budget is ~max_active_power-factor too
-            # large (e.g. 955 MWh instead of 76 MWh for an 0.08 MW generator).
-            _max_mw = 0.0
-            _limits = getattr(source_gen, "active_power_limits", None)
-            if _limits is not None:
-                _max_val = _limits.get("max") if isinstance(_limits, dict) else getattr(_limits, "max", None)
-                if _max_val is not None:
-                    _mag = get_magnitude(_max_val)
-                    _raw = (
-                        float(_mag)
-                        if _mag is not None
-                        else float(_max_val)
-                        if isinstance(_max_val, int | float)
-                        else None
+            max_mw = _get_generator_capacity_mw(source_gen)
+            if max_mw is None or max_mw <= 0.0:
+                if target_system.has_time_series(
+                    target_generator,
+                    name="hydro_budget",
+                    time_series_type=SingleTimeSeries,
+                    **metadata.features,
+                ):
+                    target_system.remove_time_series(
+                        target_generator,
+                        name="hydro_budget",
+                        time_series_type=SingleTimeSeries,
+                        **metadata.features,
                     )
-                    if _raw is not None:
-                        _max_mw = abs(_raw) * resolve_base_power(source_gen)
-            if _max_mw > 0.0:
-                data = data * _max_mw
+                logger.warning(
+                    "Cannot convert hydro_budget time series for generator '{}' to GWh: "
+                    "maximum capacity is unavailable; discarded the unscaled series.",
+                    generator_name,
+                )
+                continue
+
+            data = data * max_mw
             ts_for_conversion = types.SimpleNamespace(
                 data=data,
                 resolution=ts.resolution,
@@ -829,26 +818,62 @@ def _attach_generator_time_series(
                 ts_for_conversion,
                 hydro_budget_cadence,
             )
-            target_ts_name = _hydro_budget_series_name_for_resolution(output_resolution)
+            if isinstance(output_resolution, timedelta) and output_resolution >= timedelta(days=1):
+                # Aggregated MW values are MWh; PLEXOS interval energy properties use GWh.
+                data = data / 1000.0
+            target_ts_name = "hydro_budget"
 
-        if not target_system.has_time_series(
+        if ts.name == "max_active_power":
+            max_mw = _get_max_active_power_time_series_capacity_mw(source_gen)
+            if max_mw is not None and max_mw > 0.0:
+                data = data * max_mw
+
+        if target_ts_name == "hydro_budget":
+            existing_series = []
+            if target_system.has_time_series(
+                target_generator,
+                name=target_ts_name,
+                time_series_type=SingleTimeSeries,
+                **metadata.features,
+            ):
+                existing_series = target_system.list_time_series(
+                    target_generator,
+                    name=target_ts_name,
+                    time_series_type=SingleTimeSeries,
+                    **metadata.features,
+                )
+
+            if (
+                len(existing_series) == 1
+                and np.array_equal(np.asarray(existing_series[0].data), data, equal_nan=True)
+                and existing_series[0].resolution == output_resolution
+                and existing_series[0].initial_timestamp == ts.initial_timestamp
+            ):
+                continue
+
+            if existing_series:
+                target_system.remove_time_series(
+                    target_generator,
+                    name=target_ts_name,
+                    time_series_type=SingleTimeSeries,
+                    **metadata.features,
+                )
+        elif target_system.has_time_series(
             target_generator,
             name=target_ts_name,
             time_series_type=SingleTimeSeries,
             **metadata.features,
         ):
-            if ts.name == "max_active_power":
-                max_mw = _get_max_active_power_time_series_capacity_mw(source_gen)
-                if max_mw is not None and max_mw > 0.0:
-                    data = data * max_mw
-            fresh_ts = SingleTimeSeries.from_array(
-                data=data,
-                name=target_ts_name,
-                initial_timestamp=ts.initial_timestamp,
-                resolution=output_resolution,
-            )
-            target_system.add_time_series(fresh_ts, target_generator, **metadata.features)
-            logger.debug("Attached time series {} to generator {}", target_ts_name, generator_name)
+            continue
+
+        fresh_ts = SingleTimeSeries.from_array(
+            data=data,
+            name=target_ts_name,
+            initial_timestamp=ts.initial_timestamp,
+            resolution=output_resolution,
+        )
+        target_system.add_time_series(fresh_ts, target_generator, **metadata.features)
+        logger.debug("Attached time series {} to generator {}", target_ts_name, generator_name)
 
 
 def _has_usable_generator_time_series(source_component: object, context: PluginContext) -> bool:
@@ -934,7 +959,7 @@ def _build_bus_to_loads_index(context: PluginContext) -> dict[str, list[Any]]:
 
     Covers StandardLoad, InterruptibleStandardLoad, InterruptiblePowerLoad and PowerLoad.
     """
-    cached = context._cache.get("bus_to_loads")
+    cached = _get_context_cache(context).get("bus_to_loads")
     if cached is not None:
         return cached
 
@@ -947,7 +972,7 @@ def _build_bus_to_loads_index(context: PluginContext) -> dict[str, list[Any]]:
                 index[str(bus.uuid)].append(load)
 
     result = dict(index)
-    context._cache["bus_to_loads"] = result
+    _get_context_cache(context)["bus_to_loads"] = result
     return result
 
 
@@ -959,7 +984,7 @@ def _build_bus_to_standard_loads_index(context: PluginContext) -> dict[str, list
     by the ext-fallback path of get_load_participation_factor.
     PowerLoad is intentionally excluded because it does not carry ext LPF metadata.
     """
-    cached = context._cache.get("bus_to_standard_loads")
+    cached = _get_context_cache(context).get("bus_to_standard_loads")
     if cached is not None:
         return cached
 
@@ -972,13 +997,13 @@ def _build_bus_to_standard_loads_index(context: PluginContext) -> dict[str, list
                 index[str(bus.uuid)].append(load)
 
     result = dict(index)
-    context._cache["bus_to_standard_loads"] = result
+    _get_context_cache(context)["bus_to_standard_loads"] = result
     return result
 
 
 def _build_3w_transformer_name_index(context: PluginContext) -> dict[str, Any]:
     """Build Transformer3W / PhaseShiftingTransformer3W names index, cached."""
-    cached = context._cache.get("source_3w_transformer_name_index")
+    cached = _get_context_cache(context).get("source_3w_transformer_name_index")
     if cached is not None:
         return cached
     source_system = cast(Any, context.source_system)
@@ -986,7 +1011,7 @@ def _build_3w_transformer_name_index(context: PluginContext) -> dict[str, Any]:
     for tf_type in [Transformer3W, PhaseShiftingTransformer3W]:
         for tf in source_system.get_components(tf_type):
             index[tf.name] = tf
-    context._cache["source_3w_transformer_name_index"] = index
+    _get_context_cache(context)["source_3w_transformer_name_index"] = index
     return index
 
 
@@ -1089,7 +1114,7 @@ def _get_load_mw(load: Any) -> float:
 
 def _compute_total_system_load(context: PluginContext) -> float:
     """Compute total system load in MW by summing max_active_power of all StandardLoad and PowerLoad components."""
-    cached = context._cache.get("total_system_load")
+    cached = _get_context_cache(context).get("total_system_load")
     if cached is not None:
         return cached
     source_system = cast(Any, context.source_system)
@@ -1097,13 +1122,13 @@ def _compute_total_system_load(context: PluginContext) -> float:
     for load_type in [StandardLoad, PowerLoad]:
         for load in source_system.get_components(load_type):
             total += _get_load_mw(load)
-    context._cache["total_system_load"] = total
+    _get_context_cache(context)["total_system_load"] = total
     return total
 
 
 def _build_area_total_load_index(context: PluginContext) -> dict[str, float]:
     """Map area_name (ARNAME or area.name) -> total load MW for all buses in that area."""
-    cached = context._cache.get("area_total_load_index")
+    cached = _get_context_cache(context).get("area_total_load_index")
     if cached is not None:
         return cached
     area_buses = _build_area_buses_index(context)
@@ -1112,7 +1137,7 @@ def _build_area_total_load_index(context: PluginContext) -> dict[str, float]:
     for area_name, buses in area_buses.items():
         total = sum(_get_load_mw(load) for bus in buses for load in loads_index.get(str(bus.uuid), []))
         result[area_name] = total
-    context._cache["area_total_load_index"] = result
+    _get_context_cache(context)["area_total_load_index"] = result
     return result
 
 
@@ -1137,48 +1162,34 @@ def _get_general_default(key: str) -> float:
 
 @getter
 def get_component_ext(source_component: object, context: PluginContext) -> Result[dict, ValueError]:
-    """Store the Sienna source type name in ext for downstream use (e.g. time series file naming).
-
-    Also stores ``description`` (prime_mover + fuel) in ext so the r2x_plexos
-    exporter can write it to the ``t_object.description`` column in the output XML.
-    """
-    ext: dict[str, Any] = {"sienna_type": type(source_component).__name__}
-
-    desc_getter = cast(Any, get_generator_description)
-    desc_result = desc_getter(source_component, context)
-    if hasattr(desc_result, "unwrap"):
-        try:
-            desc = desc_result.unwrap()
-            if desc is not None:
-                ext["description"] = desc
-        except Exception:
-            pass
-
-    # Fallback: if no prime_mover/fuel description, use the resolved category (e.g. "biopower",
-    # "natural-gas") so that t_object.description is never left empty for generators.
-    if "description" not in ext:
-        category = _resolve_generator_category(source_component, context)
-        if category is not None:
-            ext["description"] = category
-
-    return Ok(ext)
+    """Store the Sienna source type name in ext for downstream use (e.g. time series file naming)."""
+    return Ok({"sienna_type": type(source_component).__name__})
 
 
-@getter
-def get_region_ext(source_component: Area, context: PluginContext) -> Result[dict, ValueError]:
-    """Return ext with sienna_type and ISO/RTO description for the region."""
+def _region_buses(source_component: Area, context: PluginContext) -> list[Any]:
     area_name = getattr(source_component, "name", "")
     ext_dict = getattr(source_component, "ext", None)
     if isinstance(ext_dict, dict):
         arname = ext_dict.get("ARNAME")
         if arname:
             area_name = str(arname)
+    return _build_area_buses_index(context).get(area_name, [])
 
-    area_buses_index = _build_area_buses_index(context)
+
+@getter
+def get_region_description(source_component: Area, context: PluginContext) -> Result[str | None, ValueError]:
+    """Describe the ISO/RTOs that contain the region's buses."""
+    iso_rto = _resolve_iso_rto_description_for_buses(_region_buses(source_component, context), context)
+    return Ok(f"ISO/RTOs where region belongs to: {iso_rto}" if iso_rto else None)
+
+
+@getter
+def get_region_ext(source_component: Area, context: PluginContext) -> Result[dict, ValueError]:
+    """Return ext with the Sienna load type served by the region."""
     bus_loads_index = _build_bus_to_loads_index(context)
 
     sienna_type = "StandardLoad"
-    for bus in area_buses_index.get(area_name, []):
+    for bus in _region_buses(source_component, context):
         for load in bus_loads_index.get(str(bus.uuid), []):
             sienna_type = type(load).__name__
             break
@@ -1194,13 +1205,7 @@ def get_region_ext(source_component: Area, context: PluginContext) -> Result[dic
                 sienna_type = "PowerLoad"
                 break
 
-    region_buses = area_buses_index.get(area_name, [])
-    iso_rto = _resolve_iso_rto_description_for_buses(region_buses, context)
-
-    result: dict[str, Any] = {"sienna_type": sienna_type}
-    if iso_rto:
-        result["description"] = f"ISO/RTOs where region belongs to: {iso_rto}"
-    return Ok(result)
+    return Ok({"sienna_type": sienna_type})
 
 
 @getter
@@ -1310,11 +1315,11 @@ def get_load_participation_factor(
 
 @getter
 def is_slack_bus(source_component: ACBus, context: PluginContext) -> Result[int, ValueError]:
-    """Populate bustype field based on slack bus status."""
+    """Populate PLEXOS "Is Slack Bus" (-1 = Yes, 0 = No) from the Sienna bus type."""
 
     from r2x_sienna.models.enums import ACBusTypes
 
-    value = 1 if source_component.bustype == ACBusTypes.SLACK else 0
+    value = -1 if source_component.bustype == ACBusTypes.SLACK else 0
     return Ok(value)
 
 
@@ -1382,7 +1387,7 @@ def get_zone_units(source_component: LoadZone, context: PluginContext) -> Result
 
 def _build_zone_buses_index(context: PluginContext) -> dict[str, list[Any]]:
     """Map load_zone name -> list of ACBus components in that zone (cached)."""
-    cached = context._cache.get("zone_buses_index")
+    cached = _get_context_cache(context).get("zone_buses_index")
     if cached is not None:
         return cached
     index: dict[str, list[Any]] = defaultdict(list)
@@ -1398,7 +1403,7 @@ def _build_zone_buses_index(context: PluginContext) -> dict[str, list[Any]]:
             lz_name = str(lz)
         index[lz_name].append(bus)
     result = dict(index)
-    context._cache["zone_buses_index"] = result
+    _get_context_cache(context)["zone_buses_index"] = result
     return result
 
 
@@ -2410,7 +2415,7 @@ def _build_reservoir_pump_turbine_name_set(context: PluginContext) -> set[str]:
     are considered, so the returned names correspond to turbines that will
     actually receive a PLEXOSStorage membership.
     """
-    cached = context._cache.get("reservoir_pump_turbine_name_set")
+    cached = _get_context_cache(context).get("reservoir_pump_turbine_name_set")
     if cached is not None:
         return cast(set[str], cached)
 
@@ -2432,7 +2437,7 @@ def _build_reservoir_pump_turbine_name_set(context: PluginContext) -> set[str]:
                 if isinstance(plant_id, str):
                     names.add(plant_id)
 
-    context._cache["reservoir_pump_turbine_name_set"] = names
+    _get_context_cache(context)["reservoir_pump_turbine_name_set"] = names
     return names
 
 
@@ -2619,7 +2624,14 @@ def get_storage_max_volume(
 def get_storage_natural_inflow(
     source_component: HydroReservoir, context: PluginContext
 ) -> Result[float, ValueError]:
-    """Return the natural inflow for a storage type."""
+    """Return the natural inflow in MW for an energy-based reservoir."""
+    if source_component.level_data_type != ReservoirDataType.ENERGY:
+        logger.warning(
+            "Cannot translate natural inflow for reservoir '{}' to MW: level_data_type is not ENERGY.",
+            source_component.name,
+        )
+        return Ok(0.0)
+
     value = getattr(source_component, "inflow", None)
     if value is not None:
         return Ok(float(value))
@@ -3193,7 +3205,7 @@ def membership_transformer_to_parent_node(
 def _build_reservoir_by_turbine_index(context: PluginContext) -> dict[str, Any]:
     """Build a mapping from source turbine name to its HydroReservoir, using downstream_turbines and ext[\"plants\"]."""
     cache_key = "_reservoir_by_turbine_index"
-    if (cached := context._cache.get(cache_key)) is not None:
+    if (cached := _get_context_cache(context).get(cache_key)) is not None:
         return cached
     source_system = cast(Any, context.source_system)
     index: dict[str, Any] = {}
@@ -3213,7 +3225,7 @@ def _build_reservoir_by_turbine_index(context: PluginContext) -> dict[str, Any]:
         display_name = display_index.get(source_name)
         if display_name and display_name not in index:
             index[display_name] = reservoir
-    context._cache[cache_key] = index
+    _get_context_cache(context)[cache_key] = index
     return index
 
 
@@ -3303,13 +3315,13 @@ def membership_line_parent_interface(line: PLEXOSLine, context: PluginContext) -
     line_name = getattr(line, "name", "")
     source_system = cast(Any, context.source_system)
     target_system = cast(Any, context.target_system)
-    line_to_iface = context._cache.get("line_to_interface_name_index")
+    line_to_iface = _get_context_cache(context).get("line_to_interface_name_index")
     if line_to_iface is None:
         line_to_iface = {}
         for iface in source_system.get_components(TransmissionInterface):
             for mapped_name in getattr(iface, "direction_mapping", None) or {}:
                 line_to_iface[mapped_name] = iface.name
-        context._cache["line_to_interface_name_index"] = line_to_iface
+        _get_context_cache(context)["line_to_interface_name_index"] = line_to_iface
 
     interface_name = line_to_iface.get(line_name)
     if interface_name is None:
@@ -3317,10 +3329,10 @@ def membership_line_parent_interface(line: PLEXOSLine, context: PluginContext) -
             ValueError(f"No TransmissionInterface found containing line '{line_name}' in direction_mapping")
         )
 
-    target_iface_index = context._cache.get("target_interface_name_index")
+    target_iface_index = _get_context_cache(context).get("target_interface_name_index")
     if target_iface_index is None:
         target_iface_index = {iface.name: iface for iface in target_system.get_components(PLEXOSInterface)}
-        context._cache["target_interface_name_index"] = target_iface_index
+        _get_context_cache(context)["target_interface_name_index"] = target_iface_index
 
     target_iface = target_iface_index.get(clean_interface_name(interface_name))
     if target_iface is None:

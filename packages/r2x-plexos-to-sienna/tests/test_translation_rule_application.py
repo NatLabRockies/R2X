@@ -20,6 +20,13 @@ def make_context_and_rules(tmp_path):
     return context, rules
 
 
+def omit_reactive_power_limits(rules: list[Rule]) -> None:
+    """Keep generator category tests independent of optional model unit validation."""
+    for rule in rules:
+        if rule.target_type in {"RenewableDispatch", "SynchronousCondenser"}:
+            rule.getters.pop("reactive_power_limits", None)
+
+
 def test_plexos_zone_translates_to_load_zone(tmp_path) -> None:
     from r2x_plexos.models import PLEXOSZone
     from r2x_sienna.models import LoadZone
@@ -159,6 +166,7 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     )
 
     context, rules = make_context_and_rules(tmp_path)
+    omit_reactive_power_limits(rules)
     context.source_system = System(name="source", auto_add_composed_components=True)
 
     node = PLEXOSNode(name="NODE1", voltage=115.0)
@@ -239,7 +247,7 @@ def test_plexos_generators_translate_to_sienna_types(tmp_path) -> None:
     hydro_gen = next((h for h in hydros if h.name == "HYDRO1"), None)
     assert hydro_gen is not None
     assert hydro_gen.rating == 1.0
-    assert hydro_gen.active_power_limits.max == 1.0
+    assert hydro_gen.active_power_limits.max == pytest.approx(1.0)
     assert hydro_gen.bus is not None
     assert hydro_gen.bus.name == "NODE1"
 
@@ -273,6 +281,7 @@ def test_plexos_generators_translate_by_descriptive_category(tmp_path) -> None:
     )
 
     context, rules = make_context_and_rules(tmp_path)
+    omit_reactive_power_limits(rules)
     context.source_system = System(name="source", auto_add_composed_components=True)
 
     node = PLEXOSNode(name="NODE1", voltage=115.0)
@@ -360,8 +369,8 @@ def test_plexos_battery_translates_to_energy_reservoir(tmp_path) -> None:
     assert storage.base_power == 25.0
     assert storage.storage_capacity == 4.0
     assert storage.rating == 1.0
-    assert storage.input_active_power_limits.max == 1.0
-    assert storage.output_active_power_limits.max == 1.0
+    assert storage.input_active_power_limits.max == pytest.approx(1.0)
+    assert storage.output_active_power_limits.max == pytest.approx(1.0)
     assert pytest.approx(0.5) == storage.initial_storage_capacity_level
     assert storage.bus is not None
     assert storage.bus.name == "NODE1"
@@ -444,7 +453,8 @@ def test_plexos_transformers_translate_to_sienna_models(tmp_path, category: str,
         assert translated.phase_angle_limits.max == pytest.approx(expected_angle)
 
 
-def test_plexos_storage_translates_to_hydro_reservoir(tmp_path) -> None:
+@pytest.mark.parametrize("category", ["pumped-hydro", "head", "tail"])
+def test_plexos_storage_translates_to_hydro_reservoir(tmp_path, category) -> None:
     from r2x_plexos.models import PLEXOSStorage
     from r2x_sienna.models import HydroReservoir
 
@@ -453,7 +463,7 @@ def test_plexos_storage_translates_to_hydro_reservoir(tmp_path) -> None:
     context.source_system.add_component(
         PLEXOSStorage(
             name="RESERVOIR1",
-            category="pumped-hydro",
+            category=category,
             initial_level=0.4,
             min_volume=10.0,
             max_volume=100.0,

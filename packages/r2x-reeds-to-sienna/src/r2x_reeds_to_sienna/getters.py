@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         ReEDSDataCenterDemand,
         ReEDSDemand,
         ReEDSElectrolyzerDemand,
+        ReEDSGenerator,
         ReEDSHydroGenerator,
         ReEDSInterface,
         ReEDSRegion,
@@ -632,26 +633,32 @@ def get_default_time_at_status(
     return _ok_num(0.0)
 
 
+def _ramp_limits_mw_per_min(component: ReEDSGenerator) -> UpDown | None:
+    """Return ramp limits in MW/min, or None when they cannot be expressed.
+
+    ``ramp_rate`` and the ``max_ramp_up_percentage`` default are fractions of installed
+    capacity per minute. Sienna ``ramp_limits`` is unit-annotated, so r2x-core converts
+    this MW/min value to the device base. Zero-capacity units have a zero device base
+    and get no ramp limits.
+    """
+    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
+    if capacity <= 0.0:
+        return None
+    ramp_rate = getattr(component, "ramp_rate", None)
+    if ramp_rate is None:
+        ramp_rate = _get_defaults(getattr(component, "technology", ""), "max_ramp_up_percentage")
+    if not ramp_rate:
+        return None
+    ramp_mw_per_min = float(ramp_rate) * capacity
+    return UpDown(up=ramp_mw_per_min, down=ramp_mw_per_min)
+
+
 @getter
 def thermal_ramp_limits(
     component: ReEDSThermalGenerator, context: PluginContext
 ) -> Result[UpDown | None, ValueError]:
-    """Convert ramp_rate (fraction/hour) to per-unit/min for Sienna ramp_limits.
-
-    Falls back to ``max_ramp_up_percentage`` from defaults.json (fraction of capacity
-    per hour) when the source field is not populated. Returns None only if both the
-    source field and the default are zero.
-    """
-    ramp_rate = getattr(component, "ramp_rate", None)
-    capacity = float(getattr(component, "capacity", 0.0) or 0.0)
-    if ramp_rate is None:
-        technology = getattr(component, "technology", "")
-        ramp_rate = _get_defaults(technology, "max_ramp_up_percentage")
-        if not ramp_rate:
-            return Ok(None)
-    ramp_mw_per_min = float(ramp_rate) * capacity / 60.0
-    ramp_per_unit_per_min = _to_device_base(ramp_mw_per_min, capacity)
-    return Ok(UpDown(up=ramp_per_unit_per_min, down=ramp_per_unit_per_min))
+    """Return thermal ramp limits in MW/min for Sienna ``ramp_limits``."""
+    return Ok(_ramp_limits_mw_per_min(component))
 
 
 @getter
@@ -954,25 +961,17 @@ def hydro_base_power(
 def hydro_active_power_limits(
     component: ReEDSHydroGenerator, context: PluginContext
 ) -> Result[MinMax, ValueError]:
-    """Min/max active power limits for hydro."""
+    """Return hydro limits in MW for conversion to the target device base."""
     cap = float(getattr(component, "capacity", 0.0) or 0.0)
-    return Ok(MinMax(min=0.0, max=_to_device_base(cap, cap)))
+    return Ok(MinMax(min=0.0, max=cap))
 
 
 @getter
-def hydro_ramp_limits(component: ReEDSHydroGenerator, context: PluginContext) -> Result[UpDown, ValueError]:
-    """Convert ramp_rate (fraction/hour) to per-unit/min for Sienna ramp_limits.
-
-    Falls back to ``max_ramp_up_percentage`` from defaults.json when the source
-    field is not populated.
-    """
-    cap = float(getattr(component, "capacity", 0.0) or 0.0)
-    ramp_rate = getattr(component, "ramp_rate", None)
-    if ramp_rate is None:
-        technology = getattr(component, "technology", "")
-        ramp_rate = _get_defaults(technology, "max_ramp_up_percentage") or 0.0
-    ramp_limit = _to_device_base(cap * float(ramp_rate) / 60.0, cap)
-    return Ok(UpDown(up=ramp_limit, down=ramp_limit))
+def hydro_ramp_limits(
+    component: ReEDSHydroGenerator, context: PluginContext
+) -> Result[UpDown | None, ValueError]:
+    """Return hydro ramp limits in MW/min for Sienna ``ramp_limits``."""
+    return Ok(_ramp_limits_mw_per_min(component))
 
 
 @getter
@@ -1060,9 +1059,9 @@ def storage_level_limits(component: ReEDSStorage, context: PluginContext) -> Res
 
 @getter
 def storage_power_limits(component: ReEDSStorage, context: PluginContext) -> Result[MinMax, ValueError]:
-    """Return charge and discharge limits on the device base."""
+    """Return charge and discharge limits in MW for conversion to the device base."""
     cap = float(getattr(component, "capacity", 0.0) or 0.0)
-    return Ok(MinMax(min=0.0, max=1.0 if cap > 0.0 else 0.0))
+    return Ok(MinMax(min=0.0, max=cap))
 
 
 @getter

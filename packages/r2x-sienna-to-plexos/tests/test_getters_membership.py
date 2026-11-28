@@ -20,7 +20,6 @@ from r2x_sienna.models import (
     Area,
     EnergyReservoirStorage,
     HydroReservoir,
-    HydroTurbine,
     Line,
     LoadZone,
     MinMax,
@@ -46,14 +45,15 @@ from r2x_sienna.models.enums import (
 )
 from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput
 from r2x_sienna_to_plexos import getters
+from sienna_to_plexos_test_utils import make_hydro_turbine, make_store
 
-from r2x_core import DataStore, PluginConfig, PluginContext, System
+from r2x_core import PluginConfig, PluginContext, System
 
 
 @pytest.fixture
 def context(tmp_path):
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -62,7 +62,7 @@ def context(tmp_path):
 
 def make_context(tmp_path) -> PluginContext:
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -384,7 +384,7 @@ def test_membership_head_tail_storage_generator(context, monkeypatch):
 
     bus1 = ACBus(name="N2", base_voltage=115.0, number=1)
     context.source_system.add_component(bus1)
-    ht = HydroTurbine(
+    ht = make_hydro_turbine(
         name="hydro1_Turbine",
         available=True,
         bus=bus1,

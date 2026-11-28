@@ -14,6 +14,7 @@ from r2x_plexos.models import (
 from r2x_sienna.models import (
     EnergyReservoirStorage,
     HydroDispatch,
+    HydroPumpTurbine,
     HydroReservoir,
     HydroTurbine,
     PowerLoad,
@@ -28,7 +29,10 @@ from r2x_sienna.models import (
 PLEXOS_NUMBER_BASE = 100100
 P2S_TS_PENDING_CACHE_KEY = "p2s_pending_ts"
 P2S_NODE_NUMBER_CACHE_KEY = "p2s_node_number_state"
+P2S_DISTRIBUTED_NODE_LOADS_KEY = "p2s_distributed_node_loads"
 NATURAL_UNITS: UnitSystem = UnitSystem.NATURAL_UNITS
+# PowerSystems.jl INFINITE_TIME, in hours.
+PSY_INFINITE_TIME = 1e4
 
 _PLEXOS_TO_SIENNA_TARGET_TYPES: dict[type[Component], tuple[type[Component], ...]] = {
     PLEXOSGenerator: (
@@ -36,6 +40,7 @@ _PLEXOS_TO_SIENNA_TARGET_TYPES: dict[type[Component], tuple[type[Component], ...
         ThermalMultiStart,
         HydroDispatch,
         HydroTurbine,
+        HydroPumpTurbine,
         RenewableDispatch,
         RenewableNonDispatch,
         SynchronousCondenser,

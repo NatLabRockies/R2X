@@ -646,16 +646,16 @@ wheels = [
 
 [[package]]
 name = "plexosdb"
-version = "1.6.1"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "loguru" },
     { name = "plexos2duckdb" },
     { name = "pre-commit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/04/79d76def07a3a25c34085e9f5633bca75a1d2d809b5b4882741a6fb28ccd/plexosdb-1.6.1.tar.gz", hash = "sha256:276bff067f937b55ae3070b2151b9eaef9cbd2a2e716595ce6ce68bc6123ae7f", size = 1583051, upload-time = "2026-08-11T01:37:33.042Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/31/05/111145f378e23f698bf3bd5d3a007b992bda3910762f735b88ca07fa4ca8/plexosdb-1.8.0.tar.gz", hash = "sha256:66ff84d266cc63dace424383dfbd642be0a943b47825efede726496d910ef90c", size = 1614245, upload-time = "2026-11-26T07:53:35.743Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/16/6a20209dc60165863e1cb0627b8f85d4dc1c374e1069b8897ef302fc42b3/plexosdb-1.6.1-py3-none-any.whl", hash = "sha256:bcbffedb653447ae41f164fc25bc6a754cbbb2a2194fc55720e4b3f625ad96a4", size = 1592808, upload-time = "2026-08-11T01:37:31.506Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/e0/a96f3c5aaed0a081d390b87278ef17dd85f333bacf2f6f4556e90cfe8e34/plexosdb-1.8.0-py3-none-any.whl", hash = "sha256:ce27f07914d5e84d9ec7c86e8a3033262fb96f3794283f8b4768f79a33b1e1c4", size = 1631769, upload-time = "2026-11-26T07:53:33.917Z" },
 ]
 
 [[package]]
@@ -986,7 +986,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-core" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
     { name = "r2x-plexos-to-sienna", editable = "packages/r2x-plexos-to-sienna" },
     { name = "r2x-reeds-to-plexos", editable = "packages/r2x-reeds-to-plexos" },
     { name = "r2x-reeds-to-sienna", editable = "packages/r2x-reeds-to-sienna" },
@@ -1001,7 +1001,7 @@ dev = [
     { name = "prek", specifier = ">=0.3.8" },
     { name = "pytest", specifier = ">=8.3.0,<9.0.0" },
     { name = "pytest-cov", specifier = ">=5.0.0,<8.0.0" },
-    { name = "r2x-core", specifier = ">=0.4.2" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
     { name = "ruff", specifier = ">=0.6.8,<0.17.0" },
     { name = "taplo", specifier = ">=0.9.3,<1.0.0" },
     { name = "ty", specifier = ">=0.0.2" },
@@ -1009,7 +1009,7 @@ dev = [
 
 [[package]]
 name = "r2x-core"
-version = "0.9.0"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h5py" },
@@ -1020,22 +1020,23 @@ dependencies = [
     { name = "pydantic" },
     { name = "rust-ok" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/ce/e2224b14eccaf8a272973ba72b61f6b1a7548faf23e9fe1498a3ad2afd3b/r2x_core-0.9.0.tar.gz", hash = "sha256:af8afe6bb3a00f47d6747f6c613c551887168351ce9ef070fead1faf0a3ef5fd", size = 84821, upload-time = "2026-10-01T04:35:33.382Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/99/4b/d4742e2d01d7a05b312c4c8547dbc40b07c96ff5573f9a20f629357fbc39/r2x_core-1.0.0.tar.gz", hash = "sha256:7fc70128889f6ba6491a0e35db7e00de992e7d1ab4d08a8c9a775f60b7f218f9", size = 130408, upload-time = "2026-11-26T00:43:08.898Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2c/a5/f934885c51badc789ee8ca0468feeda1c690e1c31207d8fe8745815dc52a/r2x_core-0.9.0-py3-none-any.whl", hash = "sha256:2e3fe77fdfe7a990dac2e87c1159d7e7c2b9015636df4b510aa78e68499c691a", size = 100252, upload-time = "2026-10-01T04:35:31.61Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/18/1665bb1a0d0712d93bd30380b22cced7728eea792964f79e944e9c043e35/r2x_core-1.0.0-py3-none-any.whl", hash = "sha256:04ad6ae6bc9c398648027c98ac0f3cdaf97333b2813b6d7fa3db2f77097419c6", size = 150508, upload-time = "2026-11-26T00:43:07.702Z" },
 ]
 
 [[package]]
 name = "r2x-plexos"
-version = "0.3.3"
+version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "plexosdb" },
+    { name = "polars" },
     { name = "r2x-core" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/66/82/364d88cc27528868de254cbc3c06f748cf67da4feea9a4015467df84b212/r2x_plexos-0.3.3.tar.gz", hash = "sha256:12ab9c17ff5af13a5f9e3add270ea7000a7311c3a66ff4b46d274890cfa186a0", size = 115305, upload-time = "2026-09-16T18:01:52.769Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/f1/e8ad19276a7b809f4634e3993b50f7568599e62bd8c228bfa89e29a3d484/r2x_plexos-0.4.1.tar.gz", hash = "sha256:6e49f4eafe7e0c43d36596e987837533edc8c59cfd410aafcf64f38c6e9872df", size = 133870, upload-time = "2026-11-28T04:51:31.112Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6b/8a/9041bcf7f2ab293b4d613add32eff76584e8953976ca399738b027ef1784/r2x_plexos-0.3.3-py3-none-any.whl", hash = "sha256:d133929ed3436c9137efa924f6d20a0c3af044b42c33a3c6fe83bc099dfe4342", size = 133065, upload-time = "2026-09-16T18:01:51.224Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/0d/4cf58ef2ea83b7ad3970ebbc672c60cd9688ddf340f21fc18fb5150ed4e8/r2x_plexos-0.4.1-py3-none-any.whl", hash = "sha256:99c6e632aafc35a4999c96c14bddcb7cca30afa55c0a5078cf3f9b333805d0ea", size = 148778, upload-time = "2026-11-28T04:51:29.723Z" },
 ]
 
 [[package]]
@@ -1043,22 +1044,29 @@ name = "r2x-plexos-to-sienna"
 version = "0.2.2"
 source = { editable = "packages/r2x-plexos-to-sienna" }
 dependencies = [
+    { name = "r2x-core" },
     { name = "r2x-plexos" },
     { name = "r2x-sienna" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", specifier = ">=0.3.3,<1.0.0" },
-    { name = "r2x-sienna", specifier = ">=0.5.0,<1.0.0" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
+    { name = "r2x-plexos", specifier = ">=0.4.1,<1.0.0" },
+    { name = "r2x-sienna", specifier = ">=0.5.1,<1.0.0" },
 ]
 
 [[package]]
 name = "r2x-reeds"
-version = "0.9.3"
-source = { git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=26a45fe009badc5b1aa8ce1f6fdc2bcd6a90b41d#26a45fe009badc5b1aa8ce1f6fdc2bcd6a90b41d" }
+version = "0.10.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "polars" },
     { name = "r2x-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8f/3e/43ab8053a82d306bff97dfc589ea10a6f7266b1e56052a2ca635e95541c2/r2x_reeds-0.10.0.tar.gz", hash = "sha256:660b55474954bd55553d772d5eeb82f99c8992085704d2eb7485b705b421c47a", size = 88575, upload-time = "2026-11-26T19:27:40.839Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fb/3a/5bd979cdf941c4f1e431d80de5bf4b89136fb26df3c92b95758515f73e03/r2x_reeds-0.10.0-py3-none-any.whl", hash = "sha256:1ab900e91755e37f93f1607970e2843019ff55d40c48aa4fcea5a161424ff032", size = 102499, upload-time = "2026-11-26T19:27:39.565Z" },
 ]
 
 [[package]]
@@ -1066,14 +1074,16 @@ name = "r2x-reeds-to-plexos"
 version = "0.2.1"
 source = { editable = "packages/r2x-reeds-to-plexos" }
 dependencies = [
+    { name = "r2x-core" },
     { name = "r2x-plexos" },
     { name = "r2x-reeds" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", specifier = ">=0.3.0,<1.0.0" },
-    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=26a45fe009badc5b1aa8ce1f6fdc2bcd6a90b41d" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
+    { name = "r2x-plexos", specifier = ">=0.4.1,<1.0.0" },
+    { name = "r2x-reeds", specifier = ">=0.10.0,<1.0.0" },
 ]
 
 [[package]]
@@ -1081,26 +1091,28 @@ name = "r2x-reeds-to-sienna"
 version = "0.2.2"
 source = { editable = "packages/r2x-reeds-to-sienna" }
 dependencies = [
+    { name = "r2x-core" },
     { name = "r2x-reeds" },
     { name = "r2x-sienna" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-reeds", git = "https://github.com/NatLabRockies/r2x-reeds.git?rev=26a45fe009badc5b1aa8ce1f6fdc2bcd6a90b41d" },
-    { name = "r2x-sienna", specifier = ">=0.2.0,<1.0.0" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
+    { name = "r2x-reeds", specifier = ">=0.10.0,<1.0.0" },
+    { name = "r2x-sienna", specifier = ">=0.5.1,<1.0.0" },
 ]
 
 [[package]]
 name = "r2x-sienna"
-version = "0.5.0"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "r2x-core" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b0/4c/de43ef6bf8e310fedfa3bbd0d742d3255a972be889c1ce1b9ce1c93ab0d2/r2x_sienna-0.5.0.tar.gz", hash = "sha256:2af80421aef56b36741f84f68781473bb669140d03afa201ed18beeeb8b2190f", size = 64881, upload-time = "2026-09-15T23:24:17.389Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7c/a3/c4f4f17025bb0bdd338db4e40be81bf4090e9635218c1238a3acfd178d0f/r2x_sienna-0.5.1.tar.gz", hash = "sha256:354c86b3aa35d846b5f14782c6c421ae27cf45e1867366e443e8758dc4b357bb", size = 68699, upload-time = "2026-11-26T19:33:11.578Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b4/5e/878ab321ced43feec22dee9a27313aef669b4cd0d1038b4663f79f274c77/r2x_sienna-0.5.0-py3-none-any.whl", hash = "sha256:86319226dc2ab68fe7b220572e3e683b77d8e8ea2adbd10e95d2643c47990717", size = 73952, upload-time = "2026-09-15T23:24:16.135Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/04/e4519949ccbc9bcde85dd0612c710fe5280553cfa406f0d11fb831fad7f9/r2x_sienna-0.5.1-py3-none-any.whl", hash = "sha256:3e561254a315e460e4443e8012c9a535f3ca4027ee4891cfa085ba74e7a0b5d4", size = 75944, upload-time = "2026-11-26T19:33:10.145Z" },
 ]
 
 [[package]]
@@ -1108,14 +1120,16 @@ name = "r2x-sienna-to-plexos"
 version = "0.3.0"
 source = { editable = "packages/r2x-sienna-to-plexos" }
 dependencies = [
+    { name = "r2x-core" },
     { name = "r2x-plexos" },
     { name = "r2x-sienna" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "r2x-plexos", specifier = ">=0.3.3,<1.0.0" },
-    { name = "r2x-sienna", specifier = ">=0.5.0,<1.0.0" },
+    { name = "r2x-core", specifier = ">=1.0.0,<2.0.0" },
+    { name = "r2x-plexos", specifier = ">=0.4.1,<1.0.0" },
+    { name = "r2x-sienna", specifier = ">=0.5.1,<1.0.0" },
 ]
 
 [[package]]

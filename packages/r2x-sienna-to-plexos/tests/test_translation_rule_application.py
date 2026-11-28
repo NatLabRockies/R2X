@@ -5,15 +5,16 @@ import types
 from importlib.resources import files
 
 from r2x_sienna_to_plexos import translation as translation_module
+from sienna_to_plexos_test_utils import make_store
 
-from r2x_core import DataStore, PluginConfig, PluginContext, Rule, System, apply_rules_to_context
+from r2x_core import PluginConfig, PluginContext, Rule, System, apply_rules_to_context
 
 
 def make_context_and_rules(tmp_path):
     rules_path = files("r2x_sienna_to_plexos.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     context = PluginContext(config=config, store=store)
     return context, rules
 
@@ -115,6 +116,53 @@ def test_sienna_generators_translate_to_plexos_types(tmp_path):
     generators = list(context.target_system.get_components(PLEXOSGenerator))
     names = {g.name for g in generators}
     assert {"VRE1", "HYDRO1"} <= names
+
+
+def test_pumped_hydro_turbine_creates_a_linked_plexos_generator(tmp_path):
+    from plexosdb.enums import CollectionEnum
+    from r2x_plexos.models import PLEXOSGenerator, PLEXOSMembership, PLEXOSStorage
+    from r2x_sienna.models import HydroPumpTurbine, HydroReservoir
+    from r2x_sienna.models.enums import ReservoirDataType
+
+    context, rules = make_context_and_rules(tmp_path)
+    context.source_system = System(name="source", auto_add_composed_components=True)
+    turbine = HydroPumpTurbine.example().model_copy(update={"name": "PH1"})
+    reservoir = HydroReservoir.example().model_copy(
+        update={
+            "name": "PH1_Reservoir",
+            "level_data_type": ReservoirDataType.ENERGY,
+            "downstream_turbines": [turbine],
+        }
+    )
+    context.source_system.add_component(turbine)
+    context.source_system.add_component(reservoir)
+    context.target_system = System(name="target", auto_add_composed_components=True)
+    context.rules = rules
+
+    result = apply_rules_to_context(context)
+    assert result.total_rules > 0
+
+    generators = list(context.target_system.get_components(PLEXOSGenerator))
+    storages = list(context.target_system.get_components(PLEXOSStorage))
+    assert [generator.name for generator in generators] == ["PH1"]
+    assert generators[0].units == 1
+    assert {storage.name for storage in storages} == {"PH1_Reservoir_head", "PH1_Reservoir_tail"}
+
+    translation_module.ensure_head_storage_generator_membership(context)
+    translation_module.ensure_tail_storage_generator_membership(context)
+    memberships = context.target_system.get_supplemental_attributes_with_component(
+        generators[0], PLEXOSMembership
+    )
+    assert any(
+        membership.collection == CollectionEnum.HeadStorage
+        and membership.child_object.name == "PH1_Reservoir_head"
+        for membership in memberships
+    )
+    assert any(
+        membership.collection == CollectionEnum.TailStorage
+        and membership.child_object.name == "PH1_Reservoir_tail"
+        for membership in memberships
+    )
 
 
 def test_sienna_storage_translates_to_plexos_storage(tmp_path):
@@ -359,9 +407,10 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
             return FakeRulesPath()
 
     class FakeSystem:
-        def __init__(self, name, auto_add_composed_components=True, time_series_manager=None):
+        def __init__(self, name, auto_add_composed_components=True, con=None, time_series_manager=None):
             self.name = name
             self.auto_add_composed_components = auto_add_composed_components
+            self.con = con
             self.time_series_manager = time_series_manager
 
         def get_time_series_directory(self):
@@ -380,6 +429,7 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
     monkeypatch.setattr(translation_module.Rule, "from_records", lambda records: ["rule"])
     monkeypatch.setattr(translation_module, "apply_rules_to_context", lambda _ctx: calls.append("apply"))
 
+    monkeypatch.setattr(translation_module, "ensure_reserve_time_series", _mark("reserve_ts"))
     monkeypatch.setattr(translation_module, "ensure_deduplicate_lines", _mark("dedup_lines"))
     monkeypatch.setattr(translation_module, "ensure_source_conflicts_resolved", _mark("source_conflicts"))
     monkeypatch.setattr(translation_module, "ensure_zone_consolidation", _mark("zone_consolidation"))
@@ -403,6 +453,7 @@ def test_sienna_to_plexos_executes_full_pipeline(monkeypatch, tmp_path):
     assert result.name == "PLEXOS"
     assert calls == [
         "apply",
+        "reserve_ts",
         "dedup_lines",
         "source_conflicts",
         "zone_consolidation",

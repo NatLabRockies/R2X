@@ -44,14 +44,15 @@ from r2x_sienna.models.named_tuples import Complex, FromTo_ToFrom, InputOutput
 from r2x_sienna.units import ActivePower
 from r2x_sienna_to_plexos import getters
 from r2x_sienna_to_plexos.plugin_config import SiennaToPlexosConfig
+from sienna_to_plexos_test_utils import make_store
 
-from r2x_core import DataStore, PluginConfig, PluginContext, System
+from r2x_core import PluginConfig, PluginContext, System
 
 
 @pytest.fixture
 def context(tmp_path):
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -60,7 +61,7 @@ def context(tmp_path):
 
 def make_context(tmp_path) -> PluginContext:
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -132,7 +133,12 @@ def test__attach_generator_time_series_no_source(context):
 
 
 def test__attach_generator_time_series_weekly_hydro_budget_aggregation(context, monkeypatch):
-    source_gen = types.SimpleNamespace(name="hydro_gen", active_power_limits=None, rating=None)
+    source_gen = types.SimpleNamespace(
+        name="hydro_gen",
+        active_power_limits={"max": 1.0},
+        base_power=1.0,
+        rating=None,
+    )
     metadata = types.SimpleNamespace(name="hydro_budget", features={})
     source_ts = types.SimpleNamespace(
         name="hydro_budget",
@@ -163,13 +169,18 @@ def test__attach_generator_time_series_weekly_hydro_budget_aggregation(context, 
 
     assert len(captured) == 1
     attached = captured[0]
-    assert attached.name == "max_energy_week"
+    assert attached.name == "hydro_budget"
     assert attached.resolution == timedelta(days=7)
-    assert list(attached.data) == [168.0, 168.0, 64.0]
+    assert list(attached.data) == [0.168, 0.168, 0.064]
 
 
 def test__attach_generator_time_series_hydro_budget_keeps_hourly_when_single_bucket(context, monkeypatch):
-    source_gen = types.SimpleNamespace(name="hydro_short", active_power_limits=None, rating=None)
+    source_gen = types.SimpleNamespace(
+        name="hydro_short",
+        active_power_limits={"max": 1.0},
+        base_power=1.0,
+        rating=None,
+    )
     metadata = types.SimpleNamespace(name="hydro_budget", features={})
     source_ts = types.SimpleNamespace(
         name="hydro_budget",
@@ -208,7 +219,12 @@ def test__attach_generator_time_series_hydro_budget_keeps_hourly_when_single_buc
 
 def test__attach_generator_time_series_monthly_hydro_budget_aggregation(context, monkeypatch):
     context.config = SiennaToPlexosConfig(hydro_budget_ts="monthly")
-    source_gen = types.SimpleNamespace(name="hydro_monthly", active_power_limits=None, rating=None)
+    source_gen = types.SimpleNamespace(
+        name="hydro_monthly",
+        active_power_limits={"max": 1.0},
+        base_power=1.0,
+        rating=None,
+    )
     metadata = types.SimpleNamespace(name="hydro_budget", features={})
     source_ts = types.SimpleNamespace(
         name="hydro_budget",
@@ -239,9 +255,9 @@ def test__attach_generator_time_series_monthly_hydro_budget_aggregation(context,
 
     assert len(captured) == 1
     attached = captured[0]
-    assert attached.name == "max_energy_month"
+    assert attached.name == "hydro_budget"
     assert attached.resolution == timedelta(days=30)
-    assert list(attached.data) == [744.0, 672.0]
+    assert list(attached.data) == [0.744, 0.672]
 
 
 def test__has_usable_generator_time_series_false_on_absent_series(context, monkeypatch):
@@ -391,6 +407,9 @@ def test_get_storage_max_volume_natural_inflow_none(context):
     hr.inflow = 123.0
     hr.operation_cost = HydroReservoirCost.example()
     assert getters.get_storage_max_volume(hr, context).unwrap() == 1.0
+    assert getters.get_storage_natural_inflow(hr, context).unwrap() == 0.0
+
+    hr.level_data_type = "ENERGY"
     assert getters.get_storage_natural_inflow(hr, context).unwrap() == 123.0
 
 

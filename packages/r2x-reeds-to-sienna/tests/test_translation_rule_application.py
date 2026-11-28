@@ -14,7 +14,8 @@ def make_context_and_rules(tmp_path):
     rules_path = files("r2x_reeds_to_sienna.config") / "rules.json"
     rules = Rule.from_records(json.loads(rules_path.read_text()))
     config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = DataStore(path=tmp_path)
+    store.configure_upgrades(plugin_config=config)
     context = PluginContext(config=config, store=store)
     return context, rules
 
@@ -218,7 +219,8 @@ def test_reeds_hydro_translates_by_operating_mode(tmp_path) -> None:
     assert hydro.rating == 1.0
     assert hydro.base_power == 100.0
     assert hydro.active_power_limits.max == 1.0
-    assert hydro.ramp_limits.up == pytest.approx(10.0 / 60.0)
+    # ramp_rate is a fraction of capacity per minute: 10 x 100 MW = 1000 MW/min = 10 pu/min.
+    assert hydro.ramp_limits.up == pytest.approx(10.0)
     assert hydro.time_limits.up == 0.0
     assert hydro.time_limits.down == 0.0
     assert hydro.operation_cost.fixed == 0.0

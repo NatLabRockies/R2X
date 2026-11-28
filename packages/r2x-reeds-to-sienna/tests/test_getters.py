@@ -30,7 +30,8 @@ from r2x_core import DataStore, PluginConfig, PluginContext, System, UnitSystem
 
 def make_context(tmp_path) -> PluginContext:
     config = PluginConfig(models=("r2x_reeds.models", "r2x_sienna.models", "r2x_reeds_to_sienna.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = DataStore(path=tmp_path)
+    store.configure_upgrades(plugin_config=config)
     return PluginContext(config=config, store=store)
 
 
@@ -159,8 +160,9 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.get_thermal_active_power(thermal, context).unwrap() == 1.0
     thermal_ramp_limits = getters.thermal_ramp_limits(thermal, context).unwrap()
     assert thermal_ramp_limits is not None
-    assert thermal_ramp_limits.up == pytest.approx(0.02 / 60.0)
-    assert thermal_ramp_limits.down == pytest.approx(0.02 / 60.0)
+    # MW/min: coal-new default 0.02 fraction/min x 10 MW; r2x-core converts to the device base.
+    assert thermal_ramp_limits.up == pytest.approx(0.2)
+    assert thermal_ramp_limits.down == pytest.approx(0.2)
     assert getters.get_thermal_operation_cost(thermal, context).unwrap() is not None
     assert getters.get_prime_mover(thermal, context).unwrap() == PrimeMoversType.ST
     assert getters.get_fuel_enum(thermal, context).unwrap() == ThermalFuels.COAL
@@ -211,11 +213,11 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert getters.hydro_base_power(hydro, context).unwrap() == 8.0
     assert getters.hydro_operation_cost(hydro, context).unwrap() is not None
     hydro_limits = getters.hydro_active_power_limits(hydro, context).unwrap()
-    assert hydro_limits.max == 1.0
+    assert hydro_limits.max == 8.0
     assert hydro_limits.min == 0.0
     ramp_limits = getters.hydro_ramp_limits(hydro, context).unwrap()
-    assert ramp_limits.up == pytest.approx(10.0 / 60.0)
-    assert ramp_limits.down == pytest.approx(10.0 / 60.0)
+    assert ramp_limits.up == pytest.approx(8.0 * 10.0)
+    assert ramp_limits.down == pytest.approx(8.0 * 10.0)
     time_limits = getters.hydro_time_limits(hydro, context).unwrap()
     assert time_limits.up == 0.0
     assert time_limits.down == 0.0
@@ -230,7 +232,7 @@ def test_basic_getters_return_values(tmp_path) -> None:
     assert storage_limits.min == 0.0
     assert storage_limits.max == 1.0
     power_limits = getters.storage_power_limits(storage, context).unwrap()
-    assert power_limits.max == 1.0
+    assert power_limits.max == 4.0
     efficiency = getters.storage_efficiency(storage, context).unwrap()
     assert efficiency.input == pytest.approx(0.9)
     assert efficiency.output == pytest.approx(1.0)

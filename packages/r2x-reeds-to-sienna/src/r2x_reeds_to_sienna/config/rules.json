@@ -51,6 +51,7 @@
       "uuid": "uuid"
     },
     "filter": {
+      "kind": "field",
       "field": "reserve_type",
       "op": "neq",
       "values": ["NON_SPINNING"]
@@ -79,6 +80,7 @@
       "uuid": "uuid"
     },
     "filter": {
+      "kind": "field",
       "field": "reserve_type",
       "op": "eq",
       "values": ["NON_SPINNING"]
@@ -153,6 +155,7 @@
     },
     "filter": {
       "casefold": true,
+      "kind": "field",
       "field": "technology",
       "op": "startswith",
       "values": [
@@ -191,6 +194,7 @@
     },
     "filter": {
       "casefold": true,
+      "kind": "field",
       "field": "technology",
       "op": "startswith",
       "values": ["distpv"]
@@ -225,6 +229,7 @@
       "category": "technology"
     },
     "filter": {
+      "kind": "field",
       "field": "is_dispatchable",
       "op": "eq",
       "values": [true]
@@ -263,6 +268,7 @@
       "category": "technology"
     },
     "filter": {
+      "kind": "field",
       "field": "is_dispatchable",
       "op": "eq",
       "values": [false]
@@ -315,6 +321,7 @@
     },
     "filter": {
       "casefold": true,
+      "kind": "field",
       "field": "technology",
       "op": "not_in",
       "values": [
@@ -370,6 +377,7 @@
     },
     "filter": {
       "casefold": true,
+      "kind": "field",
       "field": "technology",
       "op": "in",
       "values": [
@@ -402,6 +410,7 @@
     },
     "filter": {
       "casefold": true,
+      "kind": "field",
       "field": "technology",
       "op": "in",
       "values": [
@@ -434,6 +443,7 @@
     },
     "filter": {
       "casefold": true,
+      "kind": "field",
       "field": "technology",
       "op": "in",
       "values": [
@@ -502,6 +512,7 @@
     },
     "filter": {
       "casefold": true,
+      "kind": "field",
       "field": "line_type",
       "op": "eq",
       "values": ["ac"]
@@ -534,6 +545,7 @@
     },
     "filter": {
       "casefold": true,
+      "kind": "field",
       "field": "line_type",
       "op": "in",
       "values": ["vsc", "lcc", "b2b"]
@@ -565,6 +577,7 @@
     },
     "filter": {
       "casefold": true,
+      "kind": "field",
       "field": "line_type",
       "op": "not_in",
       "values": ["ac", "vsc", "lcc", "b2b"],
@@ -705,6 +718,7 @@
     },
     "filter": {
       "casefold": true,
+      "kind": "field",
       "field": "technology",
       "op": "not_in",
       "values": ["electrolyzer", "data-center", "smr", "smr_ccs"]

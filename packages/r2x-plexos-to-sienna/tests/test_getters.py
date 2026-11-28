@@ -51,6 +51,7 @@ from r2x_sienna.models.enums import (
     StorageTechs,
     ThermalFuels,
 )
+from r2x_sienna.models.named_tuples import MinMax
 from r2x_sienna.units import Voltage
 
 from r2x_core import DataStore, PluginConfig, PluginContext, Result, System
@@ -434,9 +435,10 @@ def test_basic_node_getters(tmp_path) -> None:
     assert getters.get_node_angle(node, context).unwrap() == 0.0
     assert getters.is_slack_bus(node, context).unwrap() == ACBusTypes.PQ
 
-    # Test slack bus
-    slack_node = PLEXOSNode(name="SLACK_1", is_slack_bus=1)
-    assert getters.is_slack_bus(slack_node, context).unwrap() == ACBusTypes.SLACK
+    # PLEXOS encodes Yes as -1; 1 is accepted for systems exported by older translators.
+    for flag in (-1, 1):
+        slack_node = PLEXOSNode(name="SLACK_1", is_slack_bus=flag)
+        assert getters.is_slack_bus(slack_node, context).unwrap() == ACBusTypes.SLACK
 
 
 def test_zone_getters(tmp_path) -> None:
@@ -470,6 +472,44 @@ def test_region_getters(tmp_path) -> None:
     assert getters.get_load_base_power(region, context).unwrap() == 100.0
     assert getters.get_load_max_active_power(region, context).unwrap() == 3.0
     assert getters.get_load_max_reactive_power(region, context).unwrap() == 0.0
+
+
+def test_region_load_getters_default_missing_load_to_zero(tmp_path) -> None:
+    """Treat a missing scalar load as zero when the source model bypassed validation."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+    region = PLEXOSRegion.model_construct(name="REGION1", load=None)
+
+    assert getters.get_load_active_power(region, context).unwrap() == 0.0
+    assert getters.get_load_max_active_power(region, context).unwrap() == 0.0
+
+
+def test_prune_region_loads_accepts_missing_region_load(tmp_path) -> None:
+    """Do not fail when a parsed region has no scalar load value."""
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+    context.source_system.add_component(PLEXOSRegion.model_construct(name="REGION1", load=None))
+
+    utils.prune_region_loads(context)
+
+
+def test_region_node_names_resolve_deserialized_membership_parents() -> None:
+    """Memberships loaded from an artifact hold plain PLEXOSObject copies of their parents."""
+    from r2x_plexos.models import PLEXOSObject
+
+    system = System(name="source")
+    node = PLEXOSNode(name="NODE1")
+    region = PLEXOSRegion(name="REGION1")
+    system.add_components(node, region)
+    parent_copy = PLEXOSObject(name=node.name, uuid=node.uuid)
+    membership = PLEXOSMembership(
+        collection=CollectionEnum.Region, parent_object=parent_copy, child_object=region
+    )
+    system.add_supplemental_attribute(region, membership)
+
+    assert utils._get_region_node_names(system, region) == {"NODE1"}
 
 
 def test_load_bus_getter(tmp_path) -> None:
@@ -549,10 +589,15 @@ def test_generator_getters(tmp_path) -> None:
     limits = getters.get_gen_active_power_limits(gen, context).unwrap()
     assert limits.min == 0.2
     assert limits.max == 1.0
+    limits_mw = getters.get_gen_active_power_limits_mw(gen, context).unwrap()
+    assert (limits_mw.min, limits_mw.max) == (10.0, 50.0)
 
     reactive_limits = getters.get_gen_reactive_power_limits(gen, context).unwrap()
     assert reactive_limits.min == 0.0
     assert reactive_limits.max == 0.0
+    object.__setattr__(gen, "reactive_power_limits", MinMax(min=-20.0, max=25.0))
+    assert getters.get_gen_reactive_power_limits(gen, context).unwrap() == MinMax(min=-0.4, max=0.5)
+    assert getters.get_gen_reactive_power_limits_mvar(gen, context).unwrap() == MinMax(min=-20.0, max=25.0)
 
     assert getters.get_gen_status(gen, context).unwrap() == 1
     assert getters.get_gen_must_run(gen, context).unwrap() is False
@@ -765,11 +810,12 @@ def test_storage_getters(tmp_path) -> None:
     assert level_limits.min == 0.0
     assert level_limits.max == 1.0  # battery fraction convention
 
+    # MW: the unit-annotated Sienna fields convert to the device base on assignment.
     charge_limits = getters.get_storage_charge_power_limits(battery, context).unwrap()
-    assert charge_limits.max == 1.0
+    assert charge_limits.max == 25.0
 
     discharge_limits = getters.get_storage_discharge_power_limits(battery, context).unwrap()
-    assert discharge_limits.max == 1.0
+    assert discharge_limits.max == 25.0
 
     efficiency = getters.get_storage_efficiency(battery, context).unwrap()
     assert efficiency.input == pytest.approx(0.7)  # charge_efficiency=70 / 100

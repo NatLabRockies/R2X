@@ -48,7 +48,13 @@ def reeds_to_plexos(system: System, config: ReedsToPlexosConfig) -> System:
         permanent=True,
     )
 
-    plexos_system = System(name="PLEXOS", auto_add_composed_components=True, time_series_manager=ts_manager)
+    # Share one database so supplemental attributes persist with time-series metadata.
+    plexos_system = System(
+        name="PLEXOS",
+        auto_add_composed_components=True,
+        con=connection,
+        time_series_manager=ts_manager,
+    )
     context.target_system = plexos_system
 
     apply_rules_to_context(context)

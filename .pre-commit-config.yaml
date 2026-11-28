@@ -42,7 +42,7 @@ repos:
 
       - id: pytest
         name: pytest (quick)
-        entry: uv run pytest -q -m "not slow" --maxfail=1 --disable-warnings
+        entry: uv run pytest -q -m "not slow" --maxfail=1 --disable-warnings --cov
         language: system
         types: [python]
         pass_filenames: false

@@ -52,19 +52,22 @@ from r2x_sienna.models.named_tuples import (
     FromTo_ToFrom,
     InputOutput,
     MinMax,
+    TurbinePump,
     UpDown,
 )
 
 from r2x_core import Ok, PluginContext, Result
 from r2x_core.getters import getter
 
-from .constants import NATURAL_UNITS
+from .constants import NATURAL_UNITS, PSY_INFINITE_TIME
 from .utils import (
     _classify_generator_category,
     _first_numeric,
     _get_fuel_type,
+    _get_generator_storage_names,
     _get_hvdc_active_power_limits,
     _get_prime_mover_type,
+    _get_region_node_names,
     _get_target_component_by_name,
     _get_target_system_base_power,
     _get_transformer_base_power,
@@ -89,21 +92,11 @@ def get_load_bus(component: PLEXOSRegion, context: PluginContext) -> Result[ACBu
     if context.source_system is None or context.target_system is None:
         return Ok(None)
 
-    memberships = context.source_system.get_supplemental_attributes_with_component(component)
-    node_name = None
-    for m in memberships:
-        if (
-            hasattr(m, "collection")
-            and m.collection == CollectionEnum.Region
-            and hasattr(m, "parent_object")
-            and hasattr(m.parent_object, "name")
-        ):
-            node_name = m.parent_object.name
-            break
-    if node_name:
-        bus = _get_target_component_by_name(context.target_system, ACBus, node_name)
-        return Ok(bus)
-    return Ok(None)
+    node_names = _get_region_node_names(context.source_system, component)
+    if len(node_names) != 1:
+        return Ok(None)
+    node_name = next(iter(node_names))
+    return Ok(_get_target_component_by_name(context.target_system, ACBus, node_name))
 
 
 @getter
@@ -207,13 +200,40 @@ def _get_load_base_power(component: PLEXOSRegion) -> float:
 
 
 def _get_load_active_power(component: PLEXOSRegion) -> float:
-    return float(component.load) / _get_load_base_power(component)
+    load = component.load
+    return (0.0 if load is None else float(load)) / _get_load_base_power(component)
 
 
 @getter
 def get_load_base_power(component: PLEXOSRegion, context: PluginContext) -> Result[float, Any]:
     """Get the base power of the load at the bus (if available)."""
     return Ok(_get_load_base_power(component))
+
+
+@getter
+def get_node_load_bus(component: PLEXOSNode, context: PluginContext) -> Result[ACBus | None, Any]:
+    """Get the bus for a node-level PowerLoad."""
+    _sync_time_series_for_source(component, context)
+    if context.target_system is None:
+        return Ok(None)
+    return Ok(_get_target_component_by_name(context.target_system, ACBus, component.name))
+
+
+@getter
+def get_node_load_active_power(component: PLEXOSNode, context: PluginContext) -> Result[float, Any]:
+    """Get node-level demand on the load device base."""
+    load = component.load
+    return Ok((0.0 if load is None else float(load)) / _get_node_load_base_power(component))
+
+
+@getter
+def get_node_load_base_power(component: PLEXOSNode, context: PluginContext) -> Result[float, Any]:
+    """Get the node load base power, defaulting to 100 MW."""
+    return Ok(_get_node_load_base_power(component))
+
+
+def _get_node_load_base_power(component: PLEXOSNode) -> float:
+    return float(getattr(component, "base_power", 100.0) or 100.0)
 
 
 @getter
@@ -328,7 +348,7 @@ def is_slack_bus(component: PLEXOSNode, context: PluginContext) -> Result[ACBusT
             else []
         )
     )
-    bustype = ACBusTypes.SLACK if value == 1 or is_reference_node else ACBusTypes.PQ
+    bustype = ACBusTypes.SLACK if value in (-1, 1) or is_reference_node else ACBusTypes.PQ
     return Ok(bustype)
 
 
@@ -669,9 +689,8 @@ def get_gen_base_power(
     return Ok(_get_gen_base_power(component))
 
 
-@getter
-def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[MinMax, Any]:
-    """Get device-base limits from min_stable_level and max_capacity in MW.
+def _gen_active_power_limits_mw(component: PLEXOSGenerator) -> MinMax:
+    """Return min stable level and max capacity in MW.
 
     If ``min_stable_level`` is zero but ``min_stable_factor`` (% of max_capacity) is set,
     the factor takes precedence.
@@ -682,8 +701,34 @@ def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginConte
         factor = float(getattr(component, "min_stable_factor", 0.0) or 0.0)
         if factor > 0.0:
             min_stable = factor / 100.0 * max_cap
+    return MinMax(min=min_stable, max=max_cap)
+
+
+def _gen_reactive_power_limits_mvar(component: PLEXOSGenerator) -> MinMax:
+    value = getattr(component, "reactive_power_limits", None) or MinMax(min=0.0, max=0.0)
+    return MinMax(min=value.min, max=value.max)
+
+
+def _to_device_base(limits: MinMax, component: PLEXOSGenerator) -> MinMax:
     base_power = _get_gen_base_power(component)
-    return Ok(MinMax(min=min_stable / base_power, max=max_cap / base_power))
+    return MinMax(min=limits.min / base_power, max=limits.max / base_power)
+
+
+# Sienna fields annotated with ``Unit("pu", base="base_power")`` treat plain structured
+# input as natural units and convert it once with r2x-core; unannotated per-unit fields
+# store the value as given. The ``*_mw``/``*_mvar`` getters feed the annotated fields.
+
+
+@getter
+def get_gen_active_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[MinMax, Any]:
+    """Get active power limits on the device base for unannotated per-unit fields."""
+    return Ok(_to_device_base(_gen_active_power_limits_mw(component), component))
+
+
+@getter
+def get_gen_active_power_limits_mw(component: PLEXOSGenerator, context: PluginContext) -> Result[MinMax, Any]:
+    """Get active power limits in MW for unit-annotated Sienna fields."""
+    return Ok(_gen_active_power_limits_mw(component))
 
 
 @getter
@@ -703,10 +748,16 @@ def get_gen_must_run(component: PLEXOSGenerator, context: PluginContext) -> Resu
 
 @getter
 def get_gen_reactive_power_limits(component: PLEXOSGenerator, context: PluginContext) -> Result[Any, Any]:
-    """Get the reactive power limits of a generator on its device base."""
-    value = getattr(component, "reactive_power_limits", MinMax(min=0.0, max=0.0))
-    base_power = _get_gen_base_power(component)
-    return Ok(MinMax(min=value.min / base_power, max=value.max / base_power))
+    """Get reactive power limits on the device base for unannotated per-unit fields."""
+    return Ok(_to_device_base(_gen_reactive_power_limits_mvar(component), component))
+
+
+@getter
+def get_gen_reactive_power_limits_mvar(
+    component: PLEXOSGenerator, context: PluginContext
+) -> Result[MinMax, Any]:
+    """Get reactive power limits in MVAr for unit-annotated Sienna fields."""
+    return Ok(_gen_reactive_power_limits_mvar(component))
 
 
 @getter
@@ -732,8 +783,54 @@ def get_gen_technology_class(component: PLEXOSGenerator, context: PluginContext)
 
     Supports both canonical ReEDS-style slugs and descriptive naming
     conventions (e.g. AEMO ISP "Wind SA", "Black Coal QLD", "Hydro TAS").
+    A pumped-hydro unit with a pump load and both head and tail storages is a
+    HydroPumpTurbine, matching how PowerSystems models pumped storage.
     """
-    return Ok(_classify_generator_category(getattr(component, "category", None)))
+    technology = _classify_generator_category(getattr(component, "category", None))
+    if (
+        technology == "hydro-turbine"
+        and context.source_system is not None
+        and float(getattr(component, "pump_load", 0.0) or 0.0) > 0.0
+        and _get_generator_storage_names(context.source_system, component).keys()
+        == {CollectionEnum.HeadStorage, CollectionEnum.TailStorage}
+    ):
+        return Ok("hydro-pump-turbine")
+    return Ok(technology)
+
+
+@getter
+def get_gen_pump_active_power_limits_mw(
+    component: PLEXOSGenerator, context: PluginContext
+) -> Result[MinMax, Any]:
+    """Get pumping power limits in MW from the PLEXOS Pump Load."""
+    return Ok(MinMax(min=0.0, max=float(getattr(component, "pump_load", 0.0) or 0.0)))
+
+
+@getter
+def get_pump_turbine_time_at_status(component: PLEXOSGenerator, context: PluginContext) -> Result[float, Any]:
+    """Hours the pump unit has been in its initial OFF status, from PLEXOS Initial Hours Down.
+
+    PowerSystems starts HydroPumpTurbine OFF and uses INFINITE_TIME (1e4 hours) when the
+    duration is unbounded; PLEXOS uses 1e30 for the same meaning. A finite value is also
+    required because JSON artifacts cannot represent infinity.
+    """
+    hours = float(getattr(component, "initial_hours_down", PSY_INFINITE_TIME) or 0.0)
+    return Ok(min(hours, PSY_INFINITE_TIME))
+
+
+@getter
+def get_pump_turbine_efficiency(
+    component: PLEXOSGenerator, context: PluginContext
+) -> Result[TurbinePump, Any]:
+    """Recover pump efficiency from the PLEXOS Pump Efficiency percentage.
+
+    Sienna-to-PLEXOS writes the squared PowerSystems pump efficiency as a percentage,
+    so the inverse is the square root. PLEXOS has no separate turbine efficiency.
+    """
+    percent = float(getattr(component, "pump_efficiency", 0.0) or 0.0)
+    if percent <= 0.0:
+        raise ValueError(f"Pump efficiency must be positive for {component.name}")
+    return Ok(TurbinePump(turbine=1.0, pump=math.sqrt(min(percent, 100.0) / 100.0)))
 
 
 @getter
@@ -958,14 +1055,14 @@ def get_storage_level_limits(
 def get_storage_charge_power_limits(
     component: PLEXOSGenerator, context: PluginContext
 ) -> Result[MinMax, Any]:
-    """Get the input (charge) active power limits.
+    """Get the input (charge) active power limits in MW.
 
-    For PLEXOSBattery converts ``max_power`` (MW) to the device base.
-    For PLEXOSStorage uses ``max_release``.
+    For PLEXOSBattery uses ``max_power``; the unit-annotated Sienna field converts it
+    to the device base. For PLEXOSStorage uses ``max_release``.
     """
     if hasattr(component, "max_power") and not hasattr(component, "max_release"):
         power = float(getattr(component, "max_power", 0.0) or 0.0)
-        return Ok(MinMax(min=0.0, max=power / _get_gen_base_power(component)))
+        return Ok(MinMax(min=0.0, max=power))
     return Ok(MinMax(min=0.0, max=float(getattr(component, "max_release", 0.0) or 0.0)))
 
 
@@ -973,14 +1070,15 @@ def get_storage_charge_power_limits(
 def get_storage_discharge_power_limits(
     component: PLEXOSGenerator, context: PluginContext
 ) -> Result[MinMax, Any]:
-    """Get the output (discharge) active power limits.
+    """Get the output (discharge) active power limits in MW.
 
-    For PLEXOSBattery converts ``max_power`` (MW) to the device base.
+    For PLEXOSBattery uses ``max_power``; the unit-annotated Sienna field converts it
+    to the device base.
     For PLEXOSStorage uses ``max_release``.
     """
     if hasattr(component, "max_power") and not hasattr(component, "max_release"):
         power = float(getattr(component, "max_power", 0.0) or 0.0)
-        return Ok(MinMax(min=0.0, max=power / _get_gen_base_power(component)))
+        return Ok(MinMax(min=0.0, max=power))
     return Ok(MinMax(min=0.0, max=float(getattr(component, "max_release", 0.0) or 0.0)))
 
 

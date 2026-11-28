@@ -23,8 +23,12 @@ from r2x_plexos_to_sienna.utils import (
     _classify_generator_category_with_fallback,
     _sync_time_series_for_source,
     attach_constant_load_time_series,
+    link_hydro_reservoir_turbines,
     normalize_renewable_max_active_power_time_series,
     normalize_reserve_requirement_time_series,
+    normalize_reservoir_inflow_time_series,
+    prune_region_loads,
+    remove_unused_node_loads,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,10 +65,12 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
         permanent=True,
     )
 
+    # Share one database so supplemental attributes persist with time-series metadata.
     sienna_sys = System(
         name="Sienna",
         system_base=100.0,
         auto_add_composed_components=True,
+        con=connection,
         time_series_manager=ts_manager,
     )
     context.target_system = sienna_sys
@@ -90,6 +96,8 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
         )
 
     apply_rules_to_context(context)
+    link_hydro_reservoir_turbines(context)
+    prune_region_loads(context)
 
     for node in context.source_system.get_components(PLEXOSNode):
         _sync_time_series_for_source(node, context)
@@ -104,8 +112,10 @@ def plexos_to_sienna(system: System, config: PlexosToSiennaConfig) -> System:
     for storage in context.source_system.get_components(PLEXOSStorage):
         _sync_time_series_for_source(storage, context)
 
+    remove_unused_node_loads(context)
     attach_constant_load_time_series(context)
     normalize_renewable_max_active_power_time_series(context)
     normalize_reserve_requirement_time_series(context)
+    normalize_reservoir_inflow_time_series(context)
 
     return context.target_system

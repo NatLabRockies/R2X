@@ -95,6 +95,14 @@ def test_reeds_to_plexos_returns_system():
     assert result.name == "PLEXOS"
 
 
+def test_reeds_to_plexos_persists_supplemental_attributes(tmp_path):
+    result = reeds_to_plexos(_build_source_system(), config=ReedsToPlexosConfig())
+    result.to_json(tmp_path / "system.json")
+
+    loaded = System.from_json(tmp_path / "system.json")
+    assert loaded.get_num_supplemental_attributes() == result.get_num_supplemental_attributes()
+
+
 def test_reeds_to_plexos_translates_region_to_node():
     source = _build_source_system()
     result = reeds_to_plexos(source, config=ReedsToPlexosConfig())

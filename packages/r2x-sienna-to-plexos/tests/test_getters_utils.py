@@ -98,9 +98,9 @@ def test_resolve_base_power_variants():
     c.base_power = 5
     assert getters_utils.resolve_base_power(c) == 5.0
     del c.base_power
-    c._system_base = 7
+    c.system_base = 7
     assert getters_utils.resolve_base_power(c) == 7.0
-    del c._system_base
+    del c.system_base
     assert getters_utils.resolve_base_power(c) == 1.0
 
 
@@ -881,10 +881,13 @@ def test_resolve_base_power_with_base_power():
 
 
 def test_resolve_base_power_with_system_base():
-    class Dummy:
-        _system_base = 7.0
+    from r2x_core import System
 
-    assert getters_utils.resolve_base_power(Dummy()) == 7.0
+    system = System(name="s", system_base=100.0)
+    bus = ACBus(name="B", number=1, base_voltage=115.0)
+    system.add_component(bus)
+
+    assert getters_utils.resolve_base_power(bus) == 100.0
 
 
 def test_resolve_base_power_default():
@@ -1090,10 +1093,10 @@ def test_multiband_markup_float_conversion(two_band_load_points, two_band_markup
 
 
 def test_bus_name_to_area_and_zone_cache_and_non_area_object(context):
-    context._cache["bus_name_to_area_and_zone"] = {"cached_bus": ("A", "Z")}
+    getters_utils._get_context_cache(context)["bus_name_to_area_and_zone"] = {"cached_bus": ("A", "Z")}
     assert getters_utils._bus_name_to_area_and_zone(context) == {"cached_bus": ("A", "Z")}
 
-    context._cache.clear()
+    getters_utils._get_context_cache(context).clear()
     context.source_system.get_components = lambda _comp_type: [
         types.SimpleNamespace(name="B1", area="A1", load_zone="Z1")
     ]
@@ -1113,7 +1116,11 @@ def test_bus_name_to_area_and_zone_uses_zone_name_attribute(context):
 def test_attach_reservoir_time_series_to_storage_paths(context):
     target_storage = PLEXOSStorage(name="Plant_head")
 
-    reservoir = types.SimpleNamespace(name="Plant_Reservoir", ext={"NARIS_Pmax": 2.0})
+    reservoir = types.SimpleNamespace(
+        name="Plant_Reservoir",
+        ext={"NARIS_Pmax": 2.0},
+        level_data_type="ENERGY",
+    )
 
     context.source_system.get_components = lambda comp_type: (
         [reservoir] if comp_type.__name__ == "HydroReservoir" else []
@@ -1149,6 +1156,34 @@ def test_attach_reservoir_time_series_to_storage_paths(context):
     getters_utils._attach_reservoir_time_series_to_storage(context, "Alpha_head", target_storage)
     max_ts = next(ts for ts in attached if ts.name == "max_active_power")
     assert list(max_ts.data) == [0.5, 1.0]
+
+
+def test_volume_reservoir_inflow_time_series_is_not_exported_as_mw(context):
+    target_storage = PLEXOSStorage(name="Plant_head")
+    reservoir = types.SimpleNamespace(
+        name="Plant_Reservoir",
+        ext={},
+        level_data_type="USABLE_VOLUME",
+    )
+    source_ts = types.SimpleNamespace(
+        name="inflow",
+        data=[1.0, 2.0],
+        initial_timestamp=datetime(2020, 1, 1),
+        resolution=timedelta(hours=1),
+        features={},
+    )
+    context.source_system.get_components = lambda comp_type: (
+        [reservoir] if comp_type.__name__ == "HydroReservoir" else []
+    )
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.list_time_series = lambda _component: [source_ts]
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters_utils._attach_reservoir_time_series_to_storage(context, target_storage.name, target_storage)
+
+    assert attached == []
 
 
 def test_hydropumpturbine_driven_head_tail_memberships(context, monkeypatch):
@@ -1294,7 +1329,7 @@ def test_ensure_reserve_time_series_scales_sequence_data(context, monkeypatch):
     assert features == {"scenario": "base"}
 
 
-def test_ensure_reserve_time_series_skips_when_target_has_series(context, monkeypatch):
+def test_ensure_reserve_time_series_replaces_unscaled_target_series(context, monkeypatch):
     source_reserve = VariableReserve(
         name="RES_EXISTS",
         reserve_type=ReserveType.SPINNING,
@@ -1323,12 +1358,28 @@ def test_ensure_reserve_time_series_skips_when_target_has_series(context, monkey
     )
 
     added = []
-    context.target_system.has_time_series = lambda *_args, **_kwargs: True
+    removed = []
+    context.source_system.base_power = 100.0
+    existing_ts = types.SimpleNamespace(name="min_provision", data=[1.0])
+    context.target_system.has_time_series = lambda _component, name=None, **_kwargs: (
+        name
+        in {
+            "requirement",
+            "min_provision",
+        }
+    )
+    context.target_system.list_time_series = lambda *_args, **_kwargs: [existing_ts]
+    context.target_system.remove_time_series = lambda _component, name=None, **_kwargs: removed.append(name)
     context.target_system.add_time_series = lambda *args, **kwargs: added.append((args, kwargs))
 
     getters_utils.ensure_reserve_time_series(context)
 
-    assert added == []
+    assert removed == ["requirement", "min_provision"]
+    assert len(added) == 1
+    args, kwargs = added[0]
+    assert args[0].name == "min_provision"
+    assert args[0].data == [100.0]
+    assert kwargs == {}
 
 
 def test_ensure_reserve_time_series_collapses_requirement_variants_to_min_provision(context, monkeypatch):
@@ -1380,7 +1431,7 @@ def test_ensure_reserve_time_series_collapses_requirement_variants_to_min_provis
     assert features == {"scenario": "base"}
 
 
-def test_attach_hydro_reservoir_inflow_to_generator_budget_adds_max_energy_week(context, monkeypatch):
+def test_attach_hydro_reservoir_inflow_to_generator_budget_adds_gwh_hydro_budget(context, monkeypatch):
     import r2x_sienna_to_plexos.getters as getters_mod
 
     monkeypatch.setattr(getters_utils, "HydroTurbine", object)
@@ -1388,7 +1439,7 @@ def test_attach_hydro_reservoir_inflow_to_generator_budget_adds_max_energy_week(
 
     source_generator = types.SimpleNamespace(name="H1", rating=0.0, base_power=1.0)
     target_generator = PLEXOSGenerator(name="H1")
-    reservoir = types.SimpleNamespace(name="R1")
+    reservoir = types.SimpleNamespace(name="R1", level_data_type="ENERGY")
 
     monkeypatch.setattr(getters_mod, "_build_reservoir_by_turbine_index", lambda _ctx: {"H1": reservoir})
     monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
@@ -1426,8 +1477,98 @@ def test_attach_hydro_reservoir_inflow_to_generator_budget_adds_max_energy_week(
     assert len(added) == 1
     ts, comp, features = added[0]
     assert comp.name == "H1"
-    assert ts.name == "max_energy_week"
+    assert ts.name == "hydro_budget"
+    assert ts.resolution == timedelta(days=7)
+    assert list(ts.data) == [0.168, 0.168, 0.064]
     assert features == {"scenario": "base"}
+
+
+def test_attach_hydro_reservoir_inflow_to_pumped_hydro_generator_budget(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    class PumpTurbine:
+        pass
+
+    monkeypatch.setattr(getters_utils, "HydroPumpTurbine", PumpTurbine)
+    monkeypatch.setattr(getters_utils, "HydroTurbine", type("HydroTurbine", (), {}))
+
+    source_generator = PumpTurbine()
+    source_generator.name = "PUMP_HYDRO"
+    source_generator.rating = 1.0
+    source_generator.base_power = 100.0
+    target_generator = PLEXOSGenerator(name="PUMP_HYDRO")
+    reservoir = types.SimpleNamespace(name="RESERVOIR", level_data_type="ENERGY")
+
+    monkeypatch.setattr(
+        getters_mod,
+        "_build_reservoir_by_turbine_index",
+        lambda _ctx: {"PUMP_HYDRO": reservoir},
+    )
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    metadata = [types.SimpleNamespace(name="inflow", features={})]
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: metadata,
+    )
+    source_ts = types.SimpleNamespace(
+        name="inflow",
+        data=[1.0] * 336,
+        initial_timestamp=datetime(2025, 1, 1),
+        resolution=timedelta(hours=1),
+    )
+    monkeypatch.setattr(
+        context.source_system,
+        "list_time_series",
+        lambda _component, name=None, **_kwargs: [source_ts] if name == "inflow" else [],
+    )
+
+    added: list[tuple[object, object, dict]] = []
+    context.target_system.has_time_series = lambda *_args, **_kwargs: False
+    context.target_system.add_time_series = lambda ts, comp, **features: added.append((ts, comp, features))
+
+    getters_utils._attach_hydro_reservoir_inflow_to_generator_budget(
+        context, source_generator, target_generator
+    )
+
+    assert len(added) == 1
+    ts, component, _features = added[0]
+    assert component is target_generator
+    assert ts.name == "hydro_budget"
+    assert ts.resolution == timedelta(days=7)
+    assert list(ts.data) == [0.168, 0.168]
+
+
+def test_attach_hydro_reservoir_inflow_to_generator_budget_skips_volume_data(context, monkeypatch):
+    import r2x_sienna_to_plexos.getters as getters_mod
+
+    monkeypatch.setattr(getters_utils, "HydroTurbine", object)
+    monkeypatch.setattr(getters_utils, "HydroPumpTurbine", type("HydroPumpTurbine", (), {}))
+
+    source_generator = types.SimpleNamespace(name="H_VOLUME", rating=0.0, base_power=1.0)
+    target_generator = PLEXOSGenerator(name="H_VOLUME")
+    reservoir = types.SimpleNamespace(name="R_VOLUME", level_data_type="USABLE_VOLUME")
+
+    monkeypatch.setattr(
+        getters_mod,
+        "_build_reservoir_by_turbine_index",
+        lambda _ctx: {"H_VOLUME": reservoir},
+    )
+    monkeypatch.setattr(context.source_system.time_series, "has_time_series", lambda _component: True)
+    monkeypatch.setattr(
+        context.source_system.time_series,
+        "list_time_series_metadata",
+        lambda _component: pytest.fail("volume inflow must not be interpreted as energy"),
+    )
+
+    added = []
+    context.target_system.add_time_series = lambda *args, **kwargs: added.append((args, kwargs))
+
+    getters_utils._attach_hydro_reservoir_inflow_to_generator_budget(
+        context, source_generator, target_generator
+    )
+
+    assert added == []
 
 
 def test_attach_hydro_reservoir_inflow_to_generator_budget_skips_nonzero_rating(context, monkeypatch):
@@ -1718,32 +1859,6 @@ def test_bus_to_area_name_returns_none_when_no_area():
     bus = types.SimpleNamespace(area=None)
     result = getters_utils._bus_to_area_name(bus)
     assert result is None
-
-
-def test_write_descriptions_to_db_records_updates():
-    from r2x_core import System
-
-    sys = System(name="target")
-    gen = PLEXOSGenerator(name="GEN1", ext={"description": "coal"})
-    sys.add_component(gen)
-
-    executed: list = []
-
-    class _MockConn:
-        def executemany(self, sql, params):
-            executed.extend(list(params))
-
-    class MockDB:
-        _db = _MockConn()
-
-        def get_class_id(self, class_enum):
-            return 42
-
-    getters_utils._write_descriptions_to_db(sys, MockDB())
-    # PLEXOSGenerator is in PLEXOS_TYPE_MAP_INVERTED; expect one description update row
-    assert len(executed) == 1
-    assert executed[0][0] == "coal"  # description value
-    assert executed[0][1] == "GEN1"  # component name
 
 
 def test_ensure_zone_consolidation_no_zones_early_return(context):

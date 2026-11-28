@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
+from infrasys import SingleTimeSeries
 from infrasys.cost_curves import FuelCurve, UnitSystem
 from infrasys.function_data import LinearFunctionData, PiecewiseStepData
 from infrasys.value_curves import IncrementalCurve, InputOutputCurve
@@ -157,6 +160,14 @@ def test_sienna_to_plexos_returns_system():
     assert result.name == "PLEXOS"
 
 
+def test_sienna_to_plexos_persists_supplemental_attributes(tmp_path):
+    result = sienna_to_plexos(_build_source_system(), config=SiennaToPlexosConfig())
+    result.to_json(tmp_path / "system.json")
+
+    loaded = System.from_json(tmp_path / "system.json")
+    assert loaded.get_num_supplemental_attributes() == result.get_num_supplemental_attributes()
+
+
 def test_sienna_to_plexos_translates_buses_to_nodes():
     source = _build_source_system()
     result = sienna_to_plexos(source, config=SiennaToPlexosConfig())
@@ -207,6 +218,31 @@ def test_sienna_to_plexos_translates_reserve():
 
     reserves = list(result.get_components(PLEXOSReserve))
     assert any(r.name == "SPIN1" for r in reserves)
+
+
+def test_sienna_to_plexos_translates_reserve_requirement_time_series():
+    source = _build_source_system()
+    source.base_power = 100.0
+    reserve = next(item for item in source.get_components(VariableReserve) if item.name == "SPIN1")
+    source.add_time_series(
+        SingleTimeSeries.from_array(
+            data=[0.1, 0.2],
+            name="requirement",
+            resolution=timedelta(hours=1),
+            initial_timestamp=datetime(2023, 1, 1),
+        ),
+        reserve,
+    )
+
+    result = sienna_to_plexos(source, config=SiennaToPlexosConfig())
+    target_reserve = next(item for item in result.get_components(PLEXOSReserve) if item.name == "SPIN1")
+    time_series = result.list_time_series(target_reserve, name="min_provision")
+
+    assert len(time_series) == 1
+    assert [float(value) for value in time_series[0].data] == [10.0, 20.0]
+    assert [meta.name for meta in result.time_series.list_time_series_metadata(target_reserve)] == [
+        "min_provision"
+    ]
 
 
 def test_sienna_to_plexos_translates_interface():
@@ -397,3 +433,41 @@ def test_source_offer_curves_populate_plexos_fields():
     # pump bid bands from export_offer_curves
     assert gen.pump_bid_price == {1: 40.0, 2: 20.0, 3: 10.0, 4: 5.0}
     assert gen.pump_bid_quantity == {1: 100.0, 2: 5.0, 3: 15.0, 4: 80.0}
+
+
+def test_generator_description_is_exported_to_t_object(tmp_path):
+    from r2x_plexos import PLEXOSConfig, PLEXOSExporter
+
+    from r2x_core import PluginContext
+
+    result = sienna_to_plexos(_build_source_system(), config=SiennaToPlexosConfig())
+    thermal = result.get_component(PLEXOSGenerator, "THERM1")
+    assert thermal.description == "prime_mover: CC, fuel_type: NATURAL_GAS"
+    assert thermal.ext == {"sienna_type": "ThermalStandard"}
+
+    config = PLEXOSConfig(horizon_year=2030, output_path=str(tmp_path))
+    exporter = PLEXOSExporter.from_context(PluginContext(system=result, config=config))
+    exporter.on_export().unwrap()
+
+    rows = exporter.db._db.fetchall("SELECT description FROM t_object WHERE name = ?", ("THERM1",))
+    assert rows == [("prime_mover: CC, fuel_type: NATURAL_GAS",)]
+
+
+def test_region_description_is_exported_to_t_object(tmp_path, monkeypatch):
+    from r2x_plexos import PLEXOSConfig, PLEXOSExporter
+    from r2x_plexos.models import PLEXOSRegion
+    from r2x_sienna_to_plexos import getters
+
+    from r2x_core import PluginContext
+
+    monkeypatch.setattr(getters, "_resolve_iso_rto_description_for_buses", lambda buses, ctx: "ercot")
+    result = sienna_to_plexos(_build_source_system(), config=SiennaToPlexosConfig())
+    region = result.get_component(PLEXOSRegion, "A1")
+    assert region.description == "ISO/RTOs where region belongs to: ercot"
+
+    config = PLEXOSConfig(horizon_year=2030, output_path=str(tmp_path))
+    exporter = PLEXOSExporter.from_context(PluginContext(system=result, config=config))
+    exporter.on_export().unwrap()
+
+    rows = exporter.db._db.fetchall("SELECT description FROM t_object WHERE name = ?", ("A1",))
+    assert ("ISO/RTOs where region belongs to: ercot",) in rows

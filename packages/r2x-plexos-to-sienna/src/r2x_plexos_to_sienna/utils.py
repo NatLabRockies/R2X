@@ -31,7 +31,9 @@ from r2x_plexos.models import (
 from r2x_sienna.exporter import set_time_series_scaling_factor_multiplier
 from r2x_sienna.models import (
     HydroDispatch,
+    HydroPumpTurbine,
     HydroReservoir,
+    HydroTurbine,
     PowerLoad,
     RenewableDispatch,
     RenewableNonDispatch,
@@ -44,7 +46,7 @@ from r2x_sienna.models.enums import (
 from r2x_sienna.models.named_tuples import (
     MinMax,
 )
-from r2x_sienna.units import get_magnitude
+from r2x_sienna.units import ActivePower, get_magnitude
 
 from r2x_core import PluginContext, System, replace_single_time_series
 
@@ -54,12 +56,15 @@ from .constants import (
     _GENERATOR_FAMILY_KEYWORDS,
     _PLEXOS_TO_SIENNA_TARGET_TYPES,
     _PRIME_MOVER_KEYWORDS,
+    P2S_DISTRIBUTED_NODE_LOADS_KEY,
     P2S_NODE_NUMBER_CACHE_KEY,
     P2S_TS_PENDING_CACHE_KEY,
     PLEXOS_NUMBER_BASE,
 )
 
 TComponent = TypeVar("TComponent", bound=Component)
+_LOAD_PROFILE_NAMES = {"max_active_power", "load", "fixed_load"}
+_TIME_SERIES_OWNER_BATCH = 500
 
 
 def _first_numeric(value: Any) -> float:
@@ -118,28 +123,124 @@ def _get_target_component_by_name(
     return components[0] if components else None
 
 
+def _get_region_node_names(source_system: System, region: PLEXOSRegion) -> set[str]:
+    node_names: set[str] = set()
+    for membership in source_system.get_supplemental_attributes_with_component(region):
+        if getattr(membership, "collection", None) != CollectionEnum.Region:
+            continue
+        parent = getattr(membership, "parent_object", None)
+        if parent is None:
+            continue
+        # Serialized memberships restore parent_object as a plain PLEXOSObject copy,
+        # so resolve the stored component before checking its type.
+        try:
+            parent = source_system.get_component_by_uuid(parent.uuid)
+        except ISNotStored:
+            continue
+        if isinstance(parent, PLEXOSNode):
+            node_names.add(parent.name)
+    return node_names
+
+
+def _get_generator_storage_names(
+    source_system: System, generator: PLEXOSGenerator
+) -> dict[CollectionEnum, str]:
+    """Return the head/tail storage names a generator is linked to through its memberships."""
+    storages: dict[CollectionEnum, str] = {}
+    for membership in source_system.get_supplemental_attributes_with_component(generator):
+        collection = getattr(membership, "collection", None)
+        if collection not in (CollectionEnum.HeadStorage, CollectionEnum.TailStorage):
+            continue
+        # Compare by UUID because memberships loaded from an artifact hold plain object copies.
+        parent = getattr(membership, "parent_object", None)
+        child = getattr(membership, "child_object", None)
+        if parent is None or child is None or parent.uuid != generator.uuid:
+            continue
+        storages[collection] = child.name
+    return storages
+
+
+def link_hydro_reservoir_turbines(context: PluginContext) -> None:
+    """Attach hydro units to the reservoirs they draw from and release into.
+
+    PLEXOS links a generator to its upper reservoir with Head Storage and to its lower
+    reservoir with Tail Storage. PowerSystems stores the same topology on the reservoirs:
+    the turbine is downstream of the head reservoir and upstream of the tail reservoir.
+    """
+    source_system = context.source_system
+    target_system = context.target_system
+    if source_system is None or target_system is None:
+        return
+
+    for generator in source_system.get_components(PLEXOSGenerator):
+        storages = _get_generator_storage_names(source_system, generator)
+        if not storages:
+            continue
+        turbine = _get_target_component_by_name(target_system, HydroPumpTurbine, generator.name)
+        if turbine is None:
+            turbine = _get_target_component_by_name(target_system, HydroTurbine, generator.name)
+        if turbine is None:
+            continue
+
+        for collection, field_name in (
+            (CollectionEnum.HeadStorage, "downstream_turbines"),
+            (CollectionEnum.TailStorage, "upstream_turbines"),
+        ):
+            storage_name = storages.get(collection)
+            if storage_name is None:
+                continue
+            reservoir = _get_target_component_by_name(target_system, HydroReservoir, storage_name)
+            if reservoir is None:
+                logger.warning(
+                    "Hydro unit '{}' references storage '{}' with no translated HydroReservoir",
+                    generator.name,
+                    storage_name,
+                )
+                continue
+            linked = list(getattr(reservoir, field_name))
+            if not any(existing.uuid == turbine.uuid for existing in linked):
+                setattr(reservoir, field_name, [*linked, turbine])
+
+
+def _has_load_profile(source_system: System, component: Any) -> bool:
+    return any(
+        metadata.name in _LOAD_PROFILE_NAMES
+        for metadata in source_system.list_time_series_metadata(component)
+    )
+
+
+def _has_scalar_load(value: Any) -> bool:
+    return value is not None and bool(_first_numeric(value))
+
+
+def _has_node_load(source_system: System, node: PLEXOSNode) -> bool:
+    return _has_scalar_load(node.load) or _has_load_profile(source_system, node)
+
+
+def _region_has_node_load(source_system: System, region: PLEXOSRegion) -> bool:
+    node_names = _get_region_node_names(source_system, region)
+    return any(
+        node.name in node_names and _has_node_load(source_system, node)
+        for node in source_system.get_components(PLEXOSNode)
+    )
+
+
 def _get_targets_by_name(context: PluginContext, source_component: Any) -> list[Any]:
     if context.target_system is None:
         return []
 
-    if isinstance(source_component, PLEXOSNode) and context.source_system is not None:
-        region_names = {
-            membership.child_object.name
-            for membership in context.source_system.get_supplemental_attributes_with_component(
-                source_component
-            )
-            if getattr(membership, "collection", None) == CollectionEnum.Region
-            and getattr(getattr(membership, "child_object", None), "name", None)
-        }
-        if not region_names:
-            return []
-        if len(region_names) == 1:
-            return _get_target_components_by_name(context.target_system, PowerLoad, next(iter(region_names)))
-        return [
-            load
-            for load in context.target_system.get_components(PowerLoad)
-            if getattr(load, "name", None) in region_names
-        ]
+    if isinstance(source_component, PLEXOSNode):
+        return _get_target_components_by_name(context.target_system, PowerLoad, source_component.name)
+
+    if (
+        isinstance(source_component, PLEXOSRegion)
+        and context.source_system is not None
+        and (
+            len(_get_region_node_names(context.source_system, source_component)) != 1
+            or _region_has_node_load(context.source_system, source_component)
+        )
+    ):
+        return []
 
     name = getattr(source_component, "name", None)
     if not name:
@@ -185,6 +286,15 @@ def _get_hydro_budget_values(ts: SingleTimeSeries, capacity: float) -> np.ndarra
 def _attach_source_time_series_if_target_exists(source_component: Any, context: PluginContext) -> bool:
     if context.source_system is None or context.target_system is None:
         return True
+    if isinstance(source_component, PLEXOSRegion):
+        if len(_get_region_node_names(context.source_system, source_component)) != 1 or _region_has_node_load(
+            context.source_system, source_component
+        ):
+            return True
+        if not _has_scalar_load(source_component.load) and not _has_load_profile(
+            context.source_system, source_component
+        ):
+            return True
     if not context.source_system.time_series.has_time_series(source_component):
         return True
 
@@ -246,7 +356,14 @@ def _attach_source_time_series_if_target_exists(source_component: Any, context: 
                     target_component.base_power
                 )
                 if capacity <= 0 and np.any(data):
-                    raise ValueError(f"Load profile requires a positive maximum for {target_component.name}")
+                    profile_peak = float(np.max(data))
+                    base_power = get_magnitude(target_component.base_power)
+                    if profile_peak <= 0 or base_power <= 0:
+                        raise ValueError(
+                            f"Load profile requires a positive maximum for {target_component.name}"
+                        )
+                    target_component.max_active_power = ActivePower(profile_peak / base_power, "MW")
+                    capacity = profile_peak
                 normalization = NormalizationByValue(value=capacity or 1.0)
             hydro = isinstance(source_component, PLEXOSGenerator) and (
                 isinstance(target_component, HydroDispatch)
@@ -387,6 +504,97 @@ def normalize_renewable_max_active_power_time_series(context: PluginContext) -> 
             )
 
 
+def _find_reference_timeline(system: System) -> tuple[SingleTimeSeries, dict[str, Any]] | None:
+    """Return the first SingleTimeSeries in the system, checking profiled device types first."""
+    preferred: tuple[type[Component], ...] = (
+        PowerLoad,
+        RenewableDispatch,
+        RenewableNonDispatch,
+        HydroDispatch,
+        VariableReserve,
+    )
+    for component_type in preferred:
+        for component in system.get_components(component_type):
+            for metadata in system.list_time_series_metadata(component, time_series_type=SingleTimeSeries):
+                features = dict(metadata.features or {})
+                profile = system.get_time_series(
+                    component, name=metadata.name, time_series_type=SingleTimeSeries, **features
+                )
+                return profile, features
+    return None
+
+
+def normalize_reservoir_inflow_time_series(context: PluginContext) -> None:
+    """Express reservoir inflow as a peak-normalized profile scaled by ``inflow`` in MW.
+
+    The Sienna exporter marks every reservoir ``inflow`` series with the ``get_inflow``
+    scaling multiplier, so each reservoir needs an inflow series whose values are
+    fractions of its scalar ``inflow``. Reservoirs whose PLEXOS inflow was constant
+    receive a flat series on the shared timeline.
+    """
+    system = context.target_system
+    if system is None:
+        return
+
+    reservoirs = list(system.get_components(HydroReservoir))
+    timeline: SingleTimeSeries | None = None
+    features: dict[str, Any] = {}
+    unprofiled: list[HydroReservoir] = []
+    for reservoir in reservoirs:
+        records = system.list_time_series_metadata(
+            reservoir, name="inflow", time_series_type=SingleTimeSeries
+        )
+        if not records:
+            unprofiled.append(reservoir)
+            continue
+        for metadata in records:
+            record_features = dict(metadata.features or {})
+            profile = system.get_time_series(
+                reservoir, name="inflow", time_series_type=SingleTimeSeries, **record_features
+            )
+            if timeline is None:
+                timeline, features = profile, record_features
+            data = np.asarray(profile.data_array, dtype=float)
+            peak = float(np.max(data)) if data.size else 0.0
+            reservoir.inflow = peak
+            replace_single_time_series(
+                system,
+                reservoir,
+                SingleTimeSeries.from_array(
+                    data=data,
+                    name="inflow",
+                    initial_timestamp=profile.initial_timestamp,
+                    resolution=profile.resolution,
+                    normalization=NormalizationByValue(value=peak) if peak > 0.0 else None,
+                ),
+                **record_features,
+            )
+
+    if not unprofiled:
+        return
+    if timeline is None:
+        reference = _find_reference_timeline(system)
+        if reference is None:
+            logger.warning(
+                "Cannot build inflow time series for {} reservoirs without a reference timeline",
+                len(unprofiled),
+            )
+            return
+        timeline, features = reference
+    for reservoir in unprofiled:
+        inflow = float(reservoir.inflow or 0.0)
+        system.add_time_series(
+            SingleTimeSeries.from_array(
+                data=np.full(len(timeline.data_array), 1.0 if inflow > 0.0 else 0.0),
+                name="inflow",
+                initial_timestamp=timeline.initial_timestamp,
+                resolution=timeline.resolution,
+            ),
+            reservoir,
+            **features,
+        )
+
+
 def normalize_reserve_requirement_time_series(context: PluginContext) -> None:
     """Normalize reserve MW profiles and their static requirement for PowerSystems scaling."""
     system = context.target_system
@@ -452,10 +660,10 @@ def attach_constant_load_time_series(context: PluginContext) -> None:
         if not isinstance(source, (PLEXOSRegion, PLEXOSNode, PLEXOSPurchaser)):
             continue
         targets = _get_targets_by_name(context, source)
-        if isinstance(source, (PLEXOSRegion, PLEXOSPurchaser)):
+        if isinstance(source, (PLEXOSRegion, PLEXOSNode, PLEXOSPurchaser)):
             scalar_loads.update((load.name, load) for load in targets)
         if any(
-            metadata.name in {"max_active_power", "load", "fixed_load"}
+            metadata.name in _LOAD_PROFILE_NAMES
             for metadata in context.source_system.list_time_series_metadata(source)
         ):
             profiled_loads.update(load.name for load in targets)
@@ -488,6 +696,161 @@ def attach_constant_load_time_series(context: PluginContext) -> None:
             set_time_series_scaling_factor_multiplier(
                 system, load, "max_active_power", "get_max_active_power"
             )
+
+
+def prune_region_loads(context: PluginContext) -> None:
+    """Keep region loads only when they have demand and map unambiguously to one bus."""
+    source_system = context.source_system
+    target_system = context.target_system
+    if source_system is None or target_system is None:
+        return
+
+    for region in source_system.get_components(PLEXOSRegion):
+        node_names = _get_region_node_names(source_system, region)
+        has_region_demand = _has_scalar_load(region.load) or _has_load_profile(source_system, region)
+        has_node_demand = _region_has_node_load(source_system, region)
+        if len(node_names) == 1 and not has_node_demand and has_region_demand:
+            continue
+
+        if has_region_demand:
+            if has_node_demand:
+                logger.warning(
+                    "Skipping PLEXOS region load '{}' because node-level demand is present; "
+                    "using node loads to avoid duplicate demand",
+                    region.name,
+                )
+            else:
+                _distribute_region_load(context, region, node_names)
+        load = _get_target_component_by_name(target_system, PowerLoad, region.name)
+        if load is not None:
+            target_system.remove_component(load, cascade_down=False)
+
+
+def _distribute_region_load(context: PluginContext, region: PLEXOSRegion, node_names: set[str]) -> None:
+    """Split a multi-node region load onto its nodes by Load Participation Factor."""
+    source_system = context.source_system
+    target_system = context.target_system
+    if source_system is None or target_system is None:
+        return
+    if not node_names:
+        logger.warning("Skipping PLEXOS region load '{}' because it has no member nodes", region.name)
+        return
+
+    factors: dict[str, float] = {}
+    negative = 0
+    for name in sorted(node_names):
+        lpf = source_system.get_component(PLEXOSNode, name).load_participation_factor
+        value = 0.0 if lpf is None else _first_numeric(lpf)
+        if value > 0.0:
+            factors[name] = value
+        elif value < 0.0:
+            negative += 1
+
+    total = sum(factors.values())
+    if total <= 0.0:
+        logger.warning(
+            "Skipping PLEXOS region load '{}' because none of its {} nodes has a positive "
+            "load participation factor",
+            region.name,
+            len(node_names),
+        )
+        return
+    if negative:
+        logger.warning(
+            "Ignoring {} negative load participation factors in region '{}'", negative, region.name
+        )
+    # PLEXOS shares region demand by node LPF; normalizing keeps the region total exact.
+    if not math.isclose(total, 1.0, rel_tol=0.01):
+        logger.warning(
+            "Load participation factors in region '{}' sum to {:.4f}; normalizing to 1",
+            region.name,
+            total,
+        )
+
+    profiles = [
+        (
+            source_system.get_time_series(region, name=metadata.name, **(metadata.features or {})),
+            dict(metadata.features or {}),
+        )
+        for metadata in source_system.list_time_series_metadata(region)
+        if metadata.name in _LOAD_PROFILE_NAMES
+    ]
+    scalar_mw = 0.0 if region.load is None else _first_numeric(region.load)
+    distributed: set[str] = context.metadata.setdefault(P2S_DISTRIBUTED_NODE_LOADS_KEY, set())
+    shares: list[tuple[PowerLoad, float, float]] = []
+    missing = 0
+    for name, lpf in factors.items():
+        load = _get_target_component_by_name(target_system, PowerLoad, name)
+        if load is None:
+            missing += 1
+            continue
+        base_power = get_magnitude(load.base_power)
+        if base_power is None or base_power <= 0.0:
+            raise ValueError(f"Distributed load '{name}' requires a positive base power")
+        share = lpf / total
+        scalar_pu = share * scalar_mw / base_power
+        load.active_power = ActivePower(scalar_pu, "MW")
+        load.max_active_power = ActivePower(scalar_pu, "MW")
+        shares.append((load, share, base_power))
+        distributed.add(name)
+
+    for profile, features in profiles:
+        if not isinstance(profile, SingleTimeSeries):
+            continue
+        data = np.asarray(profile.data_array)
+        peak = float(np.max(data))
+        if peak <= 0.0:
+            continue
+        owners = [
+            (load, share, base_power)
+            for load, share, base_power in shares
+            if not target_system.has_time_series(load, name="max_active_power", **features)
+        ]
+        if not owners:
+            continue
+        # Every node's share normalizes to the same region profile, so store it once for all of them;
+        # each node's max_active_power carries its share of the region peak.
+        region_profile = SingleTimeSeries.from_array(
+            data=data,
+            name="max_active_power",
+            initial_timestamp=profile.initial_timestamp,
+            resolution=profile.resolution,
+            normalization=NormalizationByValue(value=peak),
+        )
+        # infrasys adds one SQL OR term per owner; batching stays under SQLite's 1000-term
+        # expression depth while re-adding the same series object stores its data only once.
+        for start in range(0, len(owners), _TIME_SERIES_OWNER_BATCH):
+            batch = owners[start : start + _TIME_SERIES_OWNER_BATCH]
+            target_system.add_time_series(region_profile, *(load for load, _, _ in batch), **features)
+        for load, share, base_power in owners:
+            load.max_active_power = ActivePower(share * peak / base_power, "MW")
+            set_time_series_scaling_factor_multiplier(
+                target_system, load, "max_active_power", "get_max_active_power"
+            )
+
+    if missing:
+        logger.warning(
+            "Region '{}' load could not be placed on {} nodes without a translated PowerLoad",
+            region.name,
+            missing,
+        )
+
+
+def remove_unused_node_loads(context: PluginContext) -> None:
+    """Remove node-load targets that have no scalar demand or load profile."""
+    source_system = context.source_system
+    target_system = context.target_system
+    if source_system is None or target_system is None:
+        return
+
+    distributed = context.metadata.get(P2S_DISTRIBUTED_NODE_LOADS_KEY, set())
+    for node in source_system.get_components(PLEXOSNode):
+        load = _get_target_component_by_name(target_system, PowerLoad, node.name)
+        if load is None:
+            continue
+
+        if node.name not in distributed and not _has_node_load(source_system, node):
+            target_system.remove_component(load, cascade_down=False)
 
 
 def _sync_time_series_for_source(source_component: Any, context: PluginContext) -> None:

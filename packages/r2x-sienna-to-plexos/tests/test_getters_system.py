@@ -40,8 +40,9 @@ from r2x_sienna.models.enums import (
     ThermalFuels,
 )
 from r2x_sienna_to_plexos import getters
+from sienna_to_plexos_test_utils import make_hydro_turbine, make_store
 
-from r2x_core import DataStore, PluginConfig, PluginContext, System
+from r2x_core import PluginConfig, PluginContext, System
 
 from .fixtures.five_bus_systems import (
     system_complete,
@@ -60,7 +61,7 @@ from .fixtures.five_bus_systems import (
 @pytest.fixture
 def context(tmp_path):
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -69,7 +70,7 @@ def context(tmp_path):
 
 def make_context(tmp_path) -> PluginContext:
     config = PluginConfig(models=("r2x_sienna.models", "r2x_plexos.models", "r2x_sienna_to_plexos.getters"))
-    store = DataStore.from_plugin_config(config, path=tmp_path)
+    store = make_store(tmp_path, config)
     ctx = PluginContext(config=config, store=store)
     ctx.source_system = System(name="source", auto_add_composed_components=True)
     ctx.target_system = System(name="target", auto_add_composed_components=True)
@@ -514,7 +515,7 @@ def test_membership_line_parent_interface_success_and_missing_target(context):
 
     target_interface = PLEXOSInterface(name="Interface-1")
     context.target_system.add_component(target_interface)
-    context._cache.pop("target_interface_name_index", None)
+    getters._get_context_cache(context).pop("target_interface_name_index", None)
 
     result = getters.membership_line_parent_interface(line, context)
     assert result.is_ok()
@@ -542,7 +543,7 @@ def test_get_hydro_generator_units_always_online(context):
 
 
 def _make_hydro_turbine_for_units_tests(bus: ACBus, name: str, rating: float) -> HydroTurbine:
-    return HydroTurbine(
+    return make_hydro_turbine(
         name=name,
         available=True,
         bus=bus,
@@ -602,7 +603,7 @@ def test_get_pumped_hydro_generator_units_pumped_with_reservoir_is_online(contex
     ht = _make_hydro_turbine_for_units_tests(bus, "ht-with-reservoir", rating=1.0)
     monkeypatch.setattr(getters, "_resolve_generator_category", lambda _comp, _ctx: None)
     # Inject a non-empty turbine name set so the turbine is found
-    context._cache["reservoir_pump_turbine_name_set"] = {"ht-with-reservoir"}
+    getters._get_context_cache(context)["reservoir_pump_turbine_name_set"] = {"ht-with-reservoir"}
     result = getters.get_pumped_hydro_generator_units(ht, context)
     assert result.unwrap() == 1
 
@@ -629,7 +630,7 @@ def test_build_reservoir_pump_turbine_name_set_collects_ext_plants(context, monk
         lambda _res, _ctx: True,
     )
     # Clear cache so it is rebuilt
-    context._cache.pop("reservoir_pump_turbine_name_set", None)
+    getters._get_context_cache(context).pop("reservoir_pump_turbine_name_set", None)
     names = getters._build_reservoir_pump_turbine_name_set(context)
     assert "pump-turbine-A" in names
     assert "pump-turbine-B" in names
@@ -654,13 +655,12 @@ def test_build_reservoir_pump_turbine_name_set_skips_non_storage_reservoirs(cont
         "_reservoir_has_hydro_pumped_storage_association",
         lambda _res, _ctx: False,
     )
-    context._cache.pop("reservoir_pump_turbine_name_set", None)
+    getters._get_context_cache(context).pop("reservoir_pump_turbine_name_set", None)
     names = getters._build_reservoir_pump_turbine_name_set(context)
     assert "should-not-appear" not in names
 
 
-def test_attach_generator_time_series_scales_hydro_budget(tmp_path, monkeypatch):
-    """hydro_budget raw per-unit values must be multiplied by max_active_power."""
+def test_attach_generator_time_series_scales_hydro_budget_to_gwh_and_replaces_raw_copy(tmp_path, monkeypatch):
     context = make_context(tmp_path)
     context.source_system = System(name="source")
     context.target_system = System(name="target")
@@ -672,7 +672,7 @@ def test_attach_generator_time_series_scales_hydro_budget(tmp_path, monkeypatch)
     )
     monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
 
-    raw_values = [10.0, 20.0]  # raw per-unit; after *1.0 MW still 10, 20 MWh
+    raw_values = [10.0, 20.0]
     context.source_system.time_series.has_time_series = lambda _c: True
     context.source_system.time_series.list_time_series_metadata = lambda _c: [
         types.SimpleNamespace(name="hydro_budget", features={})
@@ -686,16 +686,65 @@ def test_attach_generator_time_series_scales_hydro_budget(tmp_path, monkeypatch)
             resolution=timedelta(weeks=1),
         )
     ]
-    context.target_system.has_time_series = lambda *_a, **_kw: False
+    existing_ts = types.SimpleNamespace(
+        name="hydro_budget",
+        data=[10.0, 20.0],
+        initial_timestamp=datetime(2020, 1, 1),
+        resolution=timedelta(weeks=1),
+    )
+    removed = []
+    context.target_system.has_time_series = lambda _c, name=None, **_kw: name == "hydro_budget"
+    context.target_system.list_time_series = lambda *_a, **_kw: [existing_ts]
+    context.target_system.remove_time_series = lambda _c, name=None, **_kw: removed.append(name)
     attached = []
     context.target_system.add_time_series = lambda ts, *_a, **_kw: attached.append(ts)
 
     getters._attach_generator_time_series(context, "HYDRO_TS", PLEXOSGenerator(name="HYDRO_TS"))
 
     assert len(attached) == 1
-    assert attached[0].name == "max_energy_week"
-    # raw 10.0 * 1.0 MW = 10.0, raw 20.0 * 1.0 MW = 20.0
-    assert list(attached[0].data) == [10.0, 20.0]
+    assert removed == ["hydro_budget"]
+    assert attached[0].name == "hydro_budget"
+    assert list(attached[0].data) == [0.01, 0.02]
+
+
+def test_attach_generator_time_series_discards_unscaled_budget_without_capacity(tmp_path, monkeypatch):
+    context = make_context(tmp_path)
+    context.source_system = System(name="source")
+    context.target_system = System(name="target")
+    source_gen = types.SimpleNamespace(
+        name="HYDRO_NO_CAPACITY",
+        active_power_limits=None,
+        rating=None,
+    )
+    monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
+
+    context.source_system.time_series.has_time_series = lambda _component: True
+    context.source_system.time_series.list_time_series_metadata = lambda _component: [
+        types.SimpleNamespace(name="hydro_budget", features={})
+    ]
+    context.source_system.list_time_series = lambda _component, **_kwargs: [
+        types.SimpleNamespace(
+            name="hydro_budget",
+            data=[1.0, 2.0],
+            initial_timestamp=datetime(2020, 1, 1),
+            resolution=timedelta(weeks=1),
+        )
+    ]
+
+    removed = []
+    context.target_system.has_time_series = lambda _component, name=None, **_kwargs: name == "hydro_budget"
+    context.target_system.remove_time_series = lambda _component, name=None, **_kwargs: removed.append(name)
+    attached = []
+    context.target_system.add_time_series = lambda ts, *_args, **_kwargs: attached.append(ts)
+
+    getters._attach_generator_time_series(
+        context,
+        "HYDRO_NO_CAPACITY",
+        PLEXOSGenerator(name="HYDRO_NO_CAPACITY"),
+    )
+
+    assert removed == ["hydro_budget"]
+    assert attached == []
 
 
 def test_attach_generator_time_series_scales_hydro_budget_hourly(tmp_path, monkeypatch):
@@ -712,7 +761,7 @@ def test_attach_generator_time_series_scales_hydro_budget_hourly(tmp_path, monke
     )
     monkeypatch.setattr(getters, "_lookup_source_generator", lambda _ctx, _name: source_gen)
 
-    # Two weeks of hourly data: all ones → raw weekly sum = 168; scaled = 168 * 1.0
+    # Two weeks of hourly data: all ones → 168 MWh per week = 0.168 GWh.
     two_weeks_ones = [1.0] * 336
     context.source_system.time_series.has_time_series = lambda _c: True
     context.source_system.time_series.list_time_series_metadata = lambda _c: [
@@ -734,10 +783,9 @@ def test_attach_generator_time_series_scales_hydro_budget_hourly(tmp_path, monke
 
     assert len(attached) == 1
     ts = attached[0]
-    assert ts.name == "max_energy_week"
+    assert ts.name == "hydro_budget"
     assert ts.resolution == timedelta(days=7)
-    # Each weekly value = 168 * 1.0 (scaled) * 1.0 MW = 168.0 MWh
-    assert all(abs(v - 168.0) < 1e-6 for v in ts.data)
+    assert all(abs(v - 0.168) < 1e-6 for v in ts.data)
 
 
 def test__ramp_value_to_float_small_value():
@@ -1031,21 +1079,24 @@ def test_get_region_ext_basic_no_buses(context):
     context.source_system.add_component(area)
     result = getters.get_region_ext(area, context)
     assert result.is_ok()
-    val = result.unwrap()
-    assert val["sienna_type"] == "StandardLoad"
-    assert "description" not in val
+    assert result.unwrap() == {"sienna_type": "StandardLoad"}
+    assert getters.get_region_description(area, context).unwrap() is None
 
 
-def test_get_region_ext_arname_ext_and_iso_description(context, monkeypatch):
-    """Covers ARNAME branch (line 1074) and iso_rto description path (line 1090)."""
-    monkeypatch.setattr(
-        getters,
-        "_resolve_iso_rto_description_for_buses",
-        lambda buses, ctx: "ercot",
-    )
+def test_get_region_description_uses_arname_buses(context, monkeypatch):
+    seen_buses = []
+
+    def resolve(buses, ctx):
+        seen_buses.extend(buses)
+        return "ercot"
+
+    monkeypatch.setattr(getters, "_resolve_iso_rto_description_for_buses", resolve)
     area = Area(name="TestArea", ext={"ARNAME": "AR_TEST"})
+    bus = ACBus(name="B1", base_voltage=115.0, number=1, area=Area(name="AR_TEST"))
     context.source_system.add_component(area)
-    result = getters.get_region_ext(area, context)
-    assert result.is_ok()
-    val = result.unwrap()
-    assert val.get("description") == "ISO/RTOs where region belongs to: ercot"
+    context.source_system.add_component(bus)
+
+    result = getters.get_region_description(area, context)
+
+    assert result.unwrap() == "ISO/RTOs where region belongs to: ercot"
+    assert [b.name for b in seen_buses] == ["B1"]

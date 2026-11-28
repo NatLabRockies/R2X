@@ -179,12 +179,16 @@ def test_preflight_supports_named_ramp_getters_and_unnamed_callables(thermal, ra
     source = System(name="callable-getters", auto_add_composed_components=True)
     source.add_component(thermal)
     rules = (
-        Rule(
-            source_type="ReEDSThermalGenerator",
-            target_type="PLEXOSGenerator",
-            version=1,
-            getters={"max_ramp_up": ramp_getter},
-        ),
+        Rule.from_records(
+            [
+                {
+                    "source_type": "ReEDSThermalGenerator",
+                    "target_type": "PLEXOSGenerator",
+                    "version": 1,
+                    "getters": {"max_ramp_up": ramp_getter},
+                }
+            ]
+        )[0],
         Rule(
             source_type="ReEDSThermalGenerator",
             target_type="PLEXOSGenerator",

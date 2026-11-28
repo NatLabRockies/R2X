@@ -147,6 +147,7 @@
       "start_cost": "gen_startup_cost"
     },
     "filter": {
+      "kind": "field",
       "casefold": true,
       "field": "technology",
       "op": "not_in",
@@ -234,6 +235,7 @@
       "duration": "battery_duration"
     },
     "filter": {
+      "kind": "field",
       "casefold": true,
       "field": "technology",
       "op": "startswith",
@@ -264,6 +266,7 @@
     "ext": "ext"
   },
   "filter": {
+    "kind": "field",
     "casefold": true,
     "field": "category",
     "op": "in",
@@ -302,6 +305,7 @@
       "ext": "ext"
     },
     "filter": {
+      "kind": "field",
       "casefold": true,
       "field": "technology",
       "op": "in",
@@ -330,6 +334,7 @@
       "ext": "ext"
     },
     "filter": {
+      "kind": "field",
       "casefold": true,
       "field": "technology",
       "op": "in",
@@ -359,6 +364,7 @@
       "ext": "ext"
     },
     "filter": {
+      "kind": "field",
       "casefold": true,
       "field": "technology",
       "op": "in",
@@ -591,6 +597,7 @@
       "collection": "reeds_membership_collection_head_storage"
     },
     "filter": {
+      "kind": "field",
       "casefold": true,
       "field": "category",
       "op": "in",
@@ -609,6 +616,7 @@
       "collection": "reeds_membership_collection_tail_storage"
     },
     "filter": {
+      "kind": "field",
       "casefold": true,
       "field": "category",
       "op": "in",
@@ -699,6 +707,7 @@
       "collection": "reeds_membership_collection_generators"
     },
     "filter": {
+      "kind": "field",
       "casefold": true,
       "field": "category",
       "op": "in",
@@ -717,6 +726,7 @@
       "collection": "reeds_membership_collection_generators"
     },
     "filter": {
+      "kind": "field",
       "casefold": true,
       "field": "category",
       "op": "in",
@@ -735,6 +745,7 @@
       "collection": "reeds_membership_collection_generators"
     },
     "filter": {
+      "kind": "field",
       "casefold": true,
       "field": "category",
       "op": "in",

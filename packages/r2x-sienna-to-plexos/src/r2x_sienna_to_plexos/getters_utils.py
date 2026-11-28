@@ -9,6 +9,7 @@ import pathlib
 from collections import defaultdict
 from collections.abc import Mapping
 from copy import deepcopy
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 from infrasys.cost_curves import CostCurve, FuelCurve
@@ -45,7 +46,7 @@ from r2x_sienna.models import (
     TransmissionInterface,
     VariableReserve,
 )
-from r2x_sienna.models.enums import ACBusTypes
+from r2x_sienna.models.enums import ACBusTypes, ReservoirDataType
 from r2x_sienna.units import get_magnitude
 
 if TYPE_CHECKING:
@@ -56,137 +57,21 @@ InputOutputCurveValue = InputOutputCurve[LinearFunctionData | QuadraticFunctionD
 _SIENNA_TRANSFORMER_TYPES = (Transformer2W, TapTransformer, PhaseShiftingTransformer)
 _ISO_RTO_POLYGONS: dict[str, list] | None = None
 _ISO_RTO_CONFIG_DIR = pathlib.Path(__file__).parent / "config" / "iso-rto-coordinates"
+_CONTEXT_CACHE_KEY = "r2x_sienna_to_plexos_cache"
+
+
+def _get_context_cache(context: PluginContext) -> dict[str, Any]:
+    """Return this plugin's cache stored in the context's supported metadata field."""
+    cache = context.metadata.setdefault(_CONTEXT_CACHE_KEY, {})
+    if not isinstance(cache, dict):
+        msg = f"Plugin context metadata key {_CONTEXT_CACHE_KEY!r} must contain a dictionary"
+        raise TypeError(msg)
+    return cast(dict[str, Any], cache)
 
 
 def clean_interface_name(name: Any) -> str:
     """Replace Unicode replacement characters in transmission interface names."""
     return str(name or "").replace("\ufffd", "-").strip()
-
-
-def _chunked_setup_target_and_child_tables(
-    tgt_metadata: Any,
-    src_associations: Any,
-    uuid_map: dict,
-) -> tuple[list[tuple], dict[str, str]]:
-    """Chunked drop-in for r2x_core's _setup_target_and_child_tables."""
-    from uuid import UUID as _UUID
-
-    uuid_to_type = {str(uuid): type(comp).__name__ for uuid, comp in uuid_map.items()}
-
-    tgt_metadata.execute("DROP TABLE IF EXISTS target_components")
-    tgt_metadata.execute("CREATE TEMP TABLE target_components (uuid TEXT PRIMARY KEY, type TEXT)")
-    tgt_metadata.executemany("INSERT INTO target_components VALUES (?, ?)", list(uuid_to_type.items()))
-
-    target_uuids = list(uuid_to_type.keys())
-
-    if not target_uuids:
-        tgt_metadata.execute("DROP TABLE IF EXISTS child_mapping")
-        tgt_metadata.execute(
-            "CREATE TEMP TABLE child_mapping (child_uuid TEXT, parent_uuid TEXT, parent_type TEXT)"
-        )
-        return [], uuid_to_type
-
-    _chunk_size = 900
-    child_parent_rows: list[tuple] = []
-    for i in range(0, len(target_uuids), _chunk_size):
-        chunk = target_uuids[i : i + _chunk_size]
-        placeholders = ",".join("?" for _ in chunk)
-        child_parent_rows.extend(
-            src_associations.execute(
-                f"""
-                SELECT component_uuid, attached_component_uuid
-                FROM component_associations
-                WHERE attached_component_uuid IN ({placeholders})
-                """,
-                chunk,
-            ).fetchall()
-        )
-
-    child_remapping = [
-        (child_uuid, parent_uuid, type(uuid_map[_UUID(parent_uuid)]).__name__)
-        for child_uuid, parent_uuid in child_parent_rows
-        if parent_uuid in uuid_to_type
-    ]
-
-    tgt_metadata.execute("DROP TABLE IF EXISTS child_mapping")
-    tgt_metadata.execute(
-        "CREATE TEMP TABLE child_mapping (child_uuid TEXT, parent_uuid TEXT, parent_type TEXT)"
-    )
-    if child_remapping:
-        tgt_metadata.executemany("INSERT INTO child_mapping VALUES (?, ?, ?)", child_remapping)
-
-    return child_remapping, uuid_to_type
-
-
-def _write_descriptions_to_db(system: Any, db: Any) -> None:
-    """Write ext["description"] from each translated component to t_object.description."""
-    from r2x_plexos.exporter import PLEXOS_TYPE_MAP_INVERTED
-
-    updates: list[tuple[str, str, int]] = []
-    for comp_type in system.get_component_types():
-        for comp in system.get_components(comp_type):
-            desc = (getattr(comp, "ext", None) or {}).get("description")
-            if not desc:
-                continue
-            comp_name: str = getattr(comp, "name", "") or ""
-            if not comp_name:
-                continue
-            class_enum = PLEXOS_TYPE_MAP_INVERTED.get(type(comp))
-            if class_enum is None:
-                continue
-            updates.append((str(desc), comp_name, db.get_class_id(class_enum)))
-
-    if updates:
-        db._db.executemany(
-            "UPDATE t_object SET description=? WHERE name=? AND class_id=?",
-            updates,
-        )
-        logger.debug("Wrote description to {} t_object rows", len(updates))
-
-
-def apply_chunking_patch() -> None:
-    """Apply SQLite IN-clause chunking fix to r2x_core.time_series (idempotent).
-
-    r2x_core's _setup_target_and_child_tables issues a single IN-clause query
-    with all target UUIDs, which exceeds SQLite's 999-parameter limit on large
-    systems. This replaces it with a chunked equivalent.
-    """
-    import r2x_core.time_series as _ts
-
-    if cast(Any, _ts)._setup_target_and_child_tables is _chunked_setup_target_and_child_tables:
-        return
-    cast(Any, _ts)._setup_target_and_child_tables = _chunked_setup_target_and_child_tables
-    logger.debug("Applied chunked _setup_target_and_child_tables to r2x_core.time_series")
-
-
-def apply_description_export_patch() -> None:
-    """Wrap PLEXOSExporter.prepare_export to also persist descriptions (idempotent).
-
-    The exporter's bulk object insert omits the description column. This wraps
-    prepare_export so that after objects are inserted, ext["description"] values
-    are written back to t_object.description via a batch UPDATE.
-    """
-    import r2x_plexos.exporter as _exp
-
-    if getattr(cast(Any, _exp.PLEXOSExporter).prepare_export, "_description_patched", False):
-        return
-
-    _original = _exp.PLEXOSExporter.prepare_export
-
-    def _wrapped(self: Any) -> Any:
-        result = _original(self)
-        system = getattr(self, "system", None)
-        db = getattr(self, "db", None)
-        if system is not None and db is not None:
-            try:
-                _write_descriptions_to_db(system, db)
-            except Exception as _err:
-                logger.warning("Could not write descriptions to t_object: {}", _err)
-        return result
-
-    cast(Any, _wrapped)._description_patched = True
-    cast(Any, _exp.PLEXOSExporter).prepare_export = _wrapped
-    logger.debug("Applied description-to-t_object patch to PLEXOSExporter.prepare_export")
 
 
 def _source_system(context: PluginContext) -> Any:
@@ -220,7 +105,7 @@ def _ensure_membership(
     child_key = getattr(child_object, "uuid", None) or id(child_object)
     membership_key = (collection, parent_key, child_key)
 
-    membership_cache = context._cache.setdefault("membership_key_cache", set())
+    membership_cache = _get_context_cache(context).setdefault("membership_key_cache", set())
     if membership_key in membership_cache:
         return
 
@@ -239,7 +124,7 @@ def _ensure_membership(
 def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | None, str | None]]:
     """Build a single-pass index: bus_name -> (area_name, zone_name)."""
 
-    cached = context._cache.get("bus_name_to_area_and_zone")
+    cached = _get_context_cache(context).get("bus_name_to_area_and_zone")
     if cached is not None:
         return cached
 
@@ -267,7 +152,7 @@ def _bus_name_to_area_and_zone(context: PluginContext) -> dict[str, tuple[str | 
                 zone_name = str(load_zone)
         result[bus.name] = (area_name, zone_name)
 
-    context._cache["bus_name_to_area_and_zone"] = result
+    _get_context_cache(context)["bus_name_to_area_and_zone"] = result
     return result
 
 
@@ -399,6 +284,42 @@ def _resolve_iso_rto_description_for_buses(buses: list[Any], context: PluginCont
     return ", ".join(sorted(iso_counts))
 
 
+def _build_reservoir_time_series_indexes(context: PluginContext) -> dict[str, Any]:
+    """Build cached indexes used when attaching reservoir time series to storage."""
+    cache = _get_context_cache(context)
+    cached = cache.get("reservoir_time_series_indexes")
+    if cached is not None:
+        return cast(dict[str, Any], cached)
+
+    reservoirs = list(_source_system(context).get_components(HydroReservoir))
+    reservoirs_by_name: dict[str, Any] = {}
+    reservoirs_by_plant_name: dict[str, Any] = {}
+    for reservoir in reservoirs:
+        reservoirs_by_name.setdefault(str(reservoir.name), reservoir)
+        ext = getattr(reservoir, "ext", None)
+        plant_name = ext.get("plant_name") if isinstance(ext, dict) else None
+        if isinstance(plant_name, str) and plant_name:
+            reservoirs_by_plant_name.setdefault(plant_name, reservoir)
+
+    turbines_by_type: dict[type, dict[str, Any]] = {}
+    for turbine_type in (HydroPumpTurbine, HydroTurbine):
+        turbines_by_base: dict[str, Any] = {}
+        for turbine in _source_system(context).get_components(turbine_type):
+            name = str(getattr(turbine, "name", ""))
+            base_name = name[: -len("_Turbine")] if name.endswith("_Turbine") else name
+            turbines_by_base.setdefault(base_name, turbine)
+        turbines_by_type[turbine_type] = turbines_by_base
+
+    indexes = {
+        "reservoirs": reservoirs,
+        "reservoirs_by_name": reservoirs_by_name,
+        "reservoirs_by_plant_name": reservoirs_by_plant_name,
+        "turbines_by_type": turbines_by_type,
+    }
+    cache["reservoir_time_series_indexes"] = indexes
+    return indexes
+
+
 def _attach_reservoir_time_series_to_storage(
     context: PluginContext,
     storage_name: str,
@@ -407,13 +328,12 @@ def _attach_reservoir_time_series_to_storage(
     """Attach time series from source HydroReservoir to translated PLEXOS storage."""
     base_name = storage_name[:-5] if storage_name.endswith(("_head", "_tail")) else storage_name
 
-    source_reservoir = None
-    for r in _source_system(context).get_components(HydroReservoir):
-        if r.name == base_name:
-            source_reservoir = r
-            break
+    indexes = _build_reservoir_time_series_indexes(context)
+    source_reservoir = indexes["reservoirs_by_name"].get(base_name)
     if source_reservoir is None:
-        for r in _source_system(context).get_components(HydroReservoir):
+        source_reservoir = indexes["reservoirs_by_plant_name"].get(base_name)
+    if source_reservoir is None:
+        for r in indexes["reservoirs"]:
             if base_name in r.name:
                 source_reservoir = r
                 break
@@ -438,31 +358,39 @@ def _attach_reservoir_time_series_to_storage(
     else:
         turbine_base = base_name[: -len("_Reservoir")] if base_name.endswith("_Reservoir") else base_name
         for turbine_type in (HydroPumpTurbine, HydroTurbine):
-            for t in _source_system(context).get_components(turbine_type):
-                t_base = t.name[: -len("_Turbine")] if t.name.endswith("_Turbine") else t.name
-                if t_base == turbine_base:
-                    limits = getattr(t, "active_power_limits", None)
-                    if limits is not None:
-                        max_val = (
-                            limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
-                        )
-                        if max_val is not None:
-                            mag = get_magnitude(max_val)
-                            raw = (
-                                float(mag)
-                                if mag is not None
-                                else float(max_val)
-                                if isinstance(max_val, int | float)
-                                else None
-                            )
-                            if raw is not None:
-                                max_mw = abs(raw) * resolve_base_power(t)
-                    break
+            turbine = indexes["turbines_by_type"][turbine_type].get(turbine_base)
+            if turbine is None:
+                continue
+            limits = getattr(turbine, "active_power_limits", None)
+            if limits is not None:
+                max_val = limits.get("max") if isinstance(limits, dict) else getattr(limits, "max", None)
+                if max_val is not None:
+                    mag = get_magnitude(max_val)
+                    raw = (
+                        float(mag)
+                        if mag is not None
+                        else float(max_val)
+                        if isinstance(max_val, int | float)
+                        else None
+                    )
+                    if raw is not None:
+                        max_mw = abs(raw) * resolve_base_power(turbine)
             if max_mw > 0.0:
                 break
 
     for typed_ts in _source_system(context).list_time_series(source_reservoir):
         ts_name = "natural_inflow" if typed_ts.name == "inflow" else typed_ts.name
+        if (
+            ts_name == "natural_inflow"
+            and getattr(source_reservoir, "level_data_type", None) != ReservoirDataType.ENERGY
+        ):
+            logger.warning(
+                "Cannot translate natural inflow time series for reservoir '{}' to MW: "
+                "level_data_type is not ENERGY; skipping the series.",
+                source_reservoir.name,
+            )
+            continue
+
         ts_features = getattr(typed_ts, "features", {})
         if not _target_system(context).has_time_series(
             target_storage,
@@ -513,12 +441,12 @@ def ensure_region_node_memberships(context: PluginContext) -> None:
         region = regions_by_name.get(area_name)
         if region is not None:
             _ensure_membership(context, node, region, CollectionEnum.Region)
-            region_nodes = region_nodes_by_name.setdefault(area_name, [])
-            if node not in region_nodes:
-                region_nodes.append(node)
+            # Each node is visited once; a list membership check here compared pydantic
+            # models pairwise and made this step quadratic in nodes per region.
+            region_nodes_by_name.setdefault(area_name, []).append(node)
             total_memberships += 1
 
-    context._cache["region_nodes_by_name"] = region_nodes_by_name
+    _get_context_cache(context)["region_nodes_by_name"] = region_nodes_by_name
 
     logger.info("Total {} Region-Node memberships created.", total_memberships)
 
@@ -538,10 +466,14 @@ def ensure_reference_node_memberships(context: PluginContext) -> None:
             return 0.0
 
     regions_by_name = {r.name: r for r in _target_system(context).get_components(PLEXOSRegion)}
-    nodes_by_region = cast(dict[str, list[PLEXOSNode]], context._cache.get("region_nodes_by_name", {}))
+    nodes_by_region = cast(
+        dict[str, list[PLEXOSNode]], _get_context_cache(context).get("region_nodes_by_name", {})
+    )
     if not nodes_by_region:
         ensure_region_node_memberships(context)
-        nodes_by_region = cast(dict[str, list[PLEXOSNode]], context._cache.get("region_nodes_by_name", {}))
+        nodes_by_region = cast(
+            dict[str, list[PLEXOSNode]], _get_context_cache(context).get("region_nodes_by_name", {})
+        )
 
     # If some regions still have no node associations, recover from existing
     # supplemental Region memberships attached to the region endpoint.
@@ -1025,74 +957,101 @@ def _attach_hydro_reservoir_inflow_to_generator_budget(
     source_generator: Any,
     target_generator: Any,
 ) -> None:
-    """Attach HydroReservoir inflow to generator as cadence-aligned max-energy series."""
-    if isinstance(source_generator, HydroPumpTurbine) or not isinstance(source_generator, HydroTurbine):
+    """Attach energy-based reservoir inflow to a hydro generator as GWh hydro_budget."""
+    is_pump_turbine = isinstance(source_generator, HydroPumpTurbine)
+    if not is_pump_turbine and not isinstance(source_generator, HydroTurbine):
         return
 
-    pump_load = getattr(source_generator, "rating", None)
-    if pump_load is not None:
-        magnitude = get_magnitude(pump_load)
-        raw = (
-            float(magnitude)
-            if magnitude is not None
-            else float(pump_load)
-            if isinstance(pump_load, int | float)
-            else 0.0
-        )
-        if not math.isclose(raw * resolve_base_power(source_generator), 0.0, abs_tol=1e-9):
-            return
+    if not is_pump_turbine:
+        pump_load = getattr(source_generator, "rating", None)
+        if pump_load is not None:
+            magnitude = get_magnitude(pump_load)
+            raw = (
+                float(magnitude)
+                if magnitude is not None
+                else float(pump_load)
+                if isinstance(pump_load, int | float)
+                else 0.0
+            )
+            if not math.isclose(raw * resolve_base_power(source_generator), 0.0, abs_tol=1e-9):
+                return
 
     from infrasys import SingleTimeSeries
 
     from r2x_sienna_to_plexos.getters import (
         _build_reservoir_by_turbine_index,
         _convert_hydro_budget_time_series,
-        _hydro_budget_series_name_for_resolution,
     )
 
     source_reservoir = _build_reservoir_by_turbine_index(context).get(source_generator.name)
-    if source_reservoir is None or not _source_system(context).time_series.has_time_series(source_reservoir):
+    source_system = _source_system(context)
+    if source_reservoir is None or not source_system.time_series.has_time_series(source_reservoir):
+        return
+    if getattr(source_reservoir, "level_data_type", None) != ReservoirDataType.ENERGY:
+        logger.warning(
+            "Cannot translate inflow for reservoir '{}' to generator hydro_budget: "
+            "reservoir level_data_type is not ENERGY.",
+            source_reservoir.name,
+        )
         return
 
-    for metadata in _source_system(context).time_series.list_time_series_metadata(source_reservoir):
-        if metadata.name not in {"inflow", "natural_inflow"}:
-            continue
-        features = getattr(metadata, "features", {}) or {}
+    hydro_budget_cadence = getattr(context.config, "hydro_budget_ts", "weekly")
+    cache = _get_context_cache(context).setdefault("reservoir_hydro_budget_series", {})
+    cache_key = (id(source_reservoir), hydro_budget_cadence)
+    converted_series = cache.get(cache_key)
+    if converted_series is None:
+        converted_series = []
+        for metadata in source_system.time_series.list_time_series_metadata(source_reservoir):
+            if metadata.name not in {"inflow", "natural_inflow"}:
+                continue
+            features = dict(getattr(metadata, "features", {}) or {})
+            ts_list = source_system.list_time_series(
+                source_reservoir,
+                name=metadata.name,
+                **features,
+            )
+            if not ts_list:
+                continue
 
-        ts_list = _source_system(context).list_time_series(
-            source_reservoir,
-            name=metadata.name,
-            **features,
-        )
-        if not ts_list:
-            continue
+            typed_source_ts = ts_list[0]
+            converted_data, converted_resolution = _convert_hydro_budget_time_series(
+                typed_source_ts,
+                hydro_budget_cadence,
+            )
+            if isinstance(converted_resolution, timedelta) and converted_resolution >= timedelta(days=1):
+                # Aggregated MW values are MWh; PLEXOS interval energy properties use GWh.
+                converted_data = converted_data / 1000.0
+            converted_series.append(
+                (
+                    converted_data,
+                    converted_resolution,
+                    typed_source_ts.initial_timestamp,
+                    features,
+                )
+            )
+        cache[cache_key] = converted_series
 
-        typed_source_ts = ts_list[0]
-        ts_copy = deepcopy(typed_source_ts)
-
-        hydro_budget_cadence = getattr(context.config, "hydro_budget_ts", "weekly")
-        converted_data, converted_resolution = _convert_hydro_budget_time_series(
-            ts_copy,
-            hydro_budget_cadence,
-        )
-        target_ts_name = _hydro_budget_series_name_for_resolution(converted_resolution)
-
+    for data, resolution, initial_timestamp, features in converted_series:
         if _target_system(context).has_time_series(
             target_generator,
-            name=target_ts_name,
+            name="hydro_budget",
             time_series_type=SingleTimeSeries,
             **features,
         ):
             continue
 
-        ts_copy.data = converted_data
-        ts_copy.resolution = converted_resolution
-        ts_copy.name = target_ts_name
-        _target_system(context).add_time_series(ts_copy, target_generator, **features)
+        hydro_budget = SingleTimeSeries.from_array(
+            data=data.copy(),
+            name="hydro_budget",
+            initial_timestamp=initial_timestamp,
+            resolution=resolution,
+        )
+        _target_system(context).add_time_series(hydro_budget, target_generator, **features)
 
 
 def ensure_reserve_time_series(context: PluginContext) -> None:
     """Attach reserve time series from source VariableReserve to translated PLEXOSReserve."""
+    import numpy as np
 
     def _normalize_series_name(name: Any) -> str:
         return str(name or "").strip().lower().replace("-", "_").replace(" ", "_")
@@ -1128,10 +1087,10 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
                 continue
 
             typed_source_ts = ts_list[0]
-            source_names = {
-                _normalize_series_name(getattr(metadata, "name", None)),
-                _normalize_series_name(getattr(typed_source_ts, "name", None)),
-            }
+            source_series_names = tuple(
+                dict.fromkeys((getattr(metadata, "name", None), getattr(typed_source_ts, "name", None)))
+            )
+            source_names = {_normalize_series_name(name) for name in source_series_names}
             ts_name = (
                 "min_provision" if {"requirement", "min_provision"} & source_names else typed_source_ts.name
             )
@@ -1150,15 +1109,48 @@ def ensure_reserve_time_series(context: PluginContext) -> None:
             if seen_key in seen:
                 continue
 
-            if _target_system(context).has_time_series(
+            target_system = _target_system(context)
+            for source_name in source_series_names:
+                if not source_name or source_name == ts_name:
+                    continue
+                if _normalize_series_name(source_name) not in {"requirement", "min_provision"}:
+                    continue
+                if target_system.has_time_series(
+                    reserve,
+                    name=str(source_name),
+                    time_series_type=type(typed_source_ts),
+                    **features,
+                ):
+                    target_system.remove_time_series(
+                        reserve,
+                        name=str(source_name),
+                        time_series_type=type(typed_source_ts),
+                        **features,
+                    )
+
+            existing_series = target_system.list_time_series(
                 reserve,
                 name=ts_name,
                 time_series_type=type(typed_source_ts),
                 **features,
+            )
+            if len(existing_series) == 1 and np.array_equal(
+                np.asarray(existing_series[0].data),
+                np.asarray(ts_copy_any.data),
+                equal_nan=True,
             ):
+                seen.add(seen_key)
                 continue
 
-            _target_system(context).add_time_series(ts_copy_any, reserve, **features)
+            if existing_series:
+                target_system.remove_time_series(
+                    reserve,
+                    name=ts_name,
+                    time_series_type=type(typed_source_ts),
+                    **features,
+                )
+
+            target_system.add_time_series(ts_copy_any, reserve, **features)
             seen.add(seen_key)
             total += 1
 
@@ -1587,13 +1579,13 @@ def extract_piecewise_segments(points: list[XYCoords]) -> tuple[list[float], lis
 def resolve_base_power(component: Any) -> float:
     """Resolve base power from component.
 
-    Attempts to extract base power from component's base_power or _system_base
+    Attempts to extract base power from component's base_power or system_base
     attributes. Returns 1.0 if neither is available.
 
     Parameters
     ----------
     component : Any
-        Component object with potential base_power or _system_base attribute
+        Component object with potential base_power or system_base attribute
 
     Returns
     -------
@@ -1602,7 +1594,7 @@ def resolve_base_power(component: Any) -> float:
     """
     base = get_magnitude(getattr(component, "base_power", None))
     if base is None:
-        raw = getattr(component, "_system_base", None)
+        raw = getattr(component, "system_base", None)
         if isinstance(raw, int | float):
             base = float(raw)
         elif raw is not None:
