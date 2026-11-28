@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.3](https://github.com/NatLabRockies/R2X/compare/r2x-plexos-to-sienna-v0.2.2...r2x-plexos-to-sienna-v0.2.3) (2026-11-28)
+
+
+### Bug Fixes
+
+* address plexos to sienna remaining bugs on object and class translations ([#355](https://github.com/NatLabRockies/R2X/issues/355)) ([12296b5](https://github.com/NatLabRockies/R2X/commit/12296b5c16b5a48ae1e73e26764000110b41b0fe))
+* address plexos-to-sienna rountrip issues for mixed components ([#371](https://github.com/NatLabRockies/R2X/issues/371)) ([f85c0b3](https://github.com/NatLabRockies/R2X/commit/f85c0b3631c11ce3519c8e6176ab6a9d2550a8e6))
+* resolve r2x translations to match r2x-core updated codebase ([#357](https://github.com/NatLabRockies/R2X/issues/357)) ([b72e424](https://github.com/NatLabRockies/R2X/commit/b72e424f0db75773c0dfd9efb0a6fd6985772e76))
+
+
+### Documentation
+
+* align central guides and workspace translator documentation ([#344](https://github.com/NatLabRockies/R2X/issues/344)) ([164dea0](https://github.com/NatLabRockies/R2X/commit/164dea0ccef556bba69c14327e9e11a1bc43f327))
+
 ## [0.2.2](https://github.com/NatLabRockies/R2X/compare/r2x-plexos-to-sienna-v0.2.1...r2x-plexos-to-sienna-v0.2.2) (2026-10-15)
 
 
