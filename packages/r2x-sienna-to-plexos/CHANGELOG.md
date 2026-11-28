@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.1](https://github.com/NatLabRockies/R2X/compare/r2x-sienna-to-plexos-v0.3.0...r2x-sienna-to-plexos-v0.3.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* address plexos-to-sienna rountrip issues for mixed components ([#371](https://github.com/NatLabRockies/R2X/issues/371)) ([f85c0b3](https://github.com/NatLabRockies/R2X/commit/f85c0b3631c11ce3519c8e6176ab6a9d2550a8e6))
+* resolve prek issues and min errors on reeds translation ([#319](https://github.com/NatLabRockies/R2X/issues/319)) ([bad738d](https://github.com/NatLabRockies/R2X/commit/bad738dbffe21fa329f2131d6ba103d4fff27d60))
+* resolve r2x translations to match r2x-core updated codebase ([#357](https://github.com/NatLabRockies/R2X/issues/357)) ([b72e424](https://github.com/NatLabRockies/R2X/commit/b72e424f0db75773c0dfd9efb0a6fd6985772e76))
+* update property fields and getters to match latest db components ([#329](https://github.com/NatLabRockies/R2X/issues/329)) ([f7cca87](https://github.com/NatLabRockies/R2X/commit/f7cca8710a71c4e18da93c055764f67e2f59fe6a))
+
+
+### Documentation
+
+* align central guides and workspace translator documentation ([#344](https://github.com/NatLabRockies/R2X/issues/344)) ([164dea0](https://github.com/NatLabRockies/R2X/commit/164dea0ccef556bba69c14327e9e11a1bc43f327))
+
+
+### Build
+
+* **deps-dev:** update uv-build requirement from &lt;0.9.0,&gt;=0.8.22 to &gt;=0.8.22,&lt;0.13.0 ([#317](https://github.com/NatLabRockies/R2X/issues/317)) ([1ef0210](https://github.com/NatLabRockies/R2X/commit/1ef021040d3eec65eb9ea8f42603395d767775c8))
+
 ## [0.3.0](https://github.com/NatLabRockies/R2X/compare/r2x-sienna-to-plexos-v0.2.0...r2x-sienna-to-plexos-v0.3.0) (2026-08-13)
 
 
